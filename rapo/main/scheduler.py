@@ -12,6 +12,7 @@ import sys
 import threading as th
 import time
 import queue
+import pwd
 
 import psutil
 
@@ -83,7 +84,7 @@ class Scheduler():
             self.status = True if self.record['status'] == 'Y' else False
         else:
             self.server = platform.node()
-            self.username = os.getlogin()
+            self.username = pwd.getpwuid(os.getuid())[0]
             self.pid = os.getpid()
             self.start_date = None
             self.stop_date = None
