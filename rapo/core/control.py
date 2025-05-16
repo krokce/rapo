@@ -266,9 +266,15 @@ class Control:
         self.output_table_a = None
         self.output_table_b = None
 
-        self._with_error = False
         self._all_errors = []
+        self._with_error = False
         self._pending_error = None
+
+        self._all_messages = []
+        if self.result:
+            if self.result['text_message']:
+                text_messages = self.result['text_message'].splitlines()
+                self._all_messages.extend(text_messages)
 
     def __str__(self):
         """Take control information and represent it as a simple string.
@@ -447,6 +453,12 @@ class Control:
         errors = self._all_errors.copy()
         texts = [''.join(tb.format_exception(*error)) for error in errors]
         text = f'{str():->40}\n'.join(texts)
+        return text
+
+    @property
+    def text_message(self):
+        """Get textual message describing current control run."""
+        text = '\n'.join(self._all_messages)
         return text
 
     @property
@@ -791,6 +803,7 @@ class Control:
                 logger.info(f'{self} Control prerequisite statement '
                             f'returns {self.prerequisite_value}')
                 if not self.prerequisite_value:
+                    self._cancel()
                     return False
             except Exception:
                 logger.error()
@@ -840,23 +853,23 @@ class Control:
                                     if self._complete():
                                         if self._done():
                                             self._postrun_hook()
+                    else:
+                        self._do_not_resume()
                 else:
-                    self._do_not_resume()
-            else:
-                self._can_not_prepare()
+                    self._can_not_prepare()
 
     def _do_not_resume(self):
         if not self.prerequisite_value:
             logger.info(f'{self} Control will not be resumed '
                         'due to a prerequisite check')
             message = ('Control execution stopped because the '
-                       'PREREQUISITE check not passed')
+                       'PREREQUISITE check not passed.')
             self._save_text_message(message)
 
     def _can_not_prepare(self):
         logger.info(f'{self} Control will not be resumed '
                     'due to a preparation failure')
-        message = ('Control execution stopped because the PREPARATION failed')
+        message = ('Control execution stopped because the PREPARATION failed.')
         self._save_text_message(message)
 
     def _spawn(self):
@@ -880,12 +893,12 @@ class Control:
                 logger.info(f'{self} Control cancelation request received')
                 self.process = process
                 self._terminate()
-                self._cancel()
+                self._cancel_as_request()
             elif control.timeout:
                 logger.info(f'{self} Control cancelation with timeout ')
                 self.process = process
                 self._terminate()
-                self._cancel()
+                self._cancel_as_timeout()
             tm.sleep(5)
             self.__dict__.update(control.__dict__)
 
@@ -909,6 +922,8 @@ class Control:
         logger.info(f'{self} Starting control...')
         try:
             self._set_as_started()
+            if self.debug_mode:
+                self._save_debug_message()
         except Exception:
             logger.error()
             return self._escape()
@@ -933,7 +948,7 @@ class Control:
         try:
             self._set_as_finished()
             if not self.debug_mode:
-                self.executor.delete_temporary_tables()
+                self._delete_temporary_tables()
         except Exception:
             logger.error()
             return self._escape()
@@ -1202,7 +1217,7 @@ class Control:
             hook_result, hook_code = self.executor.prerun_hook()
             if not hook_result:
                 message = ('Control execution stopped because PRERUN HOOK ',
-                           f'function evaluated as NOT OK [{hook_code}]')
+                           f'function evaluated as NOT OK [{hook_code}].')
                 self._save_text_message(message)
                 return False
         return True
@@ -1266,13 +1281,39 @@ class Control:
         self._update_process_log(prerequisite_value=prerequisite_value)
 
     def _save_text_message(self, text_message):
-        self._update_process_log(text_message=text_message)
+        new_record = f'{dt.datetime.now():%Y-%m-%d %H:%M:%S} - {text_message}'
+        self._all_messages.append(new_record)
+
+        control_result = reader.read_control_result(self.process_id)
+        old_message = control_result.get('text_message')
+        if old_message:
+            new_message = f'{old_message}\n{new_record}'
+        else:
+            new_message = new_record
+
+        self._update_process_log(text_message=new_message)
 
     def _save_text_error(self, text_error):
         self._update_process_log(text_error=text_error)
 
     def _save_metrics(self, **kwargs):
         self._update_process_log(**kwargs)
+
+    def _save_debug_message(self):
+        self._save_text_message('Control execution in debug mode.')
+
+    def _cancel_as_request(self):
+        message = 'Control execution stopped because of the request.'
+        self._save_text_message(message)
+        self._cancel()
+
+    def _cancel_as_timeout(self):
+        message = 'Control execution stopped because of the timeout.'
+        self._save_text_message(message)
+        self._cancel()
+
+    def _delete_temporary_tables(self):
+        self.executor.delete_temporary_tables()
 
 
 class Parser:
@@ -1561,27 +1602,30 @@ class Parser:
         return self.control.config[filter_name]
 
     def _parse_time_shift_delta(self):
+        shift_from_sec, shift_to_sec = 0, 0
         if self.control.is_reconciliation:
             shift_from_sec = self.control.rule_config['time_shift_from']
             shift_to_sec = self.control.rule_config['time_shift_to']
-            return shift_from_sec, shift_to_sec
+        return shift_from_sec, shift_to_sec
 
     def _parse_not_null_fields_a(self):
         not_full_fields = []
-        for case in self.control.rule_config['correlation_config']:
-            field_a = case['field_a']
-            allow_null = case['allow_null']
-            if not allow_null:
-                not_full_fields.append(field_a)
+        if self.control.is_reconciliation:
+            for case in self.control.rule_config['correlation_config']:
+                field_a = case['field_a']
+                allow_null = case['allow_null']
+                if not allow_null:
+                    not_full_fields.append(field_a)
         return not_full_fields
 
     def _parse_not_null_fields_b(self):
         not_full_fields = []
-        for case in self.control.rule_config['correlation_config']:
-            field_b = case['field_b']
-            allow_null = case['allow_null']
-            if not allow_null:
-                not_full_fields.append(field_b)
+        if self.control.is_reconciliation:
+            for case in self.control.rule_config['correlation_config']:
+                field_b = case['field_b']
+                allow_null = case['allow_null']
+                if not allow_null:
+                    not_full_fields.append(field_b)
         return not_full_fields
 
     def parse_stage_tables(self):
@@ -2884,8 +2928,13 @@ class Executor:
         error_number : list of int
             Number of found errors in control from side A.
         """
-        if self.control.need_a and self.control.error_table_a is not None:
-            return self._count_errors(self.control.error_table_a)
+        if self.control.need_a:
+            if self.control.error_table_a is not None:
+                rule_config = self.control.rule_config
+                need_issues_a = rule_config['need_issues_a']
+                need_recons_a = rule_config['need_recons_a']
+                if need_issues_a or need_recons_a:
+                    return self._count_errors(self.control.error_table_a)
 
     def count_errors_b(self):
         """Count found errors in control for side B.
@@ -2895,8 +2944,13 @@ class Executor:
         error_number : list of int
             Number of found errors in control from side B.
         """
-        if self.control.need_b and self.control.error_table_b is not None:
-            return self._count_errors(self.control.error_table_b)
+        if self.control.need_b:
+            if self.control.error_table_b is not None:
+                rule_config = self.control.rule_config
+                need_issues_b = rule_config['need_issues_b']
+                need_recons_b = rule_config['need_recons_b']
+                if need_issues_b or need_recons_b:
+                    return self._count_errors(self.control.error_table_b)
 
     def _count_errors(self, table):
         logger.debug(f'{self.c} Counting errors from {table.name}...')
@@ -3124,7 +3178,20 @@ class Executor:
         elif self.control.is_comparison:
             chosen_columns.extend(self.control.output_columns)
             if not chosen_columns:
-                output_columns.extend(self.c.source_table.columns)
+                for column in self.c.source_table_a.columns:
+                    column_config = {
+                        'column': f'a_{column.name}',
+                        'column_a': column.name,
+                        'column_b': None
+                    }
+                    chosen_columns.append(column_config)
+                for column in self.c.source_table_b.columns:
+                    column_config = {
+                        'column': f'b_{column.name}',
+                        'column_b': column.name,
+                        'column_a': None
+                    }
+                    chosen_columns.append(column_config)
             date_columns.extend([self.control.source_date_field_a,
                                  self.control.source_date_field_b])
         mandatory_columns = self.control.mandatory_columns
