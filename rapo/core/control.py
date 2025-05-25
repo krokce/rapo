@@ -277,19 +277,10 @@ class Control:
                 self._all_messages.extend(text_messages)
 
     def __str__(self):
-        """Take control information and represent it as a simple string.
+        return self.label
 
-        Returns
-        -------
-        value : str
-            Control name with or withoud process id.
-        """
-        if not self.process_id:
-            return f'[{self.name}]'
-        else:
-            return f'[{self.name}:{self.process_id}]'
-
-    __repr__ = __str__
+    def __repr__(self):
+        return self.label
 
     @property
     def name(self):
@@ -304,6 +295,13 @@ class Control:
             type = value.__class__.__name__
             message = f'name must be str or None, not {type}'
             raise TypeError(message)
+
+    @property
+    def label(self):
+        """Represent control as a simple string with or withoud process id."""
+        if not self.process_id:
+            return f'[{self.name}]'
+        return f'[{self.name}:{self.process_id}]'
 
     @property
     def date(self):
@@ -625,6 +623,11 @@ class Control:
         return self.parser.parse_iteration_config()
 
     @property
+    def cascade_config(self):
+        """Get control cascade configuration."""
+        return self.parser.parse_cascade_config()
+
+    @property
     def output_columns(self):
         """Get control output column configuration."""
         return self.parser.parse_output_columns()
@@ -728,6 +731,23 @@ class Control:
                                          timestamp=self.timestamp,
                                          iteration_id=iteration_id)
                 control.run()
+
+    def cascade(self):
+        """Run following controls in cascade."""
+        source_label = f'{self.name}[{self.timestamp}]'
+        for case in self.cascade_config:
+            control_name = case['control_name']
+            control_status = case['control_status']
+            control_parameters = case['control_parameters']
+            target_label = f'{control_name}[{self.timestamp}]'
+            if control_status:
+                control = self.__class__(name=control_name,
+                                         timestamp=self.timestamp,
+                                         **control_parameters)
+                logger.info(f'Initiating control {target_label}] '
+                            f'from control {source_label}...')
+                control.run()
+                logger.info(f'Control {target_label} performed')
 
     def prerequisite(self):
         """Get the result of the prerequisite statement."""
@@ -1216,7 +1236,8 @@ class Control:
         if self.need_hook and self.need_prerun_hook:
             hook_result, hook_code = self.executor.prerun_hook()
             if not hook_result:
-                message = ('Control execution stopped because PRERUN HOOK ',
+                self._cancel()
+                message = ('Control execution stopped because PRERUN HOOK '
                            f'function evaluated as NOT OK [{hook_code}].')
                 self._save_text_message(message)
                 return False
@@ -1513,7 +1534,6 @@ class Parser:
                                     not_null_fields=not_null_fields,
                                     date_field=date_field,
                                     key_field=key_field,
-                                    need_key_field=True,
                                     shift_from_sec=shift_from_sec,
                                     shift_to_sec=shift_to_sec)
         return select
@@ -1535,19 +1555,17 @@ class Parser:
                                     not_null_fields=not_null_fields,
                                     date_field=date_field,
                                     key_field=key_field,
-                                    need_key_field=True,
                                     shift_from_sec=shift_from_sec,
                                     shift_to_sec=shift_to_sec)
         return select
 
     def _parse_select(self, table, literals=None, where=None,
                       not_null_fields=None, date_field=None,
-                      key_field=None, need_key_field=False,
-                      shift_from_sec=0, shift_to_sec=0):
+                      key_field=None, shift_from_sec=0, shift_to_sec=0):
         logger.debug(f'{self.c} Parsing {table} select...')
         columns = db.normalize(table.columns, date_fields=[date_field])
-        if db.is_table(table):
-            if key_field and need_key_field:
+        if key_field:
+            if db.is_table(table) and not db.is_column(key_field, table):
                 key_column = db.get_rowid(key_field)
                 columns.append(key_column)
         literals = literals if isinstance(literals, list) else []
@@ -2192,6 +2210,35 @@ class Parser:
             output_config.append(add_config)
         return output_config
 
+    def parse_cascade_config(self):
+        config = db.tables.config
+        select = config.select().order_by(config.c.control_id)
+        answerset = db.execute(select, as_records=True)
+        output_config = []
+        for record in answerset:
+            try:
+                control_id = record.control_id
+                control_name = record.control_name
+                control_status = True if record.status == 'Y' else False
+                control_parameters = {
+                    'debug_mode': self.control.debug_mode
+                }
+                if record.schedule_config:
+                    schedule_config = json.loads(record.schedule_config)
+                    trigger_id = schedule_config.get('trigger_id')
+                    if trigger_id and trigger_id == self.control.id:
+                        add_config = {
+                            'control_id': control_id,
+                            'control_name': control_name,
+                            'control_status': control_status,
+                            'control_parameters': control_parameters
+                        }
+                        output_config.append(add_config)
+            except Exception:
+                logger.warning()
+                continue
+        return output_config
+
     def parse_parallelism_hint(self):
         """Get SQL expression with parallelism hint.
 
@@ -2377,9 +2424,9 @@ class Executor:
 
         def execute(*scripts):
             if scripts and len(scripts) == 1:
-                db.execute(scripts[0], output=logger.info, tag=self.control)
+                db.execute(scripts[0], output=logger.info, tag=self.c.label)
             elif scripts:
-                db.parallelize(*scripts, output=logger.info, tag=self.control)
+                db.parallelize(*scripts, output=logger.info, tag=self.c.label)
 
         def read_script(script_name):
             return utils.read_sql(f'{SQL_DIRECTORY}/{script_name}')
@@ -3054,11 +3101,11 @@ class Executor:
         process_id = self.control.key_column
         input_tables = []
         if need_issues_a:
-            error_table = self.control.error_table_a
-            input_tables.append(error_table)
+            if self.control.error_table_a is not None:
+                input_tables.append(self.control.error_table_a)
         if need_recons_a:
-            stage_table = self.control.stage_table_a
-            input_tables.append(stage_table)
+            if self.control.stage_table_a is not None:
+                input_tables.append(self.control.stage_table_a)
         for input_table in input_tables:
             input_columns = []
             for output_column in output_columns:
@@ -3084,11 +3131,11 @@ class Executor:
         process_id = self.control.key_column
         input_tables = []
         if need_issues_b:
-            error_table = self.control.error_table_b
-            input_tables.append(error_table)
+            if self.control.error_table_b is not None:
+                input_tables.append(self.control.error_table_b)
         if need_recons_b:
-            stage_table = self.control.stage_table_b
-            input_tables.append(stage_table)
+            if self.control.stage_table_b is not None:
+                input_tables.append(self.control.stage_table_b)
         for input_table in input_tables:
             input_columns = []
             for output_column in output_columns:
@@ -3163,7 +3210,11 @@ class Executor:
                 chosen_columns.extend(self.control.output_columns_a)
                 if not chosen_columns:
                     output_columns.extend(self.control.source_table_a.columns)
-                    if db.is_table(self.control.source_table_a):
+                    if (
+                        db.is_table(self.control.source_table_a)
+                        and not db.is_column(self.c.source_key_field_a,
+                                             self.c.source_table_a)
+                    ):
                         key_column = db.get_rowid(self.c.source_key_field_a)
                         key_columns.append(key_column)
                 date_columns.append(self.control.source_date_field_a)
@@ -3171,7 +3222,11 @@ class Executor:
                 chosen_columns.extend(self.control.output_columns_b)
                 if not chosen_columns:
                     output_columns.extend(self.control.source_table_b.columns)
-                    if db.is_table(self.control.source_table_b):
+                    if (
+                        db.is_table(self.control.source_table_b)
+                        and not db.is_column(self.c.source_key_field_b,
+                                             self.c.source_table_b)
+                    ):
                         key_column = db.get_rowid(self.c.source_key_field_b)
                         key_columns.append(key_column)
                 date_columns.append(self.control.source_date_field_b)
@@ -3222,6 +3277,11 @@ class Executor:
                     column = self.control.source_table_b.c[column_name]
             output_columns.append(column)
         output_columns.extend(key_columns)
+
+        mandatory_names = [i.column_name for i in mandatory_columns]
+        reserved_names = [*mandatory_names, process_id.name]
+        output_columns = [column for column in output_columns
+                          if column.name not in reserved_names]
         for mandatory_column in mandatory_columns:
             column = mandatory_column.null
             output_columns.append(column)
