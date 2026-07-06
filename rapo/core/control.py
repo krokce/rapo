@@ -1566,12 +1566,23 @@ class Parser:
                       key_field=None, shift_from_sec=0, shift_to_sec=0):
         logger.debug(f'{self.c} Parsing {table} select...')
         columns = db.normalize(table.columns, date_fields=[date_field])
+
         if key_field:
             if db.is_table(table) and not db.is_column(key_field, table):
                 key_column = db.get_rowid(key_field)
                 columns.append(key_column)
         source, columns = db.remap(table, columns, alias)
         literals = literals if isinstance(literals, list) else []
+
+        if date_field and isinstance(date_field, str):
+            date_column = source.columns[date_field]
+            if db.is_timestamp(table, date_column):
+                date_column = sa.cast(date_column, sa.DATE).label(date_field)
+                columns = [
+                    date_column if col.name == date_field else col
+                    for col in columns
+                ]
+
         select = sa.select([*columns, *literals])
         if where and isinstance(where, str):
             custom_where = utils.concat('(', where, ')')
@@ -1579,15 +1590,12 @@ class Parser:
         if not_null_fields and isinstance(not_null_fields, list):
             for not_null_field in not_null_fields:
                 if not_null_field in table.columns:
-                    column = source.columns[not_null_field]
+                    not_null_column = source.columns[not_null_field]
                 else:
-                    column = sa.literal_column(not_null_field)
-                select = select.where(column.is_not(None))
-        if date_field and isinstance(date_field, str):
-            column = source.columns[date_field]
-            if db.is_timestamp(table, column):
-                column = sa.cast(column, sa.DATE).label(date_field)
+                    not_null_column = sa.literal_column(not_null_field)
+                select = select.where(not_null_column.is_not(None))
 
+        if date_field and isinstance(date_field, str):
             date_from = self.control.date_from
             date_to = self.control.date_to
             if shift_from_sec or shift_to_sec:
@@ -1604,7 +1612,8 @@ class Parser:
             date_from = sa.func.to_date(date_from, datefmt)
             date_to = sa.func.to_date(date_to, datefmt)
 
-            select = select.where(column.between(date_from, date_to))
+            select = select.where(date_column.between(date_from, date_to))
+
         logger.debug(f'{self.c} {table} select parsed')
         return select
 
@@ -2718,14 +2727,26 @@ class Executor:
             distance_formula_a = distance_formula_form.format(
                 field_name=f'discrepancy_{distance_type_name}_value',
                 key_field='a_id',
-                tolerance_from = time_tolerance_from if distance_type_name == 'time' else discrepancy_combinations[int(distance_type_name)-1][2],
-                tolerance_to = time_tolerance_to if distance_type_name == 'time' else discrepancy_combinations[int(distance_type_name)-1][3]
+                tolerance_from=(
+                    time_tolerance_from if distance_type_name == 'time'
+                    else discrepancy_combinations[int(distance_type_name)-1][2]
+                ),
+                tolerance_to=(
+                    time_tolerance_to if distance_type_name == 'time'
+                    else discrepancy_combinations[int(distance_type_name)-1][3]
+                )
             )
             distance_formula_b = distance_formula_form.format(
                 field_name=f'discrepancy_{distance_type_name}_value',
                 key_field='b_id',
-                tolerance_from = time_tolerance_from if distance_type_name == 'time' else discrepancy_combinations[int(distance_type_name)-1][2],
-                tolerance_to = time_tolerance_to if distance_type_name == 'time' else discrepancy_combinations[int(distance_type_name)-1][3]
+                tolerance_from=(
+                    time_tolerance_from if distance_type_name == 'time'
+                    else discrepancy_combinations[int(distance_type_name)-1][2]
+                ),
+                tolerance_to=(
+                    time_tolerance_to if distance_type_name == 'time'
+                    else discrepancy_combinations[int(distance_type_name)-1][3]
+                )
             )
 
             distance_formulas_a.append(distance_formula_a)
@@ -2742,15 +2763,19 @@ class Executor:
             numeric_b = f'abs({discrepancy_field_b})'
             numerics_b.append(numeric_b)
 
-        epoch_date = f'to_date(\'1970-01-01\', \'YYYY-MM-DD\')'
+        epoch_date = 'to_date(\'1970-01-01\', \'YYYY-MM-DD\')'
         numeric_date_a = f'86400*({date_field_a}-{epoch_date})'
         numeric_date_b = f'86400*({date_field_b}-{epoch_date})'
-        numeric_formula_a = (numeric_date_a+
-                             ('+' if numerics_a else '')+
-                             ('+'.join(numerics_a)))
-        numeric_formula_b = (numeric_date_b+
-                             ('+' if numerics_b else '')+
-                             ('+'.join(numerics_b)))
+        numeric_formula_a = (
+            numeric_date_a
+            + ('+' if numerics_a else '')
+            + ('+'.join(numerics_a))
+        )
+        numeric_formula_b = (
+            numeric_date_b
+            + ('+' if numerics_b else '')
+            + ('+'.join(numerics_b))
+        )
 
         if fuzzy_optimization:
             conflict_types = '(\'A\', \'B\', \'M\')'
