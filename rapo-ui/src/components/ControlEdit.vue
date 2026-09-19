@@ -1130,15 +1130,15 @@ export default {
       this.getControlLogs(this.control.control_name, this.log_days_back);
     },
     toDateString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(0, 10);
+      var ret = val ? String(val).substring(0, 10) : "";
       return ret;
     },
     toTimeString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(11, 19);
+      var ret = val ? String(val).substring(11, 19) : "";
       return ret;
     },
     toDateTimeString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(0, 19).replace("T", " ");
+      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
       return ret;
     },
     round(val, places) {
@@ -1333,11 +1333,11 @@ export default {
         this.controlVersions = data;
         this.controlVersions.forEach((element) => {
           element.label =
-            "v." + new Date(element.updated_date ? element.updated_date : element.created_date).toISOString("de-DE").substring(0, 19).replace("T", " ");
+            "v." + this.toDateTimeString(element.updated_date ? element.updated_date : element.created_date);
         });
         this.control.label =
           "v." +
-          new Date(this.control.updated_date ? this.control.updated_date : this.control.created_date).toISOString("de-DE").substring(0, 19).replace("T", " ");
+          this.toDateTimeString(this.control.updated_date ? this.control.updated_date : this.control.created_date);
         this.controlVersions.unshift(this.control);
         this.controlVersion = this.controlVersions[0];
       }
@@ -1724,18 +1724,11 @@ export default {
         },
         body: JSON.stringify(this.control),
       })
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) {
-            this.$q.notify({
-              type: "warning",
-              message: "Network response was not ok: " + response,
-            });
-            this.$router.push({ name: "controls" });
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || response.status + " " + response.statusText);
           }
-          return response.json();
-        })
-        // eslint-disable-next-line no-unused-vars
-        .then((data) => {
           this.$q.notify({
             type: "positive",
             message: "Control: " + this.control.control_name + " was saved successfully.",
@@ -1744,8 +1737,8 @@ export default {
           this.$router.push({ name: "controls" });
         })
         .catch((error) => {
-          this.$q.notify({ type: "negative", message: "Error:" + error });
-          this.$router.push({ name: "controls" });
+          // stay on the page so unsaved edits are not lost
+          this.$q.notify({ type: "negative", message: "Control was not saved. " + error.message });
         });
     },
     validateAndSave() {

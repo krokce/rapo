@@ -2,10 +2,10 @@
 
 import os
 
-import flask
+import fastapi
+import fastapi.responses
 
-from .auth import auth
-from .response import OK
+from .auth import verify_token
 
 from ...logger import logger
 from ...reader import reader
@@ -13,50 +13,26 @@ from ...reader import reader
 from ...core.control import Control
 
 
-app = flask.Flask(__name__)
-app.config['JSON_SORT_KEYS'] = False
-app.static_folder = os.path.abspath(
+UI_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), '..', 'ui'))
+
+app = fastapi.FastAPI(title='Rapo',
+                      docs_url='/api/docs', openapi_url='/api/openapi.json',
+                      redoc_url=None)
+api = fastapi.APIRouter(prefix='/api',
+                        dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
 
 
-@app.route('/favicon.ico')
-def serve_ui_favicon():
-    return flask.send_from_directory(app.static_folder, 'favicon.ico')
-
-
-@app.route('/edit-control/<int:control_id>')
-def serve_edit_control(control_id):
-    return flask.send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/')
-def serve_ui_index():
-    return flask.send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/<path:filename>')
-def serve_ui_files(filename):
-    return flask.send_from_directory(app.static_folder, filename)
-
-
-@app.route('/<path>')
-def serve_ui_catch_all(path):
-    return flask.send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/api/help')
-@auth.login_required
+@api.get('/help', response_class=fastapi.responses.HTMLResponse)
 def help():
     """Get help message."""
     path = os.path.join(os.path.dirname(__file__), 'templates/help.html')
-    lines = open(path, 'r').readlines()
-    text = ''.join(lines)
-    return text
+    with open(path, 'r') as file:
+        return file.read()
 
 
-@app.route('/api/status')
-@auth.login_required
+@api.get('/status')
 def status():
     """Get scheduler status."""
     input_dict = reader.read_scheduler_record()
@@ -68,12 +44,10 @@ def status():
         'stop_date': input_dict['stop_date'],
         'status': input_dict['status']
     }
-    response = flask.jsonify(output_dict)
-    return response
+    return output_dict
 
 
-@app.route('/api/session')
-@auth.login_required
+@api.get('/session')
 def session():
     """Get API status."""
     input_dict = reader.read_web_api_record()
@@ -87,21 +61,17 @@ def session():
         'stop_date': input_dict['stop_date'],
         'status': input_dict['status']
     }
-    response = flask.jsonify(output_dict)
-    return response
+    return output_dict
 
 
-@app.route('/api/version')
-@auth.login_required
+@api.get('/version')
 def version():
     """Get application version."""
     from ... import __version__
-    response = flask.jsonify(version=__version__)
-    return response
+    return {'version': __version__}
 
 
-@app.route('/api/info')
-@auth.login_required
+@api.get('/info')
 def info():
     """Get application info."""
     from ...config import config
@@ -116,12 +86,10 @@ def info():
             database_config.get('service_name')
         )
     }
-    response = flask.jsonify(output_dict)
-    return response
+    return output_dict
 
 
-@app.route('/api/parameters')
-@auth.login_required
+@api.get('/parameters')
 def parameters():
     """Get application info."""
     from ...config import config
@@ -156,214 +124,155 @@ def parameters():
             'critical': logging_config.get('critical')
         }
     }
-    response = flask.jsonify(output_dict)
-    return response
+    return output_dict
 
 
-@app.route('/api/run-control', methods=['POST', 'OPTIONS'])
-@auth.login_required
-def run_control():
+@api.post('/run-control')
+def run_control(name: str, date: str | None = None,
+                date_from: str | None = None, date_to: str | None = None,
+                debug_mode: bool = False):
     """Run control and get its result in JSON."""
-    request = flask.request
-    name = request.args['name']
-    date = request.args.get('date')
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-    debug_mode = request.args.get('debug_mode', 'false').lower() == 'true'
-    if request.method == 'POST':
-        control = Control(name, date_from=date_from, date_to=date_to,
-                          date=date, debug_mode=debug_mode)
-        control.launch()
-    response = flask.jsonify(status=200)
-    return response
+    control = Control(name, date_from=date_from, date_to=date_to,
+                      date=date, debug_mode=debug_mode)
+    control.launch()
+    return {'status': 200}
 
 
-@app.route('/api/cancel-control', methods=['POST'])
-@auth.login_required
-def cancel_control():
+@api.post('/cancel-control')
+def cancel_control(id: int):
     """Cancel running control."""
-    request = flask.request
-    process_id = int(request.args['id'])
-    control = Control(process_id=process_id)
+    control = Control(process_id=id)
     control.cancel()
-    return OK
+    return {'status': 200}
 
 
-@app.route('/api/revoke-control-run', methods=['DELETE'])
-@auth.login_required
-def revoke_control_run():
+@api.delete('/revoke-control-run')
+def revoke_control_run(id: int):
     """Revoke patricular control run."""
-    request = flask.request
-    process_id = int(request.args['id'])
-    control = Control(process_id=process_id)
+    control = Control(process_id=id)
     control.revoke()
-    return OK
+    return {'status': 200}
 
 
-@app.route('/api/delete-control-output-tables', methods=['DELETE'])
-@auth.login_required
-def delete_control_output_tables():
-    """Run control and get its result in JSON."""
-    request = flask.request
-    name = request.args['name']
+@api.delete('/delete-control-output-tables')
+def delete_control_output_tables(name: str):
+    """Delete control output tables."""
     control = Control(name)
     control.executor.delete_output_tables()
-    response = flask.jsonify(status=200)
-    return response
+    return {'status': 200}
 
 
-@app.route('/api/delete-control-temporary-tables', methods=['DELETE'])
-@auth.login_required
-def delete_control_temporary_tables():
-    """Run control and get its result in JSON."""
-    request = flask.request
-    process_id = int(request.args['id'])
-    control = Control(process_id=process_id)
+@api.delete('/delete-control-temporary-tables')
+def delete_control_temporary_tables(id: int):
+    """Delete temporary tables of particular control run."""
+    control = Control(process_id=id)
     control.executor.delete_temporary_tables()
-    response = flask.jsonify(status=200)
-    return response
+    return {'status': 200}
 
 
-@app.route('/api/get-running-controls')
-@auth.login_required
+@api.get('/get-running-controls')
 def get_running_controls():
     """Get list of currently running controls in JSON."""
-    rows = reader.read_running_controls()
-    response = flask.jsonify(rows)
-    return response
+    return reader.read_running_controls()
 
 
-@app.route('/api/get-all-controls')
-@auth.login_required
+@api.get('/get-all-controls')
 def get_all_controls():
     """Get list of all controls in JSON."""
-    rows = reader.read_control_config_all()
-    response = flask.jsonify(rows)
-    return response
+    return reader.read_control_config_all()
 
 
-@app.route('/api/get-control-versions')
-@auth.login_required
-def get_control_versions():
+@api.get('/get-control-versions')
+def get_control_versions(control_id: str | None = None):
     """Get list of control versions by ID in JSON."""
-    request = flask.request
-
-    if 'control_id' in request.args:
-        rows = reader.read_control_config_versions(request.args['control_id'])
-    else:
-        rows = []
-
-    response = flask.jsonify(rows)
-    return response
+    if control_id is None:
+        return []
+    return reader.read_control_config_versions(control_id)
 
 
-@app.route('/api/get-control-runs')
-@auth.login_required
+@api.get('/get-control-runs')
 def get_control_runs():
     """Get list of all control runs in JSON."""
-    rows = reader.read_control_results_for_day()
-    response = flask.jsonify(rows)
-    return response
+    return reader.read_control_results_for_day()
 
 
-@app.route('/api/read-control-logs')
-@auth.login_required
-def read_control_logs():
-    """Get list of DB datasource columns in JSON."""
-    request = flask.request
-
-    if 'control_name' in request.args:
-        rows = reader.read_control_logs(
-            request.args['control_name'],
-            int(request.args['days']) if 'days' in request.args else 31,
-            ['W', 'C', 'E', 'D', 'I', 'S', 'P', 'F', 'X'])
-    else:
-        rows = []
-
-    response = flask.jsonify(rows)
-    return response
+@api.get('/read-control-logs')
+def read_control_logs(control_name: str | None = None, days: int = 31):
+    """Get list of control logs in JSON."""
+    if control_name is None:
+        return []
+    return reader.read_control_logs(
+        control_name, days, ['W', 'C', 'E', 'D', 'I', 'S', 'P', 'F', 'X'])
 
 
-@app.route('/api/get-datasources')
-@auth.login_required
+@api.get('/get-datasources')
 def get_datasources():
     """Get list of all DB datasources in JSON."""
-    rows = reader.read_datasources()
-    response = flask.jsonify(rows)
-    return response
+    return reader.read_datasources()
 
 
-@app.route('/api/get-datasource-columns')
-@auth.login_required
-def get_datasource_columns():
+@api.get('/get-datasource-columns')
+def get_datasource_columns(datasource_name: str | None = None):
     """Get list of DB datasource columns in JSON."""
-    request = flask.request
-
-    if 'datasource_name' in request.args:
-        rows = reader.read_datasource_columns(request.args['datasource_name'])
-    else:
-        rows = []
-
-    response = flask.jsonify(rows)
-    return response
+    if datasource_name is None:
+        return []
+    return reader.read_datasource_columns(datasource_name)
 
 
-@app.route('/api/save-control', methods=['POST', 'OPTIONS'])
-@auth.login_required
-def save_control():
+@api.post('/save-control')
+def save_control(data: dict = fastapi.Body(...)):
     """Create or update control in configuration table."""
-    request = flask.request
-
-    if request.method == 'POST':
-        try:
-            data = request.get_json()
-            reader.save_control(data)
-            response = flask.jsonify(status=200)
-        except Exception:
-            response = flask.jsonify(status=400)
-    else:
-        response = flask.jsonify([])
-
-    return response
+    try:
+        reader.save_control(data)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'status': 200}
 
 
-@app.route('/api/delete-control', methods=['DELETE', 'OPTIONS'])
-@auth.login_required
-def delete_control():
+@api.delete('/delete-control')
+def delete_control(control_id: int):
     """Delete control from configuration table."""
-    request = flask.request
-    control_id = int(request.args['control_id'])
-
-    if request.method == 'DELETE':
-        reader.delete_control(control_id)
-
-    response = flask.jsonify(status=200)
-    return response
+    reader.delete_control(control_id)
+    return {'status': 200}
 
 
-@app.route('/api/get-control-run')
-@auth.login_required
-def get_control_run():
-    request = flask.request
-    process_id = request.args['process_id']
+@api.get('/get-control-run')
+def get_control_run(process_id: int):
+    """Get details of particular control run in JSON."""
     control = Control(process_id=process_id)
-    response = flask.jsonify(name=control.name,
-                             date_from=control.date_from,
-                             date_to=control.date_to,
-                             process_id=control.process_id,
-                             start_date=control.start_date,
-                             end_date=control.end_date,
-                             status=control.status,
-                             fetched_number=control.fetched_number,
-                             success_number=control.success_number,
-                             error_number=control.error_number,
-                             error_level=control.error_level,
-                             fetched_number_a=control.fetched_number_a,
-                             fetched_number_b=control.fetched_number_b,
-                             success_number_a=control.success_number_a,
-                             success_number_b=control.success_number_b,
-                             error_number_a=control.error_number_a,
-                             error_number_b=control.error_number_b,
-                             error_level_a=control.error_level_a,
-                             error_level_b=control.error_level_b)
-    return response
+    return {
+        'name': control.name,
+        'date_from': control.date_from,
+        'date_to': control.date_to,
+        'process_id': control.process_id,
+        'start_date': control.start_date,
+        'end_date': control.end_date,
+        'status': control.status,
+        'fetched_number': control.fetched_number,
+        'success_number': control.success_number,
+        'error_number': control.error_number,
+        'error_level': control.error_level,
+        'fetched_number_a': control.fetched_number_a,
+        'fetched_number_b': control.fetched_number_b,
+        'success_number_a': control.success_number_a,
+        'success_number_b': control.success_number_b,
+        'error_number_a': control.error_number_a,
+        'error_number_b': control.error_number_b,
+        'error_level_a': control.error_level_a,
+        'error_level_b': control.error_level_b
+    }
+
+
+app.include_router(api)
+
+
+@app.get('/{path:path}', include_in_schema=False)
+def serve_ui(path: str):
+    """Serve UI files, falling back to index.html for SPA routes."""
+    if path == 'api' or path.startswith('api/'):
+        raise fastapi.HTTPException(status_code=404, detail='Not Found')
+    file = os.path.realpath(os.path.join(UI_DIR, path))
+    if file.startswith(UI_DIR + os.sep) and os.path.isfile(file):
+        return fastapi.responses.FileResponse(file)
+    return fastapi.responses.FileResponse(os.path.join(UI_DIR, 'index.html'))

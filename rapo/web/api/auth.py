@@ -1,16 +1,22 @@
-"""."""
+"""Contains web API authentication."""
 
-import flask_httpauth
+import secrets
+
+import fastapi
+import fastapi.security
 
 from ...config import config
 
 
-auth = flask_httpauth.HTTPTokenAuth(scheme='Bearer')
+bearer = fastapi.security.HTTPBearer(auto_error=False)
 TOKEN = config['API']['token']
 
 
-@auth.verify_token
-def verify_token(token):
-    """."""
-    if token == TOKEN:
-        return token
+def verify_token(credentials=fastapi.Depends(bearer)):
+    """Check that request carries the valid Bearer token."""
+    token = credentials.credentials if credentials else None
+    if not token or not TOKEN or not secrets.compare_digest(token, TOKEN):
+        raise fastapi.HTTPException(status_code=401,
+                                    detail='Unauthorized Access',
+                                    headers={'WWW-Authenticate': 'Bearer'})
+    return token
