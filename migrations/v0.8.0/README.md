@@ -1,15 +1,23 @@
 # Rapo v0.8.0 Migration Instructions
-This short document describes how to upgrade Rapo from v0.7.0 to v0.8.0.
+This short document describes how to upgrade Rapo from v0.7.0 to v0.8.0. Commands run in the application folder
+(the Rapo source checkout, see the [v0.7.0 instructions](../v0.7.0/README.md)).
 
 The scheduler now runs inside the web server, so there is only one process to run: `rapo-server`.
 `rapo-scheduler` is deprecated. It only stops a standalone scheduler left over from an older version.
 
 1. Wait until all your Rapo controls are completed or cancel them. Stop the scheduler and the web server.
     ```bash
-    rapo-scheduler stop
-    rapo-server stop
+    .venv/bin/rapo-scheduler stop
+    .venv/bin/rapo-server stop
     ```
-1. Perform module upgrade `pip install --upgrade rapo==0.8.0`.
+1. Update the source in the application folder and reinstall it. Without Git, replace the folder's content with the
+   v0.8.0 source (keep `rapo.ini`, `.venv` and `logs`) and run only the two install commands.
+    ```bash
+    git fetch
+    git checkout v0.8.0
+    .venv/bin/pip install -r requirements.txt
+    .venv/bin/pip install --no-build-isolation -e .
+    ```
 1. Execute migration SQL [scripts](upgrade.sql) in database, which include:
     1. New columns `heartbeat`, `instance_id` and `disabled` of `rapo_scheduler`. They hold the lease of the server
        running the scheduler and the Stop/Start switch of the UI.
@@ -35,7 +43,7 @@ The scheduler now runs inside the web server, so there is only one process to ru
    `site-packages/uvicorn/logs`); delete them manually.
 1. Start the web server. It starts the scheduler too.
     ```bash
-    rapo-server start
+    .venv/bin/rapo-server start
     ```
    `rapo-server start dev` runs without the scheduler unless started with `rapo-server start dev --scheduler`.
 1. Remove `rapo-scheduler` from any service or startup scripts.
