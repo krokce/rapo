@@ -5,6 +5,9 @@ export default {
   getTokenIsValid: (state) => {
     return state.tokenIsValid;
   },
+  getSocketConnected: (state) => {
+    return state.socketConnected;
+  },
   getSearch: (state) => {
     return state.search;
   },

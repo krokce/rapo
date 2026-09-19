@@ -4,7 +4,9 @@ import os
 
 import fastapi
 import fastapi.responses
+import socketio
 
+from . import events
 from .auth import verify_token
 
 from ...logger import logger
@@ -16,9 +18,10 @@ from ...core.control import Control
 UI_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), '..', 'ui'))
 
-app = fastapi.FastAPI(title='Rapo',
-                      docs_url='/api/docs', openapi_url='/api/openapi.json',
-                      redoc_url=None)
+fastapi_app = fastapi.FastAPI(title='Rapo',
+                              docs_url='/api/docs',
+                              openapi_url='/api/openapi.json',
+                              redoc_url=None)
 api = fastapi.APIRouter(prefix='/api',
                         dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
@@ -135,6 +138,7 @@ def run_control(name: str, date: str | None = None,
     control = Control(name, date_from=date_from, date_to=date_to,
                       date=date, debug_mode=debug_mode)
     control.launch()
+    events.poke()
     return {'status': 200}
 
 
@@ -143,6 +147,7 @@ def cancel_control(id: int):
     """Cancel running control."""
     control = Control(process_id=id)
     control.cancel()
+    events.poke()
     return {'status': 200}
 
 
@@ -151,6 +156,7 @@ def revoke_control_run(id: int):
     """Revoke patricular control run."""
     control = Control(process_id=id)
     control.revoke()
+    events.poke()
     return {'status': 200}
 
 
@@ -227,6 +233,7 @@ def save_control(data: dict = fastapi.Body(...)):
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    events.poke()
     return {'status': 200}
 
 
@@ -234,6 +241,7 @@ def save_control(data: dict = fastapi.Body(...)):
 def delete_control(control_id: int):
     """Delete control from configuration table."""
     reader.delete_control(control_id)
+    events.poke()
     return {'status': 200}
 
 
@@ -264,10 +272,10 @@ def get_control_run(process_id: int):
     }
 
 
-app.include_router(api)
+fastapi_app.include_router(api)
 
 
-@app.get('/{path:path}', include_in_schema=False)
+@fastapi_app.get('/{path:path}', include_in_schema=False)
 def serve_ui(path: str):
     """Serve UI files, falling back to index.html for SPA routes."""
     if path == 'api' or path.startswith('api/'):
@@ -276,3 +284,8 @@ def serve_ui(path: str):
     if file.startswith(UI_DIR + os.sep) and os.path.isfile(file):
         return fastapi.responses.FileResponse(file)
     return fastapi.responses.FileResponse(os.path.join(UI_DIR, 'index.html'))
+
+
+# Socket.io is served under /api so that anything proxying /api reaches it.
+app = socketio.ASGIApp(events.sio, other_asgi_app=fastapi_app,
+                       socketio_path='api/socket.io')

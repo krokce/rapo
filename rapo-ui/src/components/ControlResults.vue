@@ -323,6 +323,7 @@
 import { mapActions, mapGetters } from "vuex";
 import { useQuasar } from "quasar";
 import RunControlDialog from "./RunControlDialog.vue";
+import { liveRefetch } from "../socket";
 // import ConfirmDialog from "./ConfirmDialog.vue";
 
 export default {
@@ -336,7 +337,6 @@ export default {
       pagination: {
         rowsPerPage: 0,
       },
-      refreshTimer: null,
       controlResults: [],
       filter: {
         type: null,
@@ -556,12 +556,6 @@ export default {
     async refreshControlResults() {
       this.controlResults = await this.updateControlResults();
     },
-    async startRefreshTimer() {
-      this.refreshTimer = setInterval(this.refreshControlResults, 10000);
-    },
-    stopRefreshTimer() {
-      clearInterval(this.refreshTimer);
-    },
     clearFilters() {
       this.filter.control_name = null;
       this.filter.type = null;
@@ -625,11 +619,11 @@ export default {
     },
   },
   async mounted() {
+    this.stopLiveUpdates = liveRefetch("runs:changed", this.refreshControlResults);
     this.controlResults = await this.updateControlResults();
-    this.startRefreshTimer();
   },
   unmounted() {
-    this.stopRefreshTimer();
+    this.stopLiveUpdates();
   },
 };
 </script>

@@ -316,6 +316,7 @@ create index rapo_log_control_id_ix on rapo_log (control_id);
 create index rapo_log_start_date_ix on rapo_log (start_date);
 create index rapo_log_status_ix on rapo_log (status);
 create index rapo_log_date_from_ix on rapo_log (date_from);
+create index rapo_log_updated_ix on rapo_log (updated);
 
 create sequence rapo_log_seq
 increment by 1

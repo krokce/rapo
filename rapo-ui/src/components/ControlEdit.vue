@@ -1034,6 +1034,7 @@
 <script>
 import { useQuasar } from "quasar";
 import { mapActions, mapGetters } from "vuex";
+import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
@@ -1099,6 +1100,8 @@ export default {
       iterationConfigObject: [],
       controlLogs: [],
       versionChanges: [],
+      saving: false,
+      loadedUpdatedDate: null,
       $q: useQuasar(),
     };
   },
@@ -1716,6 +1719,7 @@ export default {
         this.control.iteration_config = null;
       }
 
+      this.saving = true;
       fetch("/api/save-control", {
         method: "POST",
         headers: {
@@ -1738,6 +1742,7 @@ export default {
         })
         .catch((error) => {
           // stay on the page so unsaved edits are not lost
+          this.saving = false;
           this.$q.notify({ type: "negative", message: "Control was not saved. " + error.message });
         });
     },
@@ -2073,11 +2078,49 @@ export default {
           // console.log('Cancel')
         });
     },
-    startControlLogsRefreshTimer() {
-      this.refreshTimer = setInterval(this.updateLogDaysBack, 5000);
+    startLiveUpdates() {
+      const stopLogs = liveRefetch("runs:changed", this.updateLogDaysBack, {
+        filter: (payload) => payload.control_names.includes(this.control.control_name),
+      });
+      const stopConfig = liveRefetch("controls:changed", this.checkControlChanged, {
+        filter: (payload) => payload.control_ids.includes(this.control.control_id),
+      });
+      this.stopLiveUpdates = () => {
+        stopLogs();
+        stopConfig();
+      };
     },
-    stopControlLogsRefreshTimer() {
-      clearInterval(this.refreshTimer);
+    async checkControlChanged() {
+      // Own save triggers this event too, and clones have nothing to compare.
+      if (this.saving || !this.control.control_id) {
+        return;
+      }
+      await this.updateControlCatalogue();
+      const latest = this.controlCatalogueById(this.controlId);
+      if (!latest) {
+        this.$q.notify({ type: "warning", message: "This control was deleted by someone else.", timeout: 0, actions: [{ label: "Close", color: "white" }] });
+        return;
+      }
+      if (latest.updated_date === this.loadedUpdatedDate) {
+        return;
+      }
+      this.loadedUpdatedDate = latest.updated_date;
+      this.$q.notify({
+        type: "warning",
+        message: "This control was changed by someone else.",
+        caption: "Reload to see the latest version, your unsaved changes will be lost.",
+        timeout: 0,
+        actions: [
+          { label: "Reload", color: "white", handler: () => this.reloadControl(latest) },
+          { label: "Ignore", color: "white" },
+        ],
+      });
+    },
+    reloadControl(latest) {
+      this.control = latest;
+      this.versionChanges = [];
+      this.getControlVersions(this.controlId);
+      this.initializeControl();
     },
   },
   watch: {
@@ -2154,7 +2197,8 @@ export default {
         delete this.control.control_id;
         this.control.control_name = this.control.control_name + "_CLONE";
       }
-      this.startControlLogsRefreshTimer();
+      this.loadedUpdatedDate = this.control.updated_date;
+      this.startLiveUpdates();
       this.initializeControl();
     } else {
       // NEW CONTROL
@@ -2178,7 +2222,9 @@ export default {
     }
   },
   unmounted() {
-    this.stopControlLogsRefreshTimer();
+    if (this.stopLiveUpdates) {
+      this.stopLiveUpdates();
+    }
   },
 };
 </script>
