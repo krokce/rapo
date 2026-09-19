@@ -53,6 +53,13 @@ normalization_type=default
 discrepancy_matching=True
 
 [LOGGING]
+# Folder of log files, relative paths start at the folder of this file.
+# Holds rapo-server_YYYYMMDD.log (server, one per day) and
+# controls/<control_id>/<process_id>.log (one per control run).
+directory=logs
+# Days server logs and logs of deleted controls are kept (empty = forever).
+# Run logs are kept as long as their control's days_retention.
+retention_days=30
 console=True
 file=True
 info=True

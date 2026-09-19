@@ -12,6 +12,7 @@
     <div class="row items-center q-mb-md">
       <q-btn class="col-2 q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-play-circle" label="Run control" @click="$refs.runControlDialog.open()" />
       <run-control-dialog ref="runControlDialog" :hook="refreshControlResults" />
+      <run-log-dialog ref="runLogDialog" />
 
       <q-select
         v-model="filter.type"
@@ -246,6 +247,9 @@
                       v-close-popup>
                       <q-item-section> Cancel run </q-item-section>
                     </q-item>
+                    <q-item dense clickable class="col items-center" @click="$refs.runLogDialog.open(control)" v-close-popup>
+                      <q-item-section> Show full log </q-item-section>
+                    </q-item>
                     <q-item v-if="control.status == 'E'" dense clickable class="col items-center" @click="showErrorLog(control)" v-close-popup>
                       <q-item-section> Show error log </q-item-section>
                     </q-item>
@@ -266,6 +270,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import RunControlDialog from "./RunControlDialog.vue";
+import RunLogDialog from "./RunLogDialog.vue";
 import { notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, RUN_STATUS_OPTIONS, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, showErrorLog } from "../runActions";
@@ -276,6 +281,7 @@ import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 export default {
   components: {
     RunControlDialog,
+    RunLogDialog,
   },
   data() {
     return {
