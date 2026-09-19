@@ -378,7 +378,7 @@ export default {
         });
     },
     toDateTimeString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(0, 19).replace("T", " ");
+      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
       return ret;
     },
     clearFilters() {

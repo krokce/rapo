@@ -381,15 +381,15 @@ export default {
       document.body.removeChild(textarea);
     },
     toDateString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(0, 10);
+      var ret = val ? String(val).substring(0, 10) : "";
       return ret;
     },
     toTimeString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(11, 19);
+      var ret = val ? String(val).substring(11, 19) : "";
       return ret;
     },
     toDateTimeString(val) {
-      var ret = new Date(val).toISOString("de-DE").substring(0, 19).replace("T", " ");
+      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
       return ret;
     },
     round(val, places) {

@@ -16,6 +16,9 @@ from ..database import db
 from ..reader import reader
 
 
+APP = 'rapo.web.api.app:app'
+
+
 class Server:
     """Represents application server."""
 
@@ -55,18 +58,13 @@ class Server:
         if self.status is True and self.pid and psutil.pid_exists(self.pid):
             message = f'web API already running at PID {self.pid}'
             raise Exception(message)
-        app = f'{self.app.name}:app'
-        exe = sys.executable
-        dir = os.path.dirname(exe)
+        script = [sys.executable, '-m', 'uvicorn', APP]
+        args = ['--host', self.host, '--port', str(self.port)]
         env = os.environ.copy()
         self.start_date = dt.datetime.now()
         self.status = True
         if self.dev is True:
-            script = [os.path.join(dir, 'flask'), 'run']
-            args = ['--host', self.host, '--port', str(self.port)]
-            cmd = [arg for arg in [*script, *args] if arg is not None]
-            env['FLASK_APP'] = app
-            env['FLASK_ENV'] = 'development'
+            cmd = [*script, *args, '--reload']
             try:
                 proc = sp.Popen(cmd, env=env)
                 self.pid = proc.pid
@@ -89,9 +87,7 @@ class Server:
                 db.execute(update)
                 proc.terminate()
         else:
-            script = os.path.join(dir, 'waitress-serve')
-            args = ['--host', self.host, '--port', str(self.port), app]
-            cmd = [arg for arg in [script, *args] if arg is not None]
+            cmd = [*script, *args]
             proc = sp.Popen(cmd, env=env, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
             self.pid = proc.pid
             update = self.table.update().values(server=self.server,

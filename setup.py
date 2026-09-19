@@ -13,7 +13,7 @@ long_description = open('README.md', 'r').read()
 long_description_content_type = 'text/markdown'
 license = rapo.__license__
 url = f'https://github.com/t3eHawk/{name}'
-python_requires = '>=3.7'
+python_requires = '>=3.10'
 install_requires = open('requirements.txt').read().splitlines()
 packages = setuptools.find_packages()
 package_data = {
@@ -24,8 +24,9 @@ package_data = {
     ]
 }
 classifiers = [
-    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent'
 ]
