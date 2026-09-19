@@ -299,10 +299,11 @@ export default {
     scheduleObject() {
       return this.modelValue;
     },
+    // The selected trigger stays in the list while filtering, so the select can show its name instead of its id.
     triggerOptions() {
       const needle = this.controlFilter.toLowerCase();
       return this.controlCatalogue
-        .filter((control) => control.control_name.toLowerCase().includes(needle))
+        .filter((control) => control.control_id === Number(this.scheduleObject.trigger_id) || control.control_name.toLowerCase().includes(needle))
         .map((control) => ({ label: control.control_name, value: control.control_id }));
     },
   },
