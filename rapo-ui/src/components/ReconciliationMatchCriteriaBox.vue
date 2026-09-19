@@ -128,57 +128,33 @@
 </template>
 
 <script>
+import columnFilter from "../mixins/columnFilter";
+
+// correlation_config of a reconciliation (REC) rule_config. modelValue is the parent's rule_config object and is
+// edited in place.
 export default {
-  props: ["modelValue", "datasourceAColumns", "datasourceBColumns"],
-  emits: ["update:modelValue"],
-  data() {
-    return {
-      ruleConfigObject: this.modelValue,
-      datasourceAList: null,
-      datasourceBList: null,
-    };
+  mixins: [columnFilter],
+  props: {
+    modelValue: { type: Object, required: true },
+    datasourceAColumns: Array,
+    datasourceBColumns: Array,
+  },
+  computed: {
+    ruleConfigObject() {
+      return this.modelValue;
+    },
   },
   methods: {
     addCorrelationConfig() {
       this.ruleConfigObject.correlation_config.push({
-        field_a: (this.datasourceAColumns || [])[0] ?? null,
-        field_b: (this.datasourceBColumns || [])[0] ?? null,
+        field_a: this.firstColumn(this.datasourceAColumns),
+        field_b: this.firstColumn(this.datasourceBColumns),
         formula_mode: false,
         allow_null: false,
       });
     },
     removeCorrelationConfig(index) {
       this.ruleConfigObject.correlation_config.splice(index, 1);
-    },
-    filterFieldListA(val, update, abort) {
-      if (val.length < 0) {
-        abort();
-        return;
-      }
-
-      update(() => {
-        const needle = val.toLowerCase();
-        this.datasourceAList = (this.datasourceAColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
-      });
-    },
-    filterFieldListB(val, update, abort) {
-      if (val.length < 0) {
-        abort();
-        return;
-      }
-
-      update(() => {
-        const needle = val.toLowerCase();
-        this.datasourceBList = (this.datasourceBColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
-      });
-    },
-  },
-  watch: {
-    ruleConfigObject(newValue) {
-      this.$emit("update:modelValue", newValue);
-    },
-    modelValue(newValue) {
-      this.ruleConfigObject = newValue;
     },
   },
 };

@@ -452,20 +452,21 @@
 
                 <div class="row q-my-xs q-gutter-md" v-if="control.control_type == 'CMP'">
                   <div class="col">
-                    <comparison-match-criteria-box
+                    <comparison-criteria-box
                       class="col"
+                      title="Match criteria"
                       v-model="ruleConfigObject"
                       :datasource-a-columns="datasourceAColumns"
-                      :datasource-b-columns="datasourceBColumns">
-                    </comparison-match-criteria-box>
+                      :datasource-b-columns="datasourceBColumns" />
                   </div>
                   <div class="col">
-                    <comparison-mis-match-criteria-box
+                    <comparison-criteria-box
                       class="col"
+                      title="Mismatch criteria"
+                      icon="fas fa-not-equal"
                       v-model="ruleErrorObject"
                       :datasource-a-columns="datasourceAColumns"
-                      :datasource-b-columns="datasourceBColumns">
-                    </comparison-mis-match-criteria-box>
+                      :datasource-b-columns="datasourceBColumns" />
                   </div>
                 </div>
 
@@ -876,8 +877,7 @@ import ReconciliationMatchCriteriaBox from "./ReconciliationMatchCriteriaBox.vue
 import ReconciliationMisMatchCriteriaBox from "./ReconciliationMisMatchCriteriaBox.vue";
 import CaseConfigBox from "./CaseConfigBox.vue";
 import IterationConfigBox from "./IterationConfigBox.vue";
-import ComparisonMatchCriteriaBox from "./ComparisonMatchCriteriaBox.vue";
-import ComparisonMisMatchCriteriaBox from "./ComparisonMisMatchCriteriaBox.vue";
+import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
@@ -891,8 +891,7 @@ export default {
     ReconciliationMisMatchCriteriaBox,
     CaseConfigBox,
     IterationConfigBox,
-    ComparisonMatchCriteriaBox,
-    ComparisonMisMatchCriteriaBox,
+    ComparisonCriteriaBox,
     ComparisonOutputTableBox,
   },
   props: {
@@ -922,7 +921,7 @@ export default {
       scheduleObject: defaultSchedule(),
       ruleConfigObject: {},
       cmpOutputTable: [],
-      ruleErrorObject: null,
+      ruleErrorObject: [],
       caseConfigObject: [],
       iterationConfigObject: [],
       controlLogs: [],
@@ -1043,6 +1042,12 @@ export default {
         correlation_config: [],
         discrepancy_config: [],
       };
+    },
+    // CMP output columns: drop unset fields and upper-case column names.
+    normalizeOutputColumns(columns) {
+      return (columns || []).map((column) =>
+        Object.fromEntries(Object.entries(column).filter(([, value]) => value != null).map(([key, value]) => [key, String(value).toUpperCase()]))
+      );
     },
     controlTypeChanged(newValue) {
       this.control.source_name = null;
@@ -1174,18 +1179,7 @@ export default {
           this.getDatasourceColumns(this.control.source_name_b, "date").then((data) => (this.datasourceBDateColumns = data));
           this.getDatasourceColumns(this.control.source_name_b, "numeric").then((data) => (this.datasourceBNumColumns = data));
         } else if (this.control.control_type === "CMP") {
-          if (this.control["output_table"]) {
-            this.cmpOutputTable = JSON.parse(this.control["output_table"]).columns;
-            this.cmpOutputTable.forEach((element) => {
-              for (const key in element) {
-                if (element[key] === null) {
-                  delete element[key];
-                } else {
-                  element[key] = element[key].toUpperCase();
-                }
-              }
-            });
-          }
+          this.cmpOutputTable = this.normalizeOutputColumns(this.control.output_table ? JSON.parse(this.control.output_table).columns : []);
 
           this.getDatasourceColumns(this.control.source_name_a).then((data) => (this.datasourceAColumns = data));
           this.getDatasourceColumns(this.control.source_name_a, "date").then((data) => (this.datasourceADateColumns = data));
@@ -1194,22 +1188,20 @@ export default {
           this.getDatasourceColumns(this.control.source_name_b, "date").then((data) => (this.datasourceBDateColumns = data));
         }
 
-        if (this.control.rule_config) {
-          this.ruleConfigObject = JSON.parse(this.control.rule_config);
+        // The editor boxes edit these in place, so REC and CMP always get an object/array (also for a stored "null").
+        const ruleConfig = this.control.rule_config ? JSON.parse(this.control.rule_config) : null;
+        if (this.control.control_type === "REC") {
+          this.ruleConfigObject = ruleConfig || this.defaultReconciliationRuleConfig();
+        } else if (this.control.control_type === "CMP") {
+          this.ruleConfigObject = ruleConfig || [];
         } else {
-          if (this.control.control_type === "REC") {
-            this.ruleConfigObject = this.defaultReconciliationRuleConfig();
-          } else if (this.control.control_type === "CMP") {
-            this.ruleConfigObject = [];
-          } else {
-            this.ruleConfigObject = null;
-          }
+          this.ruleConfigObject = ruleConfig;
         }
 
         this.scheduleObject = this.control.schedule_config ? parseSchedule(this.control.schedule_config) : defaultSchedule();
 
-        if (this.control.error_definition && this.control.control_type == "CMP") {
-          this.ruleErrorObject = JSON.parse(this.control.error_definition);
+        if (this.control.control_type === "CMP") {
+          this.ruleErrorObject = (this.control.error_definition && JSON.parse(this.control.error_definition)) || [];
         }
 
         if (this.control.case_config) {
@@ -1356,20 +1348,7 @@ export default {
         this.control.output_table_a = null;
         this.control.output_table_b = null;
 
-        this.control.output_table = [];
-
-        // iterate over cmpOutputTable array and for each object elements
-        // remove elements with value null and upercase those with values not null
-        this.cmpOutputTable.forEach((element) => {
-          for (const key in element) {
-            if (element[key] === null) {
-              delete element[key];
-            } else {
-              element[key] = element[key].toUpperCase();
-            }
-          }
-        });
-
+        this.cmpOutputTable = this.normalizeOutputColumns(this.cmpOutputTable);
         this.control.output_table = JSON.stringify({
           columns: this.cmpOutputTable,
         });

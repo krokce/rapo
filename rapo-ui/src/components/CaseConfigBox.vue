@@ -29,42 +29,34 @@
           </q-input>
 
           <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCaseConfig(index)" />
-          <q-btn v-if="index == caseConfigObject.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCaseConfig(index + 2)" />
+          <q-btn v-if="index == caseConfigObject.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCaseConfig()" />
         </div>
-        <q-btn v-if="caseConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add case definition" @click="addCaseConfig(1)" />
+        <q-btn v-if="caseConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add case definition" @click="addCaseConfig()" />
       </q-card-section>
     </q-card>
   </div>
 </template>
 
 <script>
+// case_config of a control: the cases discrepancies can be mapped to. modelValue is the parent's array and is
+// edited in place.
 export default {
-  props: ["modelValue"],
-  emits: ["update:modelValue"],
-  data() {
-    return {
-      caseConfigObject: this.modelValue,
-    };
+  props: {
+    modelValue: { type: Array, required: true },
+  },
+  computed: {
+    caseConfigObject() {
+      return this.modelValue;
+    },
   },
   methods: {
-    addCaseConfig(id) {
-      this.caseConfigObject.push({
-        case_id: id,
-        case_value: null,
-        case_type: "Error",
-        case_description: null,
-      });
+    addCaseConfig() {
+      // Next free id, so ids stay unique after rows are removed.
+      const id = Math.max(0, ...this.caseConfigObject.map((item) => Number(item.case_id) || 0)) + 1;
+      this.caseConfigObject.push({ case_id: id, case_value: null, case_type: "Error", case_description: null });
     },
     removeCaseConfig(index) {
       this.caseConfigObject.splice(index, 1);
-    },
-  },
-  watch: {
-    caseConfigObject(newValue) {
-      this.$emit("update:modelValue", newValue);
-    },
-    modelValue(newValue) {
-      this.caseConfigObject = newValue;
     },
   },
 };

@@ -59,20 +59,24 @@
 </template>
 
 <script>
+// iteration_config of a control: extra runs for earlier periods. modelValue is the parent's array and is edited
+// in place; pb is the control's own period_back.
 export default {
-  props: ["modelValue", "pb"],
-  emits: ["update:modelValue"],
-  data() {
-    return {
-      iterationConfigObject: this.modelValue,
-    };
+  props: {
+    modelValue: { type: Array, required: true },
+    pb: [Number, String],
+  },
+  computed: {
+    iterationConfigObject() {
+      return this.modelValue;
+    },
   },
   methods: {
     addIterationConfig(id) {
       this.iterationConfigObject.push({
         iteration_id: id,
         iteration_description: "Iteration #" + id,
-        period_back: Number(this.pb)+id,
+        period_back: Number(this.pb) + id,
         period_number: 1,
         period_type: "D",
         status: "Y",
@@ -80,14 +84,6 @@ export default {
     },
     removeIterationConfig(index) {
       this.iterationConfigObject.splice(index, 1);
-    },
-  },
-  watch: {
-    iterationConfigObject(newValue) {
-      this.$emit("update:modelValue", newValue);
-    },
-    modelValue(newValue) {
-      this.iterationConfigObject = newValue;
     },
   },
 };

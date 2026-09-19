@@ -174,23 +174,17 @@
 <script>
 import { mapGetters } from "vuex";
 
+// Output and matching options of a reconciliation (REC) rule_config. modelValue is the parent's rule_config
+// object and is edited in place.
 export default {
-  props: ["modelValue", "control"],
-  emits: ["update:modelValue"],
-  data() {
-    return {
-      ruleConfigObject: this.modelValue,
-    };
+  props: {
+    modelValue: { type: Object, required: true },
+    control: { type: Object, required: true },
   },
   computed: {
     ...mapGetters(["getEnvParameters"]),
-  },
-  watch: {
-    ruleConfigObject(newValue) {
-      this.$emit("update:modelValue", newValue);
-    },
-    modelValue(newValue) {
-      this.ruleConfigObject = newValue;
+    ruleConfigObject() {
+      return this.modelValue;
     },
   },
   mounted() {
@@ -200,32 +194,11 @@ export default {
     if (!this.ruleConfigObject.output_limit_b) {
       this.ruleConfigObject.output_limit_b = this.control.output_limit;
     }
-    if (this.ruleConfigObject.fuzzy_optimization == null || this.ruleConfigObject.fuzzy_optimization == undefined) {
-      if (this.getEnvParameters && this.getEnvParameters.fuzzy_optimization != null) {
-        this.ruleConfigObject.fuzzy_optimization = this.getEnvParameters.fuzzy_optimization;
-      } else {
-        this.ruleConfigObject.fuzzy_optimization = true; // default value
-      }
-    }
-    if (this.ruleConfigObject.discrepancy_matching == null || this.ruleConfigObject.discrepancy_matching == undefined) {
-      if (this.getEnvParameters && this.getEnvParameters.discrepancy_matching != null) {
-        this.ruleConfigObject.discrepancy_matching = this.getEnvParameters.discrepancy_matching;
-      } else {
-        this.ruleConfigObject.discrepancy_matching = false; // default false
-      }
-    }
-    if (this.ruleConfigObject.correlation_limit == null || this.ruleConfigObject.correlation_limit == undefined) {
-      if (this.getEnvParameters && this.getEnvParameters.correlation_limit != null) {
-        this.ruleConfigObject.correlation_limit = this.getEnvParameters.correlation_limit;
-      } else {
-        this.ruleConfigObject.correlation_limit = false; // default false
-      }
-    }
-    if (this.ruleConfigObject.normalization_type == null || this.ruleConfigObject.normalization_type == undefined) {
-      if (this.getEnvParameters && this.getEnvParameters.normalization_type != null) {
-        this.ruleConfigObject.normalization_type = this.getEnvParameters.normalization_type;
-      } else {
-        this.ruleConfigObject.normalization_type = "default"; // default none
+    // Unset options take the rapo.ini value (/api/parameters), else the application default.
+    const defaults = { fuzzy_optimization: true, discrepancy_matching: false, correlation_limit: false, normalization_type: "default" };
+    for (const [key, fallback] of Object.entries(defaults)) {
+      if (this.ruleConfigObject[key] == null) {
+        this.ruleConfigObject[key] = this.getEnvParameters && this.getEnvParameters[key] != null ? this.getEnvParameters[key] : fallback;
       }
     }
   },

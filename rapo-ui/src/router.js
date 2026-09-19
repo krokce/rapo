@@ -24,13 +24,11 @@ const router = createRouter({
     {
       name: "controls",
       path: "/controls",
-      meta: { hideSearch: false },
       component: ControlCatalogue,
     },
     {
       name: "results",
       path: "/results",
-      meta: { hideSearch: false },
       component: ControlResults,
     },
     {
@@ -61,11 +59,6 @@ router.beforeEach(function (to, from, next) {
   if (!store.state.tokenIsValid && to.name !== "token") {
     next({ path: "/token", query: { redirect: to.fullPath } });
   } else {
-    if (to.meta.hideSearch) {
-      store.state.hideSearch = true;
-    } else {
-      store.state.hideSearch = false;
-    }
     next();
   }
 });

@@ -49,65 +49,65 @@
       <q-markup-table dense>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" @click="setSort('control_type')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_type')">
               Type
-              <q-icon v-if="sort.key === 'control_type'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="setSort('start_date')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'start_date')">
               Start
-              <q-icon v-if="sort.key === 'start_date'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('duration_minutes')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'duration_minutes')">
               Runtime
-              <q-icon v-if="sort.key === 'duration_minutes'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="setSort('process_id')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'process_id')">
               PID
-              <q-icon v-if="sort.key === 'process_id'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="setSort('control_name')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')">
               Processname
-              <q-icon v-if="sort.key === 'control_name'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="setSort('date_from')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'date_from')">
               Run from
-              <q-icon v-if="sort.key === 'date_from'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'date_from'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="setSort('date_to')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'date_to')">
               Run to
-              <q-icon v-if="sort.key === 'date_to'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'date_to'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('fetched_number_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_a')">
               Fetched A
-              <q-icon v-if="sort.key === 'fetched_number_a'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'fetched_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('fetched_number_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_b')">
               Fetched B
-              <q-icon v-if="sort.key === 'fetched_number_b'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'fetched_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('error_number_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_a')">
               Discr. A
-              <q-icon v-if="sort.key === 'error_number_a'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'error_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('error_number_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_b')">
               Discr. B
-              <q-icon v-if="sort.key === 'error_number_b'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'error_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('error_level_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_a')">
               Err. lvl A [%]
-              <q-icon v-if="sort.key === 'error_level_a'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'error_level_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('error_level_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_b')">
               Err. lvl B [%]
-              <q-icon v-if="sort.key === 'error_level_b'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'error_level_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="setSort('prerequisite_value')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'prerequisite_value')">
               PV
-              <q-icon v-if="sort.key === 'prerequisite_value'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'prerequisite_value'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="setSort('status')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'status')">
               Status
-              <q-icon v-if="sort.key === 'status'" :name="sort.dir === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'" size="12px" />
+              <q-icon v-if="sort.key === 'status'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th class="text-left"></th>
           </tr>
@@ -271,6 +271,7 @@ import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, RUN_STATUS_OPTIONS, controlT
 import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, showErrorLog } from "../runActions";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
+import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 export default {
   components: {
@@ -307,6 +308,8 @@ export default {
     dropTemporaryTables,
     showErrorLog,
     copyResultsSql,
+    sortIcon,
+    toggleSort,
     async refreshControlResults() {
       try {
         await this.updateControlResults();
@@ -330,14 +333,6 @@ export default {
       this.sort.key = "start_date";
       this.sort.dir = "desc";
     },
-    setSort(key) {
-      if (this.sort.key === key) {
-        this.sort.dir = this.sort.dir === "asc" ? "desc" : "asc";
-        return;
-      }
-      this.sort.key = key;
-      this.sort.dir = "asc";
-    },
     getSortValue(item) {
       const val = item[this.sort.key];
       if (this.sort.key === "start_date" || this.sort.key === "date_from" || this.sort.key === "date_to") {
@@ -353,20 +348,7 @@ export default {
     ...mapState(["controlResults"]),
     ...mapGetters(["getSearch"]),
     sortedControlResults() {
-      const dir = this.sort.dir === "asc" ? 1 : -1;
-      return [...this.filteredControlResults].sort((a, b) => {
-        const aVal = this.getSortValue(a);
-        const bVal = this.getSortValue(b);
-
-        if (aVal === bVal) return 0;
-        if (aVal == null) return 1 * dir;
-        if (bVal == null) return -1 * dir;
-
-        if (typeof aVal === "number" && typeof bVal === "number") {
-          return (aVal - bVal) * dir;
-        }
-        return String(aVal).localeCompare(String(bVal)) * dir;
-      });
+      return sortRows(this.filteredControlResults, this.getSortValue, this.sort.dir);
     },
     // Indexes of rows whose start date differs from the previous row, drawn with a separator line.
     newDayRows() {
