@@ -17,12 +17,9 @@
             hide-selected
             fill-input
             input-debounce="0"
-            emit-value
-            map-options
             @filter="filterControlCatalogue"
             v-model="run_control_name"
-            :options="controlCatalogueList.map((ctrl) => ({ label: ctrl.control_name, value: ctrl.control_name }))"
-            :selected-value="controlCatalogueList[0]?.control_name"
+            :options="controlNameOptions"
             label="Select control to run"
             style="background-color: white">
           </q-select>
@@ -58,10 +55,12 @@
 </template>
 
 <script>
-import { mapActions } from "vuex";
-import { useQuasar } from "quasar";
+import { mapActions, mapState } from "vuex";
+import { api, notifyError } from "../api";
 import { localDate } from "../utils/format";
 
+// Run a control for a date or a date range. With a control_name prop it runs that control, otherwise the user
+// picks one. `hook` is called after a successful start, otherwise the dialog navigates to the Results page.
 export default {
   props: ["hook", "control_name"],
   data() {
@@ -70,29 +69,28 @@ export default {
       range: false,
       debug_mode: false,
       selectDate: localDate(),
-      controlCatalogueList: [],
-      controlCatalogue: [],
-      run_control_name: "",
-      $q: useQuasar(),
+      controlFilter: "",
+      run_control_name: this.control_name || "",
     };
+  },
+  computed: {
+    ...mapState(["controlCatalogue"]),
+    controlNameOptions() {
+      const needle = this.controlFilter.toLowerCase();
+      return this.controlCatalogue.map((control) => control.control_name).filter((name) => name.toLowerCase().includes(needle));
+    },
   },
   methods: {
     ...mapActions(["updateControlCatalogue"]),
-    filterControlCatalogue(val, update, abort) {
-      if (val.length < 0) {
-        abort();
-        return;
-      }
-
+    filterControlCatalogue(val, update) {
       update(() => {
-        const needle = val.toLowerCase();
-        this.controlCatalogueList = this.controlCatalogue.filter((v) => v.control_name.toLowerCase().indexOf(needle) > -1);
+        this.controlFilter = val;
       });
     },
     rangeChange() {
       this.selectDate = this.range ? { from: localDate(-3), to: localDate(-2) } : localDate();
     },
-    runControl() {
+    async runControl() {
       if (!this.run_control_name) {
         this.$q.notify({ type: "negative", message: "Please select a control to run" });
         return;
@@ -101,55 +99,37 @@ export default {
         this.$q.notify({ type: "negative", message: "Please select a date" });
         return;
       }
-      this.$q.loadingBar.start();
 
-      // In range mode q-date returns a plain string when a single day is picked.
-      const params = new URLSearchParams({ name: this.run_control_name });
+      const params = { name: this.run_control_name, debug_mode: this.debug_mode ? "true" : null };
       if (this.range) {
+        // q-date returns a plain string when a single day is picked in range mode.
         const { from, to } = typeof this.selectDate === "string" ? { from: this.selectDate, to: this.selectDate } : this.selectDate;
-        params.set("date_from", from);
-        params.set("date_to", to + "T23:59:59");
+        Object.assign(params, { date_from: from, date_to: to + "T23:59:59" });
       } else {
-        params.set("date", this.selectDate);
-      }
-      if (this.debug_mode) {
-        params.set("debug_mode", "true");
+        params.date = this.selectDate;
       }
 
-      fetch("/api/run-control?" + params, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.$store.getters.getToken}` },
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(response.status + " " + response.statusText);
-          }
-          this.$q.notify({ type: "positive", message: "Control " + this.run_control_name + " queued for execution" });
-          if (this.hook) {
-            this.hook();
-            this.visible = false;
-          } else {
-            this.$router.push({ name: "results" });
-          }
-        })
-        .catch((error) => {
-          this.$q.notify({ type: "negative", message: "Control " + this.run_control_name + " failed to start. " + error.message });
-        })
-        .finally(() => {
-          this.$q.loadingBar.stop();
-        });
+      try {
+        await api("run-control", { method: "POST", params });
+      } catch (error) {
+        notifyError("Control " + this.run_control_name + " failed to start.", error);
+        return;
+      }
+      this.$q.notify({ type: "positive", message: "Control " + this.run_control_name + " queued for execution" });
+      if (this.hook) {
+        this.hook();
+        this.visible = false;
+      } else {
+        this.$router.push({ name: "results" });
+      }
     },
     open() {
-      // Logic to display the dialog
       this.visible = true;
     },
   },
-  async mounted() {
+  mounted() {
     if (!this.control_name) {
-      this.controlCatalogue = await this.updateControlCatalogue();
-      this.controlCatalogueList = this.controlCatalogue;
-    } else {
-      this.run_control_name = this.control_name;
+      this.updateControlCatalogue().catch((error) => notifyError("Failed to load controls.", error));
     }
   },
 };

@@ -21,12 +21,7 @@
         options-dense
         emit-value
         map-options
-        :options="[
-          { label: 'ANL - Analysis', value: 'ANL' },
-          { label: 'REC - Reconciliation', value: 'REC' },
-          { label: 'CMP - Comparison', value: 'CMP' },
-          { label: 'REP - Reporting', value: 'REP' },
-        ]"
+        :options="controlTypeOptions"
         label="Control type">
       </q-select>
 
@@ -41,17 +36,7 @@
         map-options
         multiple
         use-chips
-        :options="[
-          { label: 'Initiated', value: 'I' },
-          { label: 'Waiting', value: 'W' },
-          { label: 'Started', value: 'S' },
-          { label: 'Running', value: 'P' },
-          { label: 'Finishing', value: 'F' },
-          { label: 'Done', value: 'D' },
-          { label: 'Error', value: 'E' },
-          { label: 'Canceled', value: 'C' },
-          { label: 'Revoked', value: 'X' },
-        ]"
+        :options="runStatusOptions"
         label="Run status">
       </q-select>
 
@@ -129,39 +114,34 @@
         </thead>
         <tbody>
           <tr v-for="(control, index) in sortedControlResults" :key="control.process_id">
-            <td class="text-center" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-center" :class="{ 'new-day-separator': newDayRows.has(index) }">
               <q-chip
                 clickable
                 size="11px"
                 text-color="white"
-                :class="{
-                  'bg-pink-8': control.control_type === 'ANL',
-                  'bg-teal-8': control.control_type === 'REC',
-                  'bg-lime-8': control.control_type === 'CMP',
-                  'bg-indigo-6': control.control_type === 'REP',
-                }"
+                :class="'bg-' + controlTypeColor(control.control_type)"
                 class="text-weight-bold"
-                @click="this.filter.type = control.control_type">
+                @click="filter.type = control.control_type">
                 {{ control.control_type }}
               </q-chip>
             </td>
-            <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-left" :class="{ 'new-day-separator': newDayRows.has(index) }">
               <div class="text-blue-grey-7">
                 <strong>{{ toDateString(control.start_date) }}</strong>
                 <small class="text-grey-7 q-px-sm">{{ toTimeString(control.start_date) }}</small>
               </div>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">{{ round(control.duration_minutes, 1) }} min</td>
-            <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDaySeparator(index) }">{{ control.process_id }}</td>
-            <td class="text-left text-weight-bold text-teal" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">{{ round(control.duration_minutes, 1) }} min</td>
+            <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDayRows.has(index) }">{{ control.process_id }}</td>
+            <td class="text-left text-weight-bold text-teal" :class="{ 'new-day-separator': newDayRows.has(index) }">
               <q-btn
-                v-if="!this.getSearch"
+                v-if="!getSearch"
                 size="7px"
                 color="grey-5"
                 round
                 flat
                 icon="fas fa-search"
-                @click.stop="this.filter.control_name = control.control_name" />
+                @click.stop="filter.control_name = control.control_name" />
               <router-link
                 :to="{
                   name: 'edit-control',
@@ -170,65 +150,60 @@
                 <span
                   class="col cursor-pointer"
                   style="font-size: 13px"
-                  :class="{
-                    'text-pink-8': control.control_type === 'ANL',
-                    'text-teal-8': control.control_type === 'REC',
-                    'text-lime-8': control.control_type === 'CMP',
-                    'text-indigo-6': control.control_type === 'REP',
-                  }">
+                  :class="'text-' + controlTypeColor(control.control_type)">
                   {{ control.control_name }}
                 </span>
               </router-link>
             </td>
-            <td class="text-left text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-left text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDayRows.has(index) }">
               {{ toDateString(control.date_from) }}
             </td>
-            <td class="text-left text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-left text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDayRows.has(index) }">
               {{ toDateString(control.date_to) }}
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
               <span
                 v-if="control.fetched_number_a > 0 && control.control_type === 'REP'"
                 class="cursor-pointer text-red"
-                @click="copyToClipboard(control, 'A')">
-                {{ Number(control.fetched_number_a).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                @click="copyResultsSql(control, 'A')">
+                {{ formatNumber(control.fetched_number_a) }}
               </span>
               <span v-else>
-                {{ Number(control.fetched_number_a).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                {{ formatNumber(control.fetched_number_a) }}
               </span>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              {{ Number(control.fetched_number_b).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              {{ formatNumber(control.fetched_number_b) }}
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" @click="copyToClipboard(control, 'A')">
-                {{ Number(control.error_number_a).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'A')">
+                {{ formatNumber(control.error_number_a) }}
               </span>
               <span v-else>
-                {{ Number(control.error_number_a).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                {{ formatNumber(control.error_number_a) }}
               </span>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" @click="copyToClipboard(control, 'B')">
-                {{ Number(control.error_number_b).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'B')">
+                {{ formatNumber(control.error_number_b) }}
               </span>
               <span v-else>
-                {{ Number(control.error_number_b).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                {{ formatNumber(control.error_number_b) }}
               </span>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" @click="copyToClipboard(control, 'A')">
-                {{ Number(control.error_level_a).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'A')">
+                {{ formatNumber(control.error_level_a, 2) }}%
               </span>
-              <span v-else> {{ Number(control.error_level_a).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}% </span>
+              <span v-else> {{ formatNumber(control.error_level_a, 2) }}% </span>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" @click="copyToClipboard(control, 'B')">
-                {{ Number(control.error_level_b).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'B')">
+                {{ formatNumber(control.error_level_b, 2) }}%
               </span>
-              <span v-else> {{ Number(control.error_level_b).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}% </span>
+              <span v-else> {{ formatNumber(control.error_level_b, 2) }}% </span>
             </td>
-            <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
+            <td class="text-right" :class="{ 'new-day-separator': newDayRows.has(index) }">
               <q-icon v-if="control.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop">
                 <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is 0 </q-tooltip>
               </q-icon>
@@ -236,48 +211,17 @@
                 <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is {{ control.prerequisite_value }} </q-tooltip>
               </q-icon>
             </td>
-            <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
-              <q-chip clickable class="cursor-pointer" @click="!this.filter.status.includes(control.status) && this.filter.status.push(control.status)">
-                <q-avatar v-if="control.status == 'I'" icon="fas fa-plus-circle" color="indigo" text-color="white" />
-                <q-avatar v-if="control.status == 'W'" icon="fas fa-pause-circle" color="amber-7" text-color="white" />
-                <q-avatar v-if="control.status == 'S'" icon="fas fa-play-circle" color="blue" text-color="white" />
-                <q-avatar v-if="control.status == 'P'" icon="fas fa-sync fa-spin" color="blue" text-color="white" />
-                <q-avatar v-if="control.status == 'F'" icon="fas fa-circle-notch fa-spin" color="blue" text-color="white" />
-                <q-avatar v-if="control.status == 'D'" icon="fas fa-check-circle" color="green" text-color="white" />
-                <q-avatar v-if="control.status == 'C'" icon="fas fa-times-circle" color="purple-3" text-color="white" />
-                <q-avatar v-if="control.status == 'E'" icon="fas fa-exclamation-circle" color="deep-orange" text-color="white" />
-                <q-avatar v-if="control.status == 'X'" icon="fas fa-times-circle" color="grey" text-color="white" />
-                <q-avatar v-if="!control.status" icon="fas fa-times-circle" color="deep-purple-3" text-color="white" />
-                {{
-                  control.status === "I"
-                    ? "Initiated"
-                    : control.status === "W"
-                    ? "Waiting"
-                    : control.status === "S"
-                    ? "Started"
-                    : control.status == "P"
-                    ? "Running"
-                    : control.status === "F"
-                    ? "Finishing"
-                    : control.status === "D"
-                    ? "Done"
-                    : control.status === "E"
-                    ? "Error"
-                    : control.status === "C"
-                    ? "Canceled"
-                    : control.status === "X"
-                    ? "Revoked"
-                    : !control.status
-                    ? "Void"
-                    : "Unknown"
-                }}
+            <td class="text-left" :class="{ 'new-day-separator': newDayRows.has(index) }">
+              <q-chip clickable class="cursor-pointer" @click="!filter.status.includes(control.status) && filter.status.push(control.status)">
+                <q-avatar :icon="runStatus(control.status).icon" :color="runStatus(control.status).color" text-color="white" />
+                {{ runStatus(control.status).label }}
               </q-chip>
             </td>
-            <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }" style="width: 50px">
+            <td class="text-left" :class="{ 'new-day-separator': newDayRows.has(index) }" style="width: 50px">
               <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
                 <q-menu>
                   <q-list dense class="text-no-wrap">
-                    <q-item dense clickable @click="reRun(control)" v-close-popup>
+                    <q-item dense clickable @click="reRun(control, refreshControlResults)" v-close-popup>
                       <q-item-section> Re-run </q-item-section>
                     </q-item>
                     <run-control-dialog :control_name="control.control_name" :hook="refreshControlResults">
@@ -286,23 +230,23 @@
                       </q-item>
                     </run-control-dialog>
                     <q-separator />
-                    <q-item dense clickable @click="navigateToEditControl(control)">
+                    <q-item dense clickable :to="{ name: 'edit-control', params: { controlId: control.control_id } }">
                       <q-item-section> Edit control </q-item-section>
                     </q-item>
                     <q-separator />
-                    <q-item v-if="control.status != 'X'" dense clickable class="col items-center" @click="showRevokeDialog(control)" v-close-popup>
+                    <q-item v-if="control.status != 'X'" dense clickable class="col items-center" @click="revokeRun(control, refreshControlResults)" v-close-popup>
                       <q-item-section> Revoke run </q-item-section>
                     </q-item>
                     <q-item
-                      v-if="control.status == 'F' || control.status == 'I' || control.status == 'W' || control.status == 'S' || control.status == 'P'"
+                      v-if="activeRunStatuses.includes(control.status)"
                       dense
                       clickable
                       class="col items-center"
-                      @click="showCancelDialog(control)"
+                      @click="cancelRun(control, refreshControlResults)"
                       v-close-popup>
                       <q-item-section> Cancel run </q-item-section>
                     </q-item>
-                    <q-item v-if="control.status == 'E'" dense clickable class="col items-center" @click="showErrorDialog(control)" v-close-popup>
+                    <q-item v-if="control.status == 'E'" dense clickable class="col items-center" @click="showErrorLog(control)" v-close-popup>
                       <q-item-section> Show error log </q-item-section>
                     </q-item>
                     <q-item dense clickable @click="dropTemporaryTables(control)" v-close-popup>
@@ -320,27 +264,26 @@
 </template>
 
 <script>
-import { mapActions, mapGetters } from "vuex";
-import { useQuasar } from "quasar";
+import { mapActions, mapGetters, mapState } from "vuex";
 import RunControlDialog from "./RunControlDialog.vue";
+import { notifyError } from "../api";
+import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, RUN_STATUS_OPTIONS, controlTypeColor, runStatus } from "../constants";
+import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, showErrorLog } from "../runActions";
 import { liveRefetch } from "../socket";
-import { escapeHtml } from "../utils/format";
-// import ConfirmDialog from "./ConfirmDialog.vue";
+import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
 
 export default {
   components: {
     RunControlDialog,
-    // ConfirmDialog,
   },
   data() {
     return {
-      $q: useQuasar(),
-      pagination: {
-        rowsPerPage: 0,
-      },
-      controlResults: [],
+      controlTypeOptions: CONTROL_TYPE_OPTIONS,
+      runStatusOptions: RUN_STATUS_OPTIONS,
+      activeRunStatuses: ACTIVE_RUN_STATUSES,
       loaded: false,
       filter: {
+        control_name: null,
         type: null,
         status: [],
       },
@@ -351,51 +294,26 @@ export default {
     };
   },
   methods: {
-    ...mapActions(["updateControlResults", "updateSearch"]),
-    newDaySeparator(index) {
-      if (index > 0) {
-        const prev_date = this.toDateString(this.sortedControlResults[index - 1].start_date);
-        const curr_date = this.toDateString(this.sortedControlResults[index].start_date);
-        if (prev_date != curr_date) {
-          return true;
-        }
-      }
-      return false;
-    },
-    copyToClipboard(control, side) {
-      var table_suffix = "T";
-      if (control.control_type == "REC") {
-        table_suffix = side;
-      }
-
-      const textarea = document.createElement("textarea");
-      textarea.value = "select * from RAPO_RES" + table_suffix + "_" + control.control_name + " where RAPO_PROCESS_ID = " + control.process_id + ";";
-      textarea.style.position = "fixed";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
+    ...mapActions(["updateControlResults"]),
+    controlTypeColor,
+    runStatus,
+    formatNumber,
+    round,
+    toDateString,
+    toTimeString,
+    reRun,
+    cancelRun,
+    revokeRun,
+    dropTemporaryTables,
+    showErrorLog,
+    copyResultsSql,
+    async refreshControlResults() {
       try {
-        document.execCommand("copy");
-        this.$q.notify({ type: "positive", message: "SQL statement copied to clipboard: " + textarea.value });
-      } catch (err) {
-        this.$q.notify({ type: "negative", message: "Failed to copy SQL to clipboard" });
+        await this.updateControlResults();
+        this.loaded = true;
+      } catch (error) {
+        notifyError("Failed to load control runs.", error);
       }
-      document.body.removeChild(textarea);
-    },
-    toDateString(val) {
-      var ret = val ? String(val).substring(0, 10) : "";
-      return ret;
-    },
-    toTimeString(val) {
-      var ret = val ? String(val).substring(11, 19) : "";
-      return ret;
-    },
-    toDateTimeString(val) {
-      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
-      return ret;
-    },
-    round(val, places) {
-      return Math.round(val * Math.pow(10, places)) / Math.pow(10, places);
     },
     parseNumericSortValue(val) {
       if (val == null) return null;
@@ -405,166 +323,12 @@ export default {
       const match = String(val).match(/-?\d+(?:\.\d+)?/);
       return match ? Number(match[0]) : null;
     },
-    navigateToEditControl(control) {
-      this.$router.push({ name: "edit-control", params: { controlId: control.control_id } });
-    },
-    showErrorDialog(control) {
-      this.$q.dialog({
-        title: control.control_name + " - Error log",
-        message: control.text_error
-          ? "<div class='text-body2' style='font-family: monospace; white-space: pre-wrap;'>" + escapeHtml(control.text_error) + "</div>"
-          : "No error log available",
-        html: true,
-        style: {
-          width: "800px", // Adjust the width as needed
-          maxWidth: "90vw", // Optional: Ensure it doesn't exceed viewport width
-        },
-      });
-    },
-    reRun(control) {
-      // console.log("Re-run control: " + JSON.stringify(control));
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message:
-            "Re-run for '" +
-            this.toDateString(control.date_from) +
-            "'" +
-            (this.toDateString(control.date_from) != this.toDateString(control.date_to) ? " - '" + this.toDateString(control.date_to) + "'" : "") +
-            "?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          var url =
-            "/api/run-control?name=" +
-            control.control_name +
-            "&date_from=" +
-            this.toDateTimeString(control.date_from) +
-            "&date_to=" +
-            this.toDateTimeString(control.date_to);
-
-          fetch(url, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control " + control.control_name + " queued for execution" });
-                return response.json();
-              } else {
-                this.$q.notify({ type: "negative", message: "Control " + control.control_name + " failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-              this.refreshControlResults();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    showCancelDialog(control) {
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to stop the execution of this control?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/cancel-control?id=" + control.process_id, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control run '" + control.control_name + " PID:" + control.process_id + "' was canceled" });
-                control.status = "C";
-              } else {
-                this.$q.notify({ type: "negative", message: "Stopping control run '" + control.control_name + " PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    showRevokeDialog(control) {
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to revoke this control run?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/revoke-control-run?id=" + control.process_id, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control run '" + control.control_name + " PID:" + control.process_id + "' was revoked" });
-                control.status = "X";
-              } else {
-                this.$q.notify({ type: "negative", message: "Revoke of control run '" + control.control_name + " PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    dropTemporaryTables(control) {
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to drop all debug temporary tables for execution with PID: " + control.process_id + " ?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/delete-control-temporary-tables?id=" + control.process_id, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "All temporary tables for PID:" + control.process_id + " were deleted" });
-              } else {
-                this.$q.notify({ type: "negative", message: "Temporary tables deletion for PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    async refreshControlResults() {
-      this.controlResults = await this.updateControlResults();
-    },
     clearFilters() {
       this.filter.control_name = null;
       this.filter.type = null;
       this.filter.status = [];
       this.sort.key = "start_date";
       this.sort.dir = "desc";
-      // this.updateSearch("");
     },
     setSort(key) {
       if (this.sort.key === key) {
@@ -586,6 +350,7 @@ export default {
     },
   },
   computed: {
+    ...mapState(["controlResults"]),
     ...mapGetters(["getSearch"]),
     sortedControlResults() {
       const dir = this.sort.dir === "asc" ? 1 : -1;
@@ -603,27 +368,29 @@ export default {
         return String(aVal).localeCompare(String(bVal)) * dir;
       });
     },
+    // Indexes of rows whose start date differs from the previous row, drawn with a separator line.
+    newDayRows() {
+      const rows = this.sortedControlResults;
+      return new Set(rows.map((row, index) => index).filter((index) => index > 0 && toDateString(rows[index - 1].start_date) !== toDateString(rows[index].start_date)));
+    },
     filteredControlResults() {
-      const s = this.getSearch;
-      var data = this.controlResults;
-      data = this.controlResults.filter((item) => {
-        const matchesSearch = s ? (item.control_name ? item.control_name.toUpperCase().includes(s.toUpperCase()) : false) : true;
-        const matchesControlName = this.filter.control_name ? item.control_name.toUpperCase().includes(this.filter.control_name.toUpperCase()) : true;
-        const matchesControlType = this.filter.type ? item.control_type === this.filter.type : true;
-        const matchesStatus = this.filter.status && this.filter.status.length > 0 ? this.filter.status.includes(item.status) : true;
-
-        return matchesSearch && matchesControlName && matchesControlType && matchesStatus;
-      });
-      return data;
+      const s = this.getSearch ? this.getSearch.toUpperCase() : null;
+      const name = this.filter.control_name ? this.filter.control_name.toUpperCase() : null;
+      return this.controlResults.filter(
+        (item) =>
+          (!s || (item.control_name || "").toUpperCase().includes(s)) &&
+          (!name || (item.control_name || "").toUpperCase().includes(name)) &&
+          (!this.filter.type || item.control_type === this.filter.type) &&
+          (this.filter.status.length === 0 || this.filter.status.includes(item.status))
+      );
     },
     filteredControlResultsLen() {
       return this.filteredControlResults.length;
     },
   },
-  async mounted() {
-    this.stopLiveUpdates = liveRefetch("runs:changed", this.refreshControlResults);
-    this.controlResults = await this.updateControlResults();
-    this.loaded = true;
+  mounted() {
+    this.stopLiveUpdates = liveRefetch("runs:changed", this.updateControlResults);
+    this.refreshControlResults();
   },
   unmounted() {
     this.stopLiveUpdates();

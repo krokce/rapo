@@ -44,8 +44,6 @@ export default {
   data() {
     return {
       caseConfigObject: this.modelValue,
-      datasourceAList: null,
-      datasourceBList: null,
     };
   },
   methods: {

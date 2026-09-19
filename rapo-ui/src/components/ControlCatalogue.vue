@@ -26,12 +26,7 @@
         options-dense
         emit-value
         map-options
-        :options="[
-          { label: 'ANL - Analysis', value: 'ANL' },
-          { label: 'REC - Reconciliation', value: 'REC' },
-          { label: 'CMP - Comparison', value: 'CMP' },
-          { label: 'REP - Reporting', value: 'REP' },
-        ]"
+        :options="controlTypeOptions"
         label="Control type">
       </q-select>
 
@@ -105,14 +100,9 @@
                 size="12px"
                 text-color="white"
                 clickable
-                :class="{
-                  'bg-pink-8': control.control_type === 'ANL',
-                  'bg-teal-8': control.control_type === 'REC',
-                  'bg-lime-8': control.control_type === 'CMP',
-                  'bg-indigo-6': control.control_type === 'REP',
-                }"
+                :class="'bg-' + controlTypeColor(control.control_type)"
                 class="text-weight-bold"
-                @click="this.filter.type = control.control_type">
+                @click="filter.type = control.control_type">
                 {{ control.control_type }}
               </q-chip>
             </td>
@@ -226,7 +216,7 @@
                   text-color="white"
                   size="sm"
                   icon-right="fas fa-plug fa-rotate-270"
-                  @click="this.filter.system = control.source_type_a"
+                  @click="filter.system = control.source_type_a"
                   style="align-items: center">
                   {{ control.source_type_a }}
                 </q-chip>
@@ -238,7 +228,7 @@
                   text-color="white"
                   size="sm"
                   icon="fas fa-plug fa-rotate-90"
-                  @click="this.filter.system = control.source_type_b"
+                  @click="filter.system = control.source_type_b"
                   style="align-items: center">
                   {{ control.source_type_b }}
                 </q-chip>
@@ -310,12 +300,14 @@
 </template>
 
 <script>
-import { mapActions, mapGetters } from "vuex";
+import { mapActions, mapGetters, mapState } from "vuex";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
-import { useQuasar } from "quasar";
+import { api, notifyError } from "../api";
+import { CONTROL_TYPE_OPTIONS, controlTypeColor } from "../constants";
 import { liveRefetch } from "../socket";
+import { toDateTimeString } from "../utils/format";
 
 export default {
   components: {
@@ -325,10 +317,7 @@ export default {
   },
   data() {
     return {
-      isHovered: false,
-      confirmDialog: false,
-      $q: useQuasar(),
-      controlCatalogue: [],
+      controlTypeOptions: CONTROL_TYPE_OPTIONS,
       loaded: false,
       filter: {
         control_name: "",
@@ -345,40 +334,23 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlCatalogue", "updateSearch"]),
+    controlTypeColor,
+    toDateTimeString,
     async deleteControl(control_id) {
-      this.$q.loadingBar.start();
       try {
-        const response = await fetch("/api/delete-control?control_id=" + control_id, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${this.$store.getters.getToken}` },
-        });
-        if (!response.ok) {
-          throw new Error(response.status + " " + response.statusText);
-        }
-        this.controlCatalogue = await this.updateControlCatalogue();
+        await api("delete-control", { method: "DELETE", params: { control_id } });
+        await this.updateControlCatalogue();
       } catch (error) {
-        this.$q.notify({ type: "negative", message: "Control was not deleted. " + error.message });
-      } finally {
-        this.$q.loadingBar.stop();
+        notifyError("Control was not deleted.", error);
       }
     },
-    recreateSchema(control_name) {
-      this.$q.loadingBar.start();
-
-      fetch("/api/delete-control-output-tables?name=" + control_name, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-      })
-        .then((response) => {
-          if (response.ok) {
-            this.$q.notify({ type: "positive", message: "Schema for " + control_name + " was deleted. It will be recreated on the next run." });
-          } else {
-            this.$q.notify({ type: "negative", message: "Schema deletion for " + control_name + "' failed" });
-          }
-        })
-        .then(() => {
-          this.$q.loadingBar.stop();
-        });
+    async recreateSchema(control_name) {
+      try {
+        await api("delete-control-output-tables", { method: "DELETE", params: { name: control_name } });
+        this.$q.notify({ type: "positive", message: "Schema for " + control_name + " was deleted. It will be recreated on the next run." });
+      } catch (error) {
+        notifyError("Schema deletion for " + control_name + " failed.", error);
+      }
     },
     addAttributeFilter(attr) {
       if (!this.filter.other_attributes.includes(attr)) {
@@ -392,10 +364,6 @@ export default {
       } catch (err) {
         return 0;
       }
-    },
-    toDateTimeString(val) {
-      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
-      return ret;
     },
     clearFilters() {
       this.filter.control_name = null;
@@ -464,6 +432,7 @@ export default {
     },
   },
   computed: {
+    ...mapState(["controlCatalogue"]),
     ...mapGetters(["getSearch"]),
     sortedControlCatalogue() {
       if (!this.sort.key) {
@@ -544,11 +513,13 @@ export default {
     },
   },
   async mounted() {
-    this.stopLiveUpdates = liveRefetch("controls:changed", async () => {
-      this.controlCatalogue = await this.updateControlCatalogue();
-    });
-    this.controlCatalogue = await this.updateControlCatalogue();
-    this.loaded = true;
+    this.stopLiveUpdates = liveRefetch("controls:changed", this.updateControlCatalogue);
+    try {
+      await this.updateControlCatalogue();
+      this.loaded = true;
+    } catch (error) {
+      notifyError("Failed to load controls.", error);
+    }
   },
   unmounted() {
     this.stopLiveUpdates();

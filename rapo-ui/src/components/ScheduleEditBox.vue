@@ -149,8 +149,7 @@
         map-options
         @filter="filterControlCatalogue"
         v-model="scheduleObject.trigger_id"
-        :options="controlCatalogueList.map((control) => ({ label: control.control_name, value: control.control_id }))"
-        :selected-value="controlCatalogueList.find((control) => control.control_id == scheduleObject.trigger_id)?.control_name || scheduleObject.trigger_id"
+        :options="triggerOptions"
         label="Control (trigger)"
         :rules="[(val) => (val && val > 0) || 'You must select a control']">
       </q-select>
@@ -249,7 +248,8 @@
 </template>
 
 <script>
-import { mapActions } from "vuex";
+import { mapActions, mapState } from "vuex";
+import { notifyError } from "../api";
 import { scheduleType, scheduleTime } from "../utils/schedule";
 
 export default {
@@ -260,8 +260,7 @@ export default {
       scheduleObject: this.modelValue,
       scheduleType: null,
       scheduleTimepicker: null,
-      controlCatalogueList: [],
-      controlCatalogue: [],
+      controlFilter: "",
 
       examples: {
         mday: [
@@ -294,17 +293,20 @@ export default {
       },
     };
   },
+  computed: {
+    ...mapState(["controlCatalogue"]),
+    triggerOptions() {
+      const needle = this.controlFilter.toLowerCase();
+      return this.controlCatalogue
+        .filter((control) => control.control_name.toLowerCase().includes(needle))
+        .map((control) => ({ label: control.control_name, value: control.control_id }));
+    },
+  },
   methods: {
     ...mapActions(["updateControlCatalogue"]),
-    filterControlCatalogue(val, update, abort) {
-      if (val.length < 0) {
-        abort();
-        return;
-      }
-
+    filterControlCatalogue(val, update) {
       update(() => {
-        const needle = val.toLowerCase();
-        this.controlCatalogueList = this.controlCatalogue.filter((v) => v.control_name.toLowerCase().indexOf(needle) > -1);
+        this.controlFilter = val;
       });
     },
     async scheduleTypeChanged() {
@@ -350,10 +352,9 @@ export default {
       this.initSchedule();
     },
   },
-  async mounted() {
+  mounted() {
     this.initSchedule();
-    this.controlCatalogue = await this.updateControlCatalogue();
-    this.controlCatalogueList = this.controlCatalogue;
+    this.updateControlCatalogue().catch((error) => notifyError("Failed to load controls.", error));
   },
 };
 </script>

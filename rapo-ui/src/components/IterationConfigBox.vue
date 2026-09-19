@@ -65,8 +65,6 @@ export default {
   data() {
     return {
       iterationConfigObject: this.modelValue,
-      datasourceAList: null,
-      datasourceBList: null,
     };
   },
   methods: {

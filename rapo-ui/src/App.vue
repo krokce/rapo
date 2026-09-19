@@ -18,7 +18,7 @@
         <q-space class="col-1" />
 
         <div class="YL__toolbar-input-container row no-wrap" v-if="!hideSearch">
-          <q-input dense outlined square v-model="search" placeholder="Search control name" class="bg-white col" @keyup="updateSearch(search)" />
+          <q-input dense outlined square v-model="search" placeholder="Search control name" class="bg-white col" />
           <q-btn class="YL__toolbar-input-btn" color="grey-3" text-color="grey-8" icon="close" unelevated @click="updateSearch('')" />
         </div>
 
@@ -64,7 +64,7 @@
 
 <script>
 import { mapActions, mapGetters } from "vuex";
-import { useQuasar } from "quasar";
+import { signOut } from "./api";
 import { escapeHtml } from "./utils/format";
 
 export default {
@@ -83,11 +83,10 @@ export default {
           route: "/results",
         },
       ],
-      $q: useQuasar(),
     };
   },
   methods: {
-    ...mapActions(["updateControlCatalogue", "updateSearch", "removeToken"]),
+    ...mapActions(["updateSearch"]),
     toggleLeftDrawer() {
       this.leftDrawerOpen = !this.leftDrawerOpen;
     },
@@ -187,11 +186,7 @@ export default {
         });
     },
     disconnect() {
-      if (this.$q.cookies.has("rapo_token")) {
-        this.$q.cookies.remove("rapo_token");
-      }
-      this.removeToken();
-      this.$router.push({ name: "token" });
+      signOut();
     },
   },
   computed: {

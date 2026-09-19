@@ -3,7 +3,7 @@ const { defineConfig } = require("@vue/cli-service");
 module.exports = defineConfig({
   transpileDependencies: ["quasar"],
 
-  // Build straight into the Python package that Flask serves the UI from.
+  // Build straight into the Python package that FastAPI serves the UI from.
   outputDir: path.resolve(__dirname, "../rapo/web/ui"),
 
   pluginOptions: {
