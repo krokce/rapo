@@ -1,0 +1,60 @@
+# Example Rapo configuration.
+#
+# Copy to rapo.ini in the application folder (next to the rapo package):
+#     cp rapo.ini.example rapo.ini
+# or place it anywhere and point the RAPO_CONFIG environment variable to it.
+# rapo.ini holds secrets and is gitignored - never commit it.
+#
+# Values are normalized on load: True/False -> bool, digits -> int/float,
+# empty or None -> None.
+
+[SCHEDULER]
+# Number of controls executed in parallel.
+control_parallelism=10
+# Seconds between scheduler refreshes of the control configuration.
+refresh_interval=300
+# Seconds between maintenance runs (retention cleanup, stale checkpoints).
+maintenance_interval=86400
+# Seconds between scheduler status reports to the database.
+database_report_interval=600
+# Name shown in the web UI, e.g. AUT Dev / AUT Prod.
+instance_name=AUT Dev
+
+[DATABASE]
+vendor_name=oracle
+driver_name=cx_oracle
+host=localhost
+port=1521
+# Use either service_name or sid.
+service_name=RAAUT
+username=rapo_user
+password=change_me
+max_identifier_length=128
+max_overflow=5
+pool_pre_ping=True
+pool_size=20
+pool_recycle=3600
+pool_timeout=30
+
+[ALGORITHM]
+# Global defaults for the reconciliation algorithm.
+fuzzy_optimization=True
+normalization_type=default
+discrepancy_matching=True
+
+[LOGGING]
+console=True
+file=True
+info=True
+debug=True
+error=True
+warning=True
+critical=True
+
+[API]
+# Address and port of rapo-server (defaults: 127.0.0.1 / 8080).
+host=0.0.0.0
+port=7005
+# Bearer token required by every /api request. Generate a strong one, e.g.:
+#     python -c "import secrets; print(secrets.token_urlsafe(32))"
+token=change_me

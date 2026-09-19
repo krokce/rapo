@@ -1,6 +1,9 @@
 logs/
 test/
 
+# Runtime configuration (contains DB password and API token)
+rapo.ini
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
