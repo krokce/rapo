@@ -106,3 +106,22 @@ venv.bak/
 # mypy
 .mypy_cache/
 CLAUDE.md
+
+# Node / rapo-ui (its build output goes to rapo/web/ui/, which IS tracked)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.env.local
+.env.*.local
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
