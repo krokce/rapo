@@ -60,6 +60,13 @@ class Reader:
         control_name = result.control_name
         return control_name
 
+    def read_control_name_by_id(self, control_id):
+        """Get control name by control ID, None if it does not exist."""
+        config = db.tables.config
+        select = (sa.select([config.c.control_name])
+                    .where(config.c.control_id == control_id))
+        return db.execute(select, as_scalar=True)
+
     def read_control_result(self, process_id):
         """Get control result from DB log table.
 

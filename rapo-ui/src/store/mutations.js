@@ -18,6 +18,9 @@ export default {
   updateControlResults(state, payload) {
     state.controlResults = payload;
   },
+  updateSchedulerStatus(state, payload) {
+    state.schedulerStatus = payload;
+  },
   updateSocketConnected(state, payload) {
     state.socketConnected = payload;
   },

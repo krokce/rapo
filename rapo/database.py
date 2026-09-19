@@ -36,6 +36,7 @@ class Database:
             self.log = self.load('rapo_log')
             self.scheduler = self.load('rapo_scheduler')
             self.web_api = self.load('rapo_web_api')
+            self.scheduler_event = self.load('rapo_scheduler_event')
             self.checkpoint = self.initiate('rapo_checkpoint')
 
         def load(self, name):

@@ -1,0 +1,450 @@
+<template>
+  <q-page>
+    <h2 class="row q-gutter-lg">
+      <div>Scheduler</div>
+      <div v-if="!loaded">
+        <q-avatar size="lg" color="grey-5">
+          <q-icon name="fas fa-sync fa-spin" />
+        </q-avatar>
+      </div>
+    </h2>
+
+    <q-card flat bordered class="q-mb-lg" v-if="status">
+      <q-card-section class="row items-center q-gutter-lg">
+        <div class="column">
+          <q-chip size="lg" text-color="white" :color="state.color" class="text-weight-bold q-ma-none">
+            {{ state.label }}
+          </q-chip>
+          <small class="text-grey-7 q-mt-xs" style="max-width: 240px">{{ state.description }}</small>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Scheduling server</div>
+          <div class="status-value">{{ status.holder.server || "N/A" }} <small v-if="status.holder.pid">PID {{ status.holder.pid }}</small></div>
+          <small class="text-grey-7" v-if="status.holder.alive">since {{ toDateTimeString(status.holder.start_date) }}</small>
+          <small class="text-grey-7" v-else-if="status.holder.stop_date">stopped {{ toDateTimeString(status.holder.stop_date) }}</small>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Heartbeat</div>
+          <div class="status-value">{{ toTimeString(status.holder.heartbeat) || "N/A" }}</div>
+          <small class="text-grey-7">lease timeout {{ status.lease_timeout }} s</small>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Execution slots</div>
+          <div class="status-value">{{ runner.running.length }} / {{ runner.capacity }} running</div>
+          <small class="text-grey-7">{{ runner.queued.length }} queued on this server</small>
+        </div>
+        <div class="status-item" v-if="status.leader">
+          <div class="status-label">Scheduled controls</div>
+          <div class="status-value">{{ status.scheduled_controls }}</div>
+          <small class="text-grey-7">last fire {{ toDateTimeString(status.last_fire) || "none yet" }}</small>
+        </div>
+        <div class="status-item" v-if="status.next_maintenance">
+          <div class="status-label">Next maintenance</div>
+          <div class="status-value">{{ toDateTimeString(status.next_maintenance) }}</div>
+        </div>
+        <q-space />
+        <scheduler-toggle-button />
+      </q-card-section>
+
+      <template v-if="activeJobs.length">
+        <q-separator />
+        <q-card-section>
+          <q-markup-table dense flat>
+            <thead>
+              <tr class="bg-blue-grey-1">
+                <th class="text-left">State</th>
+                <th class="text-left">Control</th>
+                <th class="text-left">Trigger</th>
+                <th class="text-center">Run PID</th>
+                <th class="text-center">OS PID</th>
+                <th class="text-left">Queued</th>
+                <th class="text-left">Started</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="job in activeJobs" :key="job.event_id">
+                <td>
+                  <q-icon :name="job.state === 'running' ? 'fas fa-sync fa-spin' : 'fas fa-hourglass-half'" :color="job.state === 'running' ? 'blue' : 'indigo'" class="q-mr-sm" />
+                  {{ job.state === "running" ? "Running" : "Queued" }}
+                </td>
+                <td class="text-weight-bold text-teal">{{ job.control_name }}</td>
+                <td><q-icon :name="triggerType(job.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(job.trigger_type).label }}</td>
+                <td class="text-center text-blue-grey-7">{{ job.process_id }}</td>
+                <td class="text-center text-blue-grey-7">{{ job.pid }}</td>
+                <td>{{ toTimeString(job.queued) }}</td>
+                <td>{{ toTimeString(job.started) }}</td>
+                <td style="width: 50px">
+                  <q-btn size="sm" color="grey-7" round flat icon="fas fa-times" @click="cancelRun(job, refreshAll)">
+                    <q-tooltip>Cancel run</q-tooltip>
+                  </q-btn>
+                </td>
+              </tr>
+            </tbody>
+          </q-markup-table>
+        </q-card-section>
+      </template>
+    </q-card>
+
+    <q-tabs v-model="tab" dense align="left" active-color="teal" indicator-color="teal" class="text-grey-7">
+      <q-tab name="upcoming" icon="fas fa-calendar-alt" label="Upcoming" no-caps />
+      <q-tab name="history" icon="fas fa-history" label="History" no-caps />
+    </q-tabs>
+    <q-separator class="q-mb-md" />
+
+    <q-tab-panels v-model="tab" keep-alive class="bg-transparent">
+      <q-tab-panel name="upcoming" class="q-pa-none">
+        <div class="row items-center q-mb-md">
+          <q-select
+            v-model="upcomingHours"
+            class="col-2 q-pa-sm"
+            outlined
+            emit-value
+            map-options
+            options-dense
+            :options="horizonOptions"
+            label="Horizon"
+            @update:model-value="refreshUpcoming" />
+          <q-input clearable class="col-4 q-pa-sm" outlined v-model="upcomingFilter" label="Control name" maxlength="45" />
+          <div class="col q-pa-sm text-grey-7" v-if="status && status.disabled">
+            <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
+          </div>
+        </div>
+        <q-markup-table dense>
+          <thead>
+            <tr class="bg-blue-grey-2">
+              <th class="text-left">Time</th>
+              <th class="text-left">In</th>
+              <th class="text-left">Type</th>
+              <th class="text-left">Control</th>
+              <th class="text-left">Group</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!filteredUpcoming.length">
+              <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
+            </tr>
+            <tr v-for="(fire, index) in filteredUpcoming" :key="fire.control_id + fire.scheduled_time">
+              <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                <div class="text-blue-grey-7">
+                  <strong>{{ toDateString(fire.scheduled_time) }}</strong>
+                  <small class="text-grey-7 q-px-sm">{{ toTimeString(fire.scheduled_time) }}</small>
+                </div>
+              </td>
+              <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
+              <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                <q-chip size="11px" text-color="white" :class="'bg-' + controlTypeColor(fire.control_type)" class="text-weight-bold">
+                  {{ fire.control_type }}
+                </q-chip>
+              </td>
+              <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id } }" :class="'text-' + controlTypeColor(fire.control_type)">
+                  {{ fire.control_name }}
+                </router-link>
+              </td>
+              <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fire.control_group }}</td>
+            </tr>
+          </tbody>
+        </q-markup-table>
+      </q-tab-panel>
+
+      <q-tab-panel name="history" class="q-pa-none">
+        <div class="row items-center q-mb-md">
+          <q-input clearable class="col-3 q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
+          <q-select
+            v-model="filter.event_type"
+            class="col-2 q-pa-sm"
+            clearable
+            outlined
+            options-dense
+            emit-value
+            map-options
+            :options="eventTypeOptions"
+            label="Event" />
+          <q-select
+            v-model="filter.trigger_type"
+            class="col-2 q-pa-sm"
+            clearable
+            outlined
+            options-dense
+            emit-value
+            map-options
+            :options="triggerTypeOptions"
+            label="Trigger" />
+          <q-btn flat round color="grey" class="q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
+            <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
+          </q-btn>
+          <q-space />
+          <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
+        </div>
+        <q-markup-table dense>
+          <thead>
+            <tr class="bg-blue-grey-2">
+              <th class="text-left">Recorded</th>
+              <th class="text-left">Scheduled for</th>
+              <th class="text-left">Trigger</th>
+              <th class="text-left">Event</th>
+              <th class="text-left">Type</th>
+              <th class="text-left">Control</th>
+              <th class="text-center">PID</th>
+              <th class="text-left">Run</th>
+              <th class="text-left">Run from</th>
+              <th class="text-left">Message</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!filteredEvents.length">
+              <td colspan="11" class="text-grey-7 text-center">No events</td>
+            </tr>
+            <tr v-for="(event, index) in filteredEvents" :key="event.event_id">
+              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <div class="text-blue-grey-7">
+                  <strong>{{ toDateString(event.event_time) }}</strong>
+                  <small class="text-grey-7 q-px-sm">{{ toTimeString(event.event_time) }}</small>
+                </div>
+              </td>
+              <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                {{ toDateTimeString(event.scheduled_time) }}
+              </td>
+              <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
+              </td>
+              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <q-chip dense clickable @click="filter.event_type = event.event_type">
+                  <q-avatar :icon="schedulerEventType(event.event_type).icon" :color="schedulerEventType(event.event_type).color" text-color="white" />
+                  {{ schedulerEventType(event.event_type).label }}
+                </q-chip>
+              </td>
+              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
+                  {{ event.control_type }}
+                </q-chip>
+              </td>
+              <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <router-link
+                  v-if="event.control_name"
+                  :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
+                  :class="'text-' + controlTypeColor(event.control_type)">
+                  {{ event.control_name }}
+                </router-link>
+                <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
+              </td>
+              <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                {{ event.process_id }}
+              </td>
+              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <q-chip v-if="event.process_id" dense>
+                  <q-avatar :icon="runStatus(event.status).icon" :color="runStatus(event.status).color" text-color="white" />
+                  {{ runStatus(event.status).label }}
+                </q-chip>
+              </td>
+              <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                {{ toDateString(event.date_from) }}
+              </td>
+              <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
+              <td style="width: 50px" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                <q-btn v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
+                  <q-tooltip>Run for this moment</q-tooltip>
+                </q-btn>
+              </td>
+            </tr>
+          </tbody>
+        </q-markup-table>
+      </q-tab-panel>
+    </q-tab-panels>
+  </q-page>
+</template>
+
+<script>
+import { Dialog, Notify } from "quasar";
+import { mapActions, mapState } from "vuex";
+import SchedulerToggleButton from "./SchedulerToggleButton.vue";
+import { api, notifyError } from "../api";
+import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, controlTypeColor, runStatus, schedulerEventType, schedulerState } from "../constants";
+import { cancelRun } from "../runActions";
+import { liveRefetch } from "../socket";
+import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
+
+// Naive server datetime string as milliseconds, read as local time like the server wrote it.
+function toMillis(value) {
+  return new Date(String(value).substring(0, 19)).getTime();
+}
+
+export default {
+  components: {
+    SchedulerToggleButton,
+  },
+  data() {
+    return {
+      loaded: false,
+      tab: "upcoming",
+      upcoming: [],
+      upcomingHours: 24,
+      upcomingFilter: null,
+      events: [],
+      eventTypeOptions: SCHEDULER_EVENT_TYPE_OPTIONS,
+      triggerTypeOptions: TRIGGER_TYPE_OPTIONS,
+      horizonOptions: [
+        { label: "6 hours", value: 6 },
+        { label: "24 hours", value: 24 },
+        { label: "3 days", value: 72 },
+        { label: "7 days", value: 168 },
+        { label: "31 days", value: 744 },
+      ],
+      filter: {
+        control_name: null,
+        event_type: null,
+        trigger_type: null,
+      },
+      // Server clock minus browser clock, so "in 5 min" is right when their time zones differ.
+      clockOffset: 0,
+      now: Date.now(),
+    };
+  },
+  computed: {
+    ...mapState({ status: "schedulerStatus" }),
+    state() {
+      return schedulerState(this.status && this.status.state);
+    },
+    runner() {
+      return (this.status && this.status.runner) || { running: [], queued: [], capacity: 0 };
+    },
+    activeJobs() {
+      return [...this.runner.running.map((job) => ({ ...job, state: "running" })), ...this.runner.queued.map((job) => ({ ...job, state: "queued" }))];
+    },
+    filteredUpcoming() {
+      const name = this.upcomingFilter ? this.upcomingFilter.toUpperCase() : null;
+      return this.upcoming.filter((fire) => !name || fire.control_name.toUpperCase().includes(name));
+    },
+    filteredEvents() {
+      const name = this.filter.control_name ? this.filter.control_name.toUpperCase() : null;
+      return this.events.filter(
+        (event) =>
+          (!name || (event.control_name || "").toUpperCase().includes(name)) &&
+          (!this.filter.event_type || event.event_type === this.filter.event_type) &&
+          (!this.filter.trigger_type || event.trigger_type === this.filter.trigger_type)
+      );
+    },
+  },
+  methods: {
+    ...mapActions(["updateSchedulerStatus"]),
+    controlTypeColor,
+    runStatus,
+    schedulerEventType,
+    toDateString,
+    toTimeString,
+    toDateTimeString,
+    cancelRun,
+    triggerType(type) {
+      return TRIGGER_TYPES[type] || { label: type, icon: "fas fa-question" };
+    },
+    newDay(rows, index, key) {
+      return index > 0 && toDateString(rows[index - 1][key]) !== toDateString(rows[index][key]);
+    },
+    fromNow(value) {
+      const seconds = Math.round((toMillis(value) - this.now - this.clockOffset) / 1000);
+      if (seconds < 60) {
+        return seconds <= 0 ? "now" : `${seconds} s`;
+      }
+      const minutes = Math.floor(seconds / 60);
+      const days = Math.floor(minutes / 1440);
+      const hours = Math.floor((minutes % 1440) / 60);
+      return [days && `${days} d`, hours && `${hours} h`, !days && `${minutes % 60} min`].filter(Boolean).join(" ");
+    },
+    clearFilters() {
+      this.filter.control_name = null;
+      this.filter.event_type = null;
+      this.filter.trigger_type = null;
+    },
+    async refreshStatus() {
+      const status = await this.updateSchedulerStatus();
+      this.clockOffset = toMillis(status.server_time) - Date.now();
+    },
+    async refreshUpcoming() {
+      this.upcoming = await api("scheduler-upcoming", { params: { hours: this.upcomingHours } });
+    },
+    async refreshEvents() {
+      this.events = await api("scheduler-events", { params: { limit: 500 } });
+    },
+    async refreshAll() {
+      try {
+        await Promise.all([this.refreshStatus(), this.refreshUpcoming(), this.refreshEvents()]);
+        this.loaded = true;
+      } catch (error) {
+        notifyError("Failed to load scheduler.", error);
+      }
+    },
+    runMissed(event) {
+      Dialog.create({
+        title: event.control_name,
+        message: `Run for the missed fire of ${toDateTimeString(event.scheduled_time)}? The run gets the date range of that moment.`,
+        cancel: true,
+        persistent: true,
+      }).onOk(async () => {
+        try {
+          await api("run-missed", { method: "POST", params: { event_id: event.event_id } });
+          Notify.create({ type: "positive", message: `Control ${event.control_name} queued for execution` });
+          this.refreshAll();
+        } catch (error) {
+          notifyError(`Control ${event.control_name} failed to start.`, error);
+        }
+      });
+    },
+  },
+  mounted() {
+    const onError = (error) => notifyError("Failed to load scheduler.", error);
+    this.stopLiveUpdates = [
+      liveRefetch("scheduler:changed", () => Promise.all([this.refreshStatus(), this.refreshEvents()]).catch(onError), { interval: 2000 }),
+      liveRefetch("runs:changed", () => Promise.all([this.refreshStatus(), this.refreshEvents()]).catch(onError)),
+      liveRefetch("controls:changed", () => this.refreshUpcoming().catch(onError)),
+    ];
+    // Keeps "In" current and drops fires that passed from the upcoming list.
+    this.clock = setInterval(() => {
+      this.now = Date.now();
+      if (this.upcoming.length && toMillis(this.upcoming[0].scheduled_time) < this.now + this.clockOffset) {
+        this.refreshUpcoming().catch(onError);
+      }
+    }, 5000);
+    this.refreshAll();
+  },
+  unmounted() {
+    this.stopLiveUpdates.forEach((stop) => stop());
+    clearInterval(this.clock);
+  },
+};
+</script>
+
+<style lang="css" scoped>
+a {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.new-day-separator {
+  border-top: 2px solid #cfd8dc !important;
+}
+
+.status-item {
+  min-width: 140px;
+}
+
+.status-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #78909c;
+}
+
+.status-value {
+  font-weight: 600;
+  color: #455a64;
+}
+
+.message {
+  max-width: 320px;
+  white-space: normal;
+}
+</style>

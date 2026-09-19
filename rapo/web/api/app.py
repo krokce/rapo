@@ -1,5 +1,8 @@
 """Contains web API application and routes."""
 
+import asyncio
+import contextlib
+import datetime as dt
 import os
 
 import fastapi
@@ -12,16 +15,34 @@ from .auth import verify_token
 from ...logger import logger
 from ...reader import reader
 
+from ...core import journal
+from ...core import schedule
 from ...core.control import Control
+from ...core.runner import runner
+from ...core.scheduler import scheduler, upcoming
 
 
 UI_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), '..', 'ui'))
 
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    """Run the run manager and the scheduler together with the server."""
+    runner.listeners.append(events.poke_scheduler)
+    scheduler.listeners.append(events.poke_scheduler)
+    await asyncio.to_thread(runner.start)
+    scheduler.start()
+    yield
+    await asyncio.to_thread(scheduler.stop)
+    await asyncio.to_thread(runner.stop)
+
+
 fastapi_app = fastapi.FastAPI(title='Rapo',
                               docs_url='/api/docs',
                               openapi_url='/api/openapi.json',
-                              redoc_url=None)
+                              redoc_url=None,
+                              lifespan=lifespan)
 api = fastapi.APIRouter(prefix='/api',
                         dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
@@ -101,12 +122,16 @@ def parameters():
     database_config = config['DATABASE']
     logging_config = config['LOGGING']
     output_dict = {
+        'scheduler_enabled': scheduler_config.get('enabled'),
         'control_parallelism': scheduler_config.get('control_parallelism'),
         'refresh_interval': scheduler_config.get('refresh_interval'),
         'maintenance_interval': scheduler_config.get('maintenance_interval'),
         'database_report_interval': scheduler_config.get(
             'database_report_interval'
         ),
+        'event_retention_days': scheduler_config.get('event_retention_days'),
+        'missed_window_hours': scheduler_config.get('missed_window_hours'),
+        'lease_timeout': scheduler_config.get('lease_timeout'),
         'fuzzy_optimization': algorithm_config.get('fuzzy_optimization'),
         'normalization_type': algorithm_config.get('normalization_type'),
         'discrepancy_matching': algorithm_config.get('discrepancy_matching'),
@@ -134,10 +159,12 @@ def parameters():
 def run_control(name: str, date: str | None = None,
                 date_from: str | None = None, date_to: str | None = None,
                 debug_mode: bool = False):
-    """Run control and get its result in JSON."""
-    control = Control(name, date_from=date_from, date_to=date_to,
-                      date=date, debug_mode=debug_mode)
-    control.launch()
+    """Initiate control run and queue it for execution."""
+    if not runner.active:
+        raise fastapi.HTTPException(status_code=503,
+                                    detail='Run manager is not running')
+    runner.submit(name, journal.MANUAL, date_from=date_from, date_to=date_to,
+                  date=date, debug_mode=debug_mode)
     events.poke()
     return {'status': 200}
 
@@ -145,8 +172,10 @@ def run_control(name: str, date: str | None = None,
 @api.post('/cancel-control')
 def cancel_control(id: int):
     """Cancel running control."""
-    control = Control(process_id=id)
-    control.cancel()
+    if not runner.cancel(id):
+        # Not a run of this server: void its status, its owner will stop it.
+        control = Control(process_id=id)
+        control.cancel()
     events.poke()
     return {'status': 200}
 
@@ -233,6 +262,7 @@ def save_control(data: dict = fastapi.Body(...)):
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    scheduler.refresh()
     events.poke()
     return {'status': 200}
 
@@ -241,6 +271,7 @@ def save_control(data: dict = fastapi.Body(...)):
 def delete_control(control_id: int):
     """Delete control from configuration table."""
     reader.delete_control(control_id)
+    scheduler.refresh()
     events.poke()
     return {'status': 200}
 
@@ -270,6 +301,85 @@ def get_control_run(process_id: int):
         'error_level_a': control.error_level_a,
         'error_level_b': control.error_level_b
     }
+
+
+@api.get('/scheduler-status')
+def scheduler_status():
+    """Get scheduler and run manager status."""
+    return {**scheduler.status(), 'runner': runner.status()}
+
+
+@api.post('/scheduler-stop')
+def scheduler_stop():
+    """Stop scheduling on all servers until started again."""
+    scheduler.disable()
+    return {'status': 200}
+
+
+@api.post('/scheduler-start')
+def scheduler_start():
+    """Start scheduling from now on."""
+    if not scheduler.enabled:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='Scheduler is disabled for this server in rapo.ini')
+    scheduler.enable()
+    return {'status': 200}
+
+
+@api.get('/scheduler-upcoming')
+def scheduler_upcoming(hours: int = fastapi.Query(24, ge=1, le=24*31),
+                       control_name: str | None = None):
+    """Get upcoming fires of scheduled controls."""
+    return upcoming(hours, control_name)
+
+
+@api.get('/scheduler-events')
+def scheduler_events(control_name: str | None = None,
+                     event_type: str | None = None,
+                     trigger_type: str | None = None,
+                     date_from: dt.date | None = None,
+                     date_to: dt.date | None = None,
+                     limit: int = fastapi.Query(500, ge=1, le=5000)):
+    """Get scheduler events, latest first."""
+    date_to = date_to+dt.timedelta(days=1) if date_to else None
+    return journal.read_events(control_name, event_type, trigger_type,
+                               date_from, date_to, limit)
+
+
+@api.post('/run-missed')
+def run_missed(event_id: int):
+    """Run control for the scheduled time of a missed fire."""
+    event = journal.read(event_id)
+    if not event or event['event_type'] != journal.MISSED:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='Event is not a missed fire')
+    if not runner.active:
+        raise fastapi.HTTPException(status_code=503,
+                                    detail='Run manager is not running')
+    name = reader.read_control_name_by_id(event['control_id'])
+    if not name:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='Control does not exist anymore')
+    timestamp = event['scheduled_time'].timestamp()
+    caught = runner.submit(name, journal.CATCHUP, timestamp=timestamp,
+                           chain=True)
+    journal.update(event_id, message=f'Run as event {caught}.')
+    events.poke()
+    return {'status': 200}
+
+
+@api.get('/schedule-preview')
+def schedule_preview(schedule_config: str,
+                     count: int = fastapi.Query(5, ge=1, le=100)):
+    """Get the next fires of a schedule configuration JSON."""
+    try:
+        item = schedule.parse(schedule_config)
+    except (ValueError, TypeError) as error:
+        raise fastapi.HTTPException(status_code=422, detail=str(error))
+    if not item:
+        return []
+    return schedule.next_fire(item, dt.datetime.now(), limit=count)
 
 
 fastapi_app.include_router(api)

@@ -59,18 +59,92 @@
         </div>
       </q-page>
     </q-page-container>
+
+    <q-dialog v-model="instanceDialog" @hide="stopSchedulerUpdates">
+      <q-card style="width: 560px; max-width: 90vw">
+        <q-card-section class="text-h6">Instance details</q-card-section>
+
+        <q-card-section class="q-pt-none scroll" style="max-height: 65vh">
+          <div class="text-weight-bold q-mb-xs">Scheduler</div>
+          <div v-if="schedulerStatus" class="q-mb-sm">
+            <div class="row items-center q-gutter-sm">
+              <q-chip text-color="white" :color="schedulerStateInfo.color" class="text-weight-bold q-ml-none">{{ schedulerStateInfo.label }}</q-chip>
+              <small class="col text-grey-7">{{ schedulerStateInfo.description }}</small>
+            </div>
+            <table class="env-table">
+              <tr>
+                <td>Scheduling server</td>
+                <td>
+                  <strong>{{ schedulerStatus.holder.server || "N/A" }}{{ schedulerStatus.holder.pid ? " PID " + schedulerStatus.holder.pid : "" }}</strong>
+                </td>
+              </tr>
+              <tr>
+                <td>Heartbeat</td>
+                <td>
+                  <strong>{{ toDateTimeString(schedulerStatus.holder.heartbeat) || "N/A" }}</strong>
+                </td>
+              </tr>
+              <tr>
+                <td>Runs on this server</td>
+                <td>
+                  <strong>{{ schedulerStatus.runner.running.length }} running, {{ schedulerStatus.runner.queued.length }} queued</strong>
+                </td>
+              </tr>
+            </table>
+            <div class="row items-center q-gutter-sm q-mt-sm">
+              <scheduler-toggle-button />
+              <q-btn flat no-caps color="teal" icon="fas fa-clock" label="Open scheduler" :to="{ name: 'scheduler' }" v-close-popup />
+            </div>
+          </div>
+          <div v-else class="text-grey-7 q-mb-sm">Loading...</div>
+          <q-separator />
+
+          <div v-for="section in envSections" :key="section.title" class="q-mt-sm">
+            <div class="text-weight-bold q-mb-xs">{{ section.title }}</div>
+            <table class="env-table">
+              <colgroup>
+                <col style="width: 70%" />
+                <col style="width: 30%" />
+              </colgroup>
+              <tr v-if="!section.entries.length">
+                <td colspan="2">N/A</td>
+              </tr>
+              <tr v-for="[key, value] in section.entries" :key="key">
+                <td>{{ key }}</td>
+                <td>
+                  <strong>{{ value === null || value === undefined || value === "" ? "N/A" : String(value) }}</strong>
+                </td>
+              </tr>
+            </table>
+            <q-separator class="q-mt-sm" />
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Close" v-close-popup />
+          <q-btn color="negative" label="Disconnect" v-close-popup @click="disconnect" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-layout>
 </template>
 
 <script>
-import { mapActions, mapGetters } from "vuex";
-import { signOut } from "./api";
-import { escapeHtml } from "./utils/format";
+import { mapActions, mapGetters, mapState } from "vuex";
+import SchedulerToggleButton from "./components/SchedulerToggleButton.vue";
+import { notifyError, signOut } from "./api";
+import { schedulerState } from "./constants";
+import { liveRefetch } from "./socket";
+import { toDateTimeString } from "./utils/format";
 
 export default {
+  components: {
+    SchedulerToggleButton,
+  },
   data() {
     return {
       leftDrawerOpen: false,
+      instanceDialog: false,
       menuLinks: [
         {
           icon: "fas fa-chart-line",
@@ -82,11 +156,17 @@ export default {
           text: "Results",
           route: "/results",
         },
+        {
+          icon: "fas fa-clock",
+          text: "Scheduler",
+          route: "/scheduler",
+        },
       ],
     };
   },
   methods: {
-    ...mapActions(["updateSearch"]),
+    ...mapActions(["updateSearch", "updateSchedulerStatus"]),
+    toDateTimeString,
     toggleLeftDrawer() {
       this.leftDrawerOpen = !this.leftDrawerOpen;
     },
@@ -129,61 +209,18 @@ export default {
         return entries;
       }, []);
     },
-    createEnvSection(title, objectValue) {
-      const entries = this.flattenEntries(objectValue);
-      const rows = entries.length
-        ? entries
-            .map(([key, value]) => {
-              const displayValue = value === null || value === undefined || value === "" ? "N/A" : String(value);
-              return `<tr>
-                <td style="padding:2px 10px 2px 0; vertical-align:top; word-break:break-word;">${escapeHtml(key)}</td>
-                <td style="padding:2px 0; vertical-align:top;"><strong>${escapeHtml(displayValue)}</strong></td>
-              </tr>`;
-            })
-            .join("")
-        : `<tr><td style="padding:2px 0;" colspan="2">N/A</td></tr>`;
-
-      return `
-        <div style="margin-top:8px;">
-          <div style="font-weight:600; margin-bottom:2px;">${escapeHtml(this.formatSectionTitle(title))}</div>
-          <table style="border-collapse:collapse; width:100%; font-family:Monospace, sans-serif; font-size:12px; line-height:1.25; table-layout:fixed;">
-            <colgroup>
-              <col style="width:70%;" />
-              <col style="width:30%;" />
-            </colgroup>
-            ${rows}
-          </table>
-        </div>
-        <hr />
-        `;
-    },
-    formatSectionTitle(name) {
-      return name.replace(/^getEnv/, "") || name;
-    },
     showDisconnectDialog() {
-      const message = `
-        ${this.createEnvSection("getEnvVersion", this.getEnvVersion)}
-        ${this.createEnvSection("getEnvInfo", this.getEnvInfo)}
-        ${this.createEnvSection("getEnvParameters", this.getEnvParameters)}
-      `;
-
-      this.$q
-        .dialog({
-          title: "Instance details",
-          message,
-          html: true,
-          ok: {
-            label: "Disconnect",
-            color: "negative",
-          },
-          cancel: {
-            label: "Close",
-            flat: true,
-          },
-        })
-        .onOk(() => {
-          this.disconnect();
-        });
+      this.instanceDialog = true;
+      const refresh = () => this.updateSchedulerStatus().catch((error) => notifyError("Failed to load scheduler status.", error));
+      this.stopSchedulerUpdates();
+      this.stopLiveUpdates = liveRefetch("scheduler:changed", refresh, { interval: 2000 });
+      refresh();
+    },
+    stopSchedulerUpdates() {
+      if (this.stopLiveUpdates) {
+        this.stopLiveUpdates();
+        this.stopLiveUpdates = null;
+      }
     },
     disconnect() {
       signOut();
@@ -191,6 +228,17 @@ export default {
   },
   computed: {
     ...mapGetters(["getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
+    ...mapState(["schedulerStatus"]),
+    schedulerStateInfo() {
+      return schedulerState(this.schedulerStatus && this.schedulerStatus.state);
+    },
+    envSections() {
+      return [
+        { title: "Version", entries: this.flattenEntries(this.getEnvVersion) },
+        { title: "Info", entries: this.flattenEntries(this.getEnvInfo) },
+        { title: "Parameters", entries: this.flattenEntries(this.getEnvParameters) },
+      ];
+    },
     // Pages without a global search (editor, token page) set meta.hideSearch on their route.
     hideSearch() {
       return Boolean(this.$route.meta.hideSearch);
@@ -230,4 +278,16 @@ export default {
 
     &:hover
       color: #000
+.env-table
+  border-collapse: collapse
+  width: 100%
+  table-layout: fixed
+  font-family: Monospace, sans-serif
+  font-size: 12px
+  line-height: 1.25
+
+  td
+    padding: 2px 10px 2px 0
+    vertical-align: top
+    word-break: break-word
 </style>

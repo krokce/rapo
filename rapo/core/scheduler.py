@@ -1,408 +1,497 @@
 """Contains RAPO scheduler interface."""
 
-import argparse
 import datetime as dt
 import getpass
-import json
 import os
 import platform
-import re
-import signal
-import subprocess as sp
-import sys
 import threading as th
 import time
-import queue
+import uuid
 
-import psutil
+import sqlalchemy as sa
 
 from ..database import db
 from ..config import config
 from ..logger import logger
 from ..reader import reader
 
-from ..core.control import Control
+from . import journal
+from . import schedule
+from .control import Control
+from .runner import runner, get_runner_name
+
+
+LEASE_INTERVAL = 10
+CONFIG_CHECK_INTERVAL = 5
+# Fires found later than this after their time (e.g. after the host was
+# suspended) are recorded as missed instead of being run.
+LATE_TOLERANCE = 60
+MISSED_LIMIT = 100
+
+
+def get_setting(name, default=None):
+    """Get SCHEDULER option or default when it is not set."""
+    if config.check('SCHEDULER'):
+        value = config['SCHEDULER'].get(name)
+        if value is not None:
+            return value
+    return default
+
+
+def is_enabled():
+    """Check whether this server should run the scheduler.
+
+    RAPO_SCHEDULER environment variable (0/1) overrides the `enabled` option,
+    which is how `rapo-server start dev` keeps the scheduler off by default.
+    """
+    override = os.environ.get('RAPO_SCHEDULER')
+    if override is not None:
+        return override.strip().lower() in ('1', 'true', 'y', 'yes')
+    return get_setting('enabled', True) is not False
 
 
 class Scheduler:
-    """Represents application scheduler.
+    """Represents application scheduler running inside the web server.
 
-    Application scheduler reads configuration from RAPO_CONFIG, schedule
-    controls as a virtual jobs and run them when it is necessary in separate
-    threads. Number of execution threads is limited by 5.
-    Whole scheduling and execution events including errors is being logged
-    into simple text files placed to logs folder near by main script with
-    Scheduler instance.
-    Scheduler timings (current timestamp, delay and waiting) can be seen in
-    DEBUG mode.
-    Schedule is being updated each 5 minutes from the beginning of the hour.
+    Only one server at a time runs the scheduler. It holds a lease on the
+    `rapo_scheduler` row renewed every few seconds. Other enabled servers
+    stay on standby and take over when the lease expires. Scheduler can be
+    stopped and started from the UI, which is persisted in the `disabled`
+    flag of the same row and applies to all servers.
+
+    Instead of checking every second, the scheduler computes the next fire of
+    every scheduled control and sleeps until the earliest one, or until the
+    configuration changes. Every fire between two wake-ups is served, so a
+    slow iteration never skips fires. Each fire is submitted to the run
+    manager with its exact scheduled time as the control timestamp.
 
     Attributes
     ----------
-    moment : float or None
-        Current scheduler moment - internal timestamp.
-    delay : floar or None
-        Current scheduler delay - time that is needed to execute internal tasks
-        including job scheduling and maintenance events.
-    schedule : dict on None
-        Dictionary with scheduled jobs where key is a control name and value
-        is a control configuration presented as another dictionary.
-    queue : queue.Queue
-        Queue that consist of jobs that must be executed in FIFO method.
-    executors : list
-        List of threads that perform job execution.
-    server : str or None
-        Hostname on which this scheduler is running.
-    username : str or None
-        OS user that started the scheduler.
-    pid : int or None
-        OS PID under which this scheduler is running.
-    start_date : datetime or None
-        Date when scheduler was started.
-    end_date : datetime or None
-        Date when scheduler was stopped.
-    status : str or None
-        Current scheduler status.
+    enabled : bool
+        Whether this server runs the scheduler at all (rapo.ini).
+    leader : bool
+        Whether this server currently holds the scheduler lease.
+    schedule : dict
+        Schedules of active controls by control name.
     """
 
     def __init__(self):
-        self.schedule = None
-        self.moment = None
-        self.delay = None
-        self.queue = queue.Queue()
-        self.executors = []
-        self.maintenance = th.Event()
-        self.maintainer = None
+        self.enabled = is_enabled()
+        self.instance_id = f'{get_runner_name()}:{os.getpid()}:' \
+                           f'{uuid.uuid4().hex[:8]}'
+        self.server = platform.node()
+        self.username = getpass.getuser()
+        self.pid = os.getpid()
 
-        self.table = db.tables.scheduler
-        self.record = reader.read_scheduler_record()
-        if self.record and self.record['status'] == 'Y':
-            self.server = self.record['server']
-            self.username = self.record['username']
-            self.pid = int(self.record['pid'])
-            self.start_date = self.record['start_date']
-            self.stop_date = self.record['stop_date']
-            self.status = True if self.record['status'] == 'Y' else False
-        else:
-            self.server = platform.node()
-            self.username = getpass.getuser()
-            self.pid = os.getpid()
-            self.start_date = None
-            self.stop_date = None
-            self.status = False
+        self.leader = False
+        self.leader_since = None
+        self.active = False
+        self.thread = None
+        self.wake = th.Event()
+        self.reload = True
+        self.skip_missed = False
 
-        argv = self._parse_console_arguments()
-        if argv:
-            action = argv[0]
-            if action == 'start':
-                self.start()
-            elif action == 'stop':
-                self.stop()
-        else:
-            args = self._parse_arguments()
-            if args.start is True:
-                self._start()
-            elif args.stop is True:
-                self._stop()
-
-    @property
-    def running(self):
-        """Check whether scheduler is running."""
-        if self.status is True and self.pid and psutil.pid_exists(self.pid):
-            return True
-        else:
-            return False
+        self.schedule = {}
+        self.cursor = None
+        self.signature = None
+        self.loaded = 0
+        self.checked = 0
+        self.heartbeat = 0
+        self.next_maintenance = None
+        self.next_report = None
+        self.last_fire = None
+        self.warned = False
+        self.listeners = []
 
     def start(self):
-        """Start scheduler.
-
-        When scheduler is started then normally logs should start to generate
-        (in console/file depending on setup).
-        RAPO_SCHEDULER will be updated with information about current scheduler
-        process including server, username, PID, start date and status.
-        """
-        return self._create()
+        """Start scheduler thread."""
+        if not self.enabled or self.active:
+            return
+        self.active = True
+        self.thread = th.Thread(name='Scheduler', target=self._run,
+                                daemon=True)
+        self.thread.start()
+        logger.info(f'Scheduler started as {self.instance_id}')
 
     def stop(self):
-        """Stop running scheduler.
+        """Stop scheduler thread releasing the lease."""
+        if not self.active:
+            return
+        self.active = False
+        self.wake.set()
+        if self.thread:
+            self.thread.join(15)
+        self._release()
+        logger.info('Scheduler stopped')
 
-        Process will be stopped.
-        RAPO_SCHEDULER will be updated with stop date and status.
-        """
-        return self._destroy()
+    def disable(self):
+        """Stop scheduling on all servers until enabled again."""
+        self._set_disabled(True)
+        self._release()
+        self.wake.set()
+        self._notify()
 
-    def read(self):
-        """Parse schedule from database table into appropriate structure."""
-        return dict(self._sked())
+    def enable(self):
+        """Resume scheduling from now on, without recording missed fires."""
+        self._set_disabled(False)
+        self.skip_missed = True
+        self.wake.set()
+        self._notify()
 
-    def _start(self):
-        if self.running:
-            message = f'scheduler already running at PID {self.pid}'
-            raise Exception(message)
-        logger.info('Starting scheduler...')
-        self.start_date = dt.datetime.now()
-        self.status = True
-        self._start_signal_handlers()
-        self._start_executors()
-        self._start_maintainer()
-        self._enable()
-        logger.info(f'Scheduler started at PID {self.pid}')
-        return self._run()
+    def refresh(self):
+        """Request reload of the control configuration."""
+        self.reload = True
+        self.wake.set()
+
+    def status(self):
+        """Get scheduler status report."""
+        record = reader.read_scheduler_record() or {}
+        disabled = record.get('disabled') == 'Y'
+        timeout = get_setting('lease_timeout', 60)
+        heartbeat = record.get('heartbeat')
+        alive = (record.get('status') == 'Y' and heartbeat is not None
+                 and (dt.datetime.now()-heartbeat).total_seconds() < timeout)
+        if not self.enabled:
+            state = 'off'
+        elif disabled:
+            state = 'stopped'
+        elif self.leader:
+            state = 'running'
+        elif alive:
+            state = 'standby'
+        else:
+            state = 'starting'
+        return {
+            'state': state,
+            'enabled': self.enabled,
+            'disabled': disabled,
+            'leader': self.leader,
+            'instance_id': self.instance_id,
+            'holder': {
+                'instance_id': record.get('instance_id'),
+                'server': record.get('server'),
+                'username': record.get('username'),
+                'pid': record.get('pid'),
+                'start_date': record.get('start_date'),
+                'stop_date': record.get('stop_date'),
+                'heartbeat': heartbeat,
+                'alive': alive,
+            },
+            'scheduled_controls': len(self.schedule) if self.leader else None,
+            'last_fire': self.last_fire,
+            'next_maintenance': (dt.datetime.fromtimestamp(
+                self.next_maintenance) if self.next_maintenance else None),
+            'lease_timeout': timeout,
+            'server_time': dt.datetime.now().replace(microsecond=0),
+        }
 
     def _run(self):
-        self._synchronize()
-        while True:
-            self._process()
+        while self.active:
+            try:
+                self._step()
+            except Exception:
+                logger.error()
+                self.wake.wait(LEASE_INTERVAL)
+        logger.debug('Scheduler thread finished')
 
-    def _stop(self):
-        if self.status is True:
-            logger.info('Stopping scheduler...')
-            self.stop_date = dt.datetime.now()
-            self.status = False
-            self._disable()
-            logger.info(f'Scheduler at PID {self.pid} stopped')
-            return self._exit()
+    def _step(self):
+        self.wake.clear()
+        now = time.time()
+        if now-self.heartbeat >= LEASE_INTERVAL or not self.leader:
+            self._lease()
+        if not self.leader:
+            self.wake.wait(LEASE_INTERVAL)
+            return
+        self._load(now)
+        self._fire()
+        self._maintain(now)
+        self.wake.wait(self._delay())
 
-    def _create(self):
-        exe = sys.executable
-        file = os.path.abspath(sys.argv[0])
-        args = '--start'
-        settings = {}
-        settings['stdout'] = sp.DEVNULL
-        settings['stderr'] = sp.DEVNULL
-        if sys.platform.startswith('win') is True:
-            settings['creationflags'] = sp.CREATE_NO_WINDOW
-        command = [exe, file, args]
-        proc = sp.Popen(command, **settings)
-        return proc
+    def _lease(self):
+        """Acquire or renew the scheduler lease."""
+        self.heartbeat = time.time()
+        now = dt.datetime.now()
+        table = db.tables.scheduler
+        if self.leader:
+            update = (table.update()
+                           .values(heartbeat=now)
+                           .where(table.c.instance_id == self.instance_id,
+                                  table.c.status == 'Y',
+                                  table.c.disabled == 'N'))
+            if db.execute(update).rowcount == 1:
+                return
+            logger.warning('Scheduler lease lost or scheduler stopped')
+            self._release()
+            return
 
-    def _destroy(self):
-        if self.status is True:
-            self.stop_date = dt.datetime.now()
-            self.status = False
-            self._disable()
-            return self._terminate()
+        record = reader.read_scheduler_record()
+        if not record or record['disabled'] == 'Y':
+            return
+        timeout = get_setting('lease_timeout', 60)
+        if record['status'] == 'Y' and record['instance_id'] is None:
+            # Row left by a standalone rapo-scheduler of an older version.
+            pid = record['pid']
+            if record['server'] == self.server and pid and \
+                    not _pid_exists(int(pid)):
+                logger.info('Taking over stale standalone scheduler lease')
+            else:
+                if not self.warned:
+                    logger.warning('Standalone rapo-scheduler seems to be '
+                                   f'running at {record["server"]} PID '
+                                   f'{pid}, stop it to start this one')
+                self.warned = True
+                return
+        elif (record['status'] == 'Y'
+              and record['instance_id'] != self.instance_id
+              and record['heartbeat'] is not None
+              and (now-record['heartbeat']).total_seconds() < timeout
+              and not (record['server'] == self.server and record['pid']
+                       and not _pid_exists(int(record['pid'])))):
+            # Holder is alive, or on another host and its lease is fresh.
+            return
 
-    def _enable(self):
-        update = self.table.update().values(server=self.server,
-                                            username=self.username,
-                                            pid=self.pid,
-                                            start_date=self.start_date,
-                                            stop_date=self.stop_date,
-                                            status='Y')
-        db.execute(update)
+        conditions = [table.c.disabled == 'N']
+        for column in ('instance_id', 'heartbeat', 'status'):
+            value = record[column]
+            column = table.c[column]
+            conditions.append(column.is_(None) if value is None
+                              else column == value)
+        update = (table.update()
+                       .values(server=self.server,
+                               username=self.username,
+                               pid=self.pid,
+                               instance_id=self.instance_id,
+                               heartbeat=now,
+                               start_date=now,
+                               stop_date=None,
+                               status='Y')
+                       .where(*conditions))
+        if db.execute(update).rowcount != 1:
+            return
 
-    def _disable(self):
-        update = self.table.update().values(stop_date=self.stop_date,
-                                            status='N')
-        db.execute(update)
+        self.leader = True
+        self.leader_since = now
+        self.reload = True
+        self.cursor = now.replace(microsecond=0)
+        if self.skip_missed:
+            self.skip_missed = False
+        else:
+            since = max([date for date in (record['heartbeat'],
+                                           record['stop_date'])
+                         if date is not None], default=None)
+            self._record_missed(since, self.cursor)
+        interval = get_setting('maintenance_interval')
+        self.next_maintenance = _next_multiple(interval)
+        interval = get_setting('database_report_interval')
+        self.next_report = _next_multiple(interval)
+        logger.info(f'Scheduler lease acquired by {self.instance_id}')
+        self._notify()
 
-    def _exit(self):
-        return sys.exit()
-
-    def _terminate(self):
+    def _release(self):
+        if not self.leader:
+            return
+        self._resign()
+        table = db.tables.scheduler
+        now = dt.datetime.now()
+        update = (table.update()
+                       .values(stop_date=now, heartbeat=now, status='N')
+                       .where(table.c.instance_id == self.instance_id))
         try:
-            os.kill(self.pid, signal.SIGTERM)
-        except OSError:
-            message = f'scheduler at PID {self.pid} was not found'
-            raise Warning(message)
-
-    def _parse_console_arguments(self):
-        return [arg for arg in sys.argv[1:] if arg.startswith('-') is False]
-
-    def _parse_arguments(self):
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--start', action='store_true', required=False)
-        parser.add_argument('--stop', action='store_true', required=False)
-        args, anons = parser.parse_known_args()
-        return args
-
-    def _start_signal_handlers(self):
-        logger.debug('Starting signal handlers...')
-        signal.signal(signal.SIGINT, lambda signum, frame: self._stop())
-        signal.signal(signal.SIGTERM, lambda signum, frame: self._stop())
-        logger.debug('Signal handlers started')
-
-    def _start_executors(self):
-        logger.debug('Starting executors...')
-        thread_number = config['SCHEDULER']['control_parallelism']
-        for i in range(thread_number):
-            name = f'Control-Executor-{i}'
-            target = self._execute
-            thread = th.Thread(name=name, target=target, daemon=True)
-            thread.start()
-            self.executors.append(thread)
-            logger.debug(f'Control Executor {i} started as {thread.name}')
-        logger.debug('All executors started')
-
-    def _start_maintainer(self):
-        logger.debug('Starting maintainer...')
-        name = 'Maintainer'
-        target = self._maintain
-        thread = th.Thread(name=name, target=target, daemon=True)
-        thread.start()
-        self.maintainer = thread
-        logger.debug(f'Maintainer started as {thread.name}...')
-
-    def _synchronize(self):
-        logger.debug('Time will be synchronized')
-        self.moment = time.time()
-        logger.debug('Time was synchronized')
-
-    def _increment(self):
-        self.moment += 1
-
-    def _process(self):
-        self._read()
-        self._walk()
-        self._complete()
-        self._next()
-
-    def _read(self):
-        try:
-            interval = config['SCHEDULER']['refresh_interval']
-            if not self.schedule or int(self.moment) % interval == 0:
-                self.schedule = dict(self._sked())
-                if self.schedule:
-                    job_number = len(self.schedule.values())
-                    logger.debug(f'Schedule: {job_number} jobs found')
-                else:
-                    logger.debug('Schedule is empty')
+            db.execute(update)
         except Exception:
             logger.error()
+        logger.info('Scheduler lease released')
 
-    def _walk(self):
-        now = time.localtime(self.moment)
-        for name, record in self.schedule.items():
+    def _resign(self):
+        self.leader = False
+        self.leader_since = None
+        self.schedule = {}
+        self._notify()
+
+    def _set_disabled(self, disabled):
+        table = db.tables.scheduler
+        update = table.update().values(disabled='Y' if disabled else 'N')
+        db.execute(update)
+        logger.info(f'Scheduler {"stopped" if disabled else "started"} '
+                    'from the UI')
+
+    def _load(self, now):
+        """Reload schedules when configuration changed."""
+        interval = get_setting('refresh_interval', 300)
+        if not self.reload and now-self.checked >= CONFIG_CHECK_INTERVAL:
+            self.checked = now
+            signature = _read_config_signature()
+            if signature != self.signature:
+                self.reload = True
+        if not self.reload and now-self.loaded < interval:
+            return
+        self.schedule = dict(schedule.read_all())
+        self.signature = _read_config_signature()
+        self.loaded = self.checked = now
+        self.reload = False
+        logger.debug(f'Schedule: {len(self.schedule)} jobs found')
+
+    def _fire(self):
+        """Submit every fire between the cursor and now."""
+        now = dt.datetime.now().replace(microsecond=0)
+        if now <= self.cursor:
+            return
+        border = now+dt.timedelta(seconds=1)
+        fires = []
+        for name, item in self.schedule.items():
+            for moment in schedule.next_fire(item['schedule'], self.cursor,
+                                             limit=MISSED_LIMIT,
+                                             before=border):
+                fires.append((moment, name, item['control_id']))
+        self.cursor = now
+        for moment, name, control_id in sorted(fires):
+            late = (now-moment).total_seconds()
+            if late > LATE_TOLERANCE:
+                journal.record(control_id, journal.SCHEDULE, journal.MISSED,
+                               scheduled_time=moment,
+                               message=f'Fire found {int(late)} seconds '
+                                       'late, scheduler was not running.',
+                               runner=runner.name)
+                continue
             try:
-                if (
-                    record['status'] is True
-                    and self._check(record['mday'], now.tm_mday) is True
-                    and self._check(record['wday'], now.tm_wday+1) is True
-                    and self._check(record['hour'], now.tm_hour) is True
-                    and self._check(record['min'], now.tm_min) is True
-                    and self._check(record['sec'], now.tm_sec) is True
-                ):
-                    self._register(name, self.moment)
+                runner.submit(name, journal.SCHEDULE,
+                              timestamp=moment.timestamp(), chain=True)
+            except Exception as error:
+                logger.error()
+                journal.record(control_id, journal.SCHEDULE, journal.FAILED,
+                               scheduled_time=moment, message=str(error),
+                               runner=runner.name)
+            self.last_fire = moment
+        if fires:
+            self._notify()
+
+    def _record_missed(self, since, until):
+        """Record fires that fell into scheduler downtime."""
+        if since is None:
+            return
+        window = get_setting('missed_window_hours', 24)
+        since = max(since, until-dt.timedelta(hours=window))
+        if since >= until:
+            return
+        fires = []
+        for name, item in schedule.read_all():
+            for moment in schedule.next_fire(item['schedule'], since,
+                                             limit=MISSED_LIMIT,
+                                             before=until):
+                fires.append((moment, item['control_id']))
+        fires = sorted(fires)[-MISSED_LIMIT:]
+        for moment, control_id in fires:
+            journal.record(control_id, journal.SCHEDULE, journal.MISSED,
+                           scheduled_time=moment,
+                           message='Scheduler was not running.',
+                           runner=runner.name)
+        if fires:
+            logger.warning(f'{len(fires)} missed fires recorded since '
+                           f'{since:%Y-%m-%d %H:%M:%S}')
+
+    def _maintain(self, now):
+        if self.next_maintenance and now >= self.next_maintenance:
+            interval = get_setting('maintenance_interval')
+            self.next_maintenance = _next_multiple(interval)
+            th.Thread(name='Maintainer', target=self._clean,
+                      daemon=True).start()
+        if self.next_report and now >= self.next_report:
+            interval = get_setting('database_report_interval')
+            self.next_report = _next_multiple(interval)
+            report = db.engine.pool.status()
+            logger.info(f'Database connection report: {report}')
+
+    def _clean(self):
+        logger.info('Starting maintenance')
+        try:
+            db.cleanup()
+            config = db.tables.config
+            select = config.select().order_by(config.c.control_id)
+            for record in db.execute(select, as_records=True):
+                try:
+                    Control(name=record.control_name).clean()
+                except Exception:
+                    logger.error()
+            days = get_setting('event_retention_days', 90)
+            deleted = journal.purge(days)
+            logger.info(f'{deleted} scheduler events older than {days} '
+                        'days deleted')
+        except Exception:
+            logger.error()
+        logger.info('Maintenance performed')
+
+    def _delay(self):
+        """Get seconds to sleep until the next thing to do."""
+        now = time.time()
+        wakes = [self.heartbeat+LEASE_INTERVAL,
+                 self.checked+CONFIG_CHECK_INTERVAL]
+        if self.next_maintenance:
+            wakes.append(self.next_maintenance)
+        if self.next_report:
+            wakes.append(self.next_report)
+        after = self.cursor
+        for item in self.schedule.values():
+            fire = schedule.next_fire(item['schedule'], after)
+            if fire:
+                wakes.append(fire[0].timestamp())
+        return max(min(wakes)-now, 0)
+
+    def _notify(self):
+        for listener in self.listeners:
+            try:
+                listener()
             except Exception:
                 logger.error()
 
-    def _complete(self):
-        try:
-            interval = config['SCHEDULER']['maintenance_interval']
-            if interval and int(self.moment) % interval == 0:
-                logger.debug('Maintenance triggered')
-                self.maintenance.set()
-            interval = config['SCHEDULER']['database_report_interval']
-            if interval and int(self.moment) % interval == 0:
-                report = db.engine.pool.status()
-                logger.info(f'Database connection report: {report}')
-        except Exception:
-            logger.error()
 
-    def _next(self):
-        delay = time.time()-self.moment
-        wait = 1-delay
-        try:
-            time.sleep(wait)
-        except ValueError:
-            logger.warning('TIME IS BROKEN')
-            self._synchronize()
-        else:
-            logger.debug(f'moment={self.moment}, delay={delay}, wait={wait}')
-            self._increment()
+def upcoming(hours=24, control_name=None, limit=1000):
+    """Get upcoming fires of active scheduled controls.
 
-    def _sked(self):
-        logger.debug('Getting schedule...')
-        config = db.tables.config
-        select = config.select().order_by(config.c.control_id)
-        answerset = db.execute(select, as_records=True)
-        for record in answerset:
-            try:
-                control_name = record.control_name
-                control_status = True if record.status == 'Y' else False
-                schedule_keys = ['mday', 'wday', 'hour', 'min', 'sec']
-                schedule_config = dict.fromkeys(schedule_keys)
-                if record.schedule_config:
-                    input_config = json.loads(record.schedule_config)
-                    output_config = {k: v for k, v in input_config.items()
-                                     if k in schedule_keys}
-                    schedule_config.update(output_config)
-                control_config = dict(**schedule_config, status=control_status)
-            except Exception:
-                logger.warning()
-                continue
-            else:
-                if control_status and any(v for v in schedule_config.values()):
-                    yield control_name, control_config
-        logger.debug('Schedule retrieved')
+    Returns
+    -------
+    fires : list of dict
+        Fires ordered by time with control ID, name, type and group.
+    """
+    now = dt.datetime.now().replace(microsecond=0)
+    until = now+dt.timedelta(hours=hours)
+    fires = []
+    for name, item in schedule.read_all():
+        if control_name and name != control_name:
+            continue
+        for moment in schedule.next_fire(item['schedule'], now, limit=limit,
+                                         before=until):
+            fires.append({'scheduled_time': moment,
+                          'control_id': item['control_id'],
+                          'control_name': name,
+                          'control_type': item['control_type'],
+                          'control_group': item['control_group']})
+    fires.sort(key=lambda fire: (fire['scheduled_time'],
+                                 fire['control_name']))
+    return fires[:limit]
 
-    def _check(self, unit, now):
-        # Check if empty or *.
-        if unit is None or re.match(r'^(\*)$', unit) is not None:
-            return True
-        # Check if unit is lonely digit and equals to now.
-        elif re.match(r'^\d+$', unit) is not None:
-            unit = int(unit)
-            return True if now == unit else False
-        # Check if unit is a cycle and integer division with now is true.
-        elif re.match(r'^/\d+$', unit) is not None:
-            unit = int(re.search(r'\d+', unit).group())
-            if unit == 0:
-                return False
-            return True if now % unit == 0 else False
-        # Check if unit is a range and now is in this range.
-        elif re.match(r'^\d+-\d+$', unit) is not None:
-            unit = [int(i) for i in re.findall(r'\d+', unit)]
-            return True if now in range(unit[0], unit[1] + 1) else False
-        # Check if unit is a list and now is in this list.
-        elif re.match(r'^\d+,\s*\d+.*$', unit):
-            unit = [int(i) for i in re.findall(r'\d+', unit)]
-            return True if now in unit else False
-        # All other cases is not for the now.
-        else:
-            return False
 
-    def _register(self, name, moment):
-        try:
-            logger.info(f'Adding control {name}[{moment}] to queue...')
-            self.queue.put((name, moment))
-        except Exception:
-            logger.error()
-        else:
-            logger.info(f'Control {name}[{moment}] was added to queue')
+def _read_config_signature():
+    table = db.tables.config
+    select = sa.select(sa.func.count(), sa.func.max(table.c.updated_date))
+    return tuple(db.execute(select, as_one=True))
 
-    def _execute(self):
-        while True:
-            if self.queue.empty() is False:
-                name, moment = self.queue.get()
-                logger.info(f'Initiating control {name}[{moment}]...')
-                try:
-                    control = Control(name, timestamp=moment)
-                    control.run()
-                    control.iterate()
-                    control.cascade()
-                except Exception:
-                    logger.error()
-                else:
-                    self.queue.task_done()
-                    logger.info(f'Control {name}[{moment}] performed')
-            time.sleep(1)
 
-    def _maintain(self):
-        while True:
-            if self.maintenance.is_set():
-                logger.info('Starting maintenance')
-                self._clean()
-                self.maintenance.clear()
-                logger.info('Maintenance performed')
-            time.sleep(1)
+def _next_multiple(interval):
+    """Get next epoch time that is a multiple of the interval."""
+    if not interval:
+        return None
+    now = time.time()
+    return (int(now)//interval+1)*interval
 
-    def _clean(self):
-        db.cleanup()
-        config = db.tables.config
-        select = config.select().order_by(config.c.control_id)
-        answerset = db.execute(select, as_records=True)
-        for record in answerset:
-            control = Control(name=record.control_name)
-            control.clean()
+
+def _pid_exists(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+scheduler = Scheduler()

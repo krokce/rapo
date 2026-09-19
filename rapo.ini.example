@@ -9,7 +9,11 @@
 # empty or None -> None.
 
 [SCHEDULER]
-# Number of controls executed in parallel.
+# Run the scheduler inside this web server (rapo-server). Set to False for an
+# API-only server. Only one server schedules at a time, the others stand by.
+# It can also be stopped and started from the UI (Instance details).
+enabled=True
+# Number of controls executed in parallel (scheduled and manual runs).
 control_parallelism=10
 # Seconds between scheduler refreshes of the control configuration.
 refresh_interval=300
@@ -17,6 +21,12 @@ refresh_interval=300
 maintenance_interval=86400
 # Seconds between scheduler status reports to the database.
 database_report_interval=600
+# Days scheduler events (fires, manual runs, missed fires) are kept.
+event_retention_days=90
+# Hours back that fires missed while no scheduler was running are recorded.
+missed_window_hours=24
+# Seconds without heartbeat after which a standby server takes over.
+lease_timeout=60
 # Name shown in the web UI, e.g. AUT Dev / AUT Prod.
 instance_name=AUT Dev
 

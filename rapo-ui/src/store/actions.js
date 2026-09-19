@@ -18,6 +18,12 @@ export default {
     context.commit("updateEnvInfo", info);
     context.commit("updateEnvParameters", parameters);
   },
+  // Scheduler and run manager state shown on the Scheduler page and in the "Instance details" dialog.
+  async updateSchedulerStatus(context) {
+    const data = await api("scheduler-status", { loadingBar: false });
+    context.commit("updateSchedulerStatus", data);
+    return data;
+  },
   updateSearch(context, payload) {
     context.commit("updateSearch", payload);
   },

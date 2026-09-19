@@ -1,11 +1,34 @@
 """Command-line entry points for running rapo as a standalone app."""
 
-from .core.scheduler import Scheduler
+import os
+import signal
+import sys
+
 from .web import Server
 
 
 def run_scheduler():
-    Scheduler()
+    """Stop a standalone scheduler of an older version, or explain the move.
+
+    The scheduler runs inside the web server since v0.8.0.
+    """
+    argv = [arg for arg in sys.argv[1:] if not arg.startswith('-')]
+    if argv and argv[0] == 'stop':
+        from .reader import reader
+        from .database import db
+        record = reader.read_scheduler_record()
+        if record and record['status'] == 'Y' and not record['instance_id']:
+            try:
+                os.kill(int(record['pid']), signal.SIGTERM)
+            except OSError:
+                pass
+            table = db.tables.scheduler
+            db.execute(table.update().values(status='N'))
+            print(f'Standalone scheduler at PID {record["pid"]} stopped.')
+            return
+    print('rapo-scheduler is deprecated: the scheduler runs inside the web '
+          'server now.\nUse "rapo-server start" and stop or start the '
+          'scheduler from the UI (Instance details).', file=sys.stderr)
 
 
 def run_server():
