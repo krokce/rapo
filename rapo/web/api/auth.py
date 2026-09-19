@@ -9,7 +9,7 @@ from ...config import config
 
 
 bearer = fastapi.security.HTTPBearer(auto_error=False)
-TOKEN = config['API']['token']
+TOKEN = config['API'].get('token') if config.check('API') else None
 
 
 def verify_token(credentials=fastapi.Depends(bearer)):

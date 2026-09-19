@@ -43,7 +43,7 @@ pip install rapo
 
 1. Deploy the database schema using the [scripts](schema/oracle.sql).
 
-1. Prepare the configuration file _rapo.ini_ according to the documentation.
+1. Prepare the configuration file _rapo.ini_ (start from `cp rapo.ini.example rapo.ini` and fill in the credentials and token) and place it in the application folder (next to the `rapo` package), or point the `RAPO_CONFIG` environment variable to it.
 
 3. Create a special file called _scheduler.py_ with `rapo.Scheduler()` declared and execute it as follows `python scheduler.py start`.
 

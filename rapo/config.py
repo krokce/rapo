@@ -8,7 +8,9 @@ import re
 import configparser
 
 
-path = os.path.abspath(os.path.expanduser('~/.rapo/rapo.ini'))
+path = os.path.abspath(
+    os.environ.get('RAPO_CONFIG') or
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'rapo.ini'))
 encoding = 'utf-8'
 
 
