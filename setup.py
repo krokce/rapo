@@ -19,7 +19,7 @@ packages = setuptools.find_packages()
 package_data = {
     'rapo': [
         'web/api/templates/*',
-        'web/api/ui/**/*',
+        'web/ui/**/*',
         'algorithms/**/*'
     ]
 }

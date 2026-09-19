@@ -15,7 +15,8 @@ from ...core.control import Control
 
 app = flask.Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
-app.static_folder = 'ui'
+app.static_folder = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', 'ui'))
 logger.configure(console=False)
 
 
