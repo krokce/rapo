@@ -209,10 +209,6 @@ export default {
         this.datasourceBList = (this.datasourceBColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
-    onNewValue(index, field) {
-      // Handle new value creation logic here
-      console.log(`New value added for index ${index}, field ${field}`);
-    },
   },
   watch: {
     ruleConfigObject(newValue) {

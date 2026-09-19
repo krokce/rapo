@@ -5,12 +5,7 @@
         <q-chip
           size="xl"
           text-color="white"
-          :class="{
-            'bg-pink-8': control.control_type === 'ANL',
-            'bg-teal-8': control.control_type === 'REC',
-            'bg-lime-8': control.control_type === 'CMP',
-            'bg-indigo-6': control.control_type === 'REP',
-          }"
+          :class="'bg-' + controlTypeColor(control.control_type)"
           class="text-weight-bold">
           {{ control.control_type }}
         </q-chip>
@@ -22,12 +17,7 @@
         <q-tabs
           v-model="tab"
           class="text-white"
-          :class="{
-            'bg-pink-8': control.control_type === 'ANL',
-            'bg-teal-8': control.control_type === 'REC',
-            'bg-lime-8': control.control_type === 'CMP',
-            'bg-indigo-6': control.control_type === 'REP',
-          }"
+          :class="'bg-' + controlTypeColor(control.control_type)"
           active-color="light-blue-1"
           indicator-color="light-blue-1"
           align="justify"
@@ -74,9 +64,9 @@
                         @click="showVersionChanges"
                         @click.stop.prevent
                         class="cursor-pointer"
-                        :class="{ 'text-deep-orange-4': this.versionChanges.length }">
+                        :class="{ 'text-deep-orange-4': versionChanges.length }">
                         <q-badge rounded size="xs" v-if="versionChanges.length" color="green" floating>{{ versionChanges.length }}</q-badge>
-                        <q-tooltip v-if="this.versionChanges.length" anchor="top left" self="bottom left" :offset="[0, 5]"> Show changes </q-tooltip>
+                        <q-tooltip v-if="versionChanges.length" anchor="top left" self="bottom left" :offset="[0, 5]"> Show changes </q-tooltip>
                       </q-icon>
                     </template>
                     <template v-slot:no-option>
@@ -98,13 +88,7 @@
                     emit-value
                     map-options
                     v-model="control.control_type"
-                    :options="[
-                      { label: 'ANL - Analysis', value: 'ANL' },
-                      { label: 'REC - Reconciliation', value: 'REC' },
-                      { label: 'CMP - Comparison', value: 'CMP' },
-                      { label: 'REP - Report', value: 'REP' },
-                      // { label: 'Key Performance Indicator', value: 'KPI' },
-                    ]"
+                    :options="controlTypeOptions"
                     label="Control type"
                     @update:model-value="controlTypeChanged" />
 
@@ -127,10 +111,7 @@
                     emit-value
                     map-options
                     v-model="control.need_prerun_hook"
-                    :options="[
-                      { label: 'Yes', value: 'Y' },
-                      { label: 'No', value: 'N' },
-                    ]"
+                    :options="yesNoOptions"
                     label="Pre-run hook">
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                       If 'Yes' is selected pre-run hook will be executed before the control is started. <br />
@@ -144,10 +125,7 @@
                     emit-value
                     map-options
                     v-model="control.need_postrun_hook"
-                    :options="[
-                      { label: 'Yes', value: 'Y' },
-                      { label: 'No', value: 'N' },
-                    ]"
+                    :options="yesNoOptions"
                     label="Post-run hook">
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                       If 'Yes' is selected post-run hook will be executed after control execution completes. <br />
@@ -396,9 +374,9 @@
                   <div v-if="control.control_type === 'CMP'" class="col">
                     <comparison-output-table-box
                       class="col"
-                      v-model="this.cmpOutputTable"
-                      :datasource-a-columns="this.datasourceAColumns"
-                      :datasource-b-columns="this.datasourceBColumns">
+                      v-model="cmpOutputTable"
+                      :datasource-a-columns="datasourceAColumns"
+                      :datasource-b-columns="datasourceBColumns">
                     </comparison-output-table-box>
                   </div>
 
@@ -474,21 +452,19 @@
 
                 <div class="row q-my-xs q-gutter-md" v-if="control.control_type == 'CMP'">
                   <div class="col">
-                    <!-- <code-box label="Match criteria (Rule config)" v-model="control.rule_config"> </code-box> -->
                     <comparison-match-criteria-box
                       class="col"
-                      v-model="this.ruleConfigObject"
-                      :datasource-a-columns="this.datasourceAColumns"
-                      :datasource-b-columns="this.datasourceBColumns">
+                      v-model="ruleConfigObject"
+                      :datasource-a-columns="datasourceAColumns"
+                      :datasource-b-columns="datasourceBColumns">
                     </comparison-match-criteria-box>
                   </div>
                   <div class="col">
-                    <!-- <code-box label="Mismatch criteria (Error definition)" v-model="control.error_definition"> </code-box> -->
                     <comparison-mis-match-criteria-box
                       class="col"
-                      v-model="this.ruleErrorObject"
-                      :datasource-a-columns="this.datasourceAColumns"
-                      :datasource-b-columns="this.datasourceBColumns">
+                      v-model="ruleErrorObject"
+                      :datasource-a-columns="datasourceAColumns"
+                      :datasource-b-columns="datasourceBColumns">
                     </comparison-mis-match-criteria-box>
                   </div>
                 </div>
@@ -612,19 +588,19 @@
 
                   <reconciliation-match-criteria-box
                     class="col"
-                    v-model="this.ruleConfigObject"
-                    :datasource-a-columns="this.datasourceAColumns"
-                    :datasource-b-columns="this.datasourceBColumns">
+                    v-model="ruleConfigObject"
+                    :datasource-a-columns="datasourceAColumns"
+                    :datasource-b-columns="datasourceBColumns">
                   </reconciliation-match-criteria-box>
 
                   <reconciliation-mis-match-criteria-box
                     class="col"
-                    v-model="this.ruleConfigObject"
-                    :datasource-a-columns="this.datasourceANumColumns"
-                    :datasource-b-columns="this.datasourceBNumColumns">
+                    v-model="ruleConfigObject"
+                    :datasource-a-columns="datasourceANumColumns"
+                    :datasource-b-columns="datasourceBNumColumns">
                   </reconciliation-mis-match-criteria-box>
 
-                  <reconciliation-discrepancy-checkboxes class="col" :control="control" v-model="this.ruleConfigObject">
+                  <reconciliation-discrepancy-checkboxes class="col" :control="control" v-model="ruleConfigObject">
                   </reconciliation-discrepancy-checkboxes>
                   <br />
                 </div>
@@ -678,8 +654,7 @@
               <div class="q-ma-lg">
                 <div class="column q-gutter-y-xl">
                   <div class="col">
-                    <!-- <code-box label="Case config" v-model="control.case_config"> </code-box> -->
-                    <case-config-box class="col" v-model="this.caseConfigObject"> </case-config-box>
+                    <case-config-box class="col" v-model="caseConfigObject"> </case-config-box>
                   </div>
                   <div class="col">
                     <code-box label="Case mapping" v-model="control.case_definition"> </code-box>
@@ -732,16 +707,12 @@
                     emit-value
                     map-options
                     v-model="control.period_type"
-                    :options="[
-                      { label: 'Day', value: 'D' },
-                      { label: 'Week', value: 'W' },
-                      { label: 'Month', value: 'M' },
-                    ]"
+                    :options="periodTypeOptions"
                     label="Period type" />
                 </div>
 
                 <div v-if="scheduleType !== 'C'" class="row q-gutter-md">
-                  <iteration-config-box class="col" v-model="iterationConfigObject" :pb="this.control.period_back"> </iteration-config-box>
+                  <iteration-config-box class="col" v-model="iterationConfigObject" :pb="control.period_back"> </iteration-config-box>
                 </div>
 
                 <div class="row q-gutter-md">
@@ -791,213 +762,83 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr class="cursor-pointer" v-for="(control_log, index) in controlLogs" :key="control_log.process_id">
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">{{ index + 1 }}. &nbsp;</td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
+                    <tr v-for="(log, index) in controlLogs" :key="log.process_id" :class="{ 'new-day-separator': newDayLogRows.has(index) }">
+                      <td class="text-left">{{ index + 1 }}. &nbsp;</td>
+                      <td v-for="field in ['added', 'start_date', 'end_date']" :key="field" class="text-left">
                         <div class="text-blue-grey-7">
-                          <strong>{{ toDateString(control_log.added) }}</strong>
-                          <small class="text-grey-7 q-px-sm">{{ toTimeString(control_log.added) }}</small>
+                          <strong>{{ toDateString(log[field]) }}</strong>
+                          <small class="text-grey-7 q-px-sm">{{ toTimeString(log[field]) }}</small>
                         </div>
                       </td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <div class="text-blue-grey-7">
-                          <strong>{{ toDateString(control_log.start_date) }}</strong>
-                          <small class="text-grey-7 q-px-sm">{{ toTimeString(control_log.start_date) }}</small>
-                        </div>
+                      <td class="text-right">
+                        {{ log.end_date && log.start_date ? round((new Date(log.end_date) - new Date(log.start_date)) / 60000, 1) : "0" }} min
                       </td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <div class="text-blue-grey-7">
-                          <strong>{{ toDateString(control_log.end_date) }}</strong>
-                          <small class="text-grey-7 q-px-sm">{{ toTimeString(control_log.end_date) }}</small>
-                        </div>
-                      </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        {{
-                          control_log.end_date && control_log.start_date
-                            ? round((new Date(control_log.end_date) - new Date(control_log.start_date)) / 60000, 1)
-                            : "0"
-                        }}
-                        min
-                      </td>
-
-                      <td class="text-left text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        {{ control_log.process_id }}
-                      </td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">{{ toDateString(control_log.date_from) }}</td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">{{ toDateString(control_log.date_to) }}</td>
-
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span
-                          v-if="Number(control_log.fetched_number_a) + Number(control_log.fetched_number) > 0 && control.control_type === 'REP'"
-                          class="cursor-pointer text-red"
-                          @click="copyToClipboard(control_log, 'A')">
-                          {{
-                            (Number(control_log.fetched_number_a) + Number(control_log.fetched_number)).toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })
-                          }}
+                      <td class="text-left text-weight-bold text-blue-grey-7">{{ log.process_id }}</td>
+                      <td class="text-left">{{ toDateString(log.date_from) }}</td>
+                      <td class="text-left">{{ toDateString(log.date_to) }}</td>
+                      <td class="text-right">
+                        <span v-if="logSum(log, 'fetched_number') > 0 && control.control_type === 'REP'" class="cursor-pointer text-red" @click="copyResultsSql(logRun(log), 'A')">
+                          {{ formatNumber(logSum(log, "fetched_number")) }}
                         </span>
-                        <span v-else @click="copyFetchSQLToClipboard(control_log, singleSource ? 'T' : 'A')">
-                          {{
-                            (Number(control_log.fetched_number_a) + Number(control_log.fetched_number)).toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })
-                          }}
+                        <span v-else class="cursor-pointer" @click="copyFetchSql(log, singleSource ? 'T' : 'A')">
+                          {{ formatNumber(logSum(log, "fetched_number")) }}
                         </span>
                       </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span @click="copyFetchSQLToClipboard(control_log, singleSource ? 'T' : 'B')">
-                          {{
-                            Number(control_log.fetched_number_b).toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })
-                          }}
+                      <td class="text-right">
+                        <span class="cursor-pointer" @click="copyFetchSql(log, singleSource ? 'T' : 'B')">{{ formatNumber(log.fetched_number_b) }}</span>
+                      </td>
+                      <td class="text-right">
+                        <span :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }" @click="logSum(log, 'error_number') > 0 && copyResultsSql(logRun(log), 'A')">
+                          {{ formatNumber(logSum(log, "error_number")) }}
                         </span>
                       </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span
-                          v-if="Number(control_log.error_number_a) + Number(control_log.error_number) > 0"
-                          class="cursor-pointer text-red"
-                          @click="copyToClipboard(control_log, 'A')">
-                          {{
-                            (Number(control_log.error_number_a) + Number(control_log.error_number)).toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })
-                          }}
-                        </span>
-                        <span v-else>
-                          {{
-                            (Number(control_log.error_number_a) + Number(control_log.error_number)).toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })
-                          }}
+                      <td class="text-right">
+                        <span :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }" @click="log.error_number_b > 0 && copyResultsSql(logRun(log), 'B')">
+                          {{ formatNumber(log.error_number_b) }}
                         </span>
                       </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span v-if="control_log.error_number_b > 0" class="cursor-pointer text-red" @click="copyToClipboard(control_log, 'B')">
-                          {{ Number(control_log.error_number_b).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
-                        </span>
-                        <span v-else>
-                          {{ Number(control_log.error_number_b).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                      <td class="text-right">
+                        <span :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }" @click="logSum(log, 'error_level') > 0 && copyResultsSql(logRun(log), 'A')">
+                          {{ formatNumber(logSum(log, "error_level"), 2) }}%
                         </span>
                       </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span
-                          v-if="Number(control_log.error_level_a) + Number(control_log.error_level) > 0"
-                          class="cursor-pointer text-red"
-                          @click="copyToClipboard(control_log, 'A')">
-                          {{
-                            (Number(control_log.error_level_a) + Number(control_log.error_level)).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          }}%
-                        </span>
-                        <span v-else>
-                          {{
-                            (Number(control_log.error_level_a) + Number(control_log.error_level)).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          }}%
+                      <td class="text-right">
+                        <span :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }" @click="log.error_level_b > 0 && copyResultsSql(logRun(log), 'B')">
+                          {{ formatNumber(log.error_level_b, 2) }}%
                         </span>
                       </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span v-if="control_log.error_level_b > 0" class="cursor-pointer text-red" @click="copyToClipboard(control_log, 'B')">
-                          {{ Number(control_log.error_level_b).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%
-                        </span>
-                        <span v-else>
-                          {{ Number(control_log.error_level_b).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}%
-                        </span>
-                      </td>
-                      <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <q-icon v-if="control_log.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop">
+                      <td class="text-right">
+                        <q-icon v-if="log.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop">
                           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is 0 </q-tooltip>
                         </q-icon>
-                        <q-icon v-if="control_log.prerequisite_value" class="cursor-pointer text-green" name="fas fa-play">
-                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                            Prerequisite SQL value is {{ control_log.prerequisite_value }}
-                          </q-tooltip>
+                        <q-icon v-if="log.prerequisite_value" class="cursor-pointer text-green" name="fas fa-play">
+                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is {{ log.prerequisite_value }} </q-tooltip>
                         </q-icon>
                       </td>
-                      <td class="text-left" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <q-chip class="cursor-pointer">
-                          <q-avatar v-if="control_log.status == 'I'" icon="fas fa-plus-circle" color="indigo" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'W'" icon="fas fa-pause-circle" color="amber-7" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'S'" icon="fas fa-play-circle" color="blue" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'P'" icon="fas fa-sync fa-spin" color="blue" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'F'" icon="fas fa-circle-notch fa-spin" color="blue" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'D'" icon="fas fa-check-circle" color="green" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'C'" icon="fas fa-times-circle" color="purple-3" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'E'" icon="fas fa-exclamation-circle" color="deep-orange" text-color="white" />
-                          <q-avatar v-if="control_log.status == 'X'" icon="fas fa-times-circle" color="grey" text-color="white" />
-                          <q-avatar v-if="!control_log.status" icon="fas fa-times-circle" color="deep-purple-3" text-color="white" />
-                          {{
-                            control_log.status === "I"
-                              ? "Initiated"
-                              : control_log.status === "W"
-                              ? "Waiting"
-                              : control_log.status === "S"
-                              ? "Started"
-                              : control_log.status == "P"
-                              ? "Running"
-                              : control_log.status === "F"
-                              ? "Finishing"
-                              : control_log.status === "D"
-                              ? "Done"
-                              : control_log.status === "E"
-                              ? "Error"
-                              : control_log.status === "C"
-                              ? "Canceled"
-                              : control_log.status === "X"
-                              ? "Revoked"
-                              : !control_log.status
-                              ? "Void"
-                              : "Unknown"
-                          }}
+                      <td class="text-left">
+                        <q-chip>
+                          <q-avatar :icon="runStatus(log.status).icon" :color="runStatus(log.status).color" text-color="white" />
+                          {{ runStatus(log.status).label }}
                         </q-chip>
                       </td>
-                      <td class="text-left" style="width: 50px" :class="{ 'new-day-separator': newDaySeparator(index) }">
+                      <td class="text-left" style="width: 50px">
                         <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
                           <q-menu>
                             <q-list dense class="text-no-wrap">
-                              <q-item dense clickable @click="reRun(control_log)" v-close-popup>
+                              <q-item dense clickable @click="reRun(logRun(log), refreshLogs)" v-close-popup>
                                 <q-item-section> Re-run </q-item-section>
                               </q-item>
                               <q-separator />
-                              <q-item
-                                v-if="
-                                  control_log.status == 'F' ||
-                                  control_log.status == 'I' ||
-                                  control_log.status == 'W' ||
-                                  control_log.status == 'S' ||
-                                  control_log.status == 'P'
-                                "
-                                dense
-                                clickable
-                                class="col items-center"
-                                @click="showCancelDialog(control_log)"
-                                v-close-popup>
+                              <q-item v-if="activeRunStatuses.includes(log.status)" dense clickable @click="cancelRun(logRun(log), refreshLogs)" v-close-popup>
                                 <q-item-section> Cancel run </q-item-section>
                               </q-item>
-                              <q-item
-                                v-if="control_log.status != 'X'"
-                                dense
-                                clickable
-                                class="col items-center"
-                                @click="showRevokeDialog(control_log)"
-                                v-close-popup>
+                              <q-item v-if="log.status != 'X'" dense clickable @click="revokeRun(logRun(log), refreshLogs)" v-close-popup>
                                 <q-item-section> Revoke run </q-item-section>
                               </q-item>
-                              <q-item dense clickable class="col items-center" @click="showFullLog(control_log)" v-close-popup>
+                              <q-item dense clickable @click="showFullLog(log)" v-close-popup>
                                 <q-item-section> Show full log </q-item-section>
                               </q-item>
-                              <q-item dense clickable @click="dropTemporaryTables(control_log)" v-close-popup>
+                              <q-item dense clickable @click="dropTemporaryTables(logRun(log))" v-close-popup>
                                 <q-item-section> Drop temporary tables </q-item-section>
                               </q-item>
                             </q-list>
@@ -1012,10 +853,6 @@
                   <q-btn label="Save" type="submit" color="primary" />
                   <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
                 </div>
-                <!-- <pre class="bg-grey-2 q-pa-sm" style="overflow: auto">
-                      {{ formattedJSON }}
-              </pre>
-               -->
               </div>
             </q-tab-panel>
           </q-tab-panels>
@@ -1023,13 +860,14 @@
       </q-card>
     </div>
 
-    <!-- <p class="q-ma-xl">{{ control }}</p> -->
   </q-page>
 </template>
 
 <script>
-import { useQuasar } from "quasar";
 import { mapActions, mapGetters } from "vuex";
+import { api, notifyError } from "../api";
+import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlTypeColor, runStatus } from "../constants";
+import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
@@ -1041,7 +879,7 @@ import IterationConfigBox from "./IterationConfigBox.vue";
 import ComparisonMatchCriteriaBox from "./ComparisonMatchCriteriaBox.vue";
 import ComparisonMisMatchCriteriaBox from "./ComparisonMisMatchCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
-import { escapeHtml } from "../utils/format";
+import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 
 export default {
@@ -1080,8 +918,6 @@ export default {
       datasourceBNumColumns: null,
       datasourceList: null,
       datasourceListOptions: null,
-      datasourceListAOptions: null,
-      datasourceListBOptions: null,
       withDeleteionDrop: "N",
       scheduleObject: defaultSchedule(),
       ruleConfigObject: {},
@@ -1095,8 +931,15 @@ export default {
       // True while a control is being loaded, so the datasource watchers don't reset its saved fields.
       initializing: false,
       loadedUpdatedDate: null,
-      $q: useQuasar(),
+      controlTypeOptions: CONTROL_TYPE_OPTIONS,
+      yesNoOptions: YES_NO_OPTIONS,
+      periodTypeOptions: PERIOD_TYPE_OPTIONS,
+      activeRunStatuses: ACTIVE_RUN_STATUSES,
     };
+  },
+  created() {
+    // Pending/finished get-datasource-columns requests by datasource name (see getDatasourceColumns).
+    this.columnRequests = {};
   },
   computed: {
     ...mapGetters(["controlCatalogueById"]),
@@ -1107,139 +950,72 @@ export default {
     singleSource() {
       return this.control.control_type === "ANL" || this.control.control_type === "REP";
     },
+    // Indexes of run log rows added on another day than the previous row, drawn with a separator line.
+    newDayLogRows() {
+      const logs = this.controlLogs;
+      return new Set(logs.map((log, index) => index).filter((index) => index > 0 && toDateString(logs[index - 1].added) !== toDateString(logs[index].added)));
+    },
   },
   methods: {
     ...mapActions(["updateControlCatalogue"]),
     updateLogDaysBack() {
-      this.getControlLogs(this.control.control_name, this.log_days_back);
+      return this.refreshLogs();
     },
-    toDateString(val) {
-      var ret = val ? String(val).substring(0, 10) : "";
-      return ret;
-    },
-    toTimeString(val) {
-      var ret = val ? String(val).substring(11, 19) : "";
-      return ret;
-    },
-    toDateTimeString(val) {
-      var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
-      return ret;
-    },
-    round(val, places) {
-      return Math.round(val * Math.pow(10, places)) / Math.pow(10, places);
-    },
-    showFullLog(control_log) {
-      this.$q.dialog({
-        title: this.control.control_name + " | " + " PID:" + control_log.process_id + " Full log",
-        message: "<pre>" + escapeHtml(this.formattedJSON(control_log)) + "</pre>",
-        html: true,
-        style: {
-          width: "800px", // Adjust the width as needed
-          maxWidth: "90vw", // Optional: Ensure it doesn't exceed viewport width
-        },
-      });
+    controlTypeColor,
+    formatNumber,
+    round,
+    runStatus,
+    toDateString,
+    toTimeString,
+    reRun,
+    cancelRun,
+    revokeRun,
+    dropTemporaryTables,
+    copyResultsSql,
+    showFullLog(log) {
+      showText(`${this.control.control_name} | PID:${log.process_id} Full log`, this.formattedJSON(log));
     },
     showVersionChanges() {
-      if (!this.versionChanges.length) {
-        return;
+      if (this.versionChanges.length) {
+        showText(this.control.control_name + " | " + this.controlVersion.label, this.formattedJSON(this.versionChanges));
       }
-      this.$q.dialog({
-        title: this.control.control_name + " | " + this.controlVersion.label,
-        message: "<pre>" + escapeHtml(this.formattedJSON(this.versionChanges)) + "</pre>",
-        html: true,
-        style: {
-          width: "800px", // Adjust the width as needed
-          maxWidth: "90vw", // Optional: Ensure it doesn't exceed viewport width
-        },
-      });
     },
     formattedJSON(control) {
       return JSON.stringify(control, null, 2).replace(/\\"/g, "'");
     },
-    filterDatasourceList(val, update, abort) {
-      if (val.length < 0) {
-        abort();
-        return;
-      }
-
+    filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceListOptions = (this.datasourceList || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceListOptions = (this.datasourceList || []).filter((v) => v.toLowerCase().includes(needle));
       });
-
-      // setTimeout(() => {
-      //   update(() => {
-      //     if (val === "") {
-      //       this.datasourceListOptions = this.datasourceList;
-      //     } else {
-      //       const needle = val.toLowerCase();
-      //       this.datasourceListOptions = this.datasourceList.filter(
-      //         (v) => v.toLowerCase().indexOf(needle) > -1
-      //       );
-      //     }
-      //   });
-      // }, 500);
     },
-    getDatasources() {
-      this.$q.loadingBar.start();
-
-      fetch("/api/get-datasources", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.$store.getters.getToken}`,
-          "Content-Type": "application/json",
-        },
-      })
-        .then((response) => {
-          if (response.ok) {
-            return response.json();
-          }
-        })
-        .then((data) => {
-          this.datasourceList = data;
-          this.$q.loadingBar.stop();
-        });
+    async getDatasources() {
+      try {
+        this.datasourceList = await api("get-datasources");
+      } catch (error) {
+        notifyError("Failed to load datasources.", error);
+      }
     },
+    // Column names of a datasource, optionally only those of one kind ("numeric", "string", "date").
+    // Each datasource's columns are fetched once per page and shared by all kinds.
     async getDatasourceColumns(datasource_name, which) {
       if (!datasource_name) {
         return [];
       }
-
-      const response = await fetch("/api/get-datasource-columns?datasource_name=" + datasource_name, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.$store.getters.getToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        var ret;
-        // data is array of objects {column_name, data_type}. Create an array containing only the columns from type `which`: NUMBER, VARCHAR2, DATE
-        if (which === "numeric") {
-          ret = data
-            .filter(
-              (item) =>
-                item.data_type.toUpperCase().includes("NUMBER") ||
-                item.data_type.toUpperCase().includes("FLOAT") ||
-                item.data_type.toUpperCase().includes("DOUBLE") ||
-                item.data_type.toUpperCase().includes("DECIMAL") ||
-                item.data_type.toUpperCase().includes("INTEGER")
-            )
-            .map((item) => item.column_name);
-        } else if (which === "string") {
-          ret = data.filter((item) => item.data_type.toUpperCase().includes("CHAR")).map((item) => item.column_name);
-        } else if (which === "date") {
-          ret = data
-            .filter((item) => item.data_type.toUpperCase().includes("TIMESTAMP") || item.data_type.toUpperCase() === "DATE")
-            .map((item) => item.column_name);
-          // ret.push(null);
-        } else {
-          ret = data.map((item) => item.column_name);
-        }
-
-        return ret;
+      if (!this.columnRequests[datasource_name]) {
+        this.columnRequests[datasource_name] = api("get-datasource-columns", { params: { datasource_name } }).catch((error) => {
+          delete this.columnRequests[datasource_name];
+          notifyError("Failed to load columns of " + datasource_name + ".", error);
+          return [];
+        });
       }
+      const columns = await this.columnRequests[datasource_name];
+      const kinds = {
+        numeric: (type) => ["NUMBER", "FLOAT", "DOUBLE", "DECIMAL", "INTEGER"].some((t) => type.includes(t)),
+        string: (type) => type.includes("CHAR"),
+        date: (type) => type.includes("TIMESTAMP") || type === "DATE",
+      };
+      return columns.filter((column) => !kinds[which] || kinds[which](column.data_type.toUpperCase())).map((column) => column.column_name);
     },
     populateColumns(side) {
       if (side === "A") {
@@ -1306,39 +1082,34 @@ export default {
       }
     },
     async getControlVersions(controlId) {
-      const response = await fetch("/api/get-control-versions?control_id=" + controlId, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.$store.getters.getToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        this.controlVersions = data;
-        this.controlVersions.forEach((element) => {
-          element.label =
-            "v." + this.toDateTimeString(element.updated_date ? element.updated_date : element.created_date);
-        });
-        this.control.label =
-          "v." +
-          this.toDateTimeString(this.control.updated_date ? this.control.updated_date : this.control.created_date);
-        this.controlVersions.unshift(this.control);
-        this.controlVersion = this.controlVersions[0];
+      try {
+        const versions = await api("get-control-versions", { params: { control_id: controlId } });
+        const label = (version) => "v." + toDateTimeString(version.updated_date ? version.updated_date : version.created_date);
+        versions.forEach((version) => (version.label = label(version)));
+        this.control.label = label(this.control);
+        this.controlVersions = [this.control, ...versions];
+        this.controlVersion = this.control;
+      } catch (error) {
+        notifyError("Failed to load control versions.", error);
       }
     },
     async getControlLogs(controlName, numberDays) {
-      const response = await fetch("/api/read-control-logs?control_name=" + controlName + "&days=" + numberDays, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.$store.getters.getToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        this.controlLogs = data;
+      try {
+        this.controlLogs = await api("read-control-logs", { params: { control_name: controlName, days: numberDays } });
+      } catch (error) {
+        notifyError("Failed to load run log.", error);
       }
+    },
+    refreshLogs() {
+      return this.getControlLogs(this.control.control_name, this.log_days_back);
+    },
+    // Log rows lack the control's name and type, which the run actions need.
+    logRun(log) {
+      return { ...log, control_name: this.control.control_name, control_type: this.control.control_type };
+    },
+    // Single-source controls log counts without a side suffix (fetched_number), A/B controls with one.
+    logSum(log, field) {
+      return Number(log[field + "_a"]) + Number(log[field]);
     },
     ReconciliationTimeFromToleranceChanged() {
       if (!isNaN(Number(this.ruleConfigObject.time_tolerance_from))) {
@@ -1501,7 +1272,7 @@ export default {
       }
       return str;
     },
-    save() {
+    async save() {
       // Add new line if last line contains a comment to avoid RAPO SQL builder issue
       this.control.source_filter = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter);
       this.control.source_filter_a = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter_a);
@@ -1621,31 +1392,16 @@ export default {
       }
 
       this.saving = true;
-      fetch("/api/save-control", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.$store.getters.getToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(this.control),
-      })
-        .then(async (response) => {
-          if (!response.ok) {
-            const data = await response.json().catch(() => ({}));
-            throw new Error(data.detail || response.status + " " + response.statusText);
-          }
-          this.$q.notify({
-            type: "positive",
-            message: "Control: " + this.control.control_name + " was saved successfully.",
-          });
-          // reload "Controls" page if control attributes changed
-          this.$router.push({ name: "controls" });
-        })
-        .catch((error) => {
-          // stay on the page so unsaved edits are not lost
-          this.saving = false;
-          this.$q.notify({ type: "negative", message: "Control was not saved. " + error.message });
-        });
+      try {
+        await api("save-control", { method: "POST", body: this.control });
+      } catch (error) {
+        // stay on the page so unsaved edits are not lost
+        this.saving = false;
+        notifyError("Control was not saved.", error);
+        return;
+      }
+      this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
+      this.$router.push({ name: "controls" });
     },
     isBlank(value) {
       // Number inputs give "" when cleared; 0 is a valid value.
@@ -1722,266 +1478,31 @@ export default {
           cancel: true,
           persistent: true,
         })
-        .onOk(() => {
-          fetch("/api/delete-control-output-tables?name=" + control.control_name, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Schema for " + control.control_name + " was deleted. It will be recreated on the next run." });
-              } else {
-                this.$q.notify({ type: "negative", message: "Schema deletion for " + control.control_name + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
+        .onOk(async () => {
+          try {
+            await api("delete-control-output-tables", { method: "DELETE", params: { name: control.control_name } });
+            this.$q.notify({ type: "positive", message: "Schema for " + control.control_name + " was deleted. It will be recreated on the next run." });
+          } catch (error) {
+            notifyError("Schema deletion for " + control.control_name + " failed.", error);
+          }
         })
         .onCancel(() => {
           this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
         });
     },
-    copyFetchSQLToClipboard(control, side) {
-      control.control_name = this.control.control_name;
-      control.control_type = this.control.control_type;
-
-      if (control.control_type == "REP" && side == "B") {
+    // SQL selecting the source records a run fetched: side "T" for single-source controls, "A"/"B" otherwise.
+    copyFetchSql(log, side) {
+      if (this.control.control_type === "REP" && side === "B") {
         this.$q.notify({ type: "negative", message: "Source B SQL generation is not possible for Reports." });
         return;
       }
-
-      var statement = "";
-      if (side == "A") {
-        statement =
-          "select * from " +
-          this.control.source_name_a +
-          "\nwhere " +
-          this.control.source_date_field_a +
-          " between to_date('" +
-          this.toDateTimeString(control.date_from) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand to_date('" +
-          this.toDateTimeString(control.date_to) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand " +
-          (this.control.source_filter_a ? this.control.source_filter_a : "1=1") +
-          ";";
-      } else if (side == "B") {
-        statement =
-          "select * from " +
-          this.control.source_name_b +
-          "\nwhere " +
-          this.control.source_date_field_b +
-          " between to_date('" +
-          this.toDateTimeString(control.date_from) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand to_date('" +
-          this.toDateTimeString(control.date_to) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand " +
-          (this.control.source_filter_b ? this.control.source_filter_b : "1=1") +
-          ";";
-      } else {
-        statement =
-          "select * from " +
-          this.control.source_name +
-          "\nwhere " +
-          (this.control.source_date_field?(this.control.source_date_field +
-          " between to_date('" +
-          this.toDateTimeString(control.date_from) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand to_date('" +
-          this.toDateTimeString(control.date_to) +
-          "' , 'YYYY-MM-DD HH24:MI:SS')\n\tand "):"") +
-          (this.control.source_filter ? this.control.source_filter : "1=1") +
-          ";";
-      }
-
-      const textarea = document.createElement("textarea");
-      textarea.value = statement;
-      textarea.style.position = "fixed";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      try {
-        document.execCommand("copy");
-        this.$q.notify({ type: "positive", message: "Fetched records " + (side=='T'?'A':side) + "-side SQL statement copied to clipboard: " + textarea.value });
-      } catch (err) {
-        this.$q.notify({ type: "negative", message: "Failed to copy SQL to clipboard" });
-      }
-      document.body.removeChild(textarea);
-    },
-    copyToClipboard(control, side) {
-      control.control_name = this.control.control_name;
-      control.control_type = this.control.control_type;
-
-      var table_suffix = "T";
-      if (control.control_type == "REC") {
-        table_suffix = side;
-      }
-
-      const textarea = document.createElement("textarea");
-      textarea.value = "select * from RAPO_RES" + table_suffix + "_" + control.control_name + " where RAPO_PROCESS_ID = " + control.process_id + ";";
-      textarea.style.position = "fixed";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      try {
-        document.execCommand("copy");
-        this.$q.notify({ type: "positive", message: "Discrepancies " + (side=='T'?'A':side) + "-side SQL statement copied to clipboard: " + textarea.value });
-      } catch (err) {
-        this.$q.notify({ type: "negative", message: "Failed to copy SQL to clipboard" });
-      }
-      document.body.removeChild(textarea);
-    },
-    newDaySeparator(index) {
-      if (index > 0) {
-        const prev_date = this.toDateString(this.controlLogs[index - 1].added);
-        const curr_date = this.toDateString(this.controlLogs[index].added);
-        if (prev_date != curr_date) {
-          return true;
-        }
-      }
-      return false;
-    },
-    reRun(control) {
-      control.control_name = this.control.control_name;
-
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message:
-            "Re-run for '" +
-            this.toDateString(control.date_from) +
-            "'" +
-            (this.toDateString(control.date_from) != this.toDateString(control.date_to) ? " - '" + this.toDateString(control.date_to) + "'" : "") +
-            "?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          var url =
-            "/api/run-control?name=" +
-            control.control_name +
-            "&date_from=" +
-            this.toDateTimeString(control.date_from) +
-            "&date_to=" +
-            this.toDateTimeString(control.date_to);
-
-          fetch(url, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control " + control.control_name + " queued for execution" });
-                return response.json();
-              } else {
-                this.$q.notify({ type: "negative", message: "Control " + control.control_name + " failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-              this.getControlLogs(this.control.control_name, this.log_days_back);
-              // this.refreshControlResults();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    showCancelDialog(control) {
-      control.control_name = this.control.control_name;
-
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to stop the execution of this control?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/cancel-control?id=" + control.process_id, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control run '" + control.control_name + " PID:" + control.process_id + "' was canceled" });
-                control.status = "C";
-              } else {
-                this.$q.notify({ type: "negative", message: "Stopping control run '" + control.control_name + " PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    showRevokeDialog(control) {
-      control.control_name = this.control.control_name;
-
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to revoke this control run?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/revoke-control-run?id=" + control.process_id, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "Control run '" + control.control_name + " PID:" + control.process_id + "' was revoked" });
-                control.status = "X";
-              } else {
-                this.$q.notify({ type: "negative", message: "Revoke of control run '" + control.control_name + " PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
-    },
-    dropTemporaryTables(control) {
-      control.control_name = this.control.control_name;
-
-      this.$q
-        .dialog({
-          title: control.control_name,
-          message: "Do you really want to drop all debug temporary tables for execution with PID: " + control.process_id + " ?",
-          cancel: true,
-          persistent: true,
-        })
-        .onOk(() => {
-          fetch("/api/delete-control-temporary-tables?id=" + control.process_id, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-          })
-            .then((response) => {
-              if (response.ok) {
-                this.$q.notify({ type: "positive", message: "All temporary tables for PID:" + control.process_id + " were deleted" });
-              } else {
-                this.$q.notify({ type: "negative", message: "Temporary tables deletion for PID:" + control.process_id + "' failed" });
-              }
-            })
-            .then(() => {
-              this.$q.loadingBar.stop();
-            });
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
-          // console.log('Cancel')
-        });
+      const suffix = side === "T" ? "" : "_" + side.toLowerCase();
+      const table = this.control["source_name" + suffix];
+      const dateField = this.control["source_date_field" + suffix];
+      const filter = this.control["source_filter" + suffix] || "1=1";
+      const toDate = (value) => `to_date('${toDateTimeString(value)}' , 'YYYY-MM-DD HH24:MI:SS')`;
+      const period = dateField ? `${dateField} between ${toDate(log.date_from)}\n\tand ${toDate(log.date_to)}\n\tand ` : "";
+      copySql(`select * from ${table}\nwhere ${period}${filter};`, `Fetched records ${side === "T" ? "A" : side}-side`);
     },
     startLiveUpdates() {
       const stopLogs = liveRefetch("runs:changed", this.updateLogDaysBack, {
@@ -2035,15 +1556,12 @@ export default {
       if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceColumns = data;
-          // this.control.output_table_columns = data;
           this.control.output_table_columns = null;
-          // this.control.source_filter = "-- Columns:" + JSON.stringify(data) + "\n";
         });
 
         this.getDatasourceColumns(newDatasource, "date").then((data) => {
           this.datasourceDateColumns = data;
           this.control.source_date_field = data[0];
-          // this.control.source_date_field = null;
         });
       }
     },
@@ -2054,7 +1572,6 @@ export default {
       if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceAColumns = data;
-          // this.control.source_filter_a = "-- Columns:" + JSON.stringify(data) + "\n";
           this.control.output_table_a_columns = null;
         });
 
@@ -2072,11 +1589,9 @@ export default {
       if (this.initializing) {
         return;
       }
-      // this.control.source_filter_b = "";
       if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceBColumns = data;
-          // this.control.source_filter_b = "-- Columns: " + JSON.stringify(data) + "\n";
         });
 
         this.getDatasourceColumns(newDatasource, "date").then((data) => {
@@ -2142,7 +1657,7 @@ export default {
 </script>
 
 <style lang="css" scoped>
-.new-day-separator {
+.new-day-separator > td {
   border-top: 2px solid #cfd8dc !important;
 }
 </style>

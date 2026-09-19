@@ -20,8 +20,7 @@
 </template>
 
 <script>
-import { mapActions, mapGetters } from "vuex";
-import { useQuasar } from "quasar";
+import { mapActions } from "vuex";
 
 export default {
   data() {
@@ -32,11 +31,10 @@ export default {
       connectError: false,
       tokenValidationInProgress: false,
       redirectPath: this.$route.query.redirect || "/controls",
-      $q: useQuasar(),
     };
   },
   methods: {
-    ...mapActions(["validateToken", "updateEnvVersion", "updateEnvInfo", "updateEnvParameters"]),
+    ...mapActions(["validateToken", "updateEnvironment"]),
     async connect(token) {
       this.tokenValidationInProgress = true;
       let validated = false;
@@ -51,9 +49,7 @@ export default {
         this.connectError = true;
         this.$q.cookies.remove("rapo_token");
       } else {
-        this.updateEnvVersion();
-        this.updateEnvInfo();
-        this.updateEnvParameters();
+        this.updateEnvironment().catch((error) => console.error("Failed to load instance details:", error));
         if (this.rememberToken) {
           this.$q.cookies.set("rapo_token", token, { sameSite: "Strict", expires: "365d" });
         }
@@ -62,9 +58,6 @@ export default {
 
       this.tokenValidationInProgress = false;
     },
-  },
-  computed: {
-    ...mapGetters(["getTokenIsValid"]),
   },
   mounted() {
     if (this.$q.cookies.has("rapo_token")) {

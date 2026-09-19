@@ -12,9 +12,6 @@ export default {
   updateEnvParameters(state, payload) {
     state.envParameters = payload;
   },
-  updateHideSearch(state, payload) {
-    state.hideSearch = payload;
-  },
   updateControlCatalogue(state, payload) {
     state.controlCatalogue = payload;
   },
@@ -26,11 +23,6 @@ export default {
   },
   updateTokenValue(state, payload) {
     state.tokenValue = payload;
-    if (payload) {
-      state.tokenIsValid = true;
-    }
-    else {
-      state.tokenIsValid = false;
-    }
+    state.tokenIsValid = Boolean(payload);
   },
 };
