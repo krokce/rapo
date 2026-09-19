@@ -12,10 +12,11 @@ import socketio
 from . import events
 from .auth import verify_token
 
-from ...logger import logger
+from ...logger import logger, LOG_DIR
 from ...reader import reader
 
 from ...core import journal
+from ...core import logs
 from ...core import schedule
 from ...core.control import Control
 from ...core.runner import runner
@@ -31,11 +32,13 @@ async def lifespan(app):
     """Run the run manager and the scheduler together with the server."""
     runner.listeners.append(events.poke_scheduler)
     scheduler.listeners.append(events.poke_scheduler)
+    logs.cleaner.start()
     await asyncio.to_thread(runner.start)
     scheduler.start()
     yield
     await asyncio.to_thread(scheduler.stop)
     await asyncio.to_thread(runner.stop)
+    logs.cleaner.stop()
 
 
 fastapi_app = fastapi.FastAPI(title='Rapo',
@@ -143,6 +146,8 @@ def parameters():
             'pool_timeout': database_config.get('pool_timeout')
         },
         'logging': {
+            'directory': LOG_DIR,
+            'retention_days': logging_config.get('retention_days'),
             'console': logging_config.get('console'),
             'file': logging_config.get('file'),
             'info': logging_config.get('info'),
@@ -274,6 +279,38 @@ def delete_control(control_id: int):
     scheduler.refresh()
     events.poke()
     return {'status': 200}
+
+
+@api.get('/get-control-run-log')
+def get_control_run_log(process_id: int,
+                        max_bytes: int = fastapi.Query(logs.READ_LIMIT, ge=1,
+                                                       le=50*1024*1024)):
+    """Get run details from the control log and its log file."""
+    try:
+        run = reader.read_control_result(process_id)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
+    config = reader.read_control_config_by_id(run['control_id'])
+    run = {**run,
+           'control_name': config.get('control_name'),
+           'control_type': config.get('control_type')}
+    return {'run': run, 'log': logs.read_run_log(process_id, max_bytes)}
+
+
+@api.get('/download-control-run-log')
+def download_control_run_log(process_id: int):
+    """Download the log file of a control run."""
+    try:
+        run = reader.read_control_result(process_id)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
+    path = logs.run_log_path(run['control_id'], process_id)
+    if not os.path.isfile(path):
+        raise fastapi.HTTPException(status_code=404,
+                                    detail='Log file not found')
+    name = reader.read_control_name_by_id(run['control_id']) or 'control'
+    return fastapi.responses.FileResponse(path, media_type='text/plain',
+                                          filename=f'{name}_{process_id}.log')
 
 
 @api.get('/get-control-run')

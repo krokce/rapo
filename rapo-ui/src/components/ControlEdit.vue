@@ -836,7 +836,7 @@
                               <q-item v-if="log.status != 'X'" dense clickable @click="revokeRun(logRun(log), refreshLogs)" v-close-popup>
                                 <q-item-section> Revoke run </q-item-section>
                               </q-item>
-                              <q-item dense clickable @click="showFullLog(log)" v-close-popup>
+                              <q-item dense clickable @click="$refs.runLogDialog.open({ process_id: log.process_id, control_name: control.control_name })" v-close-popup>
                                 <q-item-section> Show full log </q-item-section>
                               </q-item>
                               <q-item dense clickable @click="dropTemporaryTables(logRun(log))" v-close-popup>
@@ -861,6 +861,7 @@
       </q-card>
     </div>
 
+    <run-log-dialog ref="runLogDialog" />
   </q-page>
 </template>
 
@@ -871,6 +872,7 @@ import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_
 import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
+import RunLogDialog from "./RunLogDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
 import ReconciliationMatchCriteriaBox from "./ReconciliationMatchCriteriaBox.vue";
@@ -885,6 +887,7 @@ import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from 
 export default {
   components: {
     CodeBox,
+    RunLogDialog,
     ScheduleEditBox,
     ReconciliationDiscrepancyCheckboxes,
     ReconciliationMatchCriteriaBox,
@@ -971,9 +974,6 @@ export default {
     revokeRun,
     dropTemporaryTables,
     copyResultsSql,
-    showFullLog(log) {
-      showText(`${this.control.control_name} | PID:${log.process_id} Full log`, this.formattedJSON(log));
-    },
     showVersionChanges() {
       if (this.versionChanges.length) {
         showText(this.control.control_name + " | " + this.controlVersion.label, this.formattedJSON(this.versionChanges));

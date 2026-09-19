@@ -24,6 +24,15 @@ The scheduler now runs inside the web server, so there is only one process to ru
 
    `control_parallelism` now limits all runs, including those started from the UI. Runs over the limit wait in a
    queue.
+1. Optionally set the log options in the `[LOGGING]` section:
+    * `directory` (default `logs` next to `rapo.ini`): folder of the log files. It holds `rapo-server_YYYYMMDD.log`
+      (server, scheduler and run manager, one file per day) and `controls/<control_id>/<process_id>.log` (one file
+      per control run, shown in the UI under "Show full log").
+    * `retention_days` (default: keep): days server logs and logs of deleted controls are kept. Run logs are kept
+      as long as their control's `days_retention`. Every server cleans its own log folder at start and daily.
+
+   Log files of older versions were written to a `logs` folder next to the started script (e.g.
+   `site-packages/uvicorn/logs`); delete them manually.
 1. Start the web server. It starts the scheduler too.
     ```bash
     rapo-server start

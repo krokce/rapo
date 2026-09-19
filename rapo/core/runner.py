@@ -21,7 +21,7 @@ import time
 
 from ..config import config
 from ..database import db
-from ..logger import logger
+from ..logger import logger, open_run_log
 
 from . import journal
 from .control import Control
@@ -353,12 +353,15 @@ def operate(control, chain, current, parent_pid, runner):
 
     def observe(run):
         current.value = run.process_id
+        open_run_log(run.id, run.process_id)
         if run.trigger:
             journal.record(run.id, run.trigger, journal.STARTED,
                            scheduled_time=journal.to_datetime(run.timestamp),
                            process_id=run.process_id, runner=runner,
                            start_time=dt.datetime.now())
 
+    open_run_log(control.id, control.process_id)
+    logger.info(f'{control} Performed by process {os.getpid()} of {runner}')
     control.observer = observe
     control._throttle()
     control._resume()

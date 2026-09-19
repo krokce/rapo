@@ -60,6 +60,12 @@ class Reader:
         control_name = result.control_name
         return control_name
 
+    def read_control_config_by_id(self, control_id):
+        """Get control configuration by control ID, {} if not found."""
+        table = db.tables.config
+        select = table.select().where(table.c.control_id == control_id)
+        return db.execute(select, as_dict=True) or {}
+
     def read_control_name_by_id(self, control_id):
         """Get control name by control ID, None if it does not exist."""
         config = db.tables.config
