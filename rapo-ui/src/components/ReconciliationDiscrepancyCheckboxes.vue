@@ -83,16 +83,6 @@
         <q-checkbox size="lg" class="col-2" color="blue" label="Allow duplicates" v-model="ruleConfigObject.allow_duplicates">
           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 0]"> If active, duplicate records won't be treated as discrepancies </q-tooltip>
         </q-checkbox>
-
-        <q-checkbox size="lg" class="col-2" color="blue" label="Discrepancy matching" v-model="ruleConfigObject.discrepancy_matching">
-          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 0]">
-            Consider also mismatch criteria (discrepancy config) when identifying duplicates. If enabled and there is a discrepancy <br />
-            above tolerance with the record on the other side the record will be marked as error instead of duplicate. <br />
-            Useful together with the "Allow Duplicates" feature so that you identify duplicates that are actually errors,<br />
-            and only ignore those that are successfully matched. <br />
-            Default is "{{ getEnvParameters && getEnvParameters.discrepancy_matching != null ? getEnvParameters.discrepancy_matching + ' (rapo.ini)' : 'false (App)' }}".
-          </q-tooltip>
-        </q-checkbox>
       </q-card-section>
     </q-card>
 
@@ -107,17 +97,15 @@
           outlined
           emit-value
           map-options
-          v-model="ruleConfigObject.fuzzy_optimization"
-          :options="[
-            { label: 'Yes', value: true },
-            { label: 'No', value: false },
-          ]"
+          :model-value="setting('fuzzy_optimization')"
+          :options="settingOptions('fuzzy_optimization')"
+          @update:model-value="setSetting('fuzzy_optimization', $event)"
           label="Fuzzy optimization">
           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
             Reconciliation parameter that allows to join records within a correlation cluster of the same dimension (1k1, 2k2, 3k3, etc.) using a simple
             positional method with sorting by the sum of numerical values.
             <br />Such clusters are formed if the correlation keys do not provide a unique connection and several records on one side are connected to several
-            records on the other. <br />Default is "{{ getEnvParameters && getEnvParameters.fuzzy_optimization != null ? getEnvParameters.fuzzy_optimization + ' (rapo.ini)' : 'true (App)' }}".
+            records on the other.
           </q-tooltip>
         </q-select>
 
@@ -126,14 +114,26 @@
           outlined
           emit-value
           map-options
-          v-model="ruleConfigObject.normalization_type"
-          :options="[
-            { label: 'Default', value: 'default' },
-            { label: 'Rank', value: 'rank' },
-            { label: 'Min-Max', value: 'minmax' },
-            { label: 'Z-Score', value: 'z_norm' },
-            { label: 'Relative Distance', value: 'srd' },
-          ]"
+          :model-value="setting('discrepancy_matching')"
+          :options="settingOptions('discrepancy_matching')"
+          @update:model-value="setSetting('discrepancy_matching', $event)"
+          label="Discrepancy matching">
+          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 0]">
+            Consider also mismatch criteria (discrepancy config) when identifying duplicates. If enabled and there is a discrepancy <br />
+            above tolerance with the record on the other side the record will be marked as error instead of duplicate. <br />
+            Useful together with the "Allow Duplicates" feature so that you identify duplicates that are actually errors,<br />
+            and only ignore those that are successfully matched.
+          </q-tooltip>
+        </q-select>
+
+        <q-select
+          class="col-2"
+          outlined
+          emit-value
+          map-options
+          :model-value="setting('normalization_type')"
+          :options="settingOptions('normalization_type')"
+          @update:model-value="setSetting('normalization_type', $event)"
           label="Normalization">
           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
             Useful in cases where correlation keys do not guarantee a unique match, and distances <br />
@@ -144,7 +144,6 @@
               <li>Z-Score: Normalize numerical values based on their distance from the mean in terms of standard deviations</li>
               <li>Relative Distance: Use squared A->B distance relative to the defined discrepancy tolerance for ranking</li>
             </ul>
-            Default is "{{ getEnvParameters && getEnvParameters.normalization_type ? getEnvParameters.normalization_type + ' (rapo.ini)' : 'none (App)' }}".
           </q-tooltip>
         </q-select>
 
@@ -153,17 +152,15 @@
           outlined
           emit-value
           map-options
-          v-model="ruleConfigObject.correlation_limit"
-          :options="[
-            { label: 'Yes', value: true },
-            { label: 'No', value: false },
-          ]"
+          :model-value="setting('correlation_limit')"
+          :options="settingOptions('correlation_limit')"
+          @update:model-value="setSetting('correlation_limit', $event)"
           label="Correlation limit">
           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
             If active, the correlation dataset will be limited to x2.5 times of the larger datasource record-count to prevent huge resultsets caused by weak or
             missing match criteria (cross join)
             <br />Note that activating the correlation limit will likely result in up to 30% slower performance. Recomended to be used only during the
-            development phase. <br />Default is "{{ getEnvParameters && getEnvParameters.correlation_limit != null ? getEnvParameters.correlation_limit + ' (rapo.ini)' : 'false (App)' }}".
+            development phase.
           </q-tooltip>
         </q-select>
       </q-card-section>
@@ -173,6 +170,33 @@
 
 <script>
 import { mapGetters } from "vuex";
+
+const YES_NO = [
+  { label: "Yes", value: true },
+  { label: "No", value: false },
+];
+
+// Algorithm options of a rule_config. When one is unset the engine takes the [ALGORITHM] value from rapo.ini
+// (served by /api/parameters), else its built-in default (Control parser); correlation_limit has no ini option.
+const SETTINGS = {
+  fuzzy_optimization: { options: YES_NO, builtIn: true, ini: true },
+  discrepancy_matching: { options: YES_NO, builtIn: false, ini: true },
+  normalization_type: {
+    options: [
+      { label: "None", value: "default" },
+      { label: "Rank", value: "rank" },
+      { label: "Min-Max", value: "minmax" },
+      { label: "Z-Score", value: "z_norm" },
+      { label: "Relative Distance", value: "srd" },
+    ],
+    builtIn: "default",
+    ini: true,
+  },
+  correlation_limit: { options: YES_NO, builtIn: false, ini: false },
+};
+
+// q-select treats null as "nothing selected", so the "use the default" entry needs its own value.
+const DEFAULT = "__default__";
 
 // Output and matching options of a reconciliation (REC) rule_config. modelValue is the parent's rule_config
 // object and is edited in place.
@@ -187,19 +211,38 @@ export default {
       return this.modelValue;
     },
   },
+  methods: {
+    setting(key) {
+      const value = this.ruleConfigObject[key];
+      // The engine reads "none" like "default" (no normalization); show it as the same option.
+      if (key === "normalization_type" && value === "none") {
+        return "default";
+      }
+      return value ?? DEFAULT;
+    },
+    // Unsetting removes the key, so the control keeps following rapo.ini.
+    setSetting(key, value) {
+      if (value === DEFAULT) {
+        delete this.ruleConfigObject[key];
+      } else {
+        this.ruleConfigObject[key] = value;
+      }
+    },
+    settingOptions(key) {
+      const { options, builtIn, ini } = SETTINGS[key];
+      const iniValue = ini && this.getEnvParameters ? this.getEnvParameters[key] : null;
+      const effective = iniValue ?? builtIn;
+      const label = (options.find((option) => option.value === effective) || { label: String(effective) }).label;
+      return [{ label: `Default: ${label}${iniValue != null ? " (rapo.ini)" : ""}`, value: DEFAULT }, ...options];
+    },
+  },
   mounted() {
+    // Older configs kept one output_limit for both sides.
     if (!this.ruleConfigObject.output_limit_a) {
       this.ruleConfigObject.output_limit_a = this.control.output_limit;
     }
     if (!this.ruleConfigObject.output_limit_b) {
       this.ruleConfigObject.output_limit_b = this.control.output_limit;
-    }
-    // Unset options take the rapo.ini value (/api/parameters), else the application default.
-    const defaults = { fuzzy_optimization: true, discrepancy_matching: false, correlation_limit: false, normalization_type: "default" };
-    for (const [key, fallback] of Object.entries(defaults)) {
-      if (this.ruleConfigObject[key] == null) {
-        this.ruleConfigObject[key] = this.getEnvParameters && this.getEnvParameters[key] != null ? this.getEnvParameters[key] : fallback;
-      }
     }
   },
 };

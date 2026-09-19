@@ -22,11 +22,13 @@
 </template>
 
 <script>
+import { mapState } from "vuex";
 import { parseSchedule, scheduleType, scheduleTime } from "../utils/schedule";
 
 export default {
   props: ["schedule", "period_back", "period_type"],
   computed: {
+    ...mapState(["controlCatalogue"]),
     // Computed from the prop so live catalogue updates are reflected; null when not scheduled or invalid.
     schedule_object() {
       try {
@@ -61,7 +63,11 @@ export default {
         const filteredSchedule = Object.fromEntries(Object.entries(schedule).filter(([, value]) => value !== null));
         return JSON.stringify(filteredSchedule);
       } else if (this.schedule_type === "C") {
-        return "Cascade (@control_id=" + schedule.trigger_id + ")";
+        const trigger = this.controlCatalogue.find((control) => control.control_id === Number(schedule.trigger_id));
+        if (!schedule.trigger_id) {
+          return "Cascade (no trigger)";
+        }
+        return "Cascade after " + (trigger ? trigger.control_name : "control_id " + schedule.trigger_id);
       } else if (this.schedule_type === "M") {
         return "Monthly (" + schedule.mday.join(", ") + ") @ " + scheduleTime(schedule);
       } else if (this.schedule_type === "W") {
