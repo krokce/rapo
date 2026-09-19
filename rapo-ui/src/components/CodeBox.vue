@@ -22,7 +22,7 @@
         </q-btn>
       </div>
     </span>
-    <codemirror ref="editor" v-model="code" :indent-with-tab="true" :smart-indent="true" :tab-size="4" :extensions="extensions" @ready="handleReady" />
+    <codemirror ref="editor" v-model="code" :indent-with-tab="true" :smart-indent="true" :tab-size="4" :extensions="extensions" />
   </div>
 </template>
 
@@ -30,9 +30,6 @@
 import { Codemirror } from "vue-codemirror";
 import { EditorState } from "@codemirror/state";
 import { sql } from "@codemirror/lang-sql";
-
-// import { oneDark } from '@codemirror/theme-one-dark'
-// import { HighlightStyle } from "@codemirror/language"
 
 export default {
   props: ["modelValue", "label"],
@@ -42,9 +39,6 @@ export default {
   },
   data() {
     return {
-      view: null,
-      code: this.modelValue,
-      placeholder: this.textPlaceholder,
       extensions: [sql(), EditorState.readOnly.of(false)],
       examples: {
         error_config: [
@@ -57,23 +51,6 @@ export default {
             menuText: "ANL Sample conditions (using JSON syntax)",
             exampleText:
               '[{"column": "CHARGE", "value": "CALC_CHARGE", "is_column": true}, {"connexion": "or", "column": "CALC_CHARGE", "relation": "is", "value": "NULL"}]',
-          },
-          {
-            menuText: "REC Sample conditions (using JSON syntax)",
-            exampleText: '[\n\t{"column_a": "case_type", "column_b": "case_type"}\n]',
-          },
-        ],
-        rule_config: [
-          {
-            menuText: "REC Sample conditions (using JSON syntax)",
-            exampleText: '[\n\t{"column_a":"posting_date","column_b":"posting_date"},\n\t{"column_a":"case_type","column_b":"case_type"}\n]',
-          },
-        ],
-        case_config: [
-          {
-            menuText: "Basic 3 class example",
-            exampleText:
-              '[\n\t{\n\t\t"case_id": 1,\n\t\t"case_value": "Tariffication confirmed",\n\t\t"case_type": "Normal",\n\t\t"case_description": "Tariffication confirmed."\n\t},\n\t{\n\t\t"case_id": 2,\n\t\t"case_value": "Tariffication failed",\n\t\t"case_type": "Error",\n\t\t"case_description": "Tariffication failed."\n\t},\n\t{\n\t\t"case_id": 3,\n\t\t"case_value": "Tariffication not calculated",\n\t\t"case_type": "Warning",\n\t\t"case_description": "Tariffication not analysed."\n\t}\n]',
           },
         ],
         result_config: [
@@ -152,49 +129,34 @@ export default {
     };
   },
   computed: {
+    code: {
+      get() {
+        return this.modelValue;
+      },
+      set(value) {
+        this.$emit("update:modelValue", value);
+      },
+    },
     menuItems() {
-      switch (this.label) {
-        case "Missmatch criteria (Error config)":
-          return this.examples.error_config;
-        case "Matching criteria (Rule config)":
-          return this.examples.rule_config;
-        case "Case config":
-          return this.examples.case_config;
-        case "Case mapping":
-          return this.examples.result_config;
-        case "Preparation SQL":
-          return this.examples.preparation_sql;
-        case "Prerequisite SQL":
-          return this.examples.prerequisite_sql;
-        case "Completion SQL":
-          return this.examples.completion_sql;
-        case "Filter":
-          return this.examples.source_filter;
-        case "Filter (Datasource A)":
-          return this.examples.source_filter;
-        case "Filter (Datasource B)":
-          return this.examples.source_filter;
-      }
-      return [];
+      const examplesByLabel = {
+        "Mismatch criteria (Error definition)": "error_config",
+        "Case mapping": "result_config",
+        "Preparation SQL": "preparation_sql",
+        "Prerequisite SQL": "prerequisite_sql",
+        "Completion SQL": "completion_sql",
+        Filter: "source_filter",
+        "Filter (Datasource A)": "source_filter",
+        "Filter (Datasource B)": "source_filter",
+      };
+      return this.examples[examplesByLabel[this.label]] || [];
     },
   },
   methods: {
-    handleReady(payload) {
-      this.view = payload.view;
-    },
     setCode(code) {
       this.code = code;
     },
     clearCode() {
       this.code = "";
-    },
-  },
-  watch: {
-    code(newValue) {
-      this.$emit("update:modelValue", newValue);
-    },
-    modelValue(newValue) {
-      this.code = newValue;
     },
   },
 };

@@ -190,7 +190,11 @@ export default {
     },
   },
   computed: {
-    ...mapGetters(["hideSearch", "getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
+    ...mapGetters(["getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
+    // Pages without a global search (editor, token page) set meta.hideSearch on their route.
+    hideSearch() {
+      return Boolean(this.$route.meta.hideSearch);
+    },
     search: {
       get() {
         return this.getSearch;

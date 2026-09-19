@@ -7,7 +7,6 @@ const store = createStore({
   state() {
     return {
       search: "",
-      hideSearch: false,
       controlCatalogue: [],
       controlResults: [],
       tokenIsValid: false,

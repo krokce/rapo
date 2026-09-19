@@ -253,11 +253,12 @@ import { notifyError } from "../api";
 import { scheduleType, scheduleTime } from "../utils/schedule";
 
 export default {
-  props: ["modelValue"],
-  emits: ["update:modelValue"],
+  // modelValue is the parent's schedule object and is edited in place.
+  props: {
+    modelValue: { type: Object, required: true },
+  },
   data() {
     return {
-      scheduleObject: this.modelValue,
       scheduleType: null,
       scheduleTimepicker: null,
       controlFilter: "",
@@ -295,6 +296,9 @@ export default {
   },
   computed: {
     ...mapState(["controlCatalogue"]),
+    scheduleObject() {
+      return this.modelValue;
+    },
     triggerOptions() {
       const needle = this.controlFilter.toLowerCase();
       return this.controlCatalogue
@@ -341,14 +345,7 @@ export default {
     },
   },
   watch: {
-    scheduleObject: {
-      handler(newValue) {
-        this.$emit("update:modelValue", newValue);
-      },
-      deep: true,
-    },
-    modelValue(newValue) {
-      this.scheduleObject = newValue;
+    modelValue() {
       this.initSchedule();
     },
   },
