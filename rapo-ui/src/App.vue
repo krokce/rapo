@@ -25,6 +25,14 @@
         <q-space class="col-2" />
         <span class="text-caption text-weight-light text-teal" v-if="getTokenIsValid">Connected</span>
         <span class="text-caption text-weight-light text-red" v-if="!getTokenIsValid">Disconnected</span>
+        <q-icon
+          v-if="getTokenIsValid"
+          name="fas fa-circle"
+          size="8px"
+          class="q-ml-sm"
+          :color="getSocketConnected ? 'teal' : 'grey-5'">
+          <q-tooltip>{{ getSocketConnected ? "Live updates on" : "Live updates offline, reconnecting..." }}</q-tooltip>
+        </q-icon>
         <q-btn round flat color="teal" icon="fas fa-plug fa-rotate-90" @click="showDisconnectDialog" v-if="getTokenIsValid" />
       </q-toolbar>
     </q-header>
@@ -189,7 +197,7 @@ export default {
     },
   },
   computed: {
-    ...mapGetters(["hideSearch", "getSearch", "getTokenIsValid", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
+    ...mapGetters(["hideSearch", "getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
     search: {
       get() {
         return this.getSearch;

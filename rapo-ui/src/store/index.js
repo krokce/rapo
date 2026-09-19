@@ -12,6 +12,7 @@ const store = createStore({
       controlResults: [],
       tokenIsValid: false,
       tokenValue: "",
+      socketConnected: false,
       envVersion: null,
       envInfo: null,
       envParameters: null,

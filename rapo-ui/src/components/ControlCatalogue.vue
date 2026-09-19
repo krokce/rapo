@@ -315,6 +315,7 @@ import SchedulePresentBox from "./SchedulePresentBox.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import { useQuasar } from "quasar";
+import { liveRefetch } from "../socket";
 
 export default {
   components: {
@@ -528,7 +529,13 @@ export default {
     },
   },
   async mounted() {
+    this.stopLiveUpdates = liveRefetch("controls:changed", async () => {
+      this.controlCatalogue = await this.updateControlCatalogue();
+    });
     this.controlCatalogue = await this.updateControlCatalogue();
+  },
+  unmounted() {
+    this.stopLiveUpdates();
   },
 };
 </script>

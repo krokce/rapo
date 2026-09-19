@@ -16,7 +16,8 @@ module.exports = defineConfig({
     proxy: {
       '/api': {
         target: process.env.RAPO_API_URL || 'http://localhost:7005',
-        changeOrigin: true
+        changeOrigin: true,
+        ws: true
       }
     }
   }

@@ -240,7 +240,7 @@ class Reader:
         data['updated_date'] = dt.datetime.now()
 
         if 'control_id' in data:
-            data['created_date'] = dt.datetime.strptime(data['created_date'], '%a, %d %b %Y %H:%M:%S %Z')
+            data['created_date'] = dt.datetime.fromisoformat(data['created_date'])
             update = config.update().where(config.c.control_id == data['control_id']).values(data)
             result = db.execute(update)
         else:

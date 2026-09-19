@@ -21,6 +21,9 @@ export default {
   updateControlResults(state, payload) {
     state.controlResults = payload;
   },
+  updateSocketConnected(state, payload) {
+    state.socketConnected = payload;
+  },
   updateTokenValue(state, payload) {
     state.tokenValue = payload;
     if (payload) {
