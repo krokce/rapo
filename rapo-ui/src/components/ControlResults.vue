@@ -2,7 +2,7 @@
   <q-page>
     <h2 class="row q-gutter-lg">
       <div>Last control result<span v-if="filteredControlResultsLen != 1">s</span></div>
-      <div v-if="controlResults.length === 0">
+      <div v-if="!loaded">
         <q-avatar size="lg" color="grey-5">
           <q-icon name="fas fa-sync fa-spin" />
         </q-avatar>
@@ -324,6 +324,7 @@ import { mapActions, mapGetters } from "vuex";
 import { useQuasar } from "quasar";
 import RunControlDialog from "./RunControlDialog.vue";
 import { liveRefetch } from "../socket";
+import { escapeHtml } from "../utils/format";
 // import ConfirmDialog from "./ConfirmDialog.vue";
 
 export default {
@@ -338,6 +339,7 @@ export default {
         rowsPerPage: 0,
       },
       controlResults: [],
+      loaded: false,
       filter: {
         type: null,
         status: [],
@@ -410,7 +412,7 @@ export default {
       this.$q.dialog({
         title: control.control_name + " - Error log",
         message: control.text_error
-          ? "<div class='text-body2' style='font-family: monospace;'>" + control.text_error.replace(/\n/g, "<br>$&") + "</div>"
+          ? "<div class='text-body2' style='font-family: monospace; white-space: pre-wrap;'>" + escapeHtml(control.text_error) + "</div>"
           : "No error log available",
         html: true,
         style: {
@@ -560,8 +562,8 @@ export default {
       this.filter.control_name = null;
       this.filter.type = null;
       this.filter.status = [];
-      this.sort.key = null;
-      this.sort.dir = "asc";
+      this.sort.key = "start_date";
+      this.sort.dir = "desc";
       // this.updateSearch("");
     },
     setSort(key) {
@@ -621,6 +623,7 @@ export default {
   async mounted() {
     this.stopLiveUpdates = liveRefetch("runs:changed", this.refreshControlResults);
     this.controlResults = await this.updateControlResults();
+    this.loaded = true;
   },
   unmounted() {
     this.stopLiveUpdates();

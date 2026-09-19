@@ -60,8 +60,8 @@ export default {
   methods: {
     addCorrelationConfig() {
       this.ruleConfigObject.push({
-        column_a: this.datasourceAColumns[0],
-        column_b: this.datasourceBColumns[0],
+        column_a: (this.datasourceAColumns || [])[0] ?? null,
+        column_b: (this.datasourceBColumns || [])[0] ?? null,
       });
     },
     removeCorrelationConfig(index) {
@@ -75,7 +75,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceAList = this.datasourceAColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceAList = (this.datasourceAColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
     filterFieldListB(val, update, abort) {
@@ -86,7 +86,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceBList = this.datasourceBColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceBList = (this.datasourceBColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
   },

@@ -39,7 +39,13 @@ export default {
     ...mapActions(["validateToken", "updateEnvVersion", "updateEnvInfo", "updateEnvParameters"]),
     async connect(token) {
       this.tokenValidationInProgress = true;
-      const validated = await this.validateToken(token);
+      let validated = false;
+      try {
+        validated = await this.validateToken(token);
+      } catch (error) {
+        // Network failure: show the form again instead of spinning forever.
+        console.error("Token validation failed:", error);
+      }
 
       if (!validated) {
         this.connectError = true;
@@ -49,7 +55,7 @@ export default {
         this.updateEnvInfo();
         this.updateEnvParameters();
         if (this.rememberToken) {
-          this.$q.cookies.set("rapo_token", token, { SameSite: "Strict", expires: "365d" });
+          this.$q.cookies.set("rapo_token", token, { sameSite: "Strict", expires: "365d" });
         }
         this.$router.push(this.redirectPath);
       }

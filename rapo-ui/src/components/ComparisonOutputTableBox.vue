@@ -82,7 +82,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceAList = this.datasourceAColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceAList = (this.datasourceAColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
     filterFieldListB(val, update, abort) {
@@ -93,7 +93,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceBList = this.datasourceBColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceBList = (this.datasourceBColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
   },

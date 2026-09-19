@@ -65,6 +65,7 @@
 <script>
 import { mapActions, mapGetters } from "vuex";
 import { useQuasar } from "quasar";
+import { escapeHtml } from "./utils/format";
 
 export default {
   data() {
@@ -89,9 +90,6 @@ export default {
     ...mapActions(["updateControlCatalogue", "updateSearch", "removeToken"]),
     toggleLeftDrawer() {
       this.leftDrawerOpen = !this.leftDrawerOpen;
-    },
-    escapeHtml(value) {
-      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     },
     flattenEntries(source, parentKey = "") {
       if (!source || typeof source !== "object") {
@@ -139,8 +137,8 @@ export default {
             .map(([key, value]) => {
               const displayValue = value === null || value === undefined || value === "" ? "N/A" : String(value);
               return `<tr>
-                <td style="padding:2px 10px 2px 0; vertical-align:top; word-break:break-word;">${this.escapeHtml(key)}</td>
-                <td style="padding:2px 0; vertical-align:top;"><strong>${this.escapeHtml(displayValue)}</strong></td>
+                <td style="padding:2px 10px 2px 0; vertical-align:top; word-break:break-word;">${escapeHtml(key)}</td>
+                <td style="padding:2px 0; vertical-align:top;"><strong>${escapeHtml(displayValue)}</strong></td>
               </tr>`;
             })
             .join("")
@@ -148,7 +146,7 @@ export default {
 
       return `
         <div style="margin-top:8px;">
-          <div style="font-weight:600; margin-bottom:2px;">${this.escapeHtml(this.formatSectionTitle(title))}</div>
+          <div style="font-weight:600; margin-bottom:2px;">${escapeHtml(this.formatSectionTitle(title))}</div>
           <table style="border-collapse:collapse; width:100%; font-family:Monospace, sans-serif; font-size:12px; line-height:1.25; table-layout:fixed;">
             <colgroup>
               <col style="width:70%;" />
@@ -193,7 +191,7 @@ export default {
         this.$q.cookies.remove("rapo_token");
       }
       this.removeToken();
-      this.$router.push("token");
+      this.$router.push({ name: "token" });
     },
   },
   computed: {

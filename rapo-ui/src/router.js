@@ -12,7 +12,7 @@ const router = createRouter({
       return savedPosition;
     } else if (to.hash) {
       return {
-        selector: to.hash,
+        el: to.hash,
       };
     } else {
       return { top: 0 };
