@@ -159,7 +159,7 @@
         class="col"
         outlined
         v-model="scheduleObject.hour"
-        :rules="[(val) => val.length > 0 || 'Must have a value']"
+        :rules="[(val) => String(val ?? '').length > 0 || 'Must have a value']"
         label="Hour"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
@@ -182,7 +182,7 @@
         class="col"
         outlined
         v-model="scheduleObject.min"
-        :rules="[(val) => val.length > 0 || 'Must have a value']"
+        :rules="[(val) => String(val ?? '').length > 0 || 'Must have a value']"
         label="Minute"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
@@ -205,7 +205,7 @@
         class="col"
         outlined
         v-model="scheduleObject.sec"
-        :rules="[(val) => val.length > 0 || 'Must have a value']"
+        :rules="[(val) => String(val ?? '').length > 0 || 'Must have a value']"
         label="Second"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
@@ -250,6 +250,7 @@
 
 <script>
 import { mapActions } from "vuex";
+import { scheduleType, scheduleTime } from "../utils/schedule";
 
 export default {
   props: ["modelValue"],
@@ -325,74 +326,16 @@ export default {
       }
     },
     scheduleDateTimeChanged() {
-      const scheduleDateTimeParts = this.scheduleTimepicker.split(":");
-      this.scheduleObject.hour = Number(scheduleDateTimeParts[0]);
-      this.scheduleObject.min = Number(scheduleDateTimeParts[1]);
-      this.scheduleObject.sec = Number(scheduleDateTimeParts[2]);
+      const [hour, min, sec] = this.scheduleTimepicker.split(":");
+      this.scheduleObject.hour = String(Number(hour));
+      this.scheduleObject.min = String(Number(min));
+      this.scheduleObject.sec = String(Number(sec));
     },
-    toScheduleObject(scheduleString) {
-      var ret = {
-        mday: null,
-        wday: null,
-        hour: "8",
-        min: "15",
-        sec: "0",
-        trigger_id: null,
-      };
-
-      if (scheduleString) {
-        ret = JSON.parse(scheduleString);
-        // Determine schedule type
-        if (!this.scheduleType) {
-          if (
-            String(scheduleString).indexOf("/") > -1 ||
-            String(scheduleString).indexOf("-") > -1 ||
-            (String(ret.mday).indexOf(",") > -1 && String(ret.wday).indexOf(",") > -1) ||
-            (String(ret.hour) + String(ret.min) + String(ret.sec)).indexOf(",") > -1
-          ) {
-            this.scheduleType = "X";
-          } else if (ret.hour == null && ret.min  == null && ret.sec == null) {
-            this.scheduleType = "C";
-          } else if (ret.mday) {
-            this.scheduleType = "M";
-          } else if (ret.wday) {
-            this.scheduleType = "W";
-          } else {
-            this.scheduleType = "D";
-          }
-
-          // Convert components to arrays in case of simple scheduler
-          if (this.scheduleType !== "X") {
-            if (ret.mday) {
-              ret.mday = String(ret.mday)
-                .split(",")
-                .map((i) => Number(i));
-            }
-
-            if (ret.wday) {
-              ret.wday = String(ret.wday)
-                .split(",")
-                .map((i) => Number(i));
-            }
-          }
-        }
-      }
-
-      if (!this.scheduleTimepicker) {
-        this.scheduleTimepicker = String(ret.hour).padStart(2, "0") + ":" + String(ret.min).padStart(2, "0") + ":" + String(ret.sec).padStart(2, "0");
-      }
-
-      return ret;
-    },
-    toScheduleString(scheduleObject) {
-      var ret = {
-        mday: scheduleObject.mday ? String(scheduleObject.mday) : null,
-        wday: scheduleObject.wday ? String(scheduleObject.wday) : null,
-        hour: String(scheduleObject.hour),
-        min: String(scheduleObject.min),
-        sec: String(scheduleObject.sec),
-      };
-      return JSON.stringify(ret);
+    // Derive the editor state from the schedule; runs again when the parent swaps in another schedule
+    // (version switch, reload after a remote change).
+    initSchedule() {
+      this.scheduleType = scheduleType(this.scheduleObject);
+      this.scheduleTimepicker = scheduleTime(this.scheduleObject);
     },
   },
   watch: {
@@ -402,45 +345,15 @@ export default {
       },
       deep: true,
     },
-    modelValue: {
-      handler(newValue) {
-        this.scheduleObject = newValue;
-      },
-      deep: true,
+    modelValue(newValue) {
+      this.scheduleObject = newValue;
+      this.initSchedule();
     },
   },
   async mounted() {
+    this.initSchedule();
     this.controlCatalogue = await this.updateControlCatalogue();
     this.controlCatalogueList = this.controlCatalogue;
-
-    var scheduleObjectString = JSON.stringify(this.modelValue);
-
-    // Determine schedule type
-    if (!this.scheduleType) {
-      if (
-        scheduleObjectString.indexOf("/") > -1 ||
-        scheduleObjectString.indexOf("-") > -1 ||
-        (String(this.modelValue.mday).indexOf(",") > -1 && String(this.modelValue.wday).indexOf(",") > -1) ||
-        (String(this.modelValue.hour) + String(this.modelValue.min) + String(this.modelValue.sec)).indexOf(",") > -1
-      ) {
-        this.scheduleType = "X";
-      } else if (this.modelValue.hour == null && this.modelValue.min == null && this.modelValue.sec == null) {
-        this.scheduleType = "C";
-      } else if (this.modelValue.mday) {
-        this.scheduleType = "M";
-      } else if (this.modelValue.wday) {
-        this.scheduleType = "W";
-      } else {
-        this.scheduleType = "D";
-      }
-    }
-
-    this.scheduleTimepicker =
-      String(this.scheduleObject.hour).padStart(2, "0") +
-      ":" +
-      String(this.scheduleObject.min).padStart(2, "0") +
-      ":" +
-      String(this.scheduleObject.sec).padStart(2, "0");
   },
 };
 </script>

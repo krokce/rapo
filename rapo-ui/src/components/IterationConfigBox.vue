@@ -8,7 +8,7 @@
       <q-card-section class="q-gutter-xs">
         <div class="row q-gutter-xs items-center" v-for="(item, index) in iterationConfigObject" v-bind:key="index">
           <q-input outlined class="col-1" v-model.number="iterationConfigObject[index].iteration_id" type="number" label="Iteration" />
-          <q-input outlined class="col-3" v-model.number="iterationConfigObject[index].iteration_description" label="Description" />
+          <q-input outlined class="col-3" v-model="iterationConfigObject[index].iteration_description" label="Description" />
           <q-input outlined class="col-2" v-model.number="iterationConfigObject[index].period_back" type="number" label="Periods back">
             <template v-slot:prepend>
               <q-icon name="fas fa-history" @click.stop.prevent />

@@ -2,7 +2,7 @@
   <q-page>
     <h2 class="row q-gutter-lg">
       <div>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
-      <div v-if="controlCatalogue.length === 0">
+      <div v-if="!loaded">
         <q-avatar size="lg" color="grey-5">
           <q-icon name="fas fa-sync fa-spin" />
         </q-avatar>
@@ -149,7 +149,7 @@
                   color="red-4"
                   text-color="white"
                   icon="fas fa-bolt"
-                  @click="this.filter.other_attributes.push('No Post-run hook')">
+                  @click="addAttributeFilter('No Post-run hook')">
                   No Post-run hook
                 </q-chip>
 
@@ -160,7 +160,7 @@
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-database"
-                  @click="this.filter.other_attributes.push('Prerequisite SQL')">
+                  @click="addAttributeFilter('Prerequisite SQL')">
                   Prerequisite SQL
                 </q-chip>
 
@@ -171,7 +171,7 @@
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-database"
-                  @click="this.filter.other_attributes.push('Preparation SQL')">
+                  @click="addAttributeFilter('Preparation SQL')">
                   Preparation SQL
                 </q-chip>
 
@@ -182,7 +182,7 @@
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-database"
-                  @click="this.filter.other_attributes.push('Completion SQL')">
+                  @click="addAttributeFilter('Completion SQL')">
                   Completion SQL
                 </q-chip>
 
@@ -193,7 +193,7 @@
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-bolt"
-                  @click="this.filter.other_attributes.push('Pre-run hook')">
+                  @click="addAttributeFilter('Pre-run hook')">
                   Pre-run hook
                 </q-chip>
 
@@ -204,19 +204,19 @@
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-tag"
-                  @click="this.filter.other_attributes.push('Case definition')">
+                  @click="addAttributeFilter('Case definition')">
                   Case definition
                 </q-chip>
 
                 <q-chip
                   clickable
-                  v-if="control.iteration_config && JSON.parse(control.iteration_config).length > 0"
+                  v-if="iterationCount(control) > 0"
                   size="sm"
                   color="indigo-4"
                   text-color="white"
                   icon="fas fa-history"
-                  @click="this.filter.other_attributes.push('Iterations')">
-                  +{{ JSON.parse(control.iteration_config).length }} Iteration{{ JSON.parse(control.iteration_config).length > 1 ? "s" : "" }}
+                  @click="addAttributeFilter('Iterations')">
+                  +{{ iterationCount(control) }} Iteration{{ iterationCount(control) > 1 ? "s" : "" }}
                 </q-chip>
 
                 <q-chip
@@ -329,6 +329,7 @@ export default {
       confirmDialog: false,
       $q: useQuasar(),
       controlCatalogue: [],
+      loaded: false,
       filter: {
         control_name: "",
         type: null,
@@ -346,19 +347,20 @@ export default {
     ...mapActions(["updateControlCatalogue", "updateSearch"]),
     async deleteControl(control_id) {
       this.$q.loadingBar.start();
-
-      const response = await fetch("/api/delete-control?control_id=" + control_id, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+      try {
+        const response = await fetch("/api/delete-control?control_id=" + control_id, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${this.$store.getters.getToken}` },
+        });
+        if (!response.ok) {
+          throw new Error(response.status + " " + response.statusText);
+        }
+        this.controlCatalogue = await this.updateControlCatalogue();
+      } catch (error) {
+        this.$q.notify({ type: "negative", message: "Control was not deleted. " + error.message });
+      } finally {
+        this.$q.loadingBar.stop();
       }
-
-      this.controlCatalogue = await this.updateControlCatalogue();
-      this.$q.loadingBar.stop();
-      this.$router.push({ name: "controls" });
     },
     recreateSchema(control_name) {
       this.$q.loadingBar.start();
@@ -377,6 +379,19 @@ export default {
         .then(() => {
           this.$q.loadingBar.stop();
         });
+    },
+    addAttributeFilter(attr) {
+      if (!this.filter.other_attributes.includes(attr)) {
+        this.filter.other_attributes.push(attr);
+      }
+    },
+    iterationCount(control) {
+      // A malformed iteration_config must not break rendering of the whole catalogue.
+      try {
+        return control.iteration_config ? JSON.parse(control.iteration_config).length || 0 : 0;
+      } catch (err) {
+        return 0;
+      }
     },
     toDateTimeString(val) {
       var ret = val ? String(val).substring(0, 19).replace("T", " ") : "";
@@ -510,7 +525,7 @@ export default {
             (attr === "Preparation SQL" && item.preparation_sql) ||
             (attr === "Prerequisite SQL" && item.prerequisite_sql) ||
             (attr === "Completion SQL" && item.completion_sql) ||
-            (attr === "Iterations" && item.iteration_config && JSON.parse(item.iteration_config).length > 0) ||
+            (attr === "Iterations" && this.iterationCount(item) > 0) ||
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||
             (attr === "No Post-run hook" && item.need_postrun_hook !== "Y")
@@ -533,6 +548,7 @@ export default {
       this.controlCatalogue = await this.updateControlCatalogue();
     });
     this.controlCatalogue = await this.updateControlCatalogue();
+    this.loaded = true;
   },
   unmounted() {
     this.stopLiveUpdates();

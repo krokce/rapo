@@ -73,8 +73,6 @@ export default {
     } catch (err) {
       console.error("Failed to load version:", err);
       throw err; // re-throw so component can catch if needed
-    } finally {
-      LoadingBar.stop();
     }
   },  
   async updateEnvInfo(context) {
@@ -98,8 +96,6 @@ export default {
     } catch (err) {
       console.error("Failed to load info:", err);
       throw err; // re-throw so component can catch if needed
-    } finally {
-      LoadingBar.stop();
     }
   },  
   async updateEnvParameters(context) {
@@ -123,8 +119,6 @@ export default {
     } catch (err) {
       console.error("Failed to load parameters:", err);
       throw err; // re-throw so component can catch if needed
-    } finally {
-      LoadingBar.stop();
     }
   },  
   updateHideSearch(context, payload) {

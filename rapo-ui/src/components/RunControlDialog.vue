@@ -60,6 +60,7 @@
 <script>
 import { mapActions } from "vuex";
 import { useQuasar } from "quasar";
+import { localDate } from "../utils/format";
 
 export default {
   props: ["hook", "control_name"],
@@ -68,7 +69,7 @@ export default {
       visible: false,
       range: false,
       debug_mode: false,
-      selectDate: new Date().toISOString().substring(0, 10),
+      selectDate: localDate(),
       controlCatalogueList: [],
       controlCatalogue: [],
       run_control_name: "",
@@ -89,17 +90,7 @@ export default {
       });
     },
     rangeChange() {
-      var date = new Date();
-      var toDate = new Date(date.setDate(date.getDate() - 2)).toISOString().substring(0, 10);
-      var fromDate = new Date(date.setDate(date.getDate() - 1)).toISOString().substring(0, 10);
-      if (this.range) {
-        this.selectDate = {
-          from: fromDate,
-          to: toDate,
-        };
-      } else {
-        this.selectDate = fromDate;
-      }
+      this.selectDate = this.range ? { from: localDate(-3), to: localDate(-2) } : localDate();
     },
     runControl() {
       if (!this.run_control_name) {
@@ -112,41 +103,40 @@ export default {
       }
       this.$q.loadingBar.start();
 
-      var url = "";
+      // In range mode q-date returns a plain string when a single day is picked.
+      const params = new URLSearchParams({ name: this.run_control_name });
       if (this.range) {
-        url =
-          "/api/run-control?name=" +
-          this.run_control_name +
-          "&date_from=" +
-          this.selectDate.from +
-          "&date_to=" +
-          this.selectDate.to +"T23:59:59" +
-          (this.debug_mode ? "&debug_mode=true" : "");
+        const { from, to } = typeof this.selectDate === "string" ? { from: this.selectDate, to: this.selectDate } : this.selectDate;
+        params.set("date_from", from);
+        params.set("date_to", to + "T23:59:59");
       } else {
-        url = "/api/run-control?name=" + this.run_control_name + "&date=" + this.selectDate + (this.debug_mode ? "&debug_mode=true" : "");
+        params.set("date", this.selectDate);
+      }
+      if (this.debug_mode) {
+        params.set("debug_mode", "true");
       }
 
-      fetch(url, {
+      fetch("/api/run-control?" + params, {
         method: "POST",
-        headers: { Authorization: `Bearer ${this.$store.getters.getToken}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${this.$store.getters.getToken}` },
       })
         .then((response) => {
-          if (response.ok) {
-            this.$q.notify({ type: "positive", message: "Control " + this.run_control_name + " queued for execution" });
-            return response.json();
-          } else {
-            this.$q.notify({ type: "negative", message: "Control " + this.run_control_name + " failed" });
+          if (!response.ok) {
+            throw new Error(response.status + " " + response.statusText);
           }
-        })
-        .then(() => {
-          this.$q.loadingBar.stop();
+          this.$q.notify({ type: "positive", message: "Control " + this.run_control_name + " queued for execution" });
           if (this.hook) {
             this.hook();
-            // close popup
             this.visible = false;
           } else {
             this.$router.push({ name: "results" });
           }
+        })
+        .catch((error) => {
+          this.$q.notify({ type: "negative", message: "Control " + this.run_control_name + " failed to start. " + error.message });
+        })
+        .finally(() => {
+          this.$q.loadingBar.stop();
         });
     },
     open() {

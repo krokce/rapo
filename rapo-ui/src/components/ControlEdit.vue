@@ -60,16 +60,12 @@
                   <q-input class="col" outlined v-model="control.control_alias" label="Control alias" />
 
                   <q-select
+                    v-if="control.control_id"
                     class="col-2"
                     outlined
                     v-model="controlVersion"
-                    use-input
-                    hide-selected
-                    fill-input
-                    input-debounce="0"
                     label="Version"
                     :options="controlVersions"
-                    @filter="filterDatasourceList"
                     @update:model-value="controlVersionChanged">
                     <template v-slot:prepend>
                       <q-icon
@@ -221,7 +217,7 @@
                 <div class="row q-my-md q-gutter-md">
                   <q-btn label="Save" type="submit" color="primary" />
                   <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                  <q-btn label="Recreate schema" color="red" flat class="q-ml-auto" @click="recreateSchema(control)" />
+                  <q-btn v-if="control.control_id" label="Recreate schema" color="red" flat class="q-ml-auto" @click="recreateSchema(control)" />
                 </div>
               </div>
             </q-tab-panel>
@@ -842,7 +838,7 @@
                             })
                           }}
                         </span>
-                        <span v-else @click="copyFetchSQLToClipboard(control_log, this.control.control_type == 'ANL' ? 'T' : 'A')">
+                        <span v-else @click="copyFetchSQLToClipboard(control_log, singleSource ? 'T' : 'A')">
                           {{
                             (Number(control_log.fetched_number_a) + Number(control_log.fetched_number)).toLocaleString(undefined, {
                               minimumFractionDigits: 0,
@@ -852,7 +848,7 @@
                         </span>
                       </td>
                       <td class="text-right" :class="{ 'new-day-separator': newDaySeparator(index) }">
-                        <span @click="copyFetchSQLToClipboard(control_log, this.control.control_type == 'ANL' ? 'T' : 'B')">
+                        <span @click="copyFetchSQLToClipboard(control_log, singleSource ? 'T' : 'B')">
                           {{
                             Number(control_log.fetched_number_b).toLocaleString(undefined, {
                               minimumFractionDigits: 0,
@@ -1045,6 +1041,8 @@ import IterationConfigBox from "./IterationConfigBox.vue";
 import ComparisonMatchCriteriaBox from "./ComparisonMatchCriteriaBox.vue";
 import ComparisonMisMatchCriteriaBox from "./ComparisonMisMatchCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
+import { escapeHtml } from "../utils/format";
+import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 
 export default {
   components: {
@@ -1085,14 +1083,7 @@ export default {
       datasourceListAOptions: null,
       datasourceListBOptions: null,
       withDeleteionDrop: "N",
-      scheduleObject: {
-        mday: null,
-        wday: null,
-        hour: "8",
-        min: "15",
-        sec: "0",
-        trigger_id: null,
-      },
+      scheduleObject: defaultSchedule(),
       ruleConfigObject: {},
       cmpOutputTable: [],
       ruleErrorObject: null,
@@ -1101,6 +1092,8 @@ export default {
       controlLogs: [],
       versionChanges: [],
       saving: false,
+      // True while a control is being loaded, so the datasource watchers don't reset its saved fields.
+      initializing: false,
       loadedUpdatedDate: null,
       $q: useQuasar(),
     };
@@ -1108,23 +1101,11 @@ export default {
   computed: {
     ...mapGetters(["controlCatalogueById"]),
     scheduleType() {
-      // Determine schedule type
-      if (
-        String(this.schedule_config).indexOf("/") > -1 ||
-        String(this.schedule_config).indexOf("-") > -1 ||
-        (String(this.scheduleObject.mday).indexOf(",") > -1 && String(this.scheduleObject.wday).indexOf(",") > -1) ||
-        (String(this.scheduleObject.hour) + String(this.scheduleObject.min) + String(this.scheduleObject.sec)).indexOf(",") > -1
-      ) {
-        return "X";
-      } else if (this.scheduleObject.hour == null && this.scheduleObject.min == null && this.scheduleObject.sec == null) {
-        return "C";
-      } else if (this.scheduleObject.mday) {
-        return "M";
-      } else if (this.scheduleObject.wday) {
-        return "W";
-      } else {
-        return "D";
-      }
+      return scheduleType(this.scheduleObject);
+    },
+    // ANL and REP read one datasource (source_name), REC and CMP read A and B.
+    singleSource() {
+      return this.control.control_type === "ANL" || this.control.control_type === "REP";
     },
   },
   methods: {
@@ -1150,7 +1131,7 @@ export default {
     showFullLog(control_log) {
       this.$q.dialog({
         title: this.control.control_name + " | " + " PID:" + control_log.process_id + " Full log",
-        message: "<pre>" + this.formattedJSON(control_log) + "</pre>",
+        message: "<pre>" + escapeHtml(this.formattedJSON(control_log)) + "</pre>",
         html: true,
         style: {
           width: "800px", // Adjust the width as needed
@@ -1164,7 +1145,7 @@ export default {
       }
       this.$q.dialog({
         title: this.control.control_name + " | " + this.controlVersion.label,
-        message: "<pre>" + this.formattedJSON(this.versionChanges) + "</pre>",
+        message: "<pre>" + escapeHtml(this.formattedJSON(this.versionChanges)) + "</pre>",
         html: true,
         style: {
           width: "800px", // Adjust the width as needed
@@ -1183,7 +1164,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceListOptions = this.datasourceList.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceListOptions = (this.datasourceList || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
 
       // setTimeout(() => {
@@ -1269,6 +1250,24 @@ export default {
         this.control.output_table_columns = this.datasourceColumns;
       }
     },
+    // Unset options (correlation_limit, fuzzy_optimization, ...) fall back to the rapo.ini defaults.
+    defaultReconciliationRuleConfig() {
+      return {
+        need_issues_a: true,
+        need_issues_b: true,
+        need_recons_a: false,
+        need_recons_b: false,
+        output_limit_a: null,
+        output_limit_b: null,
+        allow_duplicates: false,
+        time_shift_from: 0,
+        time_shift_to: 0,
+        time_tolerance_from: 0,
+        time_tolerance_to: 0,
+        correlation_config: [],
+        discrepancy_config: [],
+      };
+    },
     controlTypeChanged(newValue) {
       this.control.source_name = null;
       this.control.source_name_a = null;
@@ -1295,32 +1294,15 @@ export default {
       this.control.output_limit = null;
 
       if (newValue === "REC") {
-        this.ruleConfigObject = {
-          need_issues_a: true,
-          need_issues_b: true,
-          need_recons_a: false,
-          need_recons_b: false,
-          output_limit_a: null,
-          output_limit_b: null,
-          allow_duplicates: false,
-          correlation_limit: true,
-          time_shift_from: 0,
-          time_shift_to: 0,
-          time_tolerance_from: 0,
-          time_tolerance_to: 0,
-          correlation_config: [],
-          discrepancy_config: [],
-        };
+        this.ruleConfigObject = this.defaultReconciliationRuleConfig();
 
         this.control.source_key_field_a = "TAG";
         this.control.source_key_field_b = "TAG";
       } else if (newValue === "CMP") {
         this.ruleConfigObject = [];
         this.ruleErrorObject = [];
-      } else if (newValue === "REP") {
-        this.ruleConfigObject = {};
-      } else if (newValue === "ANL") {
-        this.ruleConfigObject = {};
+      } else {
+        this.ruleConfigObject = null;
       }
     },
     async getControlVersions(controlId) {
@@ -1445,42 +1427,15 @@ export default {
           this.ruleConfigObject = JSON.parse(this.control.rule_config);
         } else {
           if (this.control.control_type === "REC") {
-            this.ruleConfigObject = {
-              need_issues_a: true,
-              need_issues_b: true,
-              need_recons_a: false,
-              need_recons_b: false,
-              allow_duplicates: false,
-              time_shift_from: 0,
-              time_shift_to: 0,
-              time_tolerance_from: 0,
-              time_tolerance_to: 0,
-              correlation_config: [],
-              discrepancy_config: [],
-            };
+            this.ruleConfigObject = this.defaultReconciliationRuleConfig();
           } else if (this.control.control_type === "CMP") {
             this.ruleConfigObject = [];
-          } else if (this.control.control_type === "REP") {
-            this.ruleConfigObject = null;
-          } else if (this.control.control_type === "ANL") {
-            this.ruleConfigObject = null;
           } else {
             this.ruleConfigObject = null;
           }
         }
 
-        if (this.control.schedule_config) {
-          this.scheduleObject = this.toScheduleObject(this.control.schedule_config);
-        } else {
-          this.scheduleObject = {
-            mday: null,
-            wday: null,
-            hour: "8",
-            min: "15",
-            sec: "0",
-            trigger_id: null,
-          };
-        }
+        this.scheduleObject = this.control.schedule_config ? parseSchedule(this.control.schedule_config) : defaultSchedule();
 
         if (this.control.error_definition && this.control.control_type == "CMP") {
           this.ruleErrorObject = JSON.parse(this.control.error_definition);
@@ -1504,20 +1459,29 @@ export default {
       }
     },
     controlVersionChanged() {
-      var oldVersion = this.controlVersions[0];
-      this.control = this.controlVersion;
-      // iterate through oldVersion and this.control and locate differences and create an array of changes
+      const oldVersion = this.controlVersions[0];
+      const newVersion = this.controlVersion;
+      // iterate through oldVersion and newVersion and locate differences and create an array of changes
       this.versionChanges = [];
       for (const key in oldVersion) {
-        if (oldVersion[key] !== this.control[key] && key !== "label" && key !== "audit_date" && key !== "updated_date" && key !== "updated_by") {
+        if (oldVersion[key] !== newVersion[key] && key !== "label" && key !== "audit_date" && key !== "updated_date" && key !== "updated_by") {
           this.versionChanges.push({
             field: key,
             oldValue: oldVersion[key],
-            newValue: this.control[key],
+            newValue: newVersion[key],
           });
         }
       }
+      this.loadControl(newVersion);
+    },
+    // Edit a copy: the catalogue and version rows must not see unsaved edits.
+    async loadControl(data) {
+      this.initializing = true;
+      this.control = JSON.parse(JSON.stringify(data));
       this.initializeControl();
+      // Let the datasource watchers fire for this assignment before re-enabling them.
+      await this.$nextTick();
+      this.initializing = false;
     },
     deletionDropChanged() {
       if (this.withDeleteionDrop === "N") {
@@ -1537,76 +1501,13 @@ export default {
       }
       return str;
     },
-    toScheduleString(scheduleObject) {
-      var ret = {
-        mday: scheduleObject.mday ? String(scheduleObject.mday) : null,
-        wday: scheduleObject.wday ? String(scheduleObject.wday) : null,
-        hour: scheduleObject.hour != null ? String(scheduleObject.hour) : null,
-        min: scheduleObject.min != null ? String(scheduleObject.min) : null,
-        sec: scheduleObject.sec != null ? String(scheduleObject.sec) : null,
-        trigger_id: scheduleObject.trigger_id ? scheduleObject.trigger_id : null,
-      };
-      return JSON.stringify(ret);
-    },
-    toScheduleObject(scheduleString) {
-      var ret = {
-        mday: null,
-        wday: null,
-        hour: "8",
-        min: "15",
-        sec: "0",
-        trigger_id: null,
-      };
-
-      var scheduleType = null;
-
-      if (scheduleString) {
-        ret = JSON.parse(scheduleString);
-        // Determine schedule type
-        if (!scheduleType) {
-          if (
-            String(scheduleString).indexOf("/") > -1 ||
-            String(scheduleString).indexOf("-") > -1 ||
-            (String(ret.mday).indexOf(",") > -1 && String(ret.wday).indexOf(",") > -1) ||
-            (String(ret.hour) + String(ret.min) + String(ret.sec)).indexOf(",") > -1
-          ) {
-            scheduleType = "X";
-          } else if (!ret.hour && !ret.min && !ret.sec) {
-            scheduleType = "C";
-          } else if (ret.mday) {
-            scheduleType = "M";
-          } else if (ret.wday) {
-            scheduleType = "W";
-          } else {
-            scheduleType = "D";
-          }
-
-          // Convert components to arrays in case of simple scheduler
-          if (scheduleType !== "X") {
-            if (ret.mday) {
-              ret.mday = String(ret.mday)
-                .split(",")
-                .map((i) => Number(i));
-            }
-
-            if (ret.wday) {
-              ret.wday = String(ret.wday)
-                .split(",")
-                .map((i) => Number(i));
-            }
-          }
-        }
-      }
-
-      return ret;
-    },
     save() {
       // Add new line if last line contains a comment to avoid RAPO SQL builder issue
       this.control.source_filter = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter);
       this.control.source_filter_a = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter_a);
       this.control.source_filter_b = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter_b);
 
-      this.control.schedule_config = this.toScheduleString(this.scheduleObject);
+      this.control.schedule_config = serializeSchedule(this.scheduleObject);
 
       // ANL rule
       if (this.control.control_type === "ANL") {
@@ -1746,6 +1647,10 @@ export default {
           this.$q.notify({ type: "negative", message: "Control was not saved. " + error.message });
         });
     },
+    isBlank(value) {
+      // Number inputs give "" when cleared; 0 is a valid value.
+      return value == null || value === "";
+    },
     validateAndSave() {
       var errorTab = null;
       if (!this.control.control_name) {
@@ -1780,15 +1685,15 @@ export default {
           });
           errorTab = "data";
         }
-      } else if (this.control.control_type === "ANL" || this.control.control_type === "REP") {
-        if (!this.control.source_name) {
-          this.$q.notify({
-            type: "negative",
-            message: "Please select a data source.",
-          });
-          errorTab = "data";
-        }
-      } else if (!this.control.period_back || !this.control.period_number) {
+      } else if ((this.control.control_type === "ANL" || this.control.control_type === "REP") && !this.control.source_name) {
+        this.$q.notify({
+          type: "negative",
+          message: "Please select a data source.",
+        });
+        errorTab = "data";
+      }
+
+      if (!errorTab && (this.isBlank(this.control.period_back) || this.isBlank(this.control.period_number))) {
         this.$q.notify({
           type: "negative",
           message: "Please enter a period back and number of periods.",
@@ -1842,7 +1747,7 @@ export default {
       control.control_name = this.control.control_name;
       control.control_type = this.control.control_type;
 
-      if (control.control_type == "REP") {
+      if (control.control_type == "REP" && side == "B") {
         this.$q.notify({ type: "negative", message: "Source B SQL generation is not possible for Reports." });
         return;
       }
@@ -2117,15 +2022,17 @@ export default {
       });
     },
     reloadControl(latest) {
-      this.control = latest;
       this.versionChanges = [];
+      this.loadControl(latest);
       this.getControlVersions(this.controlId);
-      this.initializeControl();
     },
   },
   watch: {
     "control.source_name": function (newDatasource, oldDatasource) {
-      if ((oldDatasource && newDatasource && oldDatasource !== newDatasource) || !this.control.control_id) {
+      if (this.initializing) {
+        return;
+      }
+      if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceColumns = data;
           // this.control.output_table_columns = data;
@@ -2141,7 +2048,10 @@ export default {
       }
     },
     "control.source_name_a": function (newDatasource, oldDatasource) {
-      if ((oldDatasource && newDatasource && oldDatasource !== newDatasource) || !this.control.control_id) {
+      if (this.initializing) {
+        return;
+      }
+      if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceAColumns = data;
           // this.control.source_filter_a = "-- Columns:" + JSON.stringify(data) + "\n";
@@ -2159,8 +2069,11 @@ export default {
       });
     },
     "control.source_name_b": function (newDatasource, oldDatasource) {
+      if (this.initializing) {
+        return;
+      }
       // this.control.source_filter_b = "";
-      if ((oldDatasource && newDatasource && oldDatasource !== newDatasource) || !this.control.control_id) {
+      if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceBColumns = data;
           // this.control.source_filter_b = "-- Columns: " + JSON.stringify(data) + "\n";
@@ -2188,18 +2101,17 @@ export default {
     }
 
     if (controlData) {
-      this.control = controlData;
-      this.getControlVersions(this.controlId);
-      this.getControlLogs(this.control.control_name, this.log_days_back);
-
-      // Force insert instead of update if clone
       if (this.$route.query.clone) {
-        delete this.control.control_id;
-        this.control.control_name = this.control.control_name + "_CLONE";
+        // Force insert instead of update
+        controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
+      }
+      await this.loadControl(controlData);
+      if (this.control.control_id) {
+        this.getControlVersions(this.controlId);
+        this.getControlLogs(this.control.control_name, this.log_days_back);
       }
       this.loadedUpdatedDate = this.control.updated_date;
       this.startLiveUpdates();
-      this.initializeControl();
     } else {
       // NEW CONTROL
       this.control = {

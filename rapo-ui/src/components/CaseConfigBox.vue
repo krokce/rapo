@@ -12,17 +12,17 @@
               Map to this id below in "Case mapping". <br />Value will be written in RAPO_RESULT_KEY column in the discrepancy table.
             </q-tooltip>
           </q-input>
-          <q-input outlined class="col-3" v-model.number="caseConfigObject[index].case_value" label="Value">
+          <q-input outlined class="col-3" v-model="caseConfigObject[index].case_value" label="Value">
             <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
               Name of the case e.g. "Customer not defined". <br />Value will be written in RAPO_RESULT_VALUE column in the discrepancy table.
             </q-tooltip>
           </q-input>
-          <q-input outlined class="col-2" v-model.number="caseConfigObject[index].case_type" label="Type">
+          <q-input outlined class="col-2" v-model="caseConfigObject[index].case_type" label="Type">
             <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
               Case type e.g. "Error". <br />Value will be written in RAPO_RESULT_TYPE column in the discrepancy table.
             </q-tooltip>
           </q-input>
-          <q-input outlined class="col-4" v-model.number="caseConfigObject[index].case_description" label="Description">
+          <q-input outlined class="col-4" v-model="caseConfigObject[index].case_description" label="Description">
             <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
               Case description for documentation purpose. <br />Used and visible only here in control config.
             </q-tooltip>

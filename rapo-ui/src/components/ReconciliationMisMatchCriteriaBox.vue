@@ -115,8 +115,8 @@
                 ruleConfigObject.discrepancy_config[index].formula_mode = value;
                 if (value) {
                   ruleConfigObject.discrepancy_config[index].formula_alias = ruleConfigObject.discrepancy_config[index].field_a;
-                  ruleConfigObject.discrepancy_config[index].field_a = 'a.' + ruleConfigObject.discrepancy_config[index].field_a;
-                  ruleConfigObject.discrepancy_config[index].field_b = 'b.' + ruleConfigObject.discrepancy_config[index].field_b;
+                  ruleConfigObject.discrepancy_config[index].field_a = 'a.' + (ruleConfigObject.discrepancy_config[index].field_a || '');
+                  ruleConfigObject.discrepancy_config[index].field_b = 'b.' + (ruleConfigObject.discrepancy_config[index].field_b || '');
                 } else {
                   ruleConfigObject.discrepancy_config[index].field_a = null;
                   ruleConfigObject.discrepancy_config[index].field_b = null;
@@ -175,8 +175,8 @@ export default {
   methods: {
     addCorrelationConfig() {
       this.ruleConfigObject.discrepancy_config.push({
-        field_a: this.datasourceAColumns[0],
-        field_b: this.datasourceBColumns[0],
+        field_a: (this.datasourceAColumns || [])[0] ?? null,
+        field_b: (this.datasourceBColumns || [])[0] ?? null,
         numeric_tolerance_from: 0,
         numeric_tolerance_to: 0,
         percentage_mode: false,
@@ -195,7 +195,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceAList = this.datasourceAColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceAList = (this.datasourceAColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
     filterFieldListB(val, update, abort) {
@@ -206,7 +206,7 @@ export default {
 
       update(() => {
         const needle = val.toLowerCase();
-        this.datasourceBList = this.datasourceBColumns.filter((v) => v.toLowerCase().indexOf(needle) > -1);
+        this.datasourceBList = (this.datasourceBColumns || []).filter((v) => v.toLowerCase().indexOf(needle) > -1);
       });
     },
     onNewValue(index, field) {
