@@ -244,13 +244,24 @@
         </template>
       </q-input>
     </div>
+
+    <div class="row items-center q-mt-xs text-grey-8" v-if="scheduleType !== 'C'">
+      <q-icon name="fas fa-calendar-alt" color="blue-grey-4" class="q-mr-sm" />
+      <span class="q-mr-sm">Next fires:</span>
+      <span v-if="previewError" class="text-deep-orange">{{ previewError }}</span>
+      <span v-else-if="preview && !preview.length" class="text-deep-orange">never</span>
+      <q-chip v-for="fire in preview" :key="fire" dense square color="blue-grey-1" text-color="blue-grey-9">
+        {{ toDateTimeString(fire) }}
+      </q-chip>
+    </div>
   </div>
 </template>
 
 <script>
 import { mapActions, mapState } from "vuex";
-import { notifyError } from "../api";
-import { scheduleType, scheduleTime } from "../utils/schedule";
+import { api, notifyError } from "../api";
+import { toDateTimeString } from "../utils/format";
+import { scheduleType, scheduleTime, serializeSchedule } from "../utils/schedule";
 
 export default {
   // modelValue is the parent's schedule object and is edited in place.
@@ -262,6 +273,8 @@ export default {
       scheduleType: null,
       scheduleTimepicker: null,
       controlFilter: "",
+      preview: null,
+      previewError: null,
 
       examples: {
         mday: [
@@ -309,6 +322,24 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlCatalogue"]),
+    toDateTimeString,
+    // Next fires as the server computes them, so the preview follows the scheduler's own rules.
+    schedulePreview() {
+      clearTimeout(this.previewTimer);
+      this.previewTimer = setTimeout(async () => {
+        const scheduleConfig = serializeSchedule(this.scheduleObject);
+        try {
+          const preview = await api("schedule-preview", { params: { schedule_config: scheduleConfig }, loadingBar: false });
+          if (scheduleConfig === serializeSchedule(this.scheduleObject)) {
+            this.preview = preview;
+            this.previewError = null;
+          }
+        } catch (error) {
+          this.preview = null;
+          this.previewError = error.message;
+        }
+      }, 400);
+    },
     filterControlCatalogue(val, update) {
       update(() => {
         this.controlFilter = val;
@@ -349,10 +380,20 @@ export default {
     modelValue() {
       this.initSchedule();
     },
+    scheduleObject: {
+      handler() {
+        this.schedulePreview();
+      },
+      deep: true,
+    },
   },
   mounted() {
     this.initSchedule();
+    this.schedulePreview();
     this.updateControlCatalogue().catch((error) => notifyError("Failed to load controls.", error));
+  },
+  unmounted() {
+    clearTimeout(this.previewTimer);
   },
 };
 </script>

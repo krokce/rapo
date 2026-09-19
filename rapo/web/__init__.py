@@ -29,6 +29,10 @@ class Server:
         self.host = host or config['API'].get('host') or '127.0.0.1'
         self.port = port or config['API'].get('port') or 8080
         self.dev = True if dev is True or 'dev' in argv else False
+        # A reload restarts the scheduler with every change, so development
+        # servers run without it unless asked to.
+        self.scheduler = False if self.dev and '--scheduler' not in argv \
+            else None
 
         self.table = db.tables.web_api
         self.record = reader.read_web_api_record()
@@ -61,6 +65,8 @@ class Server:
         script = [sys.executable, '-m', 'uvicorn', APP]
         args = ['--host', self.host, '--port', str(self.port)]
         env = os.environ.copy()
+        if self.scheduler is False:
+            env['RAPO_SCHEDULER'] = '0'
         self.start_date = dt.datetime.now()
         self.status = True
         if self.dev is True:

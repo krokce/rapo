@@ -47,3 +47,42 @@ export const PERIOD_TYPE_OPTIONS = [
   { label: "Week", value: "W" },
   { label: "Month", value: "M" },
 ];
+
+// Scheduler event types (rapo_scheduler_event.event_type): what happened to one run request.
+export const SCHEDULER_EVENT_TYPES = {
+  FIRED: { label: "Queued", icon: "fas fa-hourglass-half", color: "indigo" },
+  STARTED: { label: "Started", icon: "fas fa-play-circle", color: "blue" },
+  MISSED: { label: "Missed", icon: "fas fa-exclamation-triangle", color: "amber-8" },
+  FAILED: { label: "Failed", icon: "fas fa-exclamation-circle", color: "deep-orange" },
+  CANCELED: { label: "Canceled", icon: "fas fa-times-circle", color: "purple-3" },
+};
+
+export const SCHEDULER_EVENT_TYPE_OPTIONS = Object.entries(SCHEDULER_EVENT_TYPES).map(([value, type]) => ({ label: type.label, value }));
+
+export function schedulerEventType(type) {
+  return SCHEDULER_EVENT_TYPES[type] || { label: type || "Unknown", icon: "fas fa-question-circle", color: "grey" };
+}
+
+// What requested a run (rapo_scheduler_event.trigger_type).
+export const TRIGGER_TYPES = {
+  SCHEDULE: { label: "Schedule", icon: "fas fa-clock" },
+  MANUAL: { label: "Manual", icon: "fas fa-user" },
+  CATCHUP: { label: "Catch-up", icon: "fas fa-history" },
+  ITERATION: { label: "Iteration", icon: "fas fa-redo" },
+  CASCADE: { label: "Cascade", icon: "fas fa-sitemap" },
+};
+
+export const TRIGGER_TYPE_OPTIONS = Object.entries(TRIGGER_TYPES).map(([value, type]) => ({ label: type.label, value }));
+
+// Scheduler states reported by /scheduler-status for this server.
+export const SCHEDULER_STATES = {
+  running: { label: "Running", color: "green", description: "This server runs the scheduler." },
+  standby: { label: "Standby", color: "blue-grey", description: "Another server runs the scheduler, this one takes over if it stops." },
+  starting: { label: "Starting", color: "amber-8", description: "The scheduler is acquiring its lease." },
+  stopped: { label: "Stopped", color: "deep-orange", description: "The scheduler was stopped from the UI on all servers." },
+  off: { label: "Off", color: "grey", description: "The scheduler is disabled for this server (rapo.ini or development mode)." },
+};
+
+export function schedulerState(state) {
+  return SCHEDULER_STATES[state] || { label: state || "Unknown", color: "grey", description: "" };
+}

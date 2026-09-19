@@ -22,10 +22,9 @@ sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=[])
 class Watcher:
     """Watches application tables and notifies connected UI clients.
 
-    Scheduler and control processes write to the database, not to the web
-    API process, so changes are detected by comparing a cheap signature of
-    each table on every tick. The watcher only runs while clients are
-    connected.
+    Control processes write to the database, not to the web API process,
+    so changes are detected by comparing a cheap signature of each table on
+    every tick. The watcher only runs while clients are connected.
     """
 
     def __init__(self):
@@ -34,6 +33,7 @@ class Watcher:
         self.loop = None
         self.wake = None
         self.states = {}
+        self.scheduler_changed = False
 
     def start(self):
         """Start watching if not already started."""
@@ -71,11 +71,15 @@ class Watcher:
 
     async def check(self):
         """Emit events for tables changed since the previous check."""
-        runs, controls = await asyncio.to_thread(self.read)
+        changed, self.scheduler_changed = self.scheduler_changed, False
+        runs, controls, events = await asyncio.to_thread(self.read)
         if runs:
             await sio.emit('runs:changed', runs)
         if controls:
             await sio.emit('controls:changed', controls)
+        if events or changed:
+            await sio.emit('scheduler:changed',
+                           {'event_ids': events['ids'] if events else []})
 
     def read(self):
         log = db.tables.log
@@ -99,7 +103,9 @@ class Watcher:
         if controls:
             controls = {'resync': controls['resync'],
                         'control_ids': controls['ids']}
-        return runs, controls
+        event = db.tables.scheduler_event
+        events = self.diff(event, event.c.event_id, event.c.updated)
+        return runs, controls, events
 
     def diff(self, table, id_column, updated_column):
         """Get IDs of rows changed since the previous call.
@@ -175,4 +181,10 @@ async def disconnect(sid, *args):
 
 def poke():
     """Request an immediate check of changes, e.g. after an API mutation."""
+    watcher.poke()
+
+
+def poke_scheduler():
+    """Notify clients about a scheduler or run manager state change."""
+    watcher.scheduler_changed = True
     watcher.poke()

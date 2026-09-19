@@ -343,10 +343,48 @@ create table rapo_scheduler (
   start_date date,
   stop_date  date,
   status     varchar2(1) not null,
+  heartbeat   date,
+  instance_id varchar2(64 char),
+  disabled    varchar2(1) default 'N' not null,
   constraint rapo_scheduler_pk primary key (id)
 );
 insert into rapo_scheduler (id, status) values ('RAPO.SCHEDULER', 'N');
 commit;
+
+create table rapo_scheduler_event (
+  event_id       number(*, 0),
+  control_id     number(*, 0),
+  trigger_type   varchar2(10 char),
+  event_type     varchar2(10 char),
+  scheduled_time date,
+  event_time     date,
+  start_time     date,
+  updated        date,
+  process_id     number(*, 0),
+  message        varchar2(4000 char),
+  runner         varchar2(255 char),
+  constraint rapo_scheduler_event_pk primary key (event_id)
+);
+
+create index rapo_scheduler_event_ctl_ix on rapo_scheduler_event (control_id, event_time);
+create index rapo_scheduler_event_time_ix on rapo_scheduler_event (event_time);
+create index rapo_scheduler_event_prc_ix on rapo_scheduler_event (process_id);
+create index rapo_scheduler_event_upd_ix on rapo_scheduler_event (updated);
+
+create sequence rapo_scheduler_event_seq
+increment by 1
+start with 1
+nocache;
+
+create or replace trigger rapo_scheduler_event_id_trg
+before insert on rapo_scheduler_event
+for each row
+begin
+  select rapo_scheduler_event_seq.nextval
+    into :new.event_id
+    from dual;
+end;
+/
 
 create table rapo_web_api (
   id         varchar2(15 char) not null,

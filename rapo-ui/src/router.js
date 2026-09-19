@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import ControlCatalogue from "./components/ControlCatalogue.vue";
 import ControlEdit from "./components/ControlEdit.vue";
 import ControlResults from "./components/ControlResults.vue";
+import SchedulerPage from "./components/SchedulerPage.vue";
 import TokenBox from "./components/TokenBox.vue";
 import store from "./store";
 
@@ -30,6 +31,12 @@ const router = createRouter({
       name: "results",
       path: "/results",
       component: ControlResults,
+    },
+    {
+      name: "scheduler",
+      path: "/scheduler",
+      meta: { hideSearch: true },
+      component: SchedulerPage,
     },
     {
       name: "edit-control",

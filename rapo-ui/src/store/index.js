@@ -15,6 +15,7 @@ const store = createStore({
       envVersion: null,
       envInfo: null,
       envParameters: null,
+      schedulerStatus: null,
     };
   },
   mutations: rootMutations,

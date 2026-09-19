@@ -189,6 +189,12 @@ class Control:
         self.process = None
         self.handler = None
 
+        # Optional callable taking this control, called once the control is
+        # initiated. Iterations and cascades inherit it, so the run manager
+        # can follow every run performed in one control process.
+        self.observer = None
+        self.trigger = None
+
         self.process_id = process_id
         if self.result:
             self.start_date = self.result['start_date']
@@ -377,10 +383,10 @@ class Control:
     def duration(self):
         """Get control duration."""
         if self.start_date and self.end_date:
-            return (self.end_date-self.start_date).seconds
+            return int((self.end_date-self.start_date).total_seconds())
         elif self.start_date:
             current_date = dt.datetime.now()
-            return (current_date-self.start_date).seconds
+            return int((current_date-self.start_date).total_seconds())
         else:
             return 0
 
@@ -735,6 +741,8 @@ class Control:
                 control = self.__class__(name=self.name,
                                          timestamp=self.timestamp,
                                          iteration_id=iteration_id)
+                control.observer = self.observer
+                control.trigger = 'ITERATION'
                 control.run()
 
     def cascade(self):
@@ -749,6 +757,8 @@ class Control:
                 control = self.__class__(name=control_name,
                                          timestamp=self.timestamp,
                                          **control_parameters)
+                control.observer = self.observer
+                control.trigger = 'CASCADE'
                 logger.info(f'Initiating control {target_label}] '
                             f'from control {source_label}...')
                 control.run()
@@ -772,7 +782,7 @@ class Control:
 
     def cancel(self):
         """Cancel control run."""
-        if self.working:
+        if self.working or self.initiated or self.waiting:
             self._deinitiate()
 
     def delete(self):
@@ -807,6 +817,11 @@ class Control:
             logger.debug(f'{self} New record in {db.tables.log} created')
             logger.info(f'{self} Control owns process ID {self.process_id}')
             logger.info(f'{self} Control initiated')
+            if self.observer:
+                try:
+                    self.observer(self)
+                except Exception:
+                    logger.error()
             return self._continue()
 
     def _deinitiate(self):
