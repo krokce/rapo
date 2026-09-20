@@ -53,6 +53,12 @@ Rapo runs from its own folder (the application folder) with a virtual environmen
     ```
    `rapo-server stop` stops it. The `rapo-scheduler` command is deprecated: the scheduler is part of the server.
 
+   To start, stop, restart or inspect the server from outside the application folder, use the `rapo-ctl.sh start [dev] | stop | restart | status` wrapper in it. It resolves its own paths and virtual environment, so it needs no environment of its own, which makes it the command to start Rapo on boot:
+    ```cron
+    @reboot /path/to/rapo/rapo-ctl.sh start --wait 600
+    ```
+   `--wait` keeps retrying for that many seconds while the database is still coming up, and every action is logged to `rapo-ctl.log` in the log directory.
+
 Upgrading from an earlier version? Follow the instructions of each release in [migrations](migrations/), in order.
 
 ## Usage
