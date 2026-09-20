@@ -3,9 +3,9 @@
 All control runs of the server, scheduled or requested from the UI, go
 through one run manager. Each run is initiated at once, so it is visible in
 the UI, then waits in a FIFO queue for one of `control_parallelism`
-execution slots and is performed in its own spawned OS process. Iterations
-and cascades of a scheduled run are performed in the same process after the
-run itself.
+execution slots and is performed in its own spawned OS process. The cascade
+and the iterations a run asks for are performed in the same process after
+the run itself.
 
 A supervisor thread follows every process and terminates it when its current
 run is canceled (status voided in `rapo_log`) or exceeds its timeout.
@@ -39,6 +39,19 @@ def _is_late(since, limit):
     return (dt.datetime.now()-since).total_seconds() > limit
 
 
+def _waiting_since(job, state):
+    """Get the moment a run waiting to start began to wait.
+
+    A job process performs the iterations and the cascade of its run, so its
+    own start says nothing about how long the run it currently performs has
+    been waiting. That run is counted from its own initiation, and the first
+    run of the process from the moment the process was spawned, so that time
+    spent in the execution queue is not counted against its timeout.
+    """
+    moments = [moment for moment in (job.started, state['added']) if moment]
+    return max(moments) if moments else None
+
+
 def get_runner_name():
     """Get stable name of this server used to mark the runs it owns."""
     port = config['API'].get('port') if config.check('API') else None
@@ -48,11 +61,12 @@ def get_runner_name():
 class Job:
     """Represents one control run owned by the run manager."""
 
-    def __init__(self, control, event_id, trigger_type, chain):
+    def __init__(self, control, event_id, trigger_type, cascade, iterations):
         self.control = control
         self.event_id = event_id
         self.trigger_type = trigger_type
-        self.chain = chain
+        self.cascade = cascade
+        self.iterations = iterations
         self.queued = dt.datetime.now()
         self.started = None
         self.process = None
@@ -135,9 +149,13 @@ class RunManager:
             self._drop(job, message)
         logger.info('Run manager stopped')
 
-    def submit(self, name, trigger_type, timestamp=None, chain=False,
-               **params):
+    def submit(self, name, trigger_type, timestamp=None, cascade=False,
+               iterations=False, **params):
         """Initiate control run and queue it for execution.
+
+        The run process performs the cascade and the iterations of the run
+        when they are asked for. A scheduled run asks for both; a manual one
+        asks for the iterations only when they were requested.
 
         Returns
         -------
@@ -157,7 +175,7 @@ class RunManager:
             self._notify()
             return event_id
         journal.update(event_id, process_id=control.process_id)
-        job = Job(control, event_id, trigger_type, chain)
+        job = Job(control, event_id, trigger_type, cascade, iterations)
         with self.condition:
             self.pending.append(job)
             self.condition.notify_all()
@@ -271,8 +289,8 @@ class RunManager:
         context = mp.get_context('spawn')
         job.current = context.Value('q', control.process_id)
         process = context.Process(name=control.name, target=operate,
-                                  args=(control, job.chain, job.current,
-                                        os.getpid(), self.name))
+                                  args=(control, job.cascade, job.iterations,
+                                        job.current, os.getpid(), self.name))
         # Started under the lock, so that a cancel arriving right now either
         # stops the job here or finds a process it can terminate.
         with self.condition:
@@ -323,7 +341,8 @@ class RunManager:
         elif status in ('S', 'P', 'F') and _is_late(state['start_date'],
                                                     timeout):
             reason = 'timeout'
-        elif status in ('I', 'W') and _is_late(job.started, timeout):
+        elif status in ('I', 'W') and _is_late(_waiting_since(job, state),
+                                              timeout):
             # Waiting for the instance limit or the control lock, which the
             # run itself does before it starts and can not time out on.
             reason = 'timeout'
@@ -417,7 +436,8 @@ class RunManager:
                 logger.error()
 
 
-def operate(control, chain, current, parent_pid, runner):
+def operate(control, cascade, iterations, current, parent_pid,
+            runner):
     """Perform control run in the spawned process."""
     watchdog = th.Thread(name='Watchdog', target=watch, args=(parent_pid,),
                          daemon=True)
@@ -427,8 +447,11 @@ def operate(control, chain, current, parent_pid, runner):
         current.value = run.process_id
         open_run_log(run.id, run.process_id)
         if run.trigger:
+            # The timestamp of a manual run is reconstructed from its window,
+            # so it is not a moment anything was scheduled for.
+            fired = run.timestamp if run.scheduled else None
             journal.record(run.id, run.trigger, journal.STARTED,
-                           scheduled_time=journal.to_datetime(run.timestamp),
+                           scheduled_time=journal.to_datetime(fired),
                            process_id=run.process_id, runner=runner,
                            start_time=dt.datetime.now())
 
@@ -437,8 +460,9 @@ def operate(control, chain, current, parent_pid, runner):
     control.observer = observe
     if control._throttle():
         control._resume()
-    if chain:
+    if iterations:
         control.iterate()
+    if cascade:
         control.cascade()
     db.engine.dispose()
 

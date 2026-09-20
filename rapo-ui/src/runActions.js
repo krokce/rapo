@@ -2,12 +2,15 @@
 // `run` needs control_name, control_type, process_id, date_from, date_to; `onDone` refreshes the caller's list.
 import { Dialog, Notify } from "quasar";
 import { api, notifyError } from "./api";
+import store from "./store";
+import { cascadeMessage, chainOf } from "./utils/schedule";
 import { copyText, escapeHtml, toDateString, toDateTimeString } from "./utils/format";
 
-function confirm(title, message) {
+// Resolves to false on cancel, otherwise to the selected options (an empty array when there are none).
+function confirm(title, message, options) {
   return new Promise((resolve) => {
-    Dialog.create({ title, message, cancel: true, persistent: true })
-      .onOk(() => resolve(true))
+    Dialog.create({ title, message, options, cancel: true, persistent: true })
+      .onOk((selected) => resolve(selected || []))
       .onCancel(() => {
         Notify.create({ message: "No action taken" });
         resolve(false);
@@ -19,16 +22,64 @@ function runLabel(run) {
   return `'${run.control_name} PID:${run.process_id}'`;
 }
 
+// The chain configuration lives in the catalogue, and this action is also reachable from the editor,
+// where it may not be loaded yet.
+async function chainOfRun(controlName) {
+  if (!store.state.controlCatalogue.length) {
+    try {
+      await store.dispatch("updateControlCatalogue");
+    } catch (error) {
+      return { iterations: 0, cascade: [] };
+    }
+  }
+  return chainOf(controlName, store.state.controlCatalogue);
+}
+
+// The iterations of a manual run are optional and off by default, so the confirmation offers them
+// as a checkbox naming the dates they would run for, which the engine computes.
+async function iterationOption(run, chain) {
+  if (!chain.iterations) {
+    return undefined;
+  }
+  let preview = [];
+  try {
+    preview = await api("iteration-preview", {
+      params: { name: run.control_name, date_from: toDateTimeString(run.date_from), date_to: toDateTimeString(run.date_to) },
+      loadingBar: false,
+    });
+  } catch (error) {
+    preview = [];
+  }
+  const dates = preview
+    .map((item) => {
+      const from = toDateString(item.date_from);
+      const to = toDateString(item.date_to);
+      return from === to ? from : `${from} - ${to}`;
+    })
+    .join(", ");
+  const label = `Run ${chain.iterations} iteration${chain.iterations > 1 ? "s" : ""}${dates ? ` (${dates})` : ""}`;
+  return { type: "checkbox", model: [], items: [{ label, value: "iterations" }] };
+}
+
 export async function reRun(run, onDone) {
   const from = toDateString(run.date_from);
   const to = toDateString(run.date_to);
-  if (!(await confirm(run.control_name, `Re-run for '${from}'${from !== to ? ` - '${to}'` : ""}?`))) {
+  const chain = await chainOfRun(run.control_name);
+  const note = cascadeMessage(chain.cascade);
+  const question = `Re-run for '${from}'${from !== to ? ` - '${to}'` : ""}?`;
+  const selected = await confirm(run.control_name, note ? `${question} ${note}` : question, await iterationOption(run, chain));
+  if (!selected) {
     return;
   }
   try {
     await api("run-control", {
       method: "POST",
-      params: { name: run.control_name, date_from: toDateTimeString(run.date_from), date_to: toDateTimeString(run.date_to) },
+      params: {
+        name: run.control_name,
+        date_from: toDateTimeString(run.date_from),
+        date_to: toDateTimeString(run.date_to),
+        iterations: selected.includes("iterations") ? "true" : null,
+      },
     });
     Notify.create({ type: "positive", message: "Control " + run.control_name + " queued for execution" });
     onDone();

@@ -361,7 +361,8 @@ class Scheduler:
                 continue
             try:
                 runner.submit(name, journal.SCHEDULE,
-                              timestamp=moment.timestamp(), chain=True)
+                              timestamp=moment.timestamp(),
+                              cascade=True, iterations=True)
             except Exception as error:
                 logger.error()
                 journal.record(control_id, journal.SCHEDULE, journal.FAILED,
