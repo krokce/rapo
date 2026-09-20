@@ -6,6 +6,27 @@
 ## Revenue Assurance Processes Optimizer
 Rapo is a Python instrument based on relational databases to build Revenue Assurance controls and, as a result, cover critical business risks and detect revenue leaks.
 
+## About this repository
+This is a **fork** of the original [Rapo project](https://github.com/t3eHawk/rapo) by Timur Faradzhov, taken at
+its v0.6.15, and it would not exist without it: the control engine, the reconciliation algorithm, the
+configuration model and the database schema are its work, and this fork builds on all of them.
+
+It also **merges in the [rapo-ui](https://github.com/krokce/rapo-ui) project**, the Vue web interface for Rapo,
+which used to live in a repository of its own and be deployed next to the backend. Here the UI source is
+`rapo-ui/` and its production build is committed as `rapo/web/ui/`, which the server itself serves, so backend and
+UI are versioned, released and installed as one thing and no Node is needed to install Rapo.
+
+On top of that the fork adds the FastAPI web server, live updates over socket.io, a scheduler that runs inside
+the server with a lease, an event history and missed-fire handling, a run manager that gives every run its own
+process, per-run log files shown in the UI, and a documented web API. The releases are described in
+[migrations/v0.7.0](migrations/v0.7.0/README.md) and
+[migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md).
+
+Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
+
+Releases of the fork carry a local version segment - `0.8.0+krokce.1` - because the original project keeps its own
+numbering and is at v0.6.15; the two version lines say nothing about each other.
+
 ## Prologue
 If you are part of the Revenue Assurance Team, then you probably know that the core is a system of controls that allows you to perform your daily responsibilities and generate reports required by business.
 
@@ -30,12 +51,45 @@ If you are a young RA Team or looking for some alternatives, try Rapo because:
 * This is a developing project with an open feature list and many plans.
 * Last but not least, Rapo is created by RA specialists with more than 10 years of expiriens, hundreds of found incidents, and, in turn, millions in saved revenue for their company and investors.
 
+## What you get
+* **Controls of four types** - analysis (`ANL`), reconciliation (`REC`), comparison (`CMP`) and report (`REP`).
+  A control is a row in the `rapo_config` table: its sources, SQL filters, matching rules, output and schedule.
+  The Python package is the generic engine that reads that row and runs its SQL against the database.
+* **A web UI** to write and edit those controls, to follow their runs day by day, to read the log of a single run
+  and to watch and steer the scheduler - served by the server itself, on the same port as the API.
+* **One server process**. `rapo-server` serves the API, the UI and the scheduler. Several servers may run against
+  the same database: they share the scheduler through a lease with a heartbeat, and each of them performs its own
+  runs.
+* **A run manager**. Every run, scheduled or started by hand, is initiated at once (visible and cancellable),
+  queued under `control_parallelism` and performed in its own process, with its `timeout` enforced and its
+  iterations and cascade following it in the same process.
+* **A scheduler that accounts for itself**. Schedule changes apply without a restart, fires are never dropped
+  silently, and a fire that fell into a downtime is recorded as missed and can be run later for its original
+  moment. Every run request is kept in `rapo_scheduler_event` with its trigger and its outcome.
+* **Live updates**. The server diffs the relevant tables and pushes the changes over socket.io, so the UI reacts
+  to what happens in the database rather than polling.
+* **Logs you can read**. One file per control run under `controls/<control_id>/<process_id>.log`, everything else
+  in `rapo-server_YYYYMMDD.log`, both cleaned up on a retention of their own and both reachable from the UI.
+* **A documented web API** ([reference](docs/api/README.md)) for reports, dashboards and scripts outside this
+  repository.
+
+## Repository layout
+| Path            | What it is                                                                              |
+|-----------------|-----------------------------------------------------------------------------------------|
+| `rapo/`         | the Python package: engine, algorithms, scheduler, run manager, FastAPI app              |
+| `rapo/web/ui/`  | the built UI bundle that the server serves and `setup.py` packages - generated, never edited by hand |
+| `rapo-ui/`      | the Vue 3 + Quasar source of that bundle (Node only needed to rebuild it)                |
+| `schema/`       | the database schema (`oracle.sql`)                                                       |
+| `migrations/`   | one folder per release: the upgrade SQL and the instructions                              |
+| `docs/api/`     | the web API reference                                                                     |
+
 ## Installation
-Rapo runs from its own folder (the application folder) with a virtual environment inside it. It is no longer published on PyPI.
+Rapo runs from its own folder (the application folder) with a virtual environment inside it. It is not published
+on PyPI.
 
 1. Get the source into the application folder and install it. Python 3.10 or newer is required.
     ```bash
-    git clone <rapo-repository-url> rapo
+    git clone https://github.com/krokce/rapo.git rapo
     cd rapo
     python3 -m venv .venv
     .venv/bin/pip install -r requirements.txt
@@ -65,3 +119,28 @@ Upgrading from an earlier version? Follow the instructions of each release in [m
 Prepare your controls using the configuration table as described in the documentation. Controls are created and edited in the web UI, which also shows their runs, their logs and the schedule.
 
 To drive Rapo from your own tools - running controls, reading their results, following the scheduler - see the [web API reference](docs/api/README.md).
+
+## Working on the UI
+The bundle in `rapo/web/ui/` is generated. To change the interface, edit `rapo-ui/src`, rebuild, and commit the
+bundle together with the source change (Node 22 / npm 10):
+```bash
+cd rapo-ui
+npm ci
+npm run build        # empties and rebuilds ../rapo/web/ui/
+npm run lint         # eslint + prettier
+```
+For development, run the server without the scheduler and the UI with hot reload against it:
+```bash
+.venv/bin/rapo-server start dev
+cd rapo-ui && RAPO_API_URL=http://localhost:<API.port> npm run serve
+```
+
+## Credits
+* [Timur Faradzhov](https://github.com/t3eHawk) - author of [Rapo](https://github.com/t3eHawk/rapo), the engine
+  this project is built on.
+* [Kostadin Taneski](https://github.com/krokce) - author of [rapo-ui](https://github.com/krokce/rapo-ui) and
+  maintainer of this fork.
+
+## License
+MIT, as the upstream projects. See [LICENSE](LICENSE) for the terms and [NOTICE](NOTICE) for the provenance of
+the parts.

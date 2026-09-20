@@ -1,0 +1,53 @@
+Rapo
+====
+
+This product is a fork of the Rapo project and incorporates the rapo-ui
+project. Both are MIT-licensed; this fork is distributed under the same terms
+(see LICENSE).
+
+
+Original work
+-------------
+
+Rapo - Revenue Assurance Processes Optimizer
+    Author:     Timur Faradzhov <timurfaradzhov@gmail.com>
+    Source:     https://github.com/t3eHawk/rapo
+    Forked at:  v0.6.15 (commit 513906f, "Set version 0.6.15")
+    License:    MIT
+
+The fork inherits the substance of that project and keeps building on it:
+
+    * the control engine and its run life cycle (rapo/core/)
+    * the reconciliation algorithm and its SQL stages (rapo/algorithms/)
+    * the control configuration model and the database schema (schema/)
+    * the database and configuration layers (rapo/database.py, rapo/config.py)
+
+
+Merged work
+-----------
+
+rapo-ui - Vue web interface for Rapo
+    Author:     Kostadin Taneski
+    Source:     https://github.com/krokce/rapo-ui
+    License:    MIT
+
+Merged into this repository as rapo-ui/ (source) and rapo/web/ui/ (the built
+bundle the server serves), so that the backend and the interface are versioned
+and released together.
+
+
+Changes in this fork
+--------------------
+
+    Maintainer: Kostadin Taneski <kosta@taneski.com>
+    Source:     https://github.com/krokce/rapo
+
+Principally: the FastAPI web server and its documented API, live updates over
+socket.io, the scheduler moved inside the server with a lease, an event history
+and missed-fire handling, the run manager that gives every run its own process,
+and per-run log files surfaced in the UI. The releases are described in
+migrations/v0.7.0/README.md and migrations/v0.8.0/CHANGELOG.md.
+
+Version numbers of this fork carry a local segment (for example 0.8.0+krokce.1)
+so that they cannot be mistaken for releases of the original project, whose own
+numbering continues independently.
