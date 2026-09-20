@@ -7,7 +7,8 @@ import setuptools
 name = rapo.__name__
 version = rapo.__version__
 author = rapo.__author__
-author_email = rapo.__email__
+maintainer = rapo.__maintainer__
+maintainer_email = rapo.__email__
 description = rapo.__doc__
 license = rapo.__license__
 python_requires = '>=3.10'
@@ -31,7 +32,8 @@ entry_points = {
 setuptools.setup(name=name,
                  version=version,
                  author=author,
-                 author_email=author_email,
+                 maintainer=maintainer,
+                 maintainer_email=maintainer_email,
                  description=description,
                  license=license,
                  python_requires=python_requires,

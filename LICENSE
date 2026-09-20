@@ -1,4 +1,13 @@
+MIT License
+
 Copyright (c) 2018 The Python Packaging Authority
+Copyright (c) 2026 Kostadin Taneski
+
+The first notice above is reproduced verbatim from the LICENSE of the original
+Rapo project by Timur Faradzhov (https://github.com/t3eHawk/rapo), which this
+software is a fork of. The second covers the changes made in this fork and the
+rapo-ui project (https://github.com/krokce/rapo-ui) merged into it. See NOTICE
+for what comes from where.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
