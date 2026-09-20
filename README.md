@@ -1,12 +1,7 @@
 # Rapo
 
-[![version](https://img.shields.io/pypi/v/rapo)](https://pypi.org/project/rapo/)
-[![release](https://img.shields.io/github/v/release/t3eHawk/rapo?include_prereleases)](https://github.com/t3eHawk/rapo/)
-[![release date](https://img.shields.io/github/release-date-pre/t3eHawk/rapo)](https://github.com/t3eHawk/rapo/releases/)
-[![last commit](https://img.shields.io/github/last-commit/t3eHawk/rapo)](https://github.com/t3eHawk/rapo/commits/)
-[![downloads](https://img.shields.io/pypi/dm/rapo)](https://pypi.org/project/rapo/)
-[![python](https://img.shields.io/pypi/pyversions/rapo)](https://pypi.org/project/rapo/)
-[![license](https://img.shields.io/pypi/l/rapo)](https://mit-license.org)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## Revenue Assurance Processes Optimizer
 Rapo is a Python instrument based on relational databases to build Revenue Assurance controls and, as a result, cover critical business risks and detect revenue leaks.
@@ -36,16 +31,31 @@ If you are a young RA Team or looking for some alternatives, try Rapo because:
 * Last but not least, Rapo is created by RA specialists with more than 10 years of expiriens, hundreds of found incidents, and, in turn, millions in saved revenue for their company and investors.
 
 ## Installation
-Start with install using _pip_:
-```
-pip install rapo
-```
+Rapo runs from its own folder (the application folder) with a virtual environment inside it. It is no longer published on PyPI.
+
+1. Get the source into the application folder and install it. Python 3.10 or newer is required.
+    ```bash
+    git clone <rapo-repository-url> rapo
+    cd rapo
+    python3 -m venv .venv
+    .venv/bin/pip install -r requirements.txt
+    .venv/bin/pip install --no-build-isolation -e .
+    ```
+   The built web UI is part of the source, so Node is not needed to install Rapo.
 
 1. Deploy the database schema using the [scripts](schema/oracle.sql).
 
 1. Prepare the configuration file _rapo.ini_ (start from `cp rapo.ini.example rapo.ini` and fill in the credentials and token) and place it in the application folder (next to the `rapo` package), or point the `RAPO_CONFIG` environment variable to it.
 
-3. Create a special file called _scheduler.py_ with `rapo.Scheduler()` declared and execute it as follows `python scheduler.py start`.
+1. Start the server. It serves the API and the web UI on `[API] port` and runs the scheduler.
+    ```bash
+    .venv/bin/rapo-server start
+    ```
+   `rapo-server stop` stops it. The `rapo-scheduler` command is deprecated: the scheduler is part of the server.
+
+Upgrading from an earlier version? Follow the instructions of each release in [migrations](migrations/), in order.
 
 ## Usage
-Prepare your controls using the configuration table as described in the documentation.
+Prepare your controls using the configuration table as described in the documentation. Controls are created and edited in the web UI, which also shows their runs, their logs and the schedule.
+
+To drive Rapo from your own tools - running controls, reading their results, following the scheduler - see the [web API reference](docs/api/README.md).
