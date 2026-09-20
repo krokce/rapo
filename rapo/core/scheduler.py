@@ -202,6 +202,10 @@ class Scheduler:
             return
         self._load(now)
         self._fire()
+        if not self.leader:
+            # The lease was lost during this pass, so the maintenance of the
+            # new holder is not duplicated here.
+            return
         self._maintain(now)
         self.wake.wait(self._delay())
 
@@ -351,6 +355,16 @@ class Scheduler:
                 fires.append((moment, name, item['control_id']))
         self.cursor = now
         for moment, name, control_id in sorted(fires):
+            # A pass that took longer than the lease renews it here instead of
+            # at the next step, so a server that lost the lease while it was
+            # busy does not submit fires the new holder has already recorded
+            # as missed.
+            if time.time()-self.heartbeat >= LEASE_INTERVAL:
+                self._lease()
+            if not self.leader:
+                logger.warning('Scheduler lease lost, remaining fires of '
+                               'this pass abandoned')
+                break
             late = (now-moment).total_seconds()
             if late > LATE_TOLERANCE:
                 journal.record(control_id, journal.SCHEDULE, journal.MISSED,
