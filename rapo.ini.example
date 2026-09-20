@@ -74,4 +74,9 @@ host=0.0.0.0
 port=7005
 # Bearer token required by every /api request. Generate a strong one, e.g.:
 #     python -c "import secrets; print(secrets.token_urlsafe(32))"
+# A digits-only token is read as a number, so prefer a mixed one.
 token=change_me
+# Serve the Swagger UI at /api/docs and the schema at /api/openapi.json.
+# Neither can carry the Bearer token, so they describe the whole API to
+# anyone able to reach the port. Off unless set.
+docs=False

@@ -49,7 +49,7 @@ class Job:
         self.started = None
         self.process = None
         self.current = None
-        self.checked = 0
+        self.canceled = False
 
     @property
     def process_id(self):
@@ -116,6 +116,8 @@ class RunManager:
             self.active = False
             pending = list(self.pending)
             running = list(self.running)
+            for job in pending+running:
+                job.canceled = True
             self.pending.clear()
             self.condition.notify_all()
         message = 'Control execution stopped because of the server shutdown.'
@@ -177,6 +179,8 @@ class RunManager:
                     return False
                 self.running.remove(job)
                 self.condition.notify_all()
+            # Stops a job whose process is built but not started yet.
+            job.canceled = True
         if job.process is None:
             self._drop(job, message)
         else:
@@ -258,10 +262,17 @@ class RunManager:
             return
         context = mp.get_context('spawn')
         job.current = context.Value('q', control.process_id)
-        job.process = context.Process(name=control.name, target=operate,
-                                      args=(control, job.chain, job.current,
-                                            os.getpid(), self.name))
-        job.process.start()
+        process = context.Process(name=control.name, target=operate,
+                                  args=(control, job.chain, job.current,
+                                        os.getpid(), self.name))
+        # Started under the lock, so that a cancel arriving right now either
+        # stops the job here or finds a process it can terminate.
+        with self.condition:
+            if job.canceled:
+                logger.info(f'{control} Not started as it was canceled')
+                return
+            job.process = process
+            process.start()
         job.started = dt.datetime.now()
         journal.update(job.event_id, event_type=journal.STARTED,
                        start_time=job.started)
@@ -284,6 +295,7 @@ class RunManager:
                         logger.info(f'{job.control} Process at PID '
                                     f'{job.process.pid} returns '
                                     f'{job.process.exitcode}')
+                        self._settle(job)
                         finished = True
                     else:
                         self._check(job)
@@ -310,6 +322,33 @@ class RunManager:
             self.condition.notify_all()
         self._kill(job, f'Control execution stopped because of the {reason}.')
         self._notify()
+
+    def _settle(self, job):
+        """Finish a run left active by a process that died without it.
+
+        A process killed by the system, or lost to an error raised outside
+        the control run flow, leaves its run in an active status forever:
+        nothing else ever writes its outcome, and the UI keeps showing it as
+        running until the next server start sweeps it.
+        """
+        try:
+            control = Control(process_id=job.process_id)
+            if control.status not in (None, 'I', 'W', 'S', 'P', 'F'):
+                return
+            if control.status is None:
+                control._save_text_message('Control execution stopped '
+                                           'because of the request.')
+                control._set_as_canceled()
+                return
+            exitcode = job.process.exitcode if job.process else None
+            logger.warning(f'{control} Process finished unexpectedly with '
+                           f'the run still in status {control.status}')
+            control._save_text_message('Control execution stopped because '
+                                       'the control process finished '
+                                       f'unexpectedly (exit code {exitcode}).')
+            control._set_as_error()
+        except Exception:
+            logger.error()
 
     def _kill(self, job, message):
         process_id = job.process_id

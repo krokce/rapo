@@ -30,6 +30,8 @@ class Configurator(dict):
         parser = configparser.ConfigParser(allow_no_value=True)
         parser.read(path, encoding=encoding)
         for section in parser.sections():
+            if section not in self:
+                self[section] = Configuration(section)
             for option in parser.options(section):
                 initial_value = parser[section][option]
                 final_value = self.normalize(initial_value)
@@ -46,7 +48,7 @@ class Configurator(dict):
             return False
         elif re.match(r'^[+-]?\d+$', value):
             return int(value)
-        elif re.match(r'^[+-]?(\d*.\d+|\d+\.\d*)$', value):
+        elif re.match(r'^[+-]?(\d*\.\d+|\d+\.\d*)$', value):
             return float(value)
         return value
 
