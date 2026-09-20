@@ -31,6 +31,10 @@ class Utils:
             output = dt.datetime.fromisoformat(input)
         elif isinstance(input, (int, float)):
             output = dt.datetime.fromtimestamp(input)
+        else:
+            message = (f'date must be str, int, float or datetime, '
+                       f'not {type(input).__name__}')
+            raise TypeError(message)
         return output
 
     def to_lower(self, value):

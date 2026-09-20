@@ -57,6 +57,9 @@ class Reader:
         select = (sa.select([config.c.control_name]).select_from(join)
                     .where(log.c.process_id == process_id))
         result = db.execute(select, as_one=True)
+        if not result:
+            message = f'no control of process with ID {process_id} found'
+            raise ValueError(message)
         control_name = result.control_name
         return control_name
 

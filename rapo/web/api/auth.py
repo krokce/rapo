@@ -9,7 +9,10 @@ from ...config import config
 
 
 bearer = fastapi.security.HTTPBearer(auto_error=False)
-TOKEN = config['API'].get('token') if config.check('API') else None
+# A digits-only token is read from rapo.ini as a number, so it is kept as a
+# string here, otherwise every comparison below would fail with a TypeError.
+_token = config['API'].get('token') if config.check('API') else None
+TOKEN = str(_token) if _token is not None else None
 
 
 def check_token(token):

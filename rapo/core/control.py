@@ -1304,7 +1304,10 @@ class Control:
 
     def _set_as_canceled(self):
         self.status = 'C'
-        self._update_process_log(status=self.status)
+        if not self.end_date:
+            self.end_date = dt.datetime.now()
+        self._update_process_log(status=self.status,
+                                 end_date=self.end_date)
 
     def _set_as_revoked(self):
         self.status = 'X'
@@ -1401,6 +1404,24 @@ class Parser:
         """Parse control dates according to configuration."""
         return (self.parse_date_from(), self.parse_date_to())
 
+    def _parse_period_count(self, value, default, minimum=0):
+        """Get whole number of periods from a raw configuration value."""
+        if value is None:
+            return max(default, minimum)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            message = f'incorrect number of periods: {value}'
+            raise ValueError(message)
+        return max(value, minimum)
+
+    def _parse_period_type(self, period_type):
+        """Get period type, raising when it is not one of the known ones."""
+        if period_type not in ('D', 'W', 'M'):
+            message = f'incorrect period type: {period_type}'
+            raise ValueError(message)
+        return period_type
+
     def parse_date_from(self):
         """Get data source date lower bound.
 
@@ -1410,18 +1431,17 @@ class Parser:
             Fetched records from data source should begin from this date.
         """
         timestamp = self.control.timestamp
-        period_back = self.control.period_back
-        period_type = self.control.period_type
+        period_back = self._parse_period_count(self.control.period_back, 0)
+        period_type = self._parse_period_type(self.control.period_type)
         current_date = self._parse_date(timestamp, 0, 0, 0)
         if period_type == 'D':
             target_date = current_date-dt.timedelta(days=period_back)
         elif period_type == 'M':
             calculated_date = utils.get_month_date_from(current_date)
-            while period_back:
+            for _ in range(period_back):
                 calculated_date = calculated_date-dt.timedelta(days=1)
                 calculated_date = utils.get_month_date_from(calculated_date)
-                period_back -= 1
-            target_date = calculated_date.replace()
+            target_date = calculated_date
         elif period_type == 'W':
             target_date = current_date-dt.timedelta(weeks=period_back)
         return target_date
@@ -1432,18 +1452,18 @@ class Parser:
         date_to : datetime or None
             Fetched records from data source should end with this date.
         """
-        period_number = self.control.period_number
-        period_type = self.control.period_type
+        period_number = self._parse_period_count(self.control.period_number,
+                                                 1, minimum=1)
+        period_type = self._parse_period_type(self.control.period_type)
         current_date = self._parse_date(self.parse_date_from(), 23, 59, 59)
         if period_type == 'D':
             target_date = current_date+dt.timedelta(days=period_number-1)
         elif period_type == 'M':
             calculated_date = utils.get_month_date_to(current_date)
-            while period_number-1:
+            for _ in range(period_number-1):
                 calculated_date = calculated_date+dt.timedelta(days=1)
                 calculated_date = utils.get_month_date_to(calculated_date)
-                period_number -= 1
-            target_date = calculated_date.replace()
+            target_date = calculated_date
         elif period_type == 'W':
             calculated_date = current_date+dt.timedelta(weeks=period_number)
             target_date = calculated_date-dt.timedelta(days=1)
@@ -3613,9 +3633,10 @@ class Executor:
                 logger.debug(f'{self.c} Hook function evaluated NOT OK '
                              f'[{result_code}]')
                 return False, result_code
-        except Exception:
+        except Exception as error:
             logger.error(f'{self.c} Error evaluating prerun hook')
             logger.error()
+            return False, str(error)
 
     def postrun_hook(self):
         """Execute database postrun hook procedure."""

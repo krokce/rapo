@@ -12,6 +12,7 @@ import socketio
 from . import events
 from .auth import verify_token
 
+from ...config import config
 from ...logger import logger, LOG_DIR
 from ...reader import reader
 
@@ -25,6 +26,19 @@ from ...core.scheduler import scheduler, upcoming
 
 UI_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), '..', 'ui'))
+
+# Swagger and the schema it reads can not carry the Bearer token, so they
+# would describe the whole API to anyone able to reach the port. They are
+# served only when [API] docs is switched on.
+DOCS_ENABLED = bool(config.check('API') and config['API'].get('docs'))
+
+
+def find_control(process_id):
+    """Get control of the run with the given process ID, or answer 404."""
+    try:
+        return Control(process_id=process_id)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
 
 
 @contextlib.asynccontextmanager
@@ -41,11 +55,12 @@ async def lifespan(app):
     logs.cleaner.stop()
 
 
-fastapi_app = fastapi.FastAPI(title='Rapo',
-                              docs_url='/api/docs',
-                              openapi_url='/api/openapi.json',
-                              redoc_url=None,
-                              lifespan=lifespan)
+fastapi_app = fastapi.FastAPI(
+    title='Rapo',
+    docs_url='/api/docs' if DOCS_ENABLED else None,
+    openapi_url='/api/openapi.json' if DOCS_ENABLED else None,
+    redoc_url=None,
+    lifespan=lifespan)
 api = fastapi.APIRouter(prefix='/api',
                         dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
@@ -63,6 +78,9 @@ def help():
 def status():
     """Get scheduler status."""
     input_dict = reader.read_scheduler_record()
+    if not input_dict:
+        raise fastapi.HTTPException(status_code=404,
+                                    detail='No scheduler record found')
     output_dict = {
         'server': input_dict['server'],
         'username': input_dict['username'],
@@ -78,6 +96,9 @@ def status():
 def session():
     """Get API status."""
     input_dict = reader.read_web_api_record()
+    if not input_dict:
+        raise fastapi.HTTPException(status_code=404,
+                                    detail='No web API record found')
     output_dict = {
         'server': input_dict['server'],
         'username': input_dict['username'],
@@ -101,7 +122,6 @@ def version():
 @api.get('/info')
 def info():
     """Get application info."""
-    from ...config import config
     scheduler_config = config['SCHEDULER']
     database_config = config['DATABASE']
     output_dict = {
@@ -119,7 +139,6 @@ def info():
 @api.get('/parameters')
 def parameters():
     """Get application info."""
-    from ...config import config
     scheduler_config = config['SCHEDULER']
     algorithm_config = config['ALGORITHM']
     database_config = config['DATABASE']
@@ -179,7 +198,7 @@ def cancel_control(id: int):
     """Cancel running control."""
     if not runner.cancel(id):
         # Not a run of this server: void its status, its owner will stop it.
-        control = Control(process_id=id)
+        control = find_control(id)
         control.cancel()
     events.poke()
     return {'status': 200}
@@ -188,7 +207,7 @@ def cancel_control(id: int):
 @api.delete('/revoke-control-run')
 def revoke_control_run(id: int):
     """Revoke patricular control run."""
-    control = Control(process_id=id)
+    control = find_control(id)
     control.revoke()
     events.poke()
     return {'status': 200}
@@ -205,7 +224,7 @@ def delete_control_output_tables(name: str):
 @api.delete('/delete-control-temporary-tables')
 def delete_control_temporary_tables(id: int):
     """Delete temporary tables of particular control run."""
-    control = Control(process_id=id)
+    control = find_control(id)
     control.executor.delete_temporary_tables()
     return {'status': 200}
 
@@ -319,7 +338,7 @@ def download_control_run_log(process_id: int):
 @api.get('/get-control-run')
 def get_control_run(process_id: int):
     """Get details of particular control run in JSON."""
-    control = Control(process_id=process_id)
+    control = find_control(process_id)
     return {
         'name': control.name,
         'date_from': control.date_from,

@@ -181,6 +181,9 @@ class Database:
                             pool_size=pool_size,
                             pool_recycle=pool_recycle,
                             pool_timeout=pool_timeout)
+        else:
+            message = f'incorrect configuration for vendor {vendor_name}'
+            raise ValueError(message)
         self.engine = sa.create_engine(url, **settings)
 
     def load(self):
@@ -209,12 +212,13 @@ class Database:
         result : sqlalchemy.engine.CursorResult
             Execution result object.
         """
+        if output:
+            document = self.formatter.document(statement)
+            message = utils.concat(tag, f'Running query:\n{document}')
+            output(message)
+        connection = self.connect()
+        transaction = None
         try:
-            if output:
-                document = self.formatter.document(statement)
-                message = utils.concat(tag, f'Running query:\n{document}')
-                output(message)
-            connection = self.connect()
             transaction = connection.begin()
             result = connection.execute(statement)
             if as_records:
@@ -229,25 +233,28 @@ class Database:
                 result = result.scalar()
             if as_generator and not (as_one or as_dict or as_scalar):
                 result = map(lambda record: record, result)
-        except Exception as error:
-            try:
-                if auto_commit:
-                    transaction.rollback()
-                connection.close()
-            finally:
-                raise error
-        else:
             if return_connection:
                 return result, connection, transaction
-            try:
-                if auto_commit:
-                    transaction.commit()
-                connection.close()
-            finally:
-                return result
+            if auto_commit:
+                transaction.commit()
+        except Exception:
+            if auto_commit and transaction is not None:
+                try:
+                    transaction.rollback()
+                except Exception:
+                    pass
+            connection.close()
+            raise
+        connection.close()
+        return result
 
-    def execute_many(self, *statements, result_queue=None, **kwargs):
+    def execute_many(self, *statements, result_queue=None, result_key=None,
+                     **kwargs):
         """Execute given SQL statements.
+
+        When a result queue is given, the outcome is put on it as a
+        `(key, results, error)` tuple instead of being raised, so that a
+        caller running this in a thread can re-raise it.
 
         Returns
         -------
@@ -255,25 +262,34 @@ class Database:
             Execution result objects in order of initial statements.
         """
         result_list = []
-        for statement in statements:
-            result = self.execute(statement, **kwargs)
-            result_list.append(result)
-        if result_queue:
-            result_queue.put(result_list)
+        error = None
+        try:
+            for statement in statements:
+                result = self.execute(statement, **kwargs)
+                result_list.append(result)
+        except Exception as exception:
+            if result_queue is None:
+                raise
+            error = exception
+        if result_queue is not None:
+            result_queue.put((result_key, result_list, error))
         return result_list
 
     def parallelize(self, *statement_groups, **kwargs):
         """Execute given SQL statement groups in parallel threads.
 
+        All groups are awaited, then the first failure is raised, so that a
+        broken statement group can never pass unnoticed.
+
         Returns
         -------
-        result_groups : list of sqlalchemy.engine.CursorResult
+        result_groups : list of list of sqlalchemy.engine.CursorResult
             Execution result objects in structure of initial statement groups.
         """
         current_thread = th.current_thread()
         thread_list = []
         result_queue = qe.Queue()
-        for statement_group in statement_groups:
+        for number, statement_group in enumerate(statement_groups):
             action_name = statement_group['name']
             statement_list = statement_group['statements']
             thread_name = f'{current_thread.name}({action_name})'
@@ -281,13 +297,21 @@ class Database:
                                name=thread_name,
                                args=statement_list,
                                kwargs={'result_queue': result_queue,
+                                       'result_key': number,
                                        **kwargs})
             thread.start()
             thread_list.append(thread)
         for thread in thread_list:
             thread.join()
-        # result_groups = list(result_queue)
-        return result_queue
+        outcomes = []
+        while not result_queue.empty():
+            outcomes.append(result_queue.get())
+        outcomes.sort(key=lambda outcome: outcome[0])
+        for number, result_list, error in outcomes:
+            if error is not None:
+                action_name = statement_groups[number]['name']
+                raise RuntimeError(f'{action_name} failed: {error}') from error
+        return [result_list for number, result_list, error in outcomes]
 
     def table(self, name):
         """Get database table.
