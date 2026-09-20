@@ -76,7 +76,7 @@ export const TRIGGER_TYPE_OPTIONS = Object.entries(TRIGGER_TYPES).map(([value, t
 
 // Scheduler states reported by /scheduler-status for this server.
 export const SCHEDULER_STATES = {
-  running: { label: "Running", color: "green", description: "This server runs the scheduler." },
+  running: { label: "Running", color: "teal", description: "This server runs the scheduler." },
   standby: { label: "Standby", color: "blue-grey", description: "Another server runs the scheduler, this one takes over if it stops." },
   starting: { label: "Starting", color: "amber-8", description: "The scheduler is acquiring its lease." },
   stopped: { label: "Stopped", color: "deep-orange", description: "The scheduler was stopped from the UI on all servers." },

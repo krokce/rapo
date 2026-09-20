@@ -11,7 +11,7 @@
 [SCHEDULER]
 # Run the scheduler inside this web server (rapo-server). Set to False for an
 # API-only server. Only one server schedules at a time, the others stand by.
-# It can also be stopped and started from the UI (Instance details).
+# It can also be stopped and started from the UI (Scheduler page).
 enabled=True
 # Number of controls executed in parallel (scheduled and manual runs).
 control_parallelism=10
