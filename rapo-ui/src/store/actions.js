@@ -1,14 +1,21 @@
 import { api } from "../api";
 
+// Sequence of get-control-runs requests, so a slow response for a previous day can't overwrite a newer one.
+let controlResultsRequest = 0;
+
 export default {
   async updateControlCatalogue(context) {
     const data = await api("get-all-controls");
     context.commit("updateControlCatalogue", data);
     return data;
   },
-  async updateControlResults(context) {
-    const data = await api("get-control-runs");
-    context.commit("updateControlResults", data);
+  // Runs started on one day (YYYY-MM-DD, default: the server's today).
+  async updateControlResults(context, day = null) {
+    const request = ++controlResultsRequest;
+    const data = await api("get-control-runs", { params: { date: day } });
+    if (request === controlResultsRequest) {
+      context.commit("updateControlResults", data);
+    }
     return data;
   },
   // Instance details shown in the header and the "Instance details" dialog.

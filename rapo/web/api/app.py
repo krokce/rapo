@@ -231,9 +231,12 @@ def get_control_versions(control_id: str | None = None):
 
 
 @api.get('/get-control-runs')
-def get_control_runs():
-    """Get list of all control runs in JSON."""
-    return reader.read_control_results_for_day()
+def get_control_runs(date: dt.date | None = None):
+    """Get all control runs started on the passed day (default: the server's today) in JSON."""
+    today = dt.date.today()
+    day = date or today
+    return {'date': day.isoformat(), 'today': today.isoformat(),
+            'runs': reader.read_control_results_for_day(day)}
 
 
 @api.get('/read-control-logs')
