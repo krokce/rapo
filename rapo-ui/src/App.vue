@@ -23,8 +23,6 @@
         </div>
 
         <q-space class="col-2" />
-        <span class="text-caption text-weight-light text-teal" v-if="getTokenIsValid">Connected</span>
-        <span class="text-caption text-weight-light text-red" v-if="!getTokenIsValid">Disconnected</span>
         <q-icon
           v-if="getTokenIsValid"
           name="fas fa-circle"
@@ -33,7 +31,25 @@
           :color="getSocketConnected ? 'teal' : 'grey-5'">
           <q-tooltip>{{ getSocketConnected ? "Live updates on" : "Live updates offline, reconnecting..." }}</q-tooltip>
         </q-icon>
-        <q-btn round flat color="teal" icon="fas fa-plug fa-rotate-90" @click="showDisconnectDialog" v-if="getTokenIsValid" />
+        <q-btn
+          v-if="getTokenIsValid && schedulerStatus"
+          round
+          flat
+          dense
+          size="sm"
+          class="q-ml-sm"
+          :color="schedulerStateInfo.color"
+          icon="fas fa-clock"
+          :to="{ name: 'scheduler' }">
+          <q-tooltip>Scheduler: {{ schedulerStateInfo.label }} &mdash; {{ schedulerStateInfo.description }}</q-tooltip>
+        </q-btn>
+        <!-- The color of the plug is the only sign of the connection: teal connected, red disconnected. -->
+        <q-btn v-if="getTokenIsValid" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
+          <q-tooltip>Connected &mdash; instance details</q-tooltip>
+        </q-btn>
+        <q-icon v-else name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="red">
+          <q-tooltip>Disconnected</q-tooltip>
+        </q-icon>
       </q-toolbar>
     </q-header>
 
@@ -60,45 +76,17 @@
       </q-page>
     </q-page-container>
 
-    <q-dialog v-model="instanceDialog" @hide="stopSchedulerUpdates">
+    <q-dialog v-model="instanceDialog">
       <q-card style="width: 560px; max-width: 90vw">
-        <q-card-section class="text-h6">Instance details</q-card-section>
-
-        <q-card-section class="q-pt-none scroll" style="max-height: 65vh">
-          <div class="text-weight-bold q-mb-xs">Scheduler</div>
-          <div v-if="schedulerStatus" class="q-mb-sm">
-            <div class="row items-center q-gutter-sm">
-              <q-chip text-color="white" :color="schedulerStateInfo.color" class="text-weight-bold q-ml-none">{{ schedulerStateInfo.label }}</q-chip>
-              <small class="col text-grey-7">{{ schedulerStateInfo.description }}</small>
-            </div>
-            <table class="env-table">
-              <tr>
-                <td>Scheduling server</td>
-                <td>
-                  <strong>{{ schedulerStatus.holder.server || "N/A" }}{{ schedulerStatus.holder.pid ? " PID " + schedulerStatus.holder.pid : "" }}</strong>
-                </td>
-              </tr>
-              <tr>
-                <td>Heartbeat</td>
-                <td>
-                  <strong>{{ toDateTimeString(schedulerStatus.holder.heartbeat) || "N/A" }}</strong>
-                </td>
-              </tr>
-              <tr>
-                <td>Runs on this server</td>
-                <td>
-                  <strong>{{ schedulerStatus.runner.running.length }} running, {{ schedulerStatus.runner.queued.length }} queued</strong>
-                </td>
-              </tr>
-            </table>
-            <div class="row items-center q-gutter-sm q-mt-sm">
-              <scheduler-toggle-button />
-              <q-btn flat no-caps color="teal" icon="fas fa-clock" label="Open scheduler" :to="{ name: 'scheduler' }" v-close-popup />
-            </div>
+        <q-card-section class="q-pb-none">
+          <div class="text-h6">Instance details</div>
+          <div class="text-grey-7 instance-paths" v-if="getEnvInfo">
+            <div v-if="getEnvInfo.config_path"><span>Configuration</span>{{ getEnvInfo.config_path }}</div>
+            <div v-if="getEnvInfo.log_directory"><span>Logs</span>{{ getEnvInfo.log_directory }}</div>
           </div>
-          <div v-else class="text-grey-7 q-mb-sm">Loading...</div>
-          <q-separator />
+        </q-card-section>
 
+        <q-card-section class="scroll" style="max-height: 65vh">
           <div v-for="section in envSections" :key="section.title" class="q-mt-sm">
             <div class="text-weight-bold q-mb-xs">{{ section.title }}</div>
             <table class="env-table">
@@ -131,16 +119,11 @@
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import SchedulerToggleButton from "./components/SchedulerToggleButton.vue";
 import { notifyError, signOut } from "./api";
 import { schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
-import { toDateTimeString } from "./utils/format";
 
 export default {
-  components: {
-    SchedulerToggleButton,
-  },
   data() {
     return {
       leftDrawerOpen: false,
@@ -165,8 +148,7 @@ export default {
     };
   },
   methods: {
-    ...mapActions(["updateSearch", "updateSchedulerStatus"]),
-    toDateTimeString,
+    ...mapActions(["updateSearch", "updateSchedulerStatus", "updateEnvironment"]),
     toggleLeftDrawer() {
       this.leftDrawerOpen = !this.leftDrawerOpen;
     },
@@ -209,8 +191,13 @@ export default {
         return entries;
       }, []);
     },
-    showDisconnectDialog() {
+    showInstanceDialog() {
       this.instanceDialog = true;
+      // The configuration of a restarted server may differ from the one read at connection time.
+      this.updateEnvironment().catch((error) => notifyError("Failed to load instance details.", error));
+    },
+    // The scheduler state indicator of the header follows the scheduler as long as the user is connected.
+    startSchedulerUpdates() {
       const refresh = () => this.updateSchedulerStatus().catch((error) => notifyError("Failed to load scheduler status.", error));
       this.stopSchedulerUpdates();
       this.stopLiveUpdates = liveRefetch("scheduler:changed", refresh, { interval: 2000 });
@@ -232,11 +219,11 @@ export default {
     schedulerStateInfo() {
       return schedulerState(this.schedulerStatus && this.schedulerStatus.state);
     },
+    // The version of the application, then one section per section of rapo.ini.
     envSections() {
       return [
         { title: "Version", entries: this.flattenEntries(this.getEnvVersion) },
-        { title: "Info", entries: this.flattenEntries(this.getEnvInfo) },
-        { title: "Parameters", entries: this.flattenEntries(this.getEnvParameters) },
+        ...Object.entries(this.getEnvParameters || {}).map(([title, values]) => ({ title, entries: this.flattenEntries(values) })),
       ];
     },
     // Pages without a global search (editor, token page) set meta.hideSearch on their route.
@@ -251,6 +238,22 @@ export default {
         return this.updateSearch(value);
       },
     },
+  },
+  watch: {
+    // App is never remounted, the token becomes valid on connection and empty on sign out.
+    getTokenIsValid: {
+      immediate: true,
+      handler(valid) {
+        if (valid) {
+          this.startSchedulerUpdates();
+        } else {
+          this.stopSchedulerUpdates();
+        }
+      },
+    },
+  },
+  unmounted() {
+    this.stopSchedulerUpdates();
   },
 };
 </script>
@@ -278,6 +281,16 @@ export default {
 
     &:hover
       color: #000
+.instance-paths
+  font-family: Monospace, sans-serif
+  font-size: 12px
+  line-height: 1.5
+  word-break: break-all
+
+  span
+    display: inline-block
+    width: 100px
+
 .env-table
   border-collapse: collapse
   width: 100%

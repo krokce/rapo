@@ -12,7 +12,7 @@ import socketio
 from . import events
 from .auth import verify_token
 
-from ...config import config
+from ...config import config, path as CONFIG_PATH
 from ...logger import logger, LOG_DIR
 from ...reader import reader
 
@@ -31,6 +31,9 @@ UI_DIR = os.path.realpath(
 # would describe the whole API to anyone able to reach the port. They are
 # served only when [API] docs is switched on.
 DOCS_ENABLED = bool(config.check('API') and config['API'].get('docs'))
+
+# Options of rapo.ini never sent to the browser, matched by name fragment.
+SECRET_OPTIONS = ('password', 'token', 'secret')
 
 
 def find_control(process_id):
@@ -122,60 +125,31 @@ def version():
 @api.get('/info')
 def info():
     """Get application info."""
-    scheduler_config = config['SCHEDULER']
-    database_config = config['DATABASE']
+    scheduler_config = config.get('SCHEDULER', {})
+    database_config = config.get('DATABASE', {})
     output_dict = {
         'instance_name': scheduler_config.get('instance_name'),
-        'schema_name': database_config['username'],
-        'database_server': database_config['host'],
+        'schema_name': database_config.get('username'),
+        'database_server': database_config.get('host'),
         'database_name': (
             database_config.get('sid') or
             database_config.get('service_name')
-        )
+        ),
+        'config_path': CONFIG_PATH,
+        'log_directory': LOG_DIR
     }
     return output_dict
 
 
 @api.get('/parameters')
 def parameters():
-    """Get application info."""
-    scheduler_config = config['SCHEDULER']
-    algorithm_config = config['ALGORITHM']
-    database_config = config['DATABASE']
-    logging_config = config['LOGGING']
-    output_dict = {
-        'scheduler_enabled': scheduler_config.get('enabled'),
-        'control_parallelism': scheduler_config.get('control_parallelism'),
-        'refresh_interval': scheduler_config.get('refresh_interval'),
-        'maintenance_interval': scheduler_config.get('maintenance_interval'),
-        'database_report_interval': scheduler_config.get(
-            'database_report_interval'
-        ),
-        'event_retention_days': scheduler_config.get('event_retention_days'),
-        'missed_window_hours': scheduler_config.get('missed_window_hours'),
-        'lease_timeout': scheduler_config.get('lease_timeout'),
-        'fuzzy_optimization': algorithm_config.get('fuzzy_optimization'),
-        'normalization_type': algorithm_config.get('normalization_type'),
-        'discrepancy_matching': algorithm_config.get('discrepancy_matching'),
-        'database': {
-            'max_overflow': database_config.get('max_overflow'),
-            'pool_pre_ping': database_config.get('pool_pre_ping'),
-            'pool_size': database_config.get('pool_size'),
-            'pool_recycle': database_config.get('pool_recycle'),
-            'pool_timeout': database_config.get('pool_timeout')
-        },
-        'logging': {
-            'directory': LOG_DIR,
-            'retention_days': logging_config.get('retention_days'),
-            'console': logging_config.get('console'),
-            'file': logging_config.get('file'),
-            'info': logging_config.get('info'),
-            'debug': logging_config.get('debug'),
-            'error': logging_config.get('error'),
-            'warning': logging_config.get('warning'),
-            'critical': logging_config.get('critical')
+    """Get the parameters of rapo.ini as they are written there."""
+    output_dict = {}
+    for section_name, section in config.items():
+        output_dict[section_name] = {
+            name: value for name, value in section.items()
+            if not any(secret in name for secret in SECRET_OPTIONS)
         }
-    }
     return output_dict
 
 
