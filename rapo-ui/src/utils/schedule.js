@@ -56,3 +56,37 @@ export function serializeSchedule(schedule) {
 export function scheduleTime(schedule) {
   return [schedule.hour, schedule.min, schedule.sec].map((value) => String(value ?? 0).padStart(2, "0")).join(":");
 }
+
+// Everything a run of this control performs besides the control itself: its enabled iterations,
+// and the enabled controls cascading from it (the ones triggered by its control_id).
+// Malformed configuration of one control must not break the caller.
+export function chainOf(controlName, catalogue) {
+  const control = (catalogue || []).find((item) => item.control_name === controlName);
+  if (!control) {
+    return { iterations: 0, cascade: [] };
+  }
+  let iterations = 0;
+  try {
+    iterations = JSON.parse(control.iteration_config || "[]").filter((item) => item.status === "Y").length;
+  } catch (err) {
+    iterations = 0;
+  }
+  const cascade = catalogue.filter((item) => {
+    if (item.status !== "Y" || !item.schedule_config) {
+      return false;
+    }
+    try {
+      const { trigger_id } = JSON.parse(item.schedule_config);
+      return !!trigger_id && control.control_id === Number(trigger_id);
+    } catch (err) {
+      return false;
+    }
+  });
+  return { iterations, cascade: cascade.map((item) => item.control_name) };
+}
+
+// A sentence naming the controls a run cascades into, or "" when it cascades into none.
+// The iterations are not named here: they are optional on a manual run and have their own switch.
+export function cascadeMessage(cascade) {
+  return cascade.length ? `This will also cascade into ${cascade.join(", ")}.` : "";
+}

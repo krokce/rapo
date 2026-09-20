@@ -156,13 +156,21 @@ def parameters():
 @api.post('/run-control')
 def run_control(name: str, date: str | None = None,
                 date_from: str | None = None, date_to: str | None = None,
-                debug_mode: bool = False):
-    """Initiate control run and queue it for execution."""
+                debug_mode: bool = False, iterations: bool = False):
+    """Initiate control run and queue it for execution.
+
+    The run cascades into the controls following it, the way a scheduled run
+    does. Its iterations are performed only when they are asked for.
+    """
     if not runner.active:
         raise fastapi.HTTPException(status_code=503,
                                     detail='Run manager is not running')
-    runner.submit(name, journal.MANUAL, date_from=date_from, date_to=date_to,
-                  date=date, debug_mode=debug_mode)
+    try:
+        runner.submit(name, journal.MANUAL, cascade=True,
+                      iterations=iterations, date_from=date_from,
+                      date_to=date_to, date=date, debug_mode=debug_mode)
+    except Exception as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
     events.poke()
     return {'status': 200}
 
@@ -397,8 +405,11 @@ def run_missed(event_id: int):
         raise fastapi.HTTPException(status_code=400,
                                     detail='Control does not exist anymore')
     timestamp = event['scheduled_time'].timestamp()
-    caught = runner.submit(name, journal.CATCHUP, timestamp=timestamp,
-                           chain=True)
+    try:
+        caught = runner.submit(name, journal.CATCHUP, timestamp=timestamp,
+                               cascade=True, iterations=True)
+    except Exception as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
     journal.update(event_id, message=f'Run as event {caught}.')
     events.poke()
     return {'status': 200}
@@ -415,6 +426,36 @@ def schedule_preview(schedule_config: str,
     if not item:
         return []
     return schedule.next_fire(item, dt.datetime.now(), limit=count)
+
+
+@api.get('/iteration-preview')
+def iteration_preview(name: str, date: str | None = None,
+                      date_from: str | None = None,
+                      date_to: str | None = None):
+    """Get the runs the iterations of a manual run would perform.
+
+    The window of an iteration is computed by the engine itself, so what the
+    UI offers before a run is what the run performs.
+    """
+    try:
+        control = Control(name, date=date, date_from=date_from,
+                          date_to=date_to)
+        dates = control._iteration_dates()
+        output_list = []
+        for case in control.iteration_config:
+            if not case['status']:
+                continue
+            iteration = Control(name, iteration_id=case['iteration_id'],
+                                **dates)
+            output_list.append({
+                'iteration_id': case['iteration_id'],
+                'iteration_description': case['iteration_description'],
+                'date_from': iteration.date_from,
+                'date_to': iteration.date_to,
+            })
+    except Exception as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return output_list
 
 
 fastapi_app.include_router(api)

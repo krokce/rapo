@@ -203,6 +203,7 @@ class Control:
 
             self.iteration_id = None
             self.timestamp = None
+            self.scheduled = False
             self.date_from = self.result['date_from']
             self.date_to = self.result['date_to']
 
@@ -235,6 +236,9 @@ class Control:
                 self.period_type = self.config['period_type']
 
             self.timestamp = timestamp
+            # Whether the timestamp is a moment the run was really fired at.
+            # A manual run has its own reconstructed for the iterations.
+            self.scheduled = bool(timestamp)
             if self.timestamp:
                 self.date_from, self.date_to = self.parser.parse_dates()
             elif date:
@@ -729,6 +733,38 @@ class Control:
         if self._initiate():
             self._spawn()
 
+    def _cascade_dates(self):
+        """Get the date parameters a cascaded run inherits from this one.
+
+        A scheduled run passes its timestamp down, so that every control of
+        the cascade derives its own window from its own period configuration.
+        A manual run has no timestamp, so it passes its window itself and the
+        whole cascade runs for the dates that were requested.
+        """
+        if self.timestamp:
+            return {'timestamp': self.timestamp}
+        return {'date_from': self.date_from, 'date_to': self.date_to}
+
+    def _iteration_dates(self):
+        """Get the date parameters an iteration of this run derives from.
+
+        An iteration differs from its run only by its period configuration,
+        so it needs the moment that configuration is counted back from. A
+        scheduled run has it, and a manual run has its window reconstructed
+        into one, so that the iterations of a manual run keep their offsets
+        relative to the dates that were requested instead of repeating them.
+        """
+        if self.timestamp:
+            return {'timestamp': self.timestamp}
+        return {'timestamp': self.parser.parse_timestamp()}
+
+    @property
+    def _chain_moment(self):
+        """Get the moment a chained run is labeled with in the log."""
+        if self.timestamp:
+            return self.timestamp
+        return f'{self.date_from} - {self.date_to}'
+
     def iterate(self):
         """Run all additional control iterations."""
         for case in self.iteration_config:
@@ -738,24 +774,27 @@ class Control:
                 logger.info(f'{self} Iterating control '
                             f'using configuration {case}')
                 control = self.__class__(name=self.name,
-                                         timestamp=self.timestamp,
-                                         iteration_id=iteration_id)
+                                         iteration_id=iteration_id,
+                                         debug_mode=self.debug_mode,
+                                         **self._iteration_dates())
+                control.scheduled = self.scheduled
                 control.observer = self.observer
                 control.trigger = 'ITERATION'
                 control.run()
 
     def cascade(self):
         """Run following controls in cascade."""
-        source_label = f'{self.name}[{self.timestamp}]'
+        source_label = f'{self.name}[{self._chain_moment}]'
         for case in self.cascade_config:
             control_name = case['control_name']
             control_status = case['control_status']
             control_parameters = case['control_parameters']
-            target_label = f'{control_name}[{self.timestamp}]'
+            target_label = f'{control_name}[{self._chain_moment}]'
             if control_status:
                 control = self.__class__(name=control_name,
-                                         timestamp=self.timestamp,
+                                         **self._cascade_dates(),
                                          **control_parameters)
+                control.scheduled = self.scheduled
                 control.observer = self.observer
                 control.trigger = 'CASCADE'
                 logger.info(f'Initiating control {target_label}] '
@@ -1424,6 +1463,36 @@ class Parser:
             message = f'incorrect period type: {period_type}'
             raise ValueError(message)
         return period_type
+
+    def parse_timestamp(self):
+        """Get the moment this control run would have been fired at.
+
+        The window of a run is counted back from the moment it was fired at
+        using the period configuration, so a run started for an explicit
+        window is reconstructed by counting the same periods forward from
+        its lower bound. The iterations of a manual run are then derived the
+        way they are derived on a scheduled one.
+
+        Returns
+        -------
+        timestamp : float
+            POSIX timestamp the period configuration is counted back from.
+        """
+        if self.control.timestamp:
+            return self.control.timestamp
+        period_back = self._parse_period_count(self.control.period_back, 0)
+        period_type = self._parse_period_type(self.control.period_type)
+        target_date = self._parse_date(self.control.date_from, 0, 0, 0)
+        if period_type == 'D':
+            target_date = target_date+dt.timedelta(days=period_back)
+        elif period_type == 'W':
+            target_date = target_date+dt.timedelta(weeks=period_back)
+        elif period_type == 'M':
+            for _ in range(period_back):
+                target_date = utils.get_month_date_to(target_date)
+                target_date = target_date+dt.timedelta(days=1)
+            target_date = self._parse_date(target_date, 0, 0, 0)
+        return target_date.timestamp()
 
     def parse_date_from(self):
         """Get data source date lower bound.
