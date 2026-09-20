@@ -32,4 +32,19 @@ def run_scheduler():
 
 
 def run_server():
-    Server()
+    """Start or stop the web API server as asked on the command line."""
+    argv = sys.argv[1:]
+    actions = [arg for arg in argv if not arg.startswith('-')]
+    action = actions[0] if actions else None
+    dev = 'dev' in actions
+    # A reload restarts the scheduler with every change, so development
+    # servers run without it unless asked to.
+    scheduler = False if dev and '--scheduler' not in argv else None
+    server = Server(dev=dev, scheduler=scheduler)
+    if action == 'start':
+        server.start()
+    elif action == 'stop':
+        server.stop()
+    else:
+        print('Usage: rapo-server start [dev] [--scheduler] | rapo-server '
+              'stop', file=sys.stderr)

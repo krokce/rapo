@@ -19,24 +19,41 @@ from ..reader import reader
 APP = 'rapo.web.api.app:app'
 
 
+def is_running(record):
+    """Check that the recorded server is really running on this host.
+
+    A server that crashed leaves its row marked as running. Trusting that
+    PID makes `start` refuse to start and `stop` signal whatever process has
+    taken the number since, so the record counts only when it names this
+    host and the PID still belongs to a rapo server.
+    """
+    if not record or record['status'] != 'Y' or not record['pid']:
+        return False
+    if record['server'] != platform.node():
+        return False
+    try:
+        process = psutil.Process(int(record['pid']))
+        return APP in ' '.join(process.cmdline())
+    except (psutil.Error, ValueError):
+        return False
+
+
 class Server:
     """Represents application server."""
 
-    def __init__(self, host=None, port=None, dev=False):
-        argv = sys.argv[1:].copy()
-
+    def __init__(self, host=None, port=None, dev=False, scheduler=None):
         self.app = app
         self.host = host or config['API'].get('host') or '127.0.0.1'
         self.port = port or config['API'].get('port') or 8080
-        self.dev = True if dev is True or 'dev' in argv else False
+        self.dev = bool(dev)
         # A reload restarts the scheduler with every change, so development
         # servers run without it unless asked to.
-        self.scheduler = False if self.dev and '--scheduler' not in argv \
-            else None
+        self.scheduler = scheduler if scheduler is not None \
+            else (False if self.dev else None)
 
         self.table = db.tables.web_api
         self.record = reader.read_web_api_record()
-        if self.record and self.record['status'] == 'Y':
+        if is_running(self.record):
             self.server = self.record['server']
             self.username = self.record['username']
             self.pid = int(self.record['pid'])
@@ -50,12 +67,6 @@ class Server:
             self.start_date = None
             self.stop_date = None
             self.status = None
-
-        if argv:
-            if argv[0] == 'start':
-                self.start()
-            elif argv[0] == 'stop':
-                self.stop()
 
     def start(self):
         """Start web API server."""
@@ -108,11 +119,19 @@ class Server:
 
     def stop(self):
         """Stop web API server."""
-        if self.status is True:
-            self.stop_date = dt.datetime.now()
-            self.status = False
-            if psutil.pid_exists(self.pid):
-                os.kill(self.pid, signal.SIGTERM)
-            update = self.table.update().values(stop_date=self.stop_date,
-                                                status='N')
-            db.execute(update)
+        if self.status is not True:
+            if self.record and self.record['status'] == 'Y':
+                self._record_stop()
+                print('Web API was not running, its record was cleared.')
+            return
+        self.status = False
+        if psutil.pid_exists(self.pid):
+            os.kill(self.pid, signal.SIGTERM)
+        self._record_stop()
+
+    def _record_stop(self):
+        """Mark the web API record as stopped."""
+        self.stop_date = dt.datetime.now()
+        update = self.table.update().values(stop_date=self.stop_date,
+                                            status='N')
+        db.execute(update)

@@ -22,6 +22,7 @@ import time
 from ..config import config
 from ..database import db
 from ..logger import logger, open_run_log
+from ..reader import reader
 
 from . import journal
 from .control import Control
@@ -29,6 +30,13 @@ from .control import Control
 
 SUPERVISION_INTERVAL = 2
 WATCHDOG_INTERVAL = 5
+
+
+def _is_late(since, limit):
+    """Check that the given moment is further back than the time limit."""
+    if not isinstance(limit, int) or not since:
+        return False
+    return (dt.datetime.now()-since).total_seconds() > limit
 
 
 def get_runner_name():
@@ -202,20 +210,19 @@ class RunManager:
         }
 
     def sweep(self):
-        """Mark runs of this server left active after a crash as errors."""
+        """Finish runs of this server left active after a crash."""
         orphans = journal.read_orphans(self.name)
+        swept = 0
         for orphan in orphans:
-            process_id = int(orphan['process_id'])
             try:
-                control = Control(process_id=process_id)
-                control._save_text_message('Control execution stopped '
-                                           'because the server stopped '
-                                           'unexpectedly.')
-                control._set_as_error()
+                if self._finalize(int(orphan['process_id']),
+                                  'Control execution stopped because the '
+                                  'server stopped unexpectedly.'):
+                    swept += 1
             except Exception:
                 logger.error()
-        if orphans:
-            logger.warning(f'{len(orphans)} orphaned runs marked as errors')
+        if swept:
+            logger.warning(f'{swept} orphaned runs finished')
 
     def _dispatch(self):
         while True:
@@ -247,18 +254,19 @@ class RunManager:
 
     def _spawn(self, job):
         control = job.control
-        result = Control(process_id=control.process_id)
-        if result.status != 'I':
+        state = reader.read_run_state(control.process_id)
+        status = state['status'] if state else None
+        if status != 'I':
             logger.info(f'{control} Dropped from queue as its status is '
-                        f'{result.status}')
+                        f'{status}')
             with self.condition:
                 if job in self.running:
                     self.running.remove(job)
                 self.condition.notify_all()
             journal.update(job.event_id, event_type=journal.CANCELED,
                            message='Control run was canceled in queue.')
-            if result.status is None:
-                result._cancel_as_request()
+            if status is None:
+                Control(process_id=control.process_id)._cancel_as_request()
             return
         context = mp.get_context('spawn')
         job.current = context.Value('q', control.process_id)
@@ -306,15 +314,22 @@ class RunManager:
             time.sleep(SUPERVISION_INTERVAL)
 
     def _check(self, job):
-        process_id = job.process_id
-        control = Control(process_id=process_id)
-        if control.status is None:
+        state = reader.read_run_state(job.process_id)
+        if not state:
+            return
+        status, timeout = state['status'], state['timeout']
+        if status is None:
             reason = 'request'
-        elif control.status in ('S', 'P', 'F') and control.timeout:
+        elif status in ('S', 'P', 'F') and _is_late(state['start_date'],
+                                                    timeout):
+            reason = 'timeout'
+        elif status in ('I', 'W') and _is_late(job.started, timeout):
+            # Waiting for the instance limit or the control lock, which the
+            # run itself does before it starts and can not time out on.
             reason = 'timeout'
         else:
             return
-        logger.info(f'{control} Cancelation with {reason} received')
+        logger.info(f'{job.control} Cancelation with {reason} received')
         with self.condition:
             if job not in self.running:
                 return
@@ -331,24 +346,42 @@ class RunManager:
         nothing else ever writes its outcome, and the UI keeps showing it as
         running until the next server start sweeps it.
         """
+        exitcode = job.process.exitcode if job.process else None
         try:
-            control = Control(process_id=job.process_id)
-            if control.status not in (None, 'I', 'W', 'S', 'P', 'F'):
-                return
-            if control.status is None:
-                control._save_text_message('Control execution stopped '
-                                           'because of the request.')
-                control._set_as_canceled()
-                return
-            exitcode = job.process.exitcode if job.process else None
-            logger.warning(f'{control} Process finished unexpectedly with '
-                           f'the run still in status {control.status}')
-            control._save_text_message('Control execution stopped because '
-                                       'the control process finished '
-                                       f'unexpectedly (exit code {exitcode}).')
-            control._set_as_error()
+            self._finalize(job.process_id,
+                           'Control execution stopped because the control '
+                           'process finished unexpectedly '
+                           f'(exit code {exitcode}).')
         except Exception:
             logger.error()
+
+    def _finalize(self, process_id, message):
+        """Finish a run that nobody is performing any more.
+
+        A run whose cancelation was requested becomes canceled, any other
+        run still in an active status becomes an error. A run that already
+        has an outcome is left as it is.
+
+        Returns
+        -------
+        finished : bool
+            Whether the run needed to be finished.
+        """
+        control = Control(process_id=process_id)
+        if control.status not in (None, 'I', 'W', 'S', 'P', 'F'):
+            return False
+        # The process may have been killed while holding the control lock.
+        control.executor.release_lock()
+        if control.status is None:
+            control._save_text_message('Control execution stopped because '
+                                       'of the request.')
+            control._set_as_canceled()
+            return True
+        logger.warning(f'{control} Run left in status {control.status} '
+                       'without anyone performing it')
+        control._save_text_message(message)
+        control._set_as_error()
+        return True
 
     def _kill(self, job, message):
         process_id = job.process_id
@@ -402,8 +435,8 @@ def operate(control, chain, current, parent_pid, runner):
     open_run_log(control.id, control.process_id)
     logger.info(f'{control} Performed by process {os.getpid()} of {runner}')
     control.observer = observe
-    control._throttle()
-    control._resume()
+    if control._throttle():
+        control._resume()
     if chain:
         control.iterate()
         control.cascade()

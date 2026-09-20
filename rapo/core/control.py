@@ -1,7 +1,6 @@
 """Contains RAPO control interface."""
 
 import sys
-import inspect
 import traceback as tb
 import threading as th
 import multiprocessing as mp
@@ -721,8 +720,8 @@ class Control:
         """Run control in an ordinary way."""
         logger.debug(f'{self} Running control...')
         if self._initiate():
-            self._throttle()
-            self._resume()
+            if self._throttle():
+                self._resume()
 
     def launch(self):
         """Run control as a separate accompanied stoppable process."""
@@ -873,12 +872,16 @@ class Control:
         backoff_time = 1
         max_wait_time = 15
         while True:
-            with self.executor.lock():
-                if not self.blocked:
-                    logger.info(f'{self} Initiation queue passed, '
-                                'waiting to start...')
-                    self._set_as_waiting()
-                    break
+            try:
+                with self.executor.lock():
+                    if not self.blocked:
+                        logger.info(f'{self} Initiation queue passed, '
+                                    'waiting to start...')
+                        self._set_as_waiting()
+                        return self._continue()
+            except TimeoutError:
+                logger.error()
+                return self._escape()
             tm.sleep(backoff_time)
             backoff_time = min(backoff_time*2, max_wait_time)
 
@@ -922,8 +925,8 @@ class Control:
         logger.info(f'{self} Running as process on PID {self.process.pid}')
 
     def _operate(self):
-        self._throttle()
-        self._resume()
+        if self._throttle():
+            self._resume()
 
     def _handle(self):
         process = self.process
@@ -1016,6 +1019,7 @@ class Control:
         logger.info(f'{self} Canceling control...')
         try:
             self._set_as_canceled()
+            self.executor.release_lock()
             self.executor.delete_temporary_tables()
             self.executor.delete_output_records()
         except Exception:
@@ -1324,15 +1328,14 @@ class Control:
     def _save_text_message(self, text_message):
         new_record = f'{dt.datetime.now():%Y-%m-%d %H:%M:%S} - {text_message}'
         self._all_messages.append(new_record)
-
-        control_result = reader.read_control_result(self.process_id)
-        old_message = control_result.get('text_message')
-        if old_message:
-            new_message = f'{old_message}\n{new_record}'
-        else:
-            new_message = new_record
-
-        self._update_process_log(text_message=new_message)
+        # Appended in the database, because the supervising server and the
+        # control process itself both write messages of the same run. A CASE
+        # can not be used here, its branches would mix CHAR with CLOB.
+        column = db.tables.log.c.text_message
+        separator = sa.func.nvl2(column, sa.func.chr(10), sa.null(),
+                                 type_=sa.Text)
+        appended = column+separator+sa.literal(new_record, type_=sa.Text)
+        self._update_process_log(text_message=appended)
 
     def _save_text_error(self, text_error):
         self._update_process_log(text_error=text_error)
@@ -1618,7 +1621,7 @@ class Parser:
                     for col in columns
                 ]
 
-        select = sa.select([*columns, *literals])
+        select = sa.select(*columns, *literals)
         if where and isinstance(where, str):
             custom_where = utils.concat('(', where, ')')
             select = select.where(sa.text(custom_where))
@@ -2370,8 +2373,8 @@ class Parser:
         current_date = sa.func.to_date(today, 'YYYY-MM-DD')
         target_date = current_date-days_retention
         for table in self.parse_output_tables():
-            select = sa.select([log.c.process_id])
-            subq = sa.select([table.c.rapo_process_id])
+            select = sa.select(log.c.process_id)
+            subq = sa.select(table.c.rapo_process_id)
             query = (select.where(log.c.control_id == control_id)
                            .where(log.c.added < target_date)
                            .where(log.c.process_id.in_(subq))
@@ -2486,7 +2489,7 @@ class Executor:
                 name = mandatory_column.column_name
                 column = input_table.c[name]
                 columns.append(column)
-            select = sa.select(columns)
+            select = sa.select(*columns)
 
         table_name = f'rapo_temp_error_{self.control.process_id}'
         clause = sa.text(self.control.error_sql or '')
@@ -2525,14 +2528,11 @@ class Executor:
         def read_expression(script_name):
             return utils.read_sql(f'{SQL_DIRECTORY}/exps/{script_name}')
 
-        def prepare_paralell(script):
-            frame = inspect.currentframe().f_back
-            for name, value in frame.f_locals.items():
-                if value is script:
-                    statements = value if is_sequence(value) else [value]
-                    return {'name': name, 'statements': statements}
+        def prepare_paralell(name, script):
+            statements = script if is_sequence(script) else [script]
+            return {'name': name, 'statements': statements}
 
-        def prepare_save(need_base, need_issues, need_recons,
+        def prepare_save(name, need_base, need_issues, need_recons,
                          save_error_script, save_stage_script):
             save_scripts = []
             if need_base:
@@ -2540,7 +2540,7 @@ class Executor:
                     save_scripts.append(save_error_script)
                 if need_recons:
                     save_scripts.append(save_stage_script)
-            return prepare_paralell(save_scripts)
+            return prepare_paralell(name, save_scripts)
 
         def is_sequence(obj):
             return isinstance(obj, (list, tuple, set, frozenset))
@@ -2977,30 +2977,35 @@ class Executor:
 
         execute(correlate)
 
-        organize_a = prepare_paralell(organize_a)
-        organize_b = prepare_paralell(organize_b)
+        organize_a = prepare_paralell('organize_a', organize_a)
+        organize_b = prepare_paralell('organize_b', organize_b)
         execute(organize_a, organize_b)
 
         if fuzzy_optimization:
-            prepare_duplicates_a = prepare_paralell(prepare_duplicates_a)
-            prepare_duplicates_b = prepare_paralell(prepare_duplicates_b)
+            prepare_duplicates_a = prepare_paralell(
+                'prepare_duplicates_a', prepare_duplicates_a)
+            prepare_duplicates_b = prepare_paralell(
+                'prepare_duplicates_b', prepare_duplicates_b)
             execute(prepare_duplicates_a, prepare_duplicates_b)
             execute(process_duplicates)
 
-            match_duplicates_a = prepare_paralell(match_duplicates_a)
-            match_duplicates_b = prepare_paralell(match_duplicates_b)
-            match_duplicates = prepare_paralell(match_duplicates)
+            match_duplicates_a = prepare_paralell(
+                'match_duplicates_a', match_duplicates_a)
+            match_duplicates_b = prepare_paralell(
+                'match_duplicates_b', match_duplicates_b)
+            match_duplicates = prepare_paralell(
+                'match_duplicates', match_duplicates)
             execute(match_duplicates_a, match_duplicates_b, match_duplicates)
 
         execute(prepare_conflicts)
         execute(match_conflicts)
 
         save_a = prepare_save(
-            self.control.need_a, need_issues_a, need_recons_a,
+            'save_a', self.control.need_a, need_issues_a, need_recons_a,
             save_error_a, save_stage_a
         )
         save_b = prepare_save(
-            self.control.need_b, need_issues_b, need_recons_b,
+            'save_b', self.control.need_b, need_issues_b, need_recons_b,
             save_error_b, save_stage_b
         )
         execute(save_a, save_b)
@@ -3050,7 +3055,7 @@ class Executor:
             column_b = table_b.c[rule['column_b']]
             keys.append(column_a == column_b)
         join = table_a.join(table_b, *keys)
-        select = sa.select(columns).select_from(join)
+        select = sa.select(*columns).select_from(join)
 
         keys = []
         for error in self.control.error_definition:
@@ -3118,7 +3123,7 @@ class Executor:
             else:
                 keys &= (column_a == column_b)
         join = table_a.join(table_b, keys)
-        select = sa.select(columns).select_from(join)
+        select = sa.select(*columns).select_from(join)
 
         for error in self.control.error_definition:
             column_a = table_a.c[error['column_a']]
@@ -3205,7 +3210,7 @@ class Executor:
         logger.debug(f'{self.c} Counting errors from {table.name}...')
         error_number = None
         if self.control.engine == 'DB':
-            count = sa.select([sa.func.count()]).select_from(table)
+            count = sa.select(sa.func.count()).select_from(table)
             error_number = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Errors from {table.name} counted')
         return error_number
@@ -3224,7 +3229,7 @@ class Executor:
         logger.debug(f'{self.c} Counting results from {table.name}...')
         result_number = None
         if self.control.engine == 'DB':
-            count = sa.select([sa.func.count()]).select_from(table)
+            count = sa.select(sa.func.count()).select_from(table)
             result_number = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Results from {table.name} counted')
         return result_number
@@ -3240,7 +3245,7 @@ class Executor:
         logger.debug(f'{self.c} Counting matched...')
         if self.control.engine == 'DB':
             table = self.control.stage_table
-            count = sa.select([sa.func.count()]).select_from(table)
+            count = sa.select(sa.func.count()).select_from(table)
             matched = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Matched counted')
         return matched
@@ -3256,7 +3261,7 @@ class Executor:
         logger.debug(f'{self.c} Counting mismatched')
         if self.control.engine == 'DB':
             table = self.control.error_table
-            count = sa.select([sa.func.count()]).select_from(table)
+            count = sa.select(sa.func.count()).select_from(table)
             mismatched = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Mismatched counted')
         return mismatched
@@ -3270,7 +3275,7 @@ class Executor:
             input_columns = input_table.columns
             output_columns = output_table.columns
             process_id = self.control.key_column
-            select = sa.select([*input_columns, process_id])
+            select = sa.select(*input_columns, process_id)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
             logger.debug(f'{self.c} Saving done')
@@ -3284,7 +3289,7 @@ class Executor:
             input_columns = input_table.columns
             output_columns = output_table.columns
             process_id = self.control.key_column
-            select = sa.select([*input_columns, process_id])
+            select = sa.select(*input_columns, process_id)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
             logger.debug(f'{self.c} Saving done')
@@ -3322,7 +3327,7 @@ class Executor:
                 if output_column.name in input_table.columns:
                     input_column = input_table.c[output_column.name]
                     input_columns.append(input_column)
-            select = sa.select([*input_columns, process_id])
+            select = sa.select(*input_columns, process_id)
             if isinstance(output_limit, int) and output_limit >= 0:
                 select = select.limit(output_limit)
             insert = output_table.insert().from_select(output_columns, select)
@@ -3354,7 +3359,7 @@ class Executor:
                 if output_column.name in input_table.columns:
                     input_column = input_table.c[output_column.name]
                     input_columns.append(input_column)
-            select = sa.select([*input_columns, process_id])
+            select = sa.select(*input_columns, process_id)
             if isinstance(output_limit, int) and output_limit >= 0:
                 select = select.limit(output_limit)
             insert = output_table.insert().from_select(output_columns, select)
@@ -3389,7 +3394,7 @@ class Executor:
             logger.debug(f'{self.c} Table {table_name} will be created')
 
             columns = self._prepare_output_columns(table_name)
-            select = sa.select(columns)
+            select = sa.select(*columns)
             select = select.where(sa.literal(1) == sa.literal(0))
             select = db.compile(select)
             ctas = f'CREATE TABLE {table_name} AS\n{select}'
@@ -3583,6 +3588,10 @@ class Executor:
                 checkpoint = db.tables.checkpoint
                 backoff_time = 5
                 max_wait_time = 60
+                time_limit = self.control.config['timeout']
+                deadline = None
+                if isinstance(time_limit, int):
+                    deadline = tm.monotonic()+time_limit
                 while True:
                     insert = checkpoint.insert().values(
                         control_id=self.control.id,
@@ -3592,22 +3601,19 @@ class Executor:
                     try:
                         db.execute(insert)
                     except sa.exc.IntegrityError:
+                        if deadline and tm.monotonic() > deadline:
+                            message = ('control is locked by another run of '
+                                       'the same control')
+                            raise TimeoutError(message)
                         tm.sleep(backoff_time)
                         backoff_time = min(backoff_time+5, max_wait_time)
                     else:
                         break
 
             def release(self):
-                """Commit the transaction and close the connection."""
+                """Release the lock held for this control run."""
                 if not self._released:
-                    checkpoint = db.tables.checkpoint
-                    delete = checkpoint.delete().where(
-                        sa.and_(
-                            checkpoint.c.control_id == self.control.id,
-                            checkpoint.c.process_id == self.control.process_id
-                        )
-                    )
-                    db.execute(delete)
+                    self.control.executor.release_lock()
                     self._released = True
 
             def __enter__(self):
@@ -3617,6 +3623,21 @@ class Executor:
                 self.release()
 
         return Lock(self.control)
+
+    def release_lock(self):
+        """Delete the checkpoint lock held for this control run.
+
+        A process killed while it holds the lock never releases it itself,
+        so whoever finishes the run releases it instead.
+        """
+        checkpoint = db.tables.checkpoint
+        delete = checkpoint.delete().where(
+            sa.and_(
+                checkpoint.c.control_id == self.control.id,
+                checkpoint.c.process_id == self.control.process_id
+            )
+        )
+        db.execute(delete)
 
     def prerun_hook(self):
         """Execute database prerun hook function."""
@@ -3664,7 +3685,7 @@ class Executor:
 
     def _count_fetched_to_table(self, table):
         logger.debug(f'{self.c} Counting fetched in {table}...')
-        count = sa.select([sa.func.count()]).select_from(table)
+        count = sa.select(sa.func.count()).select_from(table)
         fetched = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Fetched in {table} counted')
         return fetched
