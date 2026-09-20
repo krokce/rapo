@@ -36,19 +36,6 @@
       </div>
     </div>
 
-    <div v-if="day" class="row items-center no-wrap q-mb-sm">
-      <q-btn no-caps dense size="sm" outline color="primary" icon="fas fa-chevron-left" :label="previousDay" @click="goToDay(previousDay)" />
-      <q-space />
-      <q-btn no-caps dense size="sm" unelevated color="primary" icon="fas fa-calendar-alt" icon-right="fas fa-caret-down" :label="dayLabel">
-        <q-popup-proxy ref="dayPicker" cover transition-show="scale" transition-hide="scale">
-          <q-date :model-value="day" mask="YYYY-MM-DD" first-day-of-week="1" :options="isSelectableDay" @update:model-value="pickDay" />
-        </q-popup-proxy>
-      </q-btn>
-      <q-btn no-caps dense size="sm" flat class="q-ml-sm" color="primary" label="Today" :disable="isToday" @click="goToDay(serverToday)" />
-      <q-space />
-      <q-btn no-caps dense size="sm" outline color="primary" icon-right="fas fa-chevron-right" :label="nextDay" :disable="isToday" @click="goToDay(nextDay)" />
-    </div>
-
     <div class="row items-center q-mb-md">
       <q-btn class="col-2 q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-play-circle" label="Run control" @click="$refs.runControlDialog.open()" />
       <run-control-dialog ref="runControlDialog" :hook="refreshControlResults" />
@@ -84,6 +71,23 @@
       <q-btn flat round color="grey" class="q-mb-md q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
         <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
       </q-btn>
+    </div>
+
+    <div v-if="day" class="row items-center no-wrap q-mb-sm">
+      <div class="col row items-center justify-start no-wrap">
+        <q-btn no-caps size="md" outline color="primary" icon="fas fa-chevron-left" :label="previousDay" @click="goToDay(previousDay)" />
+      </div>
+      <q-btn no-caps size="md" unelevated color="primary" icon="fas fa-calendar-alt" icon-right="fas fa-caret-down" :label="dayLabel">
+        <q-popup-proxy ref="dayPicker" cover transition-show="scale" transition-hide="scale">
+          <q-date :model-value="day" mask="YYYY-MM-DD" first-day-of-week="1" :options="isSelectableDay" @update:model-value="pickDay" />
+        </q-popup-proxy>
+      </q-btn>
+      <div class="col row items-center justify-end no-wrap">
+        <q-btn v-if="!isToday" no-caps size="md" outline color="primary" icon-right="fas fa-chevron-right" :label="nextDay" @click="goToDay(nextDay)" />
+        <q-btn v-if="!isToday" no-caps size="md" flat class="q-ml-sm" color="primary" icon="fas fa-step-forward" @click="goToDay(serverToday)">
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
+        </q-btn>
+      </div>
     </div>
 
     <div>
