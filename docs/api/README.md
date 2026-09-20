@@ -266,7 +266,7 @@ The `rapo_scheduler` record: `server`, `username`, `pid`, `start_date`, `stop_da
 scheduler has ever run.
 
 #### `GET /api/session`
-The `rapo_web_api` record of the running server: `server`, `username`, `pid`, `url`, `debug`, `start_date`,
+The `rapo_web_api` record of the server that started last: `server`, `username`, `pid`, `url`, `debug`, `start_date`,
 `stop_date`, `status`. `404` when no server has recorded itself yet.
 
 #### `GET /api/help`

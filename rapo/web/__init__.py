@@ -19,23 +19,56 @@ from ..reader import reader
 APP = 'rapo.web.api.app:app'
 
 
-def is_running(record):
+def is_running(record, url=None):
     """Check that the recorded server is really running on this host.
 
     A server that crashed leaves its row marked as running. Trusting that
     PID makes `start` refuse to start and `stop` signal whatever process has
     taken the number since, so the record counts only when it names this
     host and the PID still belongs to a rapo server.
+
+    The table holds one row, so a second instance overwrites it. Passing the
+    URL of the server asking makes the record count only when it is that
+    server's own, and never makes it signal another instance.
     """
     if not record or record['status'] != 'Y' or not record['pid']:
         return False
     if record['server'] != platform.node():
+        return False
+    if url and record['url'] != url:
         return False
     try:
         process = psutil.Process(int(record['pid']))
         return APP in ' '.join(process.cmdline())
     except (psutil.Error, ValueError):
         return False
+
+
+def find_server(host, port):
+    """Find the server process serving the given host and port.
+
+    The record names one instance only, so a server whose row was taken over
+    by another one finds its own process by the command line it was started
+    with, the way `rapo-ctl.sh` does.
+
+    Returns
+    -------
+    process : psutil.Process or None
+        Process of the server, None when it is not running.
+    """
+    args = f'--host {host} --port {port}'
+    found = []
+    # A process of another user or a zombie gives None instead of raising, so
+    # one unreadable process does not stop the search.
+    for process in psutil.process_iter(['cmdline', 'create_time'],
+                                       ad_value=None):
+        command = ' '.join(process.info['cmdline'] or ())
+        if APP in command and args in command:
+            found.append(process)
+    # A development server reloads through a parent process, which is the one
+    # to signal, so the oldest match is the server itself.
+    return min(found, key=lambda process: process.info['create_time'] or 0,
+               default=None)
 
 
 class Server:
@@ -45,6 +78,7 @@ class Server:
         self.app = app
         self.host = host or config['API'].get('host') or '127.0.0.1'
         self.port = port or config['API'].get('port') or 8080
+        self.url = f'{self.host}:{self.port}'
         self.dev = bool(dev)
         # A reload restarts the scheduler with every change, so development
         # servers run without it unless asked to.
@@ -53,7 +87,13 @@ class Server:
 
         self.table = db.tables.web_api
         self.record = reader.read_web_api_record()
-        if is_running(self.record):
+        # Whether the record describes this very server, which is the only
+        # case where it may be written. Another instance keeps its own row
+        # until it stops or until the next start overwrites it.
+        self.record_is_mine = bool(self.record) \
+            and self.record['server'] == platform.node() \
+            and self.record['url'] == self.url
+        if is_running(self.record, self.url):
             self.server = self.record['server']
             self.username = self.record['username']
             self.pid = int(self.record['pid'])
@@ -63,10 +103,13 @@ class Server:
         else:
             self.server = platform.node()
             self.username = getpass.getuser()
-            self.pid = None
             self.start_date = None
             self.stop_date = None
-            self.status = None
+            # The record may belong to another instance, so this server is
+            # looked for by its command line instead of by that PID.
+            process = find_server(self.host, self.port)
+            self.pid = process.pid if process else None
+            self.status = True if process else None
 
     def start(self):
         """Start web API server."""
@@ -80,6 +123,9 @@ class Server:
             env['RAPO_SCHEDULER'] = '0'
         self.start_date = dt.datetime.now()
         self.status = True
+        # The record is overwritten below, so from now on it is this server's,
+        # whichever instance wrote it before.
+        self.record_is_mine = True
         if self.dev is True:
             cmd = [*script, *args, '--reload']
             try:
@@ -89,7 +135,7 @@ class Server:
                                     .values(server=self.server,
                                             username=self.username,
                                             pid=self.pid,
-                                            url=f'{self.host}:{self.port}',
+                                            url=self.url,
                                             debug='X',
                                             start_date=self.start_date,
                                             stop_date=self.stop_date,
@@ -110,7 +156,7 @@ class Server:
             update = self.table.update().values(server=self.server,
                                                 username=self.username,
                                                 pid=self.pid,
-                                                url=f'{self.host}:{self.port}',
+                                                url=self.url,
                                                 debug=None,
                                                 start_date=self.start_date,
                                                 stop_date=self.stop_date,
@@ -120,14 +166,18 @@ class Server:
     def stop(self):
         """Stop web API server."""
         if self.status is not True:
-            if self.record and self.record['status'] == 'Y':
+            if self.record_is_mine and self.record['status'] == 'Y':
                 self._record_stop()
                 print('Web API was not running, its record was cleared.')
+            elif self.record and self.record['status'] == 'Y':
+                print(f'Web API was not running, the record belongs to '
+                      f'{self.record["server"]} at {self.record["url"]}.')
             return
         self.status = False
         if psutil.pid_exists(self.pid):
             os.kill(self.pid, signal.SIGTERM)
-        self._record_stop()
+        if self.record_is_mine:
+            self._record_stop()
 
     def _record_stop(self):
         """Mark the web API record as stopped."""
