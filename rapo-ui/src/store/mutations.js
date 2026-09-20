@@ -16,7 +16,9 @@ export default {
     state.controlCatalogue = payload;
   },
   updateControlResults(state, payload) {
-    state.controlResults = payload;
+    state.controlResults = payload.runs;
+    state.controlResultsDay = payload.date;
+    state.serverToday = payload.today;
   },
   updateSchedulerStatus(state, payload) {
     state.schedulerStatus = payload;

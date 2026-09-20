@@ -196,8 +196,8 @@ class Reader:
         answerset = db.execute(select, as_table=True)
         return answerset
 
-    def read_control_results_for_day(self):
-        """Get list of all control runs for the passed for_day."""
+    def read_control_results_for_day(self, day):
+        """Get list of all control runs started on the passed day."""
         select = """
                 select
                     c.control_name,
@@ -224,9 +224,13 @@ class Reader:
                 left join rapo_config c on l.control_id = c.control_id
                 where 1=1
                     and c.control_name is not null
+                    and ((l.start_date >= :day_start and l.start_date < :day_end)
+                         or (l.start_date is null and l.added >= :day_start and l.added < :day_end))
                 order by process_id desc
-                fetch first 200 rows only
         """
+        day_start = dt.datetime.combine(day, dt.time())
+        day_end = day_start + dt.timedelta(days=1)
+        select = sa.text(select).bindparams(day_start=day_start, day_end=day_end)
         answerset = db.execute(select, as_table=True)
         return answerset
 

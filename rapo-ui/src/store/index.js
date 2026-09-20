@@ -9,6 +9,8 @@ const store = createStore({
       search: "",
       controlCatalogue: [],
       controlResults: [],
+      controlResultsDay: null,
+      serverToday: null,
       tokenIsValid: false,
       tokenValue: "",
       socketConnected: false,
