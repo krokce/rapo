@@ -54,7 +54,7 @@ class Reader:
         log = db.tables.log
         config = db.tables.config
         join = log.join(config, log.c.control_id == config.c.control_id)
-        select = (sa.select([config.c.control_name]).select_from(join)
+        select = (sa.select(config.c.control_name).select_from(join)
                     .where(log.c.process_id == process_id))
         result = db.execute(select, as_one=True)
         if not result:
@@ -72,9 +72,29 @@ class Reader:
     def read_control_name_by_id(self, control_id):
         """Get control name by control ID, None if it does not exist."""
         config = db.tables.config
-        select = (sa.select([config.c.control_name])
+        select = (sa.select(config.c.control_name)
                     .where(config.c.control_id == control_id))
         return db.execute(select, as_scalar=True)
+
+    def read_run_state(self, process_id):
+        """Get the state a running control run is supervised by.
+
+        Reads the few values needed to decide whether a run must be stopped
+        in one query, instead of loading the whole control.
+
+        Returns
+        -------
+        record : dict or None
+            Status, start date and configured timeout of the run.
+        """
+        log = db.tables.log
+        config = db.tables.config
+        join = log.join(config, log.c.control_id == config.c.control_id,
+                        isouter=True)
+        select = (sa.select(log.c.status, log.c.start_date, config.c.timeout)
+                    .select_from(join)
+                    .where(log.c.process_id == process_id))
+        return db.execute(select, as_dict=True)
 
     def read_control_result(self, process_id):
         """Get control result from DB log table.
@@ -124,7 +144,7 @@ class Reader:
             raise ValueError(message)
 
     def read_control_logs(self, control_name, days=365, statuses=[],
-                          order_by=True):
+                          order_by=True, limit=None):
         """Retrieve control run logs with given parameters.
 
         Parameters
@@ -137,6 +157,10 @@ class Reader:
             List of statuses with which logs are to be retrieved.
         order_by : bool
             Whether to sort logs by process_id.
+        limit : int or None
+            Maximum number of logs to read, None for no limit. Logs carry
+            the whole text of their run, so a frequently run control can
+            hold a lot of them.
 
         Returns
         -------
@@ -146,7 +170,7 @@ class Reader:
         log = db.tables.log
         config = db.tables.config
         join = log.join(config, log.c.control_id == config.c.control_id)
-        select = sa.select(log.columns).select_from(join)\
+        select = sa.select(*log.columns).select_from(join)\
                    .where(config.c.control_name == control_name)
         if days and isinstance(days, int):
             dateform = 'YYYY-MM-DD HH24:MI:SS'
@@ -159,6 +183,8 @@ class Reader:
                 select = select.where(log.c.status.in_(statuses))
         if order_by:
             select = select.order_by(log.c.process_id.desc())
+        if limit:
+            select = select.limit(limit)
         answerset = db.execute(select, as_table=True)
         return answerset
 
@@ -181,7 +207,8 @@ class Reader:
     def read_running_controls(self):
         """Get list of running controls."""
         table = db.tables.log
-        select = table.select().where(table.c.status.in_(['I', 'P', 'W', 'S', 'F']))
+        select = table.select().where(
+            table.c.status.in_(['I', 'P', 'W', 'S', 'F']))
         answerset = db.execute(select, as_table=True)
         return answerset
 
@@ -246,7 +273,11 @@ class Reader:
     def read_datasource_columns(self, datasource_name):
         """Get list of all column names of the passed datasource_name."""
 
-        answerset = db.execute(f"select column_name, data_type from user_tab_cols where table_name = '{datasource_name}' order by column_id", as_table=True)
+        select = sa.text('select column_name, data_type from user_tab_cols '
+                         'where table_name = :datasource_name '
+                         'order by column_id')
+        select = select.bindparams(datasource_name=datasource_name)
+        answerset = db.execute(select, as_table=True)
         return answerset
 
     def save_control(self, data):

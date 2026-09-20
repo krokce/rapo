@@ -49,7 +49,7 @@ class Database:
             """
             meta = sa.MetaData()
             engine = self.database.engine
-            table = sa.Table(name, meta, autoload=True, autoload_with=engine)
+            table = sa.Table(name, meta, autoload_with=engine)
             return table
 
         def initiate(self, name):
@@ -62,9 +62,8 @@ class Database:
 
         def check(self, name):
             """Check if specified table exists by name."""
-            if self.database.engine.has_table(name):
-                return True
-            return False
+            inspector = sa.inspect(self.database.engine)
+            return inspector.has_table(name)
 
     class Structure:
         """Represents database tables structure."""
@@ -224,11 +223,11 @@ class Database:
             if as_records:
                 result = [record for record in result]
             elif as_table:
-                result = [dict(record) for record in result]
+                result = [dict(record._mapping) for record in result]
             elif as_one or as_dict:
                 result = result.first()
                 if result and as_dict:
-                    result = dict(result)
+                    result = dict(result._mapping)
             elif as_scalar:
                 result = result.scalar()
             if as_generator and not (as_one or as_dict or as_scalar):
@@ -322,7 +321,7 @@ class Database:
             Database table instance.
         """
         meta = sa.MetaData()
-        table = sa.Table(name, meta, autoload=True, autoload_with=self.engine)
+        table = sa.Table(name, meta, autoload_with=self.engine)
         return table
 
     def exists(self, table_name):
@@ -378,10 +377,10 @@ class Database:
         table_name : str
             Name of the database table to be checked.
         """
-        table_name = table_name.upper()
-        query = ('select object_type from user_objects '
-                 f'where object_name = \'{table_name}\' '
-                 'and object_type in (\'TABLE\', \'VIEW\')')
+        query = sa.text('select object_type from user_objects '
+                        'where object_name = :object_name '
+                        'and object_type in (\'TABLE\', \'VIEW\')')
+        query = query.bindparams(object_name=table_name.upper())
         table_type = self.execute(query, as_scalar=True)
         return table_type
 
@@ -393,10 +392,10 @@ class Database:
         table_name : str
             Name of the database table to be checked.
         """
-        view_name = view_name.upper()
-        query = ('select object_type from user_objects '
-                 f'where object_name = \'{view_name}\' '
-                 'and object_type in (\'VIEW\', \'MATERIALIZED VIEW\')')
+        query = sa.text('select object_type from user_objects '
+                        'where object_name = :object_name '
+                        'and object_type in (\'VIEW\', \'MATERIALIZED VIEW\')')
+        query = query.bindparams(object_name=view_name.upper())
         view_type = self.execute(query, as_scalar=True)
         return view_type
 
@@ -448,11 +447,11 @@ class Database:
 
     def get_column_type(self, table_name, column_name):
         """Get the column type by table and name."""
-        table_name = table_name.upper()
-        column_name = column_name.upper()
-        query = ('select data_type from user_tab_columns '
-                 f'where table_name = \'{table_name}\' '
-                 f'and column_name = \'{column_name}\'')
+        query = sa.text('select data_type from user_tab_columns '
+                        'where table_name = :table_name '
+                        'and column_name = :column_name')
+        query = query.bindparams(table_name=table_name.upper(),
+                                 column_name=column_name.upper())
         column_type = self.execute(query, as_scalar=True)
         return column_type
 
@@ -468,7 +467,7 @@ class Database:
         table_name = table if isinstance(table, str) else table.name
         column_name = column if isinstance(column, str) else column.name
         column_type = self.get_column_type(table_name, column_name)
-        return True if column_type.startswith('TIMESTAMP') else False
+        return bool(column_type and column_type.startswith('TIMESTAMP'))
 
     def get_rowid(self, field_name):
         """Get rowid column named by alias."""

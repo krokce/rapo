@@ -259,12 +259,14 @@ def get_control_runs(date: dt.date | None = None):
 
 
 @api.get('/read-control-logs')
-def read_control_logs(control_name: str | None = None, days: int = 31):
+def read_control_logs(control_name: str | None = None, days: int = 31,
+                      limit: int = fastapi.Query(5000, ge=1, le=50000)):
     """Get list of control logs in JSON."""
     if control_name is None:
         return []
     return reader.read_control_logs(
-        control_name, days, ['W', 'C', 'E', 'D', 'I', 'S', 'P', 'F', 'X'])
+        control_name, days, ['W', 'C', 'E', 'D', 'I', 'S', 'P', 'F', 'X'],
+        limit=limit)
 
 
 @api.get('/get-datasources')

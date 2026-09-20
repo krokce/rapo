@@ -16,6 +16,7 @@ A moment matches when all units match. Week days are numbered from 1
 is either disabled or triggered in cascade by another control.
 """
 
+import bisect
 import datetime as dt
 import json
 import re
@@ -128,12 +129,24 @@ def next_fire(schedule, after, limit=1, before=None):
     while day <= last_day:
         if (day.day in allowed['mday']
                 and day.isoweekday() in allowed['wday']):
-            for hour in allowed['hour']:
-                for minute in allowed['min']:
-                    for second in allowed['sec']:
+            # On the day of `after` the units below it start at its own
+            # value, so a schedule matching every second does not walk the
+            # whole day just to skip the moments already past.
+            first_day = day == after.date()
+            hours = _from(allowed['hour'], after.hour) if first_day \
+                else allowed['hour']
+            for hour in hours:
+                first_hour = first_day and hour == after.hour
+                minutes = _from(allowed['min'], after.minute) if first_hour \
+                    else allowed['min']
+                for minute in minutes:
+                    first_minute = first_hour and minute == after.minute
+                    seconds = _from(allowed['sec'], after.second+1) \
+                        if first_minute else allowed['sec']
+                    for second in seconds:
                         moment = dt.datetime(day.year, day.month, day.day,
                                              hour, minute, second)
-                        if moment <= after or not exists(moment):
+                        if not exists(moment):
                             continue
                         if before is not None and moment >= before:
                             return fires
@@ -142,6 +155,11 @@ def next_fire(schedule, after, limit=1, before=None):
                             return fires
         day += dt.timedelta(days=1)
     return fires
+
+
+def _from(values, minimum):
+    """Get the tail of sorted values that is not lower than the minimum."""
+    return values[bisect.bisect_left(values, minimum):]
 
 
 def exists(moment):

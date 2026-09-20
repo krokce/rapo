@@ -89,7 +89,6 @@ class Scheduler:
         self.thread = None
         self.wake = th.Event()
         self.reload = True
-        self.skip_missed = False
 
         self.schedule = {}
         self.cursor = None
@@ -134,7 +133,6 @@ class Scheduler:
     def enable(self):
         """Resume scheduling from now on, without recording missed fires."""
         self._set_disabled(False)
-        self.skip_missed = True
         self.wake.set()
         self._notify()
 
@@ -273,13 +271,10 @@ class Scheduler:
         self.leader_since = now
         self.reload = True
         self.cursor = now.replace(microsecond=0)
-        if self.skip_missed:
-            self.skip_missed = False
-        else:
-            since = max([date for date in (record['heartbeat'],
-                                           record['stop_date'])
-                         if date is not None], default=None)
-            self._record_missed(since, self.cursor)
+        since = max([date for date in (record['heartbeat'],
+                                       record['stop_date'])
+                     if date is not None], default=None)
+        self._record_missed(since, self.cursor)
         interval = get_setting('maintenance_interval')
         self.next_maintenance = _next_multiple(interval)
         interval = get_setting('database_report_interval')
@@ -310,7 +305,14 @@ class Scheduler:
 
     def _set_disabled(self, disabled):
         table = db.tables.scheduler
-        update = table.update().values(disabled='Y' if disabled else 'N')
+        values = {'disabled': 'Y' if disabled else 'N'}
+        if not disabled:
+            # Start from the UI resumes from now. Moving the marks the next
+            # holder measures downtime from keeps that true on whichever
+            # server takes the lease, not only on this one.
+            now = dt.datetime.now()
+            values.update(heartbeat=now, stop_date=now)
+        update = table.update().values(**values)
         db.execute(update)
         logger.info(f'Scheduler {"stopped" if disabled else "started"} '
                     'from the UI')
@@ -325,8 +327,12 @@ class Scheduler:
                 self.reload = True
         if not self.reload and now-self.loaded < interval:
             return
+        # Read before the schedules, so that a change committed while they
+        # are read is seen again by the next check instead of being hidden
+        # by a signature that already includes it.
+        signature = _read_config_signature()
         self.schedule = dict(schedule.read_all())
-        self.signature = _read_config_signature()
+        self.signature = signature
         self.loaded = self.checked = now
         self.reload = False
         logger.debug(f'Schedule: {len(self.schedule)} jobs found')

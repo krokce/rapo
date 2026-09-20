@@ -75,6 +75,16 @@ def read_runner(process_id):
     return db.execute(select, as_scalar=True)
 
 
+def read_running_runs():
+    """Get process IDs of the runs that have not finished yet."""
+    log = db.tables.log
+    select = sa.select(log.c.process_id).where(
+        sa.or_(log.c.status.in_(['I', 'W', 'S', 'P', 'F']),
+               log.c.status.is_(None)))
+    return {int(row.process_id) for row in db.execute(select,
+                                                      as_records=True)}
+
+
 def clean_logs(now=None):
     """Delete log files older than their retention.
 
@@ -94,14 +104,20 @@ def clean_logs(now=None):
     select = sa.select(config.c.control_id, config.c.days_retention)
     retentions = {int(row.control_id): row.days_retention
                   for row in db.execute(select, as_records=True)}
+    # A run in progress can go longer than the window that protects recently
+    # written files, so its open log file is found by its status instead.
+    running = read_running_runs()
 
     deleted = []
 
-    def delete_older(paths, days):
+    def delete_older(paths, days, running=frozenset()):
         if days is None:
             return
         border = min(now-days*86400, now-ACTIVE_WINDOW)
         for path in paths:
+            name = os.path.splitext(os.path.basename(path))[0]
+            if name.isdigit() and int(name) in running:
+                continue
             try:
                 if os.path.getmtime(path) < border:
                     os.remove(path)
@@ -117,7 +133,7 @@ def clean_logs(now=None):
         days = retentions.get(int(name))
         if days is None:
             days = retention_days or None
-        delete_older(glob.glob(os.path.join(folder, '*.log')), days)
+        delete_older(glob.glob(os.path.join(folder, '*.log')), days, running)
         try:
             if not os.listdir(folder):
                 os.rmdir(folder)
