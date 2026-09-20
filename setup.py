@@ -29,6 +29,12 @@ classifiers = [
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent'
 ]
+entry_points = {
+    'console_scripts': [
+        'rapo-scheduler=rapo.cli:run_scheduler',
+        'rapo-server=rapo.cli:run_server',
+    ],
+}
 
 
 setuptools.setup(name=name,
@@ -44,4 +50,5 @@ setuptools.setup(name=name,
                  install_requires=install_requires,
                  packages=packages,
                  package_data=package_data,
-                 classifiers=classifiers)
+                 classifiers=classifiers,
+                 entry_points=entry_points)
