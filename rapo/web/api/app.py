@@ -13,6 +13,7 @@ from . import events
 from .auth import verify_token
 
 from ...config import config, path as CONFIG_PATH
+from ...kpi import kpi
 from ...logger import logger, LOG_DIR
 from ...reader import reader
 
@@ -136,7 +137,8 @@ def info():
             database_config.get('service_name')
         ),
         'config_path': CONFIG_PATH,
-        'log_directory': LOG_DIR
+        'log_directory': LOG_DIR,
+        'kpi_available': kpi.available
     }
     return output_dict
 
@@ -265,14 +267,53 @@ def get_datasource_columns(datasource_name: str | None = None):
     return reader.read_datasource_columns(datasource_name)
 
 
+@api.get('/get-kpi-types')
+def get_kpi_types():
+    """Get list of available KPI types in JSON."""
+    return kpi.read_kpi_types()
+
+
+@api.get('/get-control-kpis')
+def get_control_kpis(control_name: str | None = None):
+    """Get KPI configuration of the control in JSON."""
+    if control_name is None:
+        return []
+    return kpi.read_control_kpis(control_name)
+
+
+@api.post('/validate-kpi-sql')
+def validate_kpi_sql(data: dict = fastapi.Body(...)):
+    """Parse KPI or alarm statement without executing it."""
+    return kpi.validate_statement(data.get('statement'))
+
+
 @api.post('/save-control')
 def save_control(data: dict = fastapi.Body(...)):
     """Create or update control in configuration table."""
+    # An absent key leaves the KPI configuration alone, an empty list clears it.
+    kpi_config = data.pop('kpi_config', None)
+    control_id = data.get('control_id')
+    previous_name = (reader.read_control_name_by_id(control_id)
+                     if control_id else None)
     try:
         reader.save_control(data)
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    try:
+        if kpi_config is not None:
+            control_name = data.get('control_name') or previous_name
+            kpi.save_control_kpis(control_name, kpi_config,
+                                  old_name=previous_name)
+    except Exception as error:
+        # The control itself is saved by now, so the scheduler must be told.
+        logger.error()
+        scheduler.refresh()
+        events.poke()
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Control was saved, but its KPI configuration was not: '
+                   f'{error}')
     scheduler.refresh()
     events.poke()
     return {'status': 200}

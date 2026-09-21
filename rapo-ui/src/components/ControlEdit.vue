@@ -29,6 +29,7 @@
           <q-tab name="sql" label="SQL Scripts" icon="fas fa-code" />
           <q-tab v-if="control.control_type !== 'REP' && control.control_type !== 'REC'" name="case" label="Case definition" icon="fas fa-tag" />
           <q-tab name="scheduler" label="Scheduler" icon="fas fa-clock" />
+          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-chart-line" />
           <q-tab v-if="control.control_id" name="log" label="Run log" icon="fas fa-file-medical-alt" />
         </q-tabs>
 
@@ -722,6 +723,18 @@
                 </div>
               </div>
             </q-tab-panel>
+            <q-tab-panel name="kpi">
+              <div class="q-ma-lg q-gutter-y-md">
+                <div class="row q-gutter-md">
+                  <kpi-config-box class="col" v-model="kpiConfigObject" :control-name="control.control_name"> </kpi-config-box>
+                </div>
+
+                <div class="row q-gutter-md">
+                  <q-btn label="Save" type="submit" color="primary" />
+                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
+                </div>
+              </div>
+            </q-tab-panel>
             <q-tab-panel name="log">
               <div class="q-ma-lg q-gutter-y-md">
                 <div class="row q-my-lg">
@@ -866,7 +879,7 @@
 </template>
 
 <script>
-import { mapActions, mapGetters } from "vuex";
+import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
@@ -879,6 +892,7 @@ import ReconciliationMatchCriteriaBox from "./ReconciliationMatchCriteriaBox.vue
 import ReconciliationMisMatchCriteriaBox from "./ReconciliationMisMatchCriteriaBox.vue";
 import CaseConfigBox from "./CaseConfigBox.vue";
 import IterationConfigBox from "./IterationConfigBox.vue";
+import KpiConfigBox from "./KpiConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
@@ -894,6 +908,7 @@ export default {
     ReconciliationMisMatchCriteriaBox,
     CaseConfigBox,
     IterationConfigBox,
+    KpiConfigBox,
     ComparisonCriteriaBox,
     ComparisonOutputTableBox,
   },
@@ -927,6 +942,7 @@ export default {
       ruleErrorObject: [],
       caseConfigObject: [],
       iterationConfigObject: [],
+      kpiConfigObject: [],
       controlLogs: [],
       versionChanges: [],
       saving: false,
@@ -945,6 +961,11 @@ export default {
   },
   computed: {
     ...mapGetters(["controlCatalogueById"]),
+    ...mapState(["kpiTypes"]),
+    // The KPI tables belong to the RACS deployment and are optional. No types, no KPIs tab.
+    kpiAvailable() {
+      return this.kpiTypes.length > 0;
+    },
     scheduleType() {
       return scheduleType(this.scheduleObject);
     },
@@ -959,7 +980,7 @@ export default {
     },
   },
   methods: {
-    ...mapActions(["updateControlCatalogue"]),
+    ...mapActions(["updateControlCatalogue", "updateKpiTypes"]),
     updateLogDaysBack() {
       return this.refreshLogs();
     },
@@ -987,6 +1008,25 @@ export default {
         const needle = val.toLowerCase();
         this.datasourceListOptions = (this.datasourceList || []).filter((v) => v.toLowerCase().includes(needle));
       });
+    },
+    async loadKpiTypes() {
+      try {
+        await this.updateKpiTypes();
+      } catch (error) {
+        notifyError("KPI types were not loaded.", error);
+      }
+    },
+    // racs_kpi_config rows of one control, by name. Not versioned, so a version switch reloads the same rows.
+    async loadControlKpis(controlName) {
+      this.kpiConfigObject = [];
+      if (!this.kpiAvailable || !controlName) {
+        return;
+      }
+      try {
+        this.kpiConfigObject = await api("get-control-kpis", { params: { control_name: controlName }, loadingBar: false });
+      } catch (error) {
+        notifyError("KPI configuration was not loaded.", error);
+      }
     },
     async getDatasources() {
       try {
@@ -1238,10 +1278,11 @@ export default {
       this.loadControl(newVersion);
     },
     // Edit a copy: the catalogue and version rows must not see unsaved edits.
-    async loadControl(data) {
+    async loadControl(data, kpiControlName = null) {
       this.initializing = true;
       this.control = JSON.parse(JSON.stringify(data));
       this.initializeControl();
+      this.loadControlKpis(kpiControlName || data.control_name);
       // Let the datasource watchers fire for this assignment before re-enabling them.
       await this.$nextTick();
       this.initializing = false;
@@ -1370,9 +1411,13 @@ export default {
         this.control.iteration_config = null;
       }
 
+      // The KPIs are stored outside rapo_config, so they travel beside the control's own columns. The key
+      // is left out entirely when there are no KPI tables, which tells the server not to touch them.
+      const body = this.kpiAvailable ? { ...this.control, kpi_config: this.kpiConfigObject } : this.control;
+
       this.saving = true;
       try {
-        await api("save-control", { method: "POST", body: this.control });
+        await api("save-control", { method: "POST", body });
       } catch (error) {
         // stay on the page so unsaved edits are not lost
         this.saving = false;
@@ -1586,6 +1631,7 @@ export default {
   },
   async mounted() {
     this.getDatasources();
+    await this.loadKpiTypes();
 
     let controlData = this.controlCatalogueById(this.controlId);
 
@@ -1595,11 +1641,13 @@ export default {
     }
 
     if (controlData) {
+      // Before the clone rename, so a clone starts with the KPIs of the control it was cloned from.
+      const kpiControlName = controlData.control_name;
       if (this.$route.query.clone) {
         // Force insert instead of update
         controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
       }
-      await this.loadControl(controlData);
+      await this.loadControl(controlData, kpiControlName);
       if (this.control.control_id) {
         this.getControlVersions(this.controlId);
         this.getControlLogs(this.control.control_name, this.log_days_back);

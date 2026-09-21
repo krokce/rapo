@@ -23,6 +23,9 @@ export default {
   updateSchedulerStatus(state, payload) {
     state.schedulerStatus = payload;
   },
+  updateKpiTypes(state, payload) {
+    state.kpiTypes = payload;
+  },
   updateSocketConnected(state, payload) {
     state.socketConnected = payload;
   },
