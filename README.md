@@ -18,13 +18,15 @@ UI are versioned, released and installed as one thing and no Node is needed to i
 
 On top of that the fork adds the FastAPI web server, live updates over socket.io, a scheduler that runs inside
 the server with a lease, an event history and missed-fire handling, a run manager that gives every run its own
-process, per-run log files shown in the UI, and a documented web API. The releases are described in
-[migrations/v0.7.0](migrations/v0.7.0/README.md) and
-[migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md).
+process, per-run log files shown in the UI, a documented web API, and an optional Oracle-side execution engine
+for reconciliation controls. The releases are described in
+[migrations/v0.7.0](migrations/v0.7.0/README.md),
+[migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md) and
+[migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md).
 
 Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
 
-Releases of the fork carry a local version segment - `0.8.0+krokce.1` - because the original project keeps its own
+Releases of the fork carry a local version segment - `0.8.1+krokce.1` - because the original project keeps its own
 numbering and is at v0.6.15; the two version lines say nothing about each other.
 
 ## Prologue

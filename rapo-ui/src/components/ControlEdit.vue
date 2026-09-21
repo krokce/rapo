@@ -96,15 +96,17 @@
                   <q-select
                     class="col"
                     outlined
-                    readonly
+                    :readonly="control.control_type !== 'REC'"
                     emit-value
                     map-options
                     v-model="control.control_engine"
-                    :options="[
-                      { label: 'Database', value: 'DB' },
-                      { label: 'Python', value: 'PY' },
-                    ]"
-                    label="Control engine" />
+                    :options="controlEngineOptions"
+                    label="Control engine">
+                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                      Reconciliation can run its SQL from Python ('Database SQL') or inside Oracle <br />
+                      ('PL-SQL procedure', RAPO_USAGE_RULE). Both produce the same results.
+                    </q-tooltip>
+                  </q-select>
 
                   <q-select
                     class="col"
@@ -881,7 +883,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
-import { ACTIVE_RUN_STATUSES, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlTypeColor, runStatus } from "../constants";
+import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
@@ -962,6 +964,10 @@ export default {
   computed: {
     ...mapGetters(["controlCatalogueById"]),
     ...mapState(["kpiTypes"]),
+    // The PL-SQL engine implements reconciliation only, so it is offered there.
+    controlEngineOptions() {
+      return CONTROL_ENGINE_OPTIONS.filter((option) => option.value !== "PL" || this.control.control_type === "REC");
+    },
     // The KPI tables belong to the RACS deployment and are optional. No types, no KPIs tab.
     kpiAvailable() {
       return this.kpiTypes.length > 0;
@@ -1090,6 +1096,10 @@ export default {
       );
     },
     controlTypeChanged(newValue) {
+      // The PL-SQL engine only implements reconciliation.
+      if (newValue !== "REC" && this.control.control_engine === "PL") {
+        this.control.control_engine = "DB";
+      }
       this.control.source_name = null;
       this.control.source_name_a = null;
       this.control.source_name_b = null;

@@ -98,6 +98,22 @@ class Reader:
                     .where(log.c.process_id == process_id))
         return db.execute(select, as_dict=True)
 
+    def read_run_counts(self, process_id):
+        """Get the fetched record numbers of the given run.
+
+        Used to read back what the PL-SQL engine wrote, since the procedure
+        takes no OUT arguments.
+
+        Returns
+        -------
+        record : dict or None
+            Fetched numbers of both datasources.
+        """
+        log = db.tables.log
+        select = (sa.select(log.c.fetched_number_a, log.c.fetched_number_b)
+                    .where(log.c.process_id == process_id))
+        return db.execute(select, as_dict=True)
+
     def read_control_result(self, process_id):
         """Get control result from DB log table.
 

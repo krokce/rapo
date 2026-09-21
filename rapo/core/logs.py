@@ -144,6 +144,36 @@ def clean_logs(now=None):
     delete_older(server_logs, retention_days or None)
 
     logger.info(f'Log cleanup in {LOG_DIR}: {len(deleted)} files deleted')
+    clean_engine_log(running)
+    return deleted
+
+
+def clean_engine_log(running=frozenset()):
+    """Drop PL-SQL engine log lines left behind by a run that never finished.
+
+    The lines are normally drained into the run's log file and deleted as the
+    run goes. A process killed mid-run (timeout, cancel, shutdown) cannot do
+    that, so its rows would stay for good.
+
+    Returns
+    -------
+    deleted : int
+        Number of rows deleted.
+    """
+    if not db.tables.check('rapo_engine_log'):
+        return 0
+    table = db.table('rapo_engine_log')
+    log = db.tables.log
+    # Keep only what belongs to a run still going: that covers both a settled
+    # run and a row whose run never made it into rapo_log at all.
+    active = (sa.select(log.c.process_id)
+                .where(log.c.status.in_(['I', 'W', 'S', 'P', 'F'])))
+    delete = table.delete().where(table.c.process_id.notin_(active))
+    if running:
+        delete = delete.where(table.c.process_id.notin_(list(running)))
+    deleted = db.execute(delete).rowcount
+    if deleted:
+        logger.info(f'Engine log cleanup: {deleted} orphaned rows deleted')
     return deleted
 
 
