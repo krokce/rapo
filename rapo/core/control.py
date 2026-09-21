@@ -2105,6 +2105,11 @@ class Parser:
         output_limit_a = input_config.get('output_limit_a')
         output_limit_b = input_config.get('output_limit_b')
         correlation_limit = input_config.get('correlation_limit', False)
+        # PL engine only: the per-row fan-out cap. Left unset here so the
+        # procedure applies its own default, the way the other PL-side knobs
+        # fall back; without it the WARNING the procedure logs would tell the
+        # user to raise a setting that never reaches it.
+        max_candidates = input_config.get('max_candidates')
 
         fuzzy_optimization = input_config.get('fuzzy_optimization')
         fuzzy_optimization = utils.coalesce(
@@ -2178,6 +2183,7 @@ class Parser:
             'output_limit_a': output_limit_a,
             'output_limit_b': output_limit_b,
             'correlation_limit': correlation_limit,
+            'max_candidates': max_candidates,
             'correlation_config': correlation_config,
             'discrepancy_config': discrepancy_config
         }
