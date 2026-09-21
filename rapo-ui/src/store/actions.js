@@ -31,6 +31,16 @@ export default {
     context.commit("updateSchedulerStatus", data);
     return data;
   },
+  // Reference catalogue of KPI types. Empty when the RACS KPI tables are not deployed, which is also what
+  // hides the KPIs tab of the control editor.
+  async updateKpiTypes(context) {
+    if (context.state.kpiTypes.length > 0) {
+      return context.state.kpiTypes;
+    }
+    const data = await api("get-kpi-types", { loadingBar: false });
+    context.commit("updateKpiTypes", data);
+    return data;
+  },
   updateSearch(context, payload) {
     context.commit("updateSearch", payload);
   },

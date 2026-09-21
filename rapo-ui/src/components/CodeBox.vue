@@ -3,8 +3,9 @@
     <span class="row items-center justify-between">
       <label>{{ label }}</label>
       <div>
-        <q-btn v-if="code" class="col-auto" flat size="xs" icon="fas fa-times" @click="clearCode" />
-        <q-btn class="col-auto" flat size="sm" label="Example">
+        <slot name="actions"></slot>
+        <q-btn v-if="code && !readonly" class="col-auto" flat size="xs" icon="fas fa-times" @click="clearCode" />
+        <q-btn v-if="!readonly" class="col-auto" flat size="sm" label="Example">
           <q-menu>
             <q-list dense class="text-no-wrap">
               <q-item clickable v-close-popup v-for="menu in menuItems" :key="menu.menuText">
@@ -22,7 +23,15 @@
         </q-btn>
       </div>
     </span>
-    <codemirror ref="editor" v-model="code" :indent-with-tab="true" :smart-indent="true" :tab-size="4" :extensions="extensions" />
+    <codemirror
+      ref="editor"
+      class="cm-wrapper"
+      :class="{ 'cm-readonly': readonly }"
+      v-model="code"
+      :indent-with-tab="true"
+      :smart-indent="true"
+      :tab-size="4"
+      :extensions="extensions" />
   </div>
 </template>
 
@@ -32,14 +41,13 @@ import { EditorState } from "@codemirror/state";
 import { sql } from "@codemirror/lang-sql";
 
 export default {
-  props: ["modelValue", "label"],
+  props: ["modelValue", "label", "readonly", "controlName"],
   emits: ["update:modelValue"],
   components: {
     Codemirror,
   },
   data() {
     return {
-      extensions: [sql(), EditorState.readOnly.of(false)],
       examples: {
         error_config: [
           { menuText: "Catch all (as error)", exampleText: "1=1" },
@@ -125,10 +133,39 @@ export default {
             exampleText: "begin\n\tracs_kpi_pkg.run_rapo_control('PO1_DR_MSC_V', to_date('{control_date:%Y%m%d}', 'yyyymmdd'));\nend;",
           },
         ],
+        // KPI and alarm statements are run by RACS_KPI_PKG with dbms_sql, which takes the first column of
+        // the first row. :v_processid is the run, :v_kpi_value the KPI the alarm is evaluated for.
+        kpi_sql: [
+          {
+            menuText: "Count of result records",
+            exampleText: "select count(*)\nfrom rapo_rest_<control_name>\nwhere rapo_process_id = :v_processid",
+          },
+          {
+            menuText: "Sum of a result column",
+            exampleText: "select coalesce(sum(charge), 0)\nfrom rapo_rest_<control_name>\nwhere rapo_process_id = :v_processid",
+          },
+          {
+            menuText: "Error level of the run",
+            exampleText: "select error_level\nfrom rapo_log\nwhere process_id = :v_processid",
+          },
+        ],
+        alarm_sql: [
+          {
+            menuText: "Single threshold",
+            exampleText: "select\ncase\n\twhen :v_kpi_value > 10 then 2\n\telse 0\nend\nfrom dual",
+          },
+          {
+            menuText: "Three alarm levels",
+            exampleText: "select\ncase\n\twhen :v_kpi_value > 100 then 3\n\twhen :v_kpi_value > 50 then 2\n\twhen :v_kpi_value > 10 then 1\n\telse 0\nend\nfrom dual",
+          },
+        ],
       },
     };
   },
   computed: {
+    extensions() {
+      return [sql(), EditorState.readOnly.of(Boolean(this.readonly))];
+    },
     code: {
       get() {
         return this.modelValue;
@@ -147,13 +184,17 @@ export default {
         Filter: "source_filter",
         "Filter (Datasource A)": "source_filter",
         "Filter (Datasource B)": "source_filter",
+        "KPI SQL statement": "kpi_sql",
+        "Alarm SQL statement": "alarm_sql",
       };
       return this.examples[examplesByLabel[this.label]] || [];
     },
   },
   methods: {
     setCode(code) {
-      this.code = code;
+      // <control_name> is a placeholder of the example itself. Braces are left alone: rapo interpolates
+      // {control_name} and friends in its own statements when the control runs.
+      this.code = this.controlName ? code.replaceAll("<control_name>", this.controlName) : code;
     },
     clearCode() {
       this.code = "";
@@ -196,6 +237,20 @@ export default {
 
 .cm-activeLineGutter {
   background: transparent !important;
+}
+
+/* A read-only editor shows a value that is not the user's to edit, e.g. a KPI type's default statement. */
+.cm-readonly .cm-editor {
+  background: #f5f5f5;
+  color: #757575;
+}
+
+.cm-readonly .cm-editor:hover {
+  border: 1px solid #bbb;
+}
+
+.cm-readonly .cm-cursor {
+  display: none !important;
 }
 
 .cm-focused .cm-activeLineGutter {
