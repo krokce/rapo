@@ -357,6 +357,22 @@ class Control:
         return True if self.type == 'CMP' else False
 
     @property
+    def is_plsql_engine(self):
+        """Identify whether control runs through the Oracle-side procedure."""
+        return True if self.engine == 'PL' else False
+
+    @property
+    def is_database_engine(self):
+        """Identify whether control results are produced in the database.
+
+        True for both SQL engines. The fetch and index steps still branch on
+        the engine code itself, because the PL-SQL engine performs them inside
+        the procedure, but anything that merely reads a produced table applies
+        to both.
+        """
+        return True if self.engine in ('DB', 'PL') else False
+
+    @property
     def is_report(self):
         """Identify whether control is report or not."""
         return True if self.type == 'REP' else False
@@ -891,6 +907,15 @@ class Control:
         return self._continue()
 
     def _prepare(self):
+        if self.is_plsql_engine and not self.is_reconciliation:
+            # Raised and caught so that _escape() records a real traceback,
+            # the way every other failure in this class reports itself.
+            try:
+                raise ValueError('The PL-SQL engine implements reconciliation '
+                                 f'only, not {self.type}')
+            except ValueError:
+                logger.error()
+                return self._escape()
         statement = self.parser.parse_preparation_statement()
         if statement:
             logger.info(f'{self} Running control preparation SQL scripts...')
@@ -1102,6 +1127,14 @@ class Control:
             self.fetched_number = self.executor.count_fetched()
             logger.info(f'{self} Records fetched: {self.fetched_number}')
             self._save_metrics(fetched_number=self.fetched_number)
+        elif self.is_reconciliation and self.is_plsql_engine:
+            # The procedure opens its own cursors against the datasources and
+            # reports the counts itself: no CTAS, no index, no count here.
+            # The tables are still reflected: the output table is built from
+            # their columns, and a missing source must fail now, not later.
+            self.source_table_a = self.parser.parse_source_table_a()
+            self.source_table_b = self.parser.parse_source_table_b()
+            logger.info(f'{self} Fetching is performed by the PL-SQL engine')
         elif self.is_reconciliation or self.is_comparison:
             self.source_table_a = self.parser.parse_source_table_a()
             self.source_table_b = self.parser.parse_source_table_b()
@@ -1169,11 +1202,16 @@ class Control:
                                    error_number=self.error_number,
                                    error_level=self.error_level)
         elif self.is_reconciliation:
+            if self.is_plsql_engine:
+                self.executor.reconsolidate_external()
+                self._save_metrics(fetched_number_a=self.fetched_number_a,
+                                   fetched_number_b=self.fetched_number_b)
             if (
                 (self.fetched_number_a or 0) > 0 or
                 (self.fetched_number_b or 0) > 0
             ):
-                self.executor.reconsolidate()
+                if not self.is_plsql_engine:
+                    self.executor.reconsolidate()
                 error_tables = self.parser.parse_error_tables()
                 stage_tables = self.parser.parse_stage_tables()
                 self.error_table_a, self.error_table_b = error_tables
@@ -1854,12 +1892,17 @@ class Parser:
             dup_b = f'rapo_temp_t03_dup_b_{self.control.process_id}'
             dup = f'rapo_temp_t04_dup_{self.control.process_id}'
             mac = f'rapo_temp_t05_mac_{self.control.process_id}'
+            vrd_a = f'rapo_temp_verdict_a_{self.control.process_id}'
+            vrd_b = f'rapo_temp_verdict_b_{self.control.process_id}'
             srcs = [src_a, src_b]
             orgs = [org_a, org_b]
             dups = [dup, dup_a, dup_b]
             stgs = [stg_a, stg_b]
             errs = [err_a, err_b]
-            names.extend([*srcs, mod, *orgs, *dups, mac, *errs, *stgs])
+            vrds = [vrd_a, vrd_b]
+            # The PL-SQL engine creates only some of these; the deletion step
+            # checks each one exists, so listing them all is safe.
+            names.extend([*srcs, mod, *orgs, *dups, mac, *vrds, *errs, *stgs])
         elif self.control.is_comparison:
             md = f'rapo_temp_md_{self.control.process_id}'
             nmd = f'rapo_temp_nmd_{self.control.process_id}'
@@ -2141,6 +2184,45 @@ class Parser:
 
         logger.debug(f'{self.c} Rule configuration parsed')
         return output_config
+
+    def parse_procedure_payload(self):
+        """Build the JSON payload of the Oracle-side PL-SQL engine.
+
+        The payload is the procedure's only input and its whole truth: it never
+        reads rapo_config. Every [ALGORITHM] fallback is resolved here
+        by parse_reconciliation_rule_config, so the procedure applies no
+        defaults of its own.
+
+        Returns
+        -------
+        payload : dict
+            Dictionary serialized to JSON for rapo_usage_rule.
+        """
+        control = self.control
+        date_format = '%Y-%m-%d %H:%M:%S'
+        return {
+            'process_id': control.process_id,
+            'control_name': control.name,
+            'date_from': control.date_from.strftime(date_format),
+            'date_to': control.date_to.strftime(date_format),
+            'debug_mode': bool(control.debug_mode),
+            'parallelism': control.parallelism or 0,
+            'need_a': bool(control.need_a),
+            'need_b': bool(control.need_b),
+            'source_a': {
+                'name': control.source_name_a,
+                'filter': control.config['source_filter_a'],
+                'date_field': control.source_date_field_a,
+                'key_field': control.source_key_field_a
+            },
+            'source_b': {
+                'name': control.source_name_b,
+                'filter': control.config['source_filter_b'],
+                'date_field': control.source_date_field_b,
+                'key_field': control.source_key_field_b
+            },
+            'rule_config': control.rule_config
+        }
 
     def parse_comparison_rule_config(self):
         """Get comparison rule configuration.
@@ -2573,6 +2655,108 @@ class Executor:
         table = db.table(table_name)
         logger.debug(f'{self.c} Analyzing done')
         return table
+
+    def _drain_engine_log(self):
+        """Copy the PL-SQL engine's log lines into this run's log file.
+
+        The procedure cannot write to the log file: it may not even run on the
+        host that keeps it. It appends to rapo_engine_log instead, and this
+        drains those rows, deleting what it has taken so the table stays a
+        transport buffer rather than a second log.
+
+        Returns
+        -------
+        stop : callable
+            Stops the thread and performs one last drain.
+        """
+        process_id = self.control.process_id
+        levels = {'DEBUG': logger.debug, 'WARNING': logger.warning,
+                  'ERROR': logger.error, 'INFO': logger.info}
+        finished = th.Event()
+        state = {'last': 0}
+        # reflected once: db.table() autoloads, and this runs every two seconds
+        table = db.table('rapo_engine_log')
+
+        def drain_once():
+            select = (sa.select(table.c.record_number, table.c.log_level,
+                                table.c.message)
+                        .where(table.c.process_id == process_id)
+                        .where(table.c.record_number > state['last'])
+                        .order_by(table.c.record_number))
+            records = db.execute(select, as_records=True)
+            for record in records:
+                write = levels.get(record.log_level, logger.info)
+                message = record.message
+                if not isinstance(message, str):
+                    message = message.read() if message is not None else ''
+                write(f'{self.c} [engine] {message}')
+                state['last'] = record.record_number
+            if records:
+                delete = (table.delete()
+                               .where(table.c.process_id == process_id)
+                               .where(table.c.record_number <= state['last']))
+                db.execute(delete)
+                # The procedure publishes its running counts but leaves
+                # rapo_log.updated alone, because that column is stamped with
+                # the application clock. Writing them back from here moves it
+                # on, which is also what tells the live-event watcher that a
+                # long run is still alive.
+                counts = reader.read_run_counts(process_id)
+                self.control._save_metrics(
+                    fetched_number_a=counts['fetched_number_a'],
+                    fetched_number_b=counts['fetched_number_b'])
+
+        def loop():
+            while not finished.wait(2):
+                try:
+                    drain_once()
+                except Exception:
+                    logger.warning()
+
+        name = f'{th.current_thread().name}(engine-log)'
+        thread = th.Thread(target=loop, name=name, daemon=True)
+        thread.start()
+
+        def stop():
+            finished.set()
+            thread.join(timeout=10)
+            try:
+                drain_once()
+            except Exception:
+                logger.warning()
+
+        return stop
+
+    def reconsolidate_external(self):
+        """Run data reconciliation through the Oracle-side PL-SQL engine.
+
+        Hands the whole s01-s09 pipeline to RAPO_USAGE_RULE, which fetches from
+        the datasources itself and leaves rapo_temp_error_* and
+        rapo_temp_stage_* behind for the ordinary save path. The counts
+        it wrote to rapo_log are read back: the procedure has no OUT args.
+        """
+        payload = self.control.parser.parse_procedure_payload()
+        document = json.dumps(payload)
+        logger.info(f'{self.c} Running PL-SQL engine with payload:\n'
+                    f'{json.dumps(payload, indent=2)}')
+        statement = sa.text('begin rapo_usage_rule(:payload); end;')
+        statement = statement.bindparams(
+            sa.bindparam('payload', value=document, type_=sa.CLOB))
+        # The procedure logs into rapo_engine_log as it goes. Draining it in a
+        # thread puts those lines into this run's log file while the run is
+        # still going, and the final drain runs even when the call raises, so
+        # the failure keeps the context that led to it.
+        drain = self._drain_engine_log()
+        try:
+            db.execute(statement)
+        finally:
+            drain()
+        counts = reader.read_run_counts(self.control.process_id)
+        self.control.fetched_number_a = counts['fetched_number_a']
+        self.control.fetched_number_b = counts['fetched_number_b']
+        logger.info(f'{self.c} PL-SQL engine fetched '
+                    f'{self.control.fetched_number_a}/'
+                    f'{self.control.fetched_number_b} records')
 
     def reconsolidate(self):
         """Run data reconciliation control.
@@ -3278,7 +3462,7 @@ class Executor:
     def _count_errors(self, table):
         logger.debug(f'{self.c} Counting errors from {table.name}...')
         error_number = None
-        if self.control.engine == 'DB':
+        if self.control.is_database_engine:
             count = sa.select(sa.func.count()).select_from(table)
             error_number = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Errors from {table.name} counted')
@@ -3297,7 +3481,7 @@ class Executor:
     def _count_results(self, table):
         logger.debug(f'{self.c} Counting results from {table.name}...')
         result_number = None
-        if self.control.engine == 'DB':
+        if self.control.is_database_engine:
             count = sa.select(sa.func.count()).select_from(table)
             result_number = db.execute(count, as_scalar=True)
         logger.debug(f'{self.c} Results from {table.name} counted')
@@ -3312,7 +3496,7 @@ class Executor:
             Number of found discrepancies.
         """
         logger.debug(f'{self.c} Counting matched...')
-        if self.control.engine == 'DB':
+        if self.control.is_database_engine:
             table = self.control.stage_table
             count = sa.select(sa.func.count()).select_from(table)
             matched = db.execute(count, as_scalar=True)
@@ -3328,7 +3512,7 @@ class Executor:
             Number of found discrepancies.
         """
         logger.debug(f'{self.c} Counting mismatched')
-        if self.control.engine == 'DB':
+        if self.control.is_database_engine:
             table = self.control.error_table
             count = sa.select(sa.func.count()).select_from(table)
             mismatched = db.execute(count, as_scalar=True)

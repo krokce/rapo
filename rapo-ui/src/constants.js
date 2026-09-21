@@ -12,6 +12,16 @@ export function controlTypeColor(type) {
   return CONTROL_TYPES[type] ? CONTROL_TYPES[type].color : "grey-6";
 }
 
+// Control engines (rapo_ref_engines). DB runs the SQL pipeline from Python, PL
+// runs it inside Oracle through RAPO_USAGE_RULE, PY is referenced but not built.
+export const CONTROL_ENGINES = {
+  DB: { label: "Database SQL" },
+  PY: { label: "Python" },
+  PL: { label: "PL-SQL procedure" },
+};
+
+export const CONTROL_ENGINE_OPTIONS = Object.entries(CONTROL_ENGINES).map(([value, engine]) => ({ label: `${value} - ${engine.label}`, value }));
+
 // Run statuses (rapo_log.status), in lifecycle order.
 export const RUN_STATUSES = {
   I: { label: "Initiated", icon: "fas fa-plus-circle", color: "indigo" },
