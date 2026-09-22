@@ -437,19 +437,19 @@
 
                 <div class="row q-my-sm q-gutter-md">
                   <div class="col" v-if="control.control_type === 'ANL' || control.control_type === 'REP'">
-                    <code-box label="Filter" v-model="control.source_filter"> </code-box>
+                    <code-box label="Filter" v-model="control.source_filter" :columns="datasourceColumns"> </code-box>
                   </div>
                   <div class="col" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
-                    <code-box label="Filter (Datasource A)" v-model="control.source_filter_a"> </code-box>
+                    <code-box label="Filter (Datasource A)" v-model="control.source_filter_a" :columns="datasourceAColumns"> </code-box>
                   </div>
                   <div class="col" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
-                    <code-box label="Filter (Datasource B)" v-model="control.source_filter_b"> </code-box>
+                    <code-box label="Filter (Datasource B)" v-model="control.source_filter_b" :columns="datasourceBColumns"> </code-box>
                   </div>
                 </div>
 
                 <div class="row q-my-xs q-gutter-md" v-if="control.control_type == 'ANL'">
                   <div class="col">
-                    <code-box label="Mismatch criteria (Error definition)" v-model="control.error_definition"> </code-box>
+                    <code-box label="Mismatch criteria (Error definition)" v-model="control.error_definition" :columns="datasourceColumns"> </code-box>
                   </div>
                 </div>
 
@@ -620,7 +620,7 @@
               <div class="q-ma-lg q-gutter-y-lg">
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Preparation SQL" v-model="control.preparation_sql"></code-box>
+                    <code-box label="Preparation SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.preparation_sql"></code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Preparation SQL is executed before the control is started. It can be used to prepare the data for the control. See the enclosed examples.
                     </q-tooltip>
@@ -629,7 +629,7 @@
 
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Prerequisite SQL" v-model="control.prerequisite_sql"> </code-box>
+                    <code-box label="Prerequisite SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.prerequisite_sql"> </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Prerequisite SQL is executed before the control is started. If the number returned is 0 the control will be terminated. See the enclosed
                       positive and negative examples.
@@ -639,7 +639,7 @@
 
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Completion SQL" v-model="control.completion_sql"> </code-box>
+                    <code-box label="Completion SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.completion_sql"> </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Completion SQL is executed after the control is finished. It can be used to clean-up data, log results or execute chain of controls. See
                       the enclosed examples.
@@ -728,7 +728,8 @@
             <q-tab-panel name="kpi">
               <div class="q-ma-lg q-gutter-y-md">
                 <div class="row q-gutter-md">
-                  <kpi-config-box class="col" v-model="kpiConfigObject" :control-name="control.control_name"> </kpi-config-box>
+                  <kpi-config-box class="col" v-model="kpiConfigObject" :control-name="control.control_name" :control-type="control.control_type">
+                  </kpi-config-box>
                 </div>
 
                 <div class="row q-gutter-md">
@@ -978,6 +979,18 @@ export default {
     // ANL and REP read one datasource (source_name), REC and CMP read A and B.
     singleSource() {
       return this.control.control_type === "ANL" || this.control.control_type === "REP";
+    },
+    // The control's own configured datasource(s) and their columns, for the Preparation/Prerequisite/Completion
+    // SQL boxes' autocomplete: one for ANL/REP, A and B for REC/CMP.
+    ruleDatasourceTables() {
+      const tables = {};
+      if (this.singleSource) {
+        if (this.control.source_name) tables[this.control.source_name] = this.datasourceColumns || [];
+      } else {
+        if (this.control.source_name_a) tables[this.control.source_name_a] = this.datasourceAColumns || [];
+        if (this.control.source_name_b) tables[this.control.source_name_b] = this.datasourceBColumns || [];
+      }
+      return tables;
     },
     // Indexes of run log rows added on another day than the previous row, drawn with a separator line.
     newDayLogRows() {

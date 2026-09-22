@@ -51,7 +51,7 @@
                 </div>
 
                 <div v-for="statement in statements" :key="statement.field">
-                  <code-box :label="statement.label" v-model="kpiType[statement.field]">
+                  <code-box :label="statement.label" :binds="[statement.bind.slice(1)]" v-model="kpiType[statement.field]">
                     <template v-slot:actions>
                       <q-btn class="col-auto" flat size="sm" label="Check" :loading="checking === statement.field" @click="checkStatement(statement)" />
                     </template>
