@@ -9,7 +9,7 @@
       </div>
     </h2>
 
-    <q-card flat bordered class="q-mb-lg" v-if="status">
+    <q-card class="q-mb-lg" v-if="status">
       <q-card-section class="row items-center q-gutter-lg">
         <div class="column">
           <q-chip size="lg" text-color="white" :color="state.color" class="text-weight-bold q-ma-none">
@@ -86,173 +86,188 @@
       </template>
     </q-card>
 
-    <q-tabs v-model="tab" dense align="left" active-color="teal" indicator-color="teal" class="text-grey-7">
-      <q-tab name="upcoming" icon="fas fa-calendar-alt" label="Upcoming" no-caps />
-      <q-tab name="history" icon="fas fa-history" label="History" no-caps />
-    </q-tabs>
-    <q-separator class="q-mb-md" />
+    <q-card>
+      <q-tabs
+        v-model="tab"
+        class="text-white bg-blue-grey-7"
+        active-color="light-blue-1"
+        indicator-color="light-blue-1"
+        align="left"
+        inline-label
+        narrow-indicator
+        no-caps>
+        <q-tab name="upcoming" icon="fas fa-calendar-alt" label="Upcoming" />
+        <q-tab name="history" icon="fas fa-history" label="History" />
+      </q-tabs>
 
-    <q-tab-panels v-model="tab" keep-alive class="bg-transparent">
-      <q-tab-panel name="upcoming" class="q-pa-none">
-        <div class="row items-center q-mb-md">
-          <q-select
-            v-model="upcomingHours"
-            class="col-2 q-pa-sm"
-            outlined
-            emit-value
-            map-options
-            options-dense
-            :options="horizonOptions"
-            label="Horizon"
-            @update:model-value="refreshUpcoming" />
-          <q-input clearable class="col-4 q-pa-sm" outlined v-model="upcomingFilter" label="Control name" maxlength="45" />
-          <div class="col q-pa-sm text-grey-7" v-if="status && status.disabled">
-            <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
+      <q-separator />
+
+      <q-tab-panels v-model="tab" keep-alive>
+        <q-tab-panel name="upcoming">
+          <div class="q-ma-lg q-gutter-y-md">
+            <div class="row items-center">
+              <q-select
+                v-model="upcomingHours"
+                class="col-2 q-pa-sm"
+                outlined
+                emit-value
+                map-options
+                options-dense
+                :options="horizonOptions"
+                label="Horizon"
+                @update:model-value="refreshUpcoming" />
+              <q-input clearable class="col-4 q-pa-sm" outlined v-model="upcomingFilter" label="Control name" maxlength="45" />
+              <div class="col q-pa-sm text-grey-7" v-if="status && status.disabled">
+                <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
+              </div>
+            </div>
+            <q-markup-table dense>
+              <thead>
+                <tr class="bg-blue-grey-2">
+                  <th class="text-left">Time</th>
+                  <th class="text-left">In</th>
+                  <th class="text-left">Type</th>
+                  <th class="text-left">Control</th>
+                  <th class="text-left">Group</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="!filteredUpcoming.length">
+                  <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
+                </tr>
+                <tr v-for="(fire, index) in filteredUpcoming" :key="fire.control_id + fire.scheduled_time">
+                  <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    <div class="text-blue-grey-7">
+                      <strong>{{ toDateString(fire.scheduled_time) }}</strong>
+                      <small class="text-grey-7 q-px-sm">{{ toTimeString(fire.scheduled_time) }}</small>
+                    </div>
+                  </td>
+                  <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
+                  <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    <q-chip size="11px" text-color="white" :class="'bg-' + controlTypeColor(fire.control_type)" class="text-weight-bold">
+                      {{ fire.control_type }}
+                    </q-chip>
+                  </td>
+                  <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id } }" :class="'text-' + controlTypeColor(fire.control_type)">
+                      {{ fire.control_name }}
+                    </router-link>
+                  </td>
+                  <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fire.control_group }}</td>
+                </tr>
+              </tbody>
+            </q-markup-table>
           </div>
-        </div>
-        <q-markup-table dense>
-          <thead>
-            <tr class="bg-blue-grey-2">
-              <th class="text-left">Time</th>
-              <th class="text-left">In</th>
-              <th class="text-left">Type</th>
-              <th class="text-left">Control</th>
-              <th class="text-left">Group</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="!filteredUpcoming.length">
-              <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
-            </tr>
-            <tr v-for="(fire, index) in filteredUpcoming" :key="fire.control_id + fire.scheduled_time">
-              <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                <div class="text-blue-grey-7">
-                  <strong>{{ toDateString(fire.scheduled_time) }}</strong>
-                  <small class="text-grey-7 q-px-sm">{{ toTimeString(fire.scheduled_time) }}</small>
-                </div>
-              </td>
-              <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
-              <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                <q-chip size="11px" text-color="white" :class="'bg-' + controlTypeColor(fire.control_type)" class="text-weight-bold">
-                  {{ fire.control_type }}
-                </q-chip>
-              </td>
-              <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id } }" :class="'text-' + controlTypeColor(fire.control_type)">
-                  {{ fire.control_name }}
-                </router-link>
-              </td>
-              <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fire.control_group }}</td>
-            </tr>
-          </tbody>
-        </q-markup-table>
-      </q-tab-panel>
+        </q-tab-panel>
 
-      <q-tab-panel name="history" class="q-pa-none">
-        <div class="row items-center q-mb-md">
-          <q-input clearable class="col-3 q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
-          <q-select
-            v-model="filter.event_type"
-            class="col-2 q-pa-sm"
-            clearable
-            outlined
-            options-dense
-            emit-value
-            map-options
-            :options="eventTypeOptions"
-            label="Event" />
-          <q-select
-            v-model="filter.trigger_type"
-            class="col-2 q-pa-sm"
-            clearable
-            outlined
-            options-dense
-            emit-value
-            map-options
-            :options="triggerTypeOptions"
-            label="Trigger" />
-          <q-btn flat round color="grey" class="q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
-            <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
-          </q-btn>
-          <q-space />
-          <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
-        </div>
-        <q-markup-table dense>
-          <thead>
-            <tr class="bg-blue-grey-2">
-              <th class="text-left">Recorded</th>
-              <th class="text-left">Scheduled for</th>
-              <th class="text-left">Trigger</th>
-              <th class="text-left">Event</th>
-              <th class="text-left">Type</th>
-              <th class="text-left">Control</th>
-              <th class="text-center">PID</th>
-              <th class="text-left">Run</th>
-              <th class="text-left">Run from</th>
-              <th class="text-left">Message</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="!filteredEvents.length">
-              <td colspan="11" class="text-grey-7 text-center">No events</td>
-            </tr>
-            <tr v-for="(event, index) in filteredEvents" :key="event.event_id">
-              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <div class="text-blue-grey-7">
-                  <strong>{{ toDateString(event.event_time) }}</strong>
-                  <small class="text-grey-7 q-px-sm">{{ toTimeString(event.event_time) }}</small>
-                </div>
-              </td>
-              <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                {{ toDateTimeString(event.scheduled_time) }}
-              </td>
-              <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
-              </td>
-              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <q-chip dense clickable @click="filter.event_type = event.event_type">
-                  <q-avatar :icon="schedulerEventType(event.event_type).icon" :color="schedulerEventType(event.event_type).color" text-color="white" />
-                  {{ schedulerEventType(event.event_type).label }}
-                </q-chip>
-              </td>
-              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
-                  {{ event.control_type }}
-                </q-chip>
-              </td>
-              <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <router-link
-                  v-if="event.control_name"
-                  :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
-                  :class="'text-' + controlTypeColor(event.control_type)">
-                  {{ event.control_name }}
-                </router-link>
-                <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
-              </td>
-              <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                {{ event.process_id }}
-              </td>
-              <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <q-chip v-if="event.process_id" dense>
-                  <q-avatar :icon="runStatus(event.status).icon" :color="runStatus(event.status).color" text-color="white" />
-                  {{ runStatus(event.status).label }}
-                </q-chip>
-              </td>
-              <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                {{ toDateString(event.date_from) }}
-              </td>
-              <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
-              <td style="width: 50px" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                <q-btn v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
-                  <q-tooltip>Run for this moment</q-tooltip>
-                </q-btn>
-              </td>
-            </tr>
-          </tbody>
-        </q-markup-table>
-      </q-tab-panel>
-    </q-tab-panels>
+        <q-tab-panel name="history">
+          <div class="q-ma-lg q-gutter-y-md">
+            <div class="row items-center">
+              <q-input clearable class="col-3 q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
+              <q-select
+                v-model="filter.event_type"
+                class="col-2 q-pa-sm"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="eventTypeOptions"
+                label="Event" />
+              <q-select
+                v-model="filter.trigger_type"
+                class="col-2 q-pa-sm"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="triggerTypeOptions"
+                label="Trigger" />
+              <q-btn flat round color="grey" class="q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
+                <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
+              </q-btn>
+              <q-space />
+              <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
+            </div>
+            <q-markup-table dense>
+              <thead>
+                <tr class="bg-blue-grey-2">
+                  <th class="text-left">Recorded</th>
+                  <th class="text-left">Scheduled for</th>
+                  <th class="text-left">Trigger</th>
+                  <th class="text-left">Event</th>
+                  <th class="text-left">Type</th>
+                  <th class="text-left">Control</th>
+                  <th class="text-center">PID</th>
+                  <th class="text-left">Run</th>
+                  <th class="text-left">Run from</th>
+                  <th class="text-left">Message</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="!filteredEvents.length">
+                  <td colspan="11" class="text-grey-7 text-center">No events</td>
+                </tr>
+                <tr v-for="(event, index) in filteredEvents" :key="event.event_id">
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <div class="text-blue-grey-7">
+                      <strong>{{ toDateString(event.event_time) }}</strong>
+                      <small class="text-grey-7 q-px-sm">{{ toTimeString(event.event_time) }}</small>
+                    </div>
+                  </td>
+                  <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ toDateTimeString(event.scheduled_time) }}
+                  </td>
+                  <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
+                  </td>
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <q-chip dense clickable @click="filter.event_type = event.event_type">
+                      <q-avatar :icon="schedulerEventType(event.event_type).icon" :color="schedulerEventType(event.event_type).color" text-color="white" />
+                      {{ schedulerEventType(event.event_type).label }}
+                    </q-chip>
+                  </td>
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
+                      {{ event.control_type }}
+                    </q-chip>
+                  </td>
+                  <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <router-link
+                      v-if="event.control_name"
+                      :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
+                      :class="'text-' + controlTypeColor(event.control_type)">
+                      {{ event.control_name }}
+                    </router-link>
+                    <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
+                  </td>
+                  <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ event.process_id }}
+                  </td>
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <q-chip v-if="event.process_id" dense>
+                      <q-avatar :icon="runStatus(event.status).icon" :color="runStatus(event.status).color" text-color="white" />
+                      {{ runStatus(event.status).label }}
+                    </q-chip>
+                  </td>
+                  <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ toDateString(event.date_from) }}
+                  </td>
+                  <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
+                  <td style="width: 50px" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <q-btn v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
+                      <q-tooltip>Run for this moment</q-tooltip>
+                    </q-btn>
+                  </td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+          </div>
+        </q-tab-panel>
+      </q-tab-panels>
+    </q-card>
   </q-page>
 </template>
 
