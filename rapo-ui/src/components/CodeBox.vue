@@ -38,10 +38,54 @@
 <script>
 import { Codemirror } from "vue-codemirror";
 import { EditorState } from "@codemirror/state";
-import { sql } from "@codemirror/lang-sql";
+import { sql, PLSQL } from "@codemirror/lang-sql";
+
+// A completion source for the fixed set of Oracle bind variables a statement is run with (e.g. RACS_KPI_PKG's
+// :v_processid). It only activates right after a ":", independently of the schema/keyword sources sql() adds.
+function bindCompletionSource(binds) {
+  return (context) => {
+    const match = context.matchBefore(/:\w*/);
+    if (!match) return null;
+    return {
+      from: match.from,
+      options: binds.map((name) => ({ label: ":" + name, type: "variable" })),
+      validFor: /^:\w*$/,
+    };
+  };
+}
+
+// The fixed set of {control_name}-style variables Parser.parse_variables() substitutes into Preparation SQL,
+// Prerequisite SQL and Completion SQL before they run (rapo/core/control.py). Date ones show a sample strftime
+// format, since the substitution is meaningless without one; %Y-%m-%d matches the format used in the box's own
+// "Insert log line" example. boost puts them ahead of unrelated keyword/property matches for the same prefix.
+const TEMPLATE_VARIABLES = [
+  { name: "control_name" },
+  { name: "process_id" },
+  { name: "control_date", format: "%Y-%m-%d" },
+  { name: "control_date_from", format: "%Y-%m-%d" },
+  { name: "control_date_to", format: "%Y-%m-%d" },
+];
+
+// A completion source for those variables. It only activates right after a "{", and inserts the full
+// {name} or {name:format} token in one go, closing brace included.
+function templateVariableCompletionSource() {
+  return (context) => {
+    const match = context.matchBefore(/\{\w*/);
+    if (!match) return null;
+    return {
+      from: match.from,
+      options: TEMPLATE_VARIABLES.map(({ name, format }) => ({
+        label: `{${name}${format ? ":" + format : ""}}`,
+        type: "variable",
+        boost: 99,
+      })),
+      validFor: /^\{\w*$/,
+    };
+  };
+}
 
 export default {
-  props: ["modelValue", "label", "readonly", "controlName"],
+  props: ["modelValue", "label", "readonly", "controlName", "columns", "tables", "binds", "templateVars"],
   emits: ["update:modelValue"],
   components: {
     Codemirror,
@@ -181,7 +225,39 @@ export default {
   },
   computed: {
     extensions() {
-      return [sql(), EditorState.readOnly.of(Boolean(this.readonly))];
+      const config = { dialect: PLSQL };
+      const tableNames = this.tables && Object.keys(this.tables);
+      if (tableNames && tableNames.length) {
+        // Real table names (e.g. a control's own RAPO_REST_/RAPO_RESA_/RAPO_RESB_ table): they're valid bare
+        // schema keys, so they're offered as completions themselves, and typing one then "." completes its
+        // own columns.
+        config.schema = this.tables;
+        if (tableNames.length === 1) {
+          // A single table also becomes the default, so its columns complete unqualified too.
+          config.defaultTable = tableNames[0];
+        } else {
+          // Several tables (REC's two sides): CodeMirror's defaultTable only takes one name, and typing
+          // table.column for everything is unwieldy, so every table's columns are also offered unqualified,
+          // deduplicated across tables, on top of the qualified per-table completions above.
+          const merged = [...new Set(tableNames.flatMap((name) => this.tables[name]))];
+          config.tables = merged.map((column) => ({ label: column, type: "property" }));
+        }
+      } else if (this.columns && this.columns.length) {
+        // Filters are unqualified WHERE-clause fragments, not queries against a named table, and real
+        // datasource names (schema-qualified, @dblink) aren't valid bare schema keys, so columns are offered
+        // directly via CodeMirror's own flat "tables" completions list rather than a schema table. `schema`
+        // still needs to be set (even empty) for schema-based completion to run at all.
+        config.schema = {};
+        config.tables = this.columns.map((column) => ({ label: column, type: "property" }));
+      }
+      const extensions = [sql(config), EditorState.readOnly.of(Boolean(this.readonly))];
+      if (this.binds && this.binds.length) {
+        extensions.push(PLSQL.language.data.of({ autocomplete: bindCompletionSource(this.binds) }));
+      }
+      if (this.templateVars) {
+        extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource() }));
+      }
+      return extensions;
     },
     code: {
       get() {
@@ -274,5 +350,21 @@ export default {
 
 .cm-focused .cm-activeLineGutter {
   background: rgba(100, 100, 100, 0.1) !important;
+}
+
+/* Table-name completions (CodeMirror's SQL schema completion gives them type "type") get the same "database"
+   icon used elsewhere in the app for a datasource, instead of the library's default italic "t". */
+.cm-completionIcon-type::after {
+  content: "\f1c0";
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
+}
+
+/* Bind-variable completions (registered with type "variable", see bindCompletionSource) get a dollar-sign
+   icon, instead of the library's default italic "x", to set them apart from columns and table names. */
+.cm-completionIcon-variable::after {
+  content: "\f155";
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
 }
 </style>

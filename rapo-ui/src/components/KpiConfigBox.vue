@@ -85,7 +85,13 @@
         <q-tab-panel v-for="(item, index) in kpiConfigObject" :key="item.kpi_type" :name="item.kpi_type" class="q-gutter-y-md">
           <div v-for="statement in statements" :key="statement.field">
             <!-- Own statement: the column holds it and the engine runs it as it is. -->
-            <code-box v-if="!usesDefault(item, statement)" :label="statement.label" :control-name="controlName" v-model="kpiConfigObject[index][statement.field]">
+            <code-box
+              v-if="!usesDefault(item, statement)"
+              :label="statement.label"
+              :control-name="controlName"
+              :tables="statement.field === 'kpi_sql_statement' ? kpiSqlTables : null"
+              :binds="[statement.bind.slice(1)]"
+              v-model="kpiConfigObject[index][statement.field]">
               <template v-slot:actions>
                 <q-toggle
                   dense
@@ -174,6 +180,7 @@ export default {
   props: {
     modelValue: { type: Array, required: true },
     controlName: String,
+    controlType: String,
   },
   data() {
     return {
@@ -181,6 +188,11 @@ export default {
       kpiTab: null,
       checks: {},
       checking: null,
+      tableColumns: {},
+      // Pending/finished get-datasource-columns requests by table name (see resultTableNames). Set here rather
+      // than in created(): the resultTableNames watcher below is immediate, and immediate watchers run before
+      // created() does, so this would still be undefined when the first fetch fires.
+      columnRequests: {},
     };
   },
   computed: {
@@ -193,12 +205,44 @@ export default {
       const used = this.kpiConfigObject.map((item) => item.kpi_type);
       return this.kpiTypes.filter((type) => !used.includes(type.kpi_type));
     },
+    // The uppercase result table(s) this control's own KPI SQL runs against: one RAPO_REST_ table, or a
+    // RAPO_RESA_/RAPO_RESB_ pair for REC. Unquoted Oracle identifiers fold to uppercase, and get-datasource-columns
+    // matches user_tab_cols.table_name exactly, so the name is uppercased here regardless of the control's own case.
+    resultTableNames() {
+      if (!this.controlName) return [];
+      const name = this.controlName.toUpperCase();
+      return this.controlType === "REC" ? [`RAPO_RESA_${name}`, `RAPO_RESB_${name}`] : [`RAPO_REST_${name}`];
+    },
+    // {tableName: columns} for the KPI SQL statement box's autocomplete. A control that has never run has no
+    // result table yet, so a name with no fetched columns still offers the table itself, just no columns of it.
+    kpiSqlTables() {
+      const tables = {};
+      this.resultTableNames.forEach((name) => {
+        tables[name] = this.tableColumns[name] || [];
+      });
+      return tables;
+    },
   },
   watch: {
     // The parent swaps the array on load, clone and version switch.
     modelValue() {
       this.checks = {};
       this.selectFirstTab();
+    },
+    resultTableNames: {
+      immediate: true,
+      handler(names) {
+        names.forEach((name) => {
+          if (this.tableColumns[name] || this.columnRequests[name]) return;
+          this.columnRequests[name] = api("get-datasource-columns", { params: { datasource_name: name } })
+            .then((columns) => {
+              this.tableColumns[name] = columns.map((column) => column.column_name);
+            })
+            .catch(() => {
+              delete this.columnRequests[name];
+            });
+        });
+      },
     },
   },
   mounted() {
