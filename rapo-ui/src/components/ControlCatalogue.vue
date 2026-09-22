@@ -1,6 +1,6 @@
 <template>
   <q-page>
-    <h2 class="row q-gutter-lg">
+    <h2 class="row q-gutter-lg q-mb-lg">
       <div>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
       <div v-if="!loaded">
         <q-avatar size="lg" color="grey-5">

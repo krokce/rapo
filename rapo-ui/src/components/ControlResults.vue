@@ -1,6 +1,6 @@
 <template>
   <q-page>
-    <h2 class="row q-gutter-lg">
+    <h2 class="row q-gutter-lg q-mb-lg">
       <div>Control results</div>
       <div v-if="!loaded">
         <q-avatar size="lg" color="grey-5">

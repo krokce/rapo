@@ -1,7 +1,7 @@
 <template>
   <q-page>
     <div>
-      <h2 class="row">
+      <h2 class="row q-mb-lg">
         <q-chip
           size="xl"
           text-color="white"

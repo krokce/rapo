@@ -1,6 +1,6 @@
 <template>
   <q-page>
-    <h2 class="row q-gutter-lg">
+    <h2 class="row q-gutter-lg q-mb-lg">
       <div>Scheduler</div>
       <div v-if="!loaded">
         <q-avatar size="lg" color="grey-5">
@@ -10,40 +10,42 @@
     </h2>
 
     <q-card class="q-mb-lg" v-if="status">
-      <q-card-section class="row items-center q-gutter-lg">
-        <div class="column">
-          <q-chip size="lg" text-color="white" :color="state.color" class="text-weight-bold q-ma-none">
-            {{ state.label }}
-          </q-chip>
-          <small class="text-grey-7 q-mt-xs" style="max-width: 240px">{{ state.description }}</small>
+      <q-card-section>
+        <div class="row items-center q-gutter-lg">
+          <div class="column">
+            <q-chip size="lg" text-color="white" :color="state.color" class="text-weight-bold q-ma-none">
+              {{ state.label }}
+            </q-chip>
+            <small class="text-grey-7 q-mt-xs" style="max-width: 240px">{{ state.description }}</small>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Scheduling server</div>
+            <div class="status-value">{{ status.holder.server || "N/A" }} <small v-if="status.holder.pid">PID {{ status.holder.pid }}</small></div>
+            <small class="text-grey-7" v-if="status.holder.alive">since {{ toDateTimeString(status.holder.start_date) }}</small>
+            <small class="text-grey-7" v-else-if="status.holder.stop_date">stopped {{ toDateTimeString(status.holder.stop_date) }}</small>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Heartbeat</div>
+            <div class="status-value">{{ toTimeString(status.holder.heartbeat) || "N/A" }}</div>
+            <small class="text-grey-7">lease timeout {{ status.lease_timeout }} s</small>
+          </div>
+          <div class="status-item">
+            <div class="status-label">Execution slots</div>
+            <div class="status-value">{{ runner.running.length }} / {{ runner.capacity }} running</div>
+            <small class="text-grey-7">{{ runner.queued.length }} queued on this server</small>
+          </div>
+          <div class="status-item" v-if="status.leader">
+            <div class="status-label">Scheduled controls</div>
+            <div class="status-value">{{ status.scheduled_controls }}</div>
+            <small class="text-grey-7">last fire {{ toDateTimeString(status.last_fire) || "none yet" }}</small>
+          </div>
+          <div class="status-item" v-if="status.next_maintenance">
+            <div class="status-label">Next maintenance</div>
+            <div class="status-value">{{ toDateTimeString(status.next_maintenance) }}</div>
+          </div>
+          <q-space />
+          <scheduler-toggle-button />
         </div>
-        <div class="status-item">
-          <div class="status-label">Scheduling server</div>
-          <div class="status-value">{{ status.holder.server || "N/A" }} <small v-if="status.holder.pid">PID {{ status.holder.pid }}</small></div>
-          <small class="text-grey-7" v-if="status.holder.alive">since {{ toDateTimeString(status.holder.start_date) }}</small>
-          <small class="text-grey-7" v-else-if="status.holder.stop_date">stopped {{ toDateTimeString(status.holder.stop_date) }}</small>
-        </div>
-        <div class="status-item">
-          <div class="status-label">Heartbeat</div>
-          <div class="status-value">{{ toTimeString(status.holder.heartbeat) || "N/A" }}</div>
-          <small class="text-grey-7">lease timeout {{ status.lease_timeout }} s</small>
-        </div>
-        <div class="status-item">
-          <div class="status-label">Execution slots</div>
-          <div class="status-value">{{ runner.running.length }} / {{ runner.capacity }} running</div>
-          <small class="text-grey-7">{{ runner.queued.length }} queued on this server</small>
-        </div>
-        <div class="status-item" v-if="status.leader">
-          <div class="status-label">Scheduled controls</div>
-          <div class="status-value">{{ status.scheduled_controls }}</div>
-          <small class="text-grey-7">last fire {{ toDateTimeString(status.last_fire) || "none yet" }}</small>
-        </div>
-        <div class="status-item" v-if="status.next_maintenance">
-          <div class="status-label">Next maintenance</div>
-          <div class="status-value">{{ toDateTimeString(status.next_maintenance) }}</div>
-        </div>
-        <q-space />
-        <scheduler-toggle-button />
       </q-card-section>
 
       <template v-if="activeJobs.length">
@@ -121,7 +123,7 @@
                 <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
               </div>
             </div>
-            <q-markup-table dense>
+            <q-markup-table dense flat>
               <thead>
                 <tr class="bg-blue-grey-2">
                   <th class="text-left">Time</th>
@@ -190,7 +192,7 @@
               <q-space />
               <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
             </div>
-            <q-markup-table dense>
+            <q-markup-table dense flat>
               <thead>
                 <tr class="bg-blue-grey-2">
                   <th class="text-left">Recorded</th>
