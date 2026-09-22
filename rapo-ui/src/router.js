@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from "vue-router";
 import ControlCatalogue from "./components/ControlCatalogue.vue";
 import ControlEdit from "./components/ControlEdit.vue";
 import ControlResults from "./components/ControlResults.vue";
+import EditKpiType from "./components/EditKpiType.vue";
+import KpiTypes from "./components/KpiTypes.vue";
 import SchedulerPage from "./components/SchedulerPage.vue";
 import TokenBox from "./components/TokenBox.vue";
 import store from "./store";
@@ -47,6 +49,26 @@ const router = createRouter({
       beforeEnter: (to, from, next) => {
         if (!to.params.controlId) {
           next({ path: "/controls" }); // Redirect to controls if controlId is undefined
+        } else {
+          next();
+        }
+      },
+    },
+    {
+      name: "kpi-types",
+      path: "/kpi-types",
+      meta: { searchPlaceholder: "Search KPI code or description" },
+      component: KpiTypes,
+    },
+    {
+      name: "edit-kpi-type",
+      path: "/edit-kpi-type/:kpiCode?",
+      meta: { hideSearch: true },
+      component: EditKpiType,
+      props: true,
+      beforeEnter: (to, from, next) => {
+        if (!to.params.kpiCode) {
+          next({ path: "/kpi-types" }); // Redirect to the catalogue if kpiCode is undefined
         } else {
           next();
         }

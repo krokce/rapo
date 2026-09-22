@@ -281,6 +281,36 @@ def get_control_kpis(control_name: str | None = None):
     return kpi.read_control_kpis(control_name)
 
 
+@api.get('/get-kpi-type-usage')
+def get_kpi_type_usage():
+    """Get controls that use each KPI type in JSON."""
+    return kpi.read_kpi_type_usage()
+
+
+@api.post('/save-kpi-type')
+def save_kpi_type(data: dict = fastapi.Body(...)):
+    """Create, update or rename KPI type in catalogue table."""
+    # The code is the primary key, so a rename must say what it renames.
+    previous = data.pop('previous_kpi_type', None)
+    try:
+        kpi.save_kpi_type(data, previous=previous)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'status': 200}
+
+
+@api.delete('/delete-kpi-type')
+def delete_kpi_type(kpi_type: str):
+    """Delete KPI type from catalogue table."""
+    try:
+        kpi.delete_kpi_type(kpi_type)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'status': 200}
+
+
 @api.post('/validate-kpi-sql')
 def validate_kpi_sql(data: dict = fastapi.Body(...)):
     """Parse KPI or alarm statement without executing it."""

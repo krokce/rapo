@@ -149,6 +149,23 @@ export default {
             exampleText: "select error_level\nfrom rapo_log\nwhere process_id = :v_processid",
           },
         ],
+        // A type default has to work for every control that uses the type, so its examples stay away from the
+        // result table of one control.
+        default_kpi_sql: [
+          {
+            menuText: "Fetched records trend of side A",
+            exampleText: "select racs_kpi_pkg.get_recordsfetched_trend(:v_processid, 'A') from dual",
+          },
+          {
+            menuText: "Error level of the run",
+            exampleText: "select error_level\nfrom rapo_log\nwhere process_id = :v_processid",
+          },
+          {
+            menuText: "Zero records on either side",
+            exampleText:
+              "select\n\tcase\n\t\twhen recordsfetched_a = 0 or recordsfetched_b = 0 then 100\n\t\telse 0\n\tend\nfrom ma_runhistory\nwhere processid = :v_processid",
+          },
+        ],
         alarm_sql: [
           {
             menuText: "Single threshold",
@@ -186,6 +203,8 @@ export default {
         "Filter (Datasource B)": "source_filter",
         "KPI SQL statement": "kpi_sql",
         "Alarm SQL statement": "alarm_sql",
+        "Default KPI SQL statement": "default_kpi_sql",
+        "Default alarm SQL statement": "alarm_sql",
       };
       return this.examples[examplesByLabel[this.label]] || [];
     },

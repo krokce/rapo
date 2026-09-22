@@ -11,6 +11,7 @@ outside this repository.
   * [Run logs](#run-logs)
   * [Reads](#reads)
   * [Configuration](#configuration)
+  * [KPIs](#kpis)
   * [Scheduler](#scheduler)
   * [Service](#service)
 * [Live events](#live-events)
@@ -35,8 +36,8 @@ section and answer 404 otherwise. Redoc is disabled.
 
 ## Conventions
 
-* **Parameters are query parameters**, including on `POST` and `DELETE`. The single exception is `save-control`,
-  which takes a JSON body.
+* **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
+  `save-kpi-type` and `validate-kpi-sql`, which take a JSON body.
 * **Mutations answer `{"status": 200}`.** Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
 
@@ -186,6 +187,48 @@ reason when the row cannot be written.
 
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched.
+
+### KPIs
+
+KPI values are calculated after a run by the Oracle package `RACS_KPI_PKG`, which reads two tables of that
+deployment: `racs_kpi_type`, the catalogue of KPI types with their default statements, and `racs_kpi_config`, one
+row per KPI of one control, linked to it by `rapo_config.control_name = racs_kpi_config.processname`. The tables
+are optional: where they are not deployed, the reads answer `[]` and `GET /api/info` reports
+`kpi_available: false`.
+
+A statement left NULL in `racs_kpi_config` means the type's default is used, and a KPI whose statement is NULL on
+both sides is not calculated at all.
+
+#### `GET /api/get-kpi-types`
+Every row of `racs_kpi_type`, most important first (`kpi_priority`, then `kpi_type`).
+
+#### `GET /api/get-control-kpis`
+The `racs_kpi_config` rows of one control (`control_name`), in type priority order.
+
+#### `GET /api/get-kpi-type-usage`
+One row per (KPI type, control) of `racs_kpi_config` as `kpi_type`, `processname` and `control_id`. The control
+is outer-joined, so a row naming a control that does not exist any more is reported without an id. This is what
+makes a KPI type undeletable.
+
+#### `POST /api/save-kpi-type`
+Create, update or rename a KPI type. The body is the row as JSON, the shape `get-kpi-types` returns; a blank text
+value is stored as NULL, which is what "this type ships no default" means. `kpi_type` is stored upper case.
+
+`kpi_type` is the primary key, so an edit that changes it is a **rename**: pass the old code as
+`previous_kpi_type` and the row is inserted under the new code, the `racs_kpi_config` rows of the controls are
+moved over and the old row is deleted, all in one transaction. Without `previous_kpi_type` the row is inserted.
+
+`400` with the reason when the code is empty, longer than 20 characters, already taken, when the unit takes more
+than 10 bytes, or when the write fails.
+
+#### `DELETE /api/delete-kpi-type`
+Delete a KPI type (`kpi_type`) from `racs_kpi_type`. `400` naming the controls when any of them still configures
+it - `racs_kpi_config` references the code and nothing is deleted for you.
+
+#### `POST /api/validate-kpi-sql`
+Parse a KPI or alarm statement without executing it. The body is `{"statement": "..."}` and the answer is
+`{"valid": true, "columns": [...]}` or `{"valid": false, "error": "..."}`, with a `warning` when the statement
+parses but would not produce one numeric value. Always `200`: this is an opinion, not a verdict.
 
 ### Scheduler
 

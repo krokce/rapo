@@ -18,7 +18,7 @@
         <q-space class="col-1" />
 
         <div class="YL__toolbar-input-container row no-wrap" v-if="!hideSearch">
-          <q-input dense outlined square v-model="search" placeholder="Search control name" class="bg-white col" />
+          <q-input dense outlined square v-model="search" :placeholder="searchPlaceholder" class="bg-white col" />
           <q-btn class="YL__toolbar-input-btn" color="grey-3" text-color="grey-8" icon="close" unelevated @click="updateSearch('')" />
         </div>
 
@@ -128,23 +128,6 @@ export default {
     return {
       leftDrawerOpen: false,
       instanceDialog: false,
-      menuLinks: [
-        {
-          icon: "fas fa-chart-line",
-          text: "Controls",
-          route: "/controls",
-        },
-        {
-          icon: "fas fa-tasks",
-          text: "Results",
-          route: "/results",
-        },
-        {
-          icon: "fas fa-clock",
-          text: "Scheduler",
-          route: "/scheduler",
-        },
-      ],
     };
   },
   methods: {
@@ -216,6 +199,19 @@ export default {
   computed: {
     ...mapGetters(["getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
     ...mapState(["schedulerStatus"]),
+    // KPI types are only manageable where the RACS KPI tables are deployed, the same condition that gives the
+    // control editor its KPIs tab.
+    menuLinks() {
+      const links = [
+        { icon: "fas fa-chart-line", text: "Controls", route: "/controls" },
+        { icon: "fas fa-tasks", text: "Results", route: "/results" },
+        { icon: "fas fa-clock", text: "Scheduler", route: "/scheduler" },
+      ];
+      if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
+        links.push({ icon: "fas fa-bullseye", text: "KPI types", route: "/kpi-types" });
+      }
+      return links;
+    },
     schedulerStateInfo() {
       return schedulerState(this.schedulerStatus && this.schedulerStatus.state);
     },
@@ -226,9 +222,13 @@ export default {
         ...Object.entries(this.getEnvParameters || {}).map(([title, values]) => ({ title, entries: this.flattenEntries(values) })),
       ];
     },
-    // Pages without a global search (editor, token page) set meta.hideSearch on their route.
+    // Pages without a global search (editor, token page) set meta.hideSearch on their route, and a page that
+    // searches something else than controls sets meta.searchPlaceholder.
     hideSearch() {
       return Boolean(this.$route.meta.hideSearch);
+    },
+    searchPlaceholder() {
+      return this.$route.meta.searchPlaceholder || "Search control name";
     },
     search: {
       get() {
