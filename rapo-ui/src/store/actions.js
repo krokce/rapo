@@ -32,9 +32,10 @@ export default {
     return data;
   },
   // Reference catalogue of KPI types. Empty when the RACS KPI tables are not deployed, which is also what
-  // hides the KPIs tab of the control editor.
-  async updateKpiTypes(context) {
-    if (context.state.kpiTypes.length > 0) {
+  // hides the KPIs tab of the control editor. Force is for the KPI types page, which edits the catalogue:
+  // without it the first snapshot of the session would keep being served to every reader of it.
+  async updateKpiTypes(context, { force = false } = {}) {
+    if (!force && context.state.kpiTypes.length > 0) {
       return context.state.kpiTypes;
     }
     const data = await api("get-kpi-types", { loadingBar: false });
