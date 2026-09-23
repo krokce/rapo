@@ -105,13 +105,8 @@
       <template #default="{ item: control }">
         <tr :key="control.control_id">
           <td>
-            <q-chip
-              size="12px"
-              text-color="white"
-              clickable
-              :class="'bg-' + controlTypeColor(control.control_type)"
-              class="text-weight-bold"
-              @click="filter.type = control.control_type">
+            <q-chip size="12px" clickable :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
+              <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" />
               {{ control.control_type }}
             </q-chip>
           </td>
@@ -326,7 +321,7 @@ import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import { api, notifyError } from "../api";
-import { CONTROL_TYPE_OPTIONS, controlTypeColor } from "../constants";
+import { CONTROL_TYPE_OPTIONS, controlType } from "../constants";
 import { liveRefetch } from "../socket";
 import { toDateTimeString } from "../utils/format";
 import { fillViewport, textWidth } from "../utils/layout";
@@ -365,7 +360,7 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlCatalogue"]),
-    controlTypeColor,
+    controlType,
     toDateTimeString,
     sortIcon,
     toggleSort,

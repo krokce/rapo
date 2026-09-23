@@ -156,7 +156,8 @@
               <template #default="{ item: fire, index }">
                 <tr :key="fire.control_id + fire.scheduled_time">
                   <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <q-chip size="11px" text-color="white" :class="'bg-' + controlTypeColor(fire.control_type)" class="text-weight-bold">
+                    <q-chip size="11px" :title="controlType(fire.control_type).label">
+                      <q-avatar :icon="controlType(fire.control_type).icon" :color="controlType(fire.control_type).color" text-color="white" />
                       {{ fire.control_type }}
                     </q-chip>
                   </td>
@@ -254,7 +255,8 @@
               <template #default="{ item: event, index }">
                 <tr :key="event.event_id">
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
+                    <q-chip v-if="event.control_type" size="11px" :title="controlType(event.control_type).label">
+                      <q-avatar :icon="controlType(event.control_type).icon" :color="controlType(event.control_type).color" text-color="white" />
                       {{ event.control_type }}
                     </q-chip>
                   </td>
@@ -330,7 +332,7 @@ import DateTimeText from "./DateTimeText.vue";
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
-import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, controlTypeColor, runStatus, schedulerEventType, schedulerState } from "../constants";
+import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, controlType, controlTypeColor, runStatus, schedulerEventType, schedulerState } from "../constants";
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
@@ -409,6 +411,7 @@ export default {
   },
   methods: {
     ...mapActions(["updateSchedulerStatus"]),
+    controlType,
     controlTypeColor,
     runStatus,
     schedulerEventType,
@@ -552,15 +555,15 @@ a:hover {
 .history-table :deep(table) {
   table-layout: fixed;
 }
-.upcoming-table th:nth-child(1) { width: 72px; }
+.upcoming-table th:nth-child(1) { width: 84px; }
 .upcoming-table th:nth-child(2) { width: 170px; }
 .upcoming-table th:nth-child(3) { width: 130px; }
 .upcoming-table th:nth-child(5),
 .upcoming-table th:nth-child(6) { width: 95px; }
 .history-table :deep(table) {
-  min-width: calc(1212px + var(--name-column-width));
+  min-width: calc(1224px + var(--name-column-width));
 }
-.history-table th:nth-child(1) { width: 72px; }
+.history-table th:nth-child(1) { width: 84px; }
 .history-table th:nth-child(2) { width: 145px; }
 .history-table th:nth-child(3) { width: 140px; }
 .history-table th:nth-child(4) { width: 95px; }

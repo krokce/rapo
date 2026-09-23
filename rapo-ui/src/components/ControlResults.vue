@@ -1,42 +1,42 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewport">
-    <h2 class="row q-gutter-lg q-mb-lg">
-      <div>Control results</div>
-      <div v-if="refreshing && hasDay">
-        <q-avatar size="lg" color="grey-5">
-          <q-icon name="fas fa-sync fa-spin" />
-        </q-avatar>
-      </div>
-    </h2>
+    <div class="row items-end q-mb-lg">
+      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+        <div>Control results</div>
+        <div class="text-grey-6 results-day">{{ dayTitle }}</div>
+        <div v-if="refreshing && hasDay">
+          <q-avatar size="lg" color="grey-5">
+            <q-icon name="fas fa-sync fa-spin" />
+          </q-avatar>
+        </div>
+      </h2>
+      <q-space />
 
-    <div v-if="hasDay" class="row items-center q-gutter-x-md q-mb-sm text-blue-grey-8">
-      <div>
-        <strong>{{ summary.controls }}</strong> {{ summary.controls === 1 ? "control" : "controls" }} &middot; <strong>{{ summary.runs }}</strong>
-        {{ summary.runs === 1 ? "run" : "runs" }}
-      </div>
-      <div v-if="summary.types.length">
-        <q-chip
-          v-for="item in summary.types"
-          :key="item.key"
-          clickable
-          dense
-          size="12px"
-          text-color="white"
-          :class="'bg-' + controlTypeColor(item.key)"
-          class="text-weight-bold"
-          @click="filter.type = item.key">
-          {{ item.key }} {{ item.count }}
-        </q-chip>
-      </div>
-      <div v-if="summary.statuses.length">
-        <q-chip v-for="item in summary.statuses" :key="String(item.key)" clickable dense size="12px" @click="addStatusFilter(item.key)">
-          <q-avatar :icon="runStatus(item.key).icon" :color="runStatus(item.key).color" text-color="white" />
-          {{ runStatus(item.key).label }} {{ item.count }}
-        </q-chip>
+      <div v-if="hasDay" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
+        <div>
+          <strong>{{ summary.controls }}</strong> {{ summary.controls === 1 ? "control" : "controls" }} &middot; <strong>{{ summary.runs }}</strong>
+          {{ summary.runs === 1 ? "run" : "runs" }}
+        </div>
+        <div v-if="summary.types.length">
+          <q-chip v-for="item in summary.types" :key="item.key" clickable @click="filter.type = item.key">
+            <q-avatar :icon="controlType(item.key).icon" :color="controlType(item.key).color" text-color="white" />
+            {{ item.key }} {{ item.count }}
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ controlType(item.key).label }}</q-tooltip>
+          </q-chip>
+        </div>
+        <div v-if="summary.statuses.length">
+          <q-chip v-for="item in summary.statuses" :key="String(item.key)" clickable @click="addStatusFilter(item.key)">
+            <q-avatar :icon="runStatus(item.key).icon" :color="runStatus(item.key).color" text-color="white" />
+            {{ runStatus(item.key).label }} {{ item.count }}
+          </q-chip>
+        </div>
       </div>
     </div>
 
     <div class="row items-center q-mb-md">
+      <q-btn class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
+      </q-btn>
       <q-btn class="col-2 q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-play-circle" label="Run control" @click="$refs.runControlDialog.open()" />
       <run-control-dialog ref="runControlDialog" :hook="refreshControlResults" />
       <run-log-dialog ref="runLogDialog" />
@@ -53,7 +53,7 @@
         label="Control type">
       </q-select>
 
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
+      <q-input clearable class="col q-mb-md q-pa-sm name-filter" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
 
       <q-select
         v-model="filter.status"
@@ -71,23 +71,14 @@
       <q-btn flat round color="grey" class="q-mb-md q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
         <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
       </q-btn>
-    </div>
 
-    <div v-if="day" class="row items-center no-wrap q-mb-sm">
-      <div class="col row items-center justify-start no-wrap">
-        <q-btn no-caps size="md" outline color="primary" icon="fas fa-chevron-left" :label="previousDay" @click="goToDay(previousDay)" />
-      </div>
-      <q-btn no-caps size="md" unelevated color="primary" icon="fas fa-calendar-alt" icon-right="fas fa-caret-down" :label="dayLabel">
-        <q-popup-proxy ref="dayPicker" cover transition-show="scale" transition-hide="scale">
-          <q-date :model-value="day" mask="YYYY-MM-DD" first-day-of-week="1" :options="isSelectableDay" @update:model-value="pickDay" />
-        </q-popup-proxy>
+      <q-space />
+      <q-btn v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
       </q-btn>
-      <div class="col row items-center justify-end no-wrap">
-        <q-btn v-if="!isToday" no-caps size="md" outline color="primary" icon-right="fas fa-chevron-right" :label="nextDay" @click="goToDay(nextDay)" />
-        <q-btn v-if="!isToday" no-caps size="md" flat class="q-ml-sm" color="primary" icon="fas fa-step-forward" @click="goToDay(serverToday)">
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
-        </q-btn>
-      </div>
+      <q-btn v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(serverToday)">
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
+      </q-btn>
     </div>
 
     <q-virtual-scroll
@@ -169,13 +160,8 @@
       <template #default="{ item: control }">
         <tr :key="control.process_id">
           <td class="text-center">
-            <q-chip
-              clickable
-              size="11px"
-              text-color="white"
-              :class="'bg-' + controlTypeColor(control.control_type)"
-              class="text-weight-bold"
-              @click="filter.type = control.control_type">
+            <q-chip clickable size="11px" :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
+              <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" />
               {{ control.control_type }}
             </q-chip>
           </td>
@@ -340,7 +326,7 @@ import RunControlDialog from "./RunControlDialog.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
-import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlTypeColor, runStatus } from "../constants";
+import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, showErrorLog } from "../runActions";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
@@ -380,6 +366,7 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlResults"]),
+    controlType,
     controlTypeColor,
     runStatus,
     formatNumber,
@@ -415,16 +402,6 @@ export default {
     // The server's today is plain /results, so the menu link and redirects always land on today.
     goToDay(day) {
       this.$router.push({ name: "results", query: day && day !== this.serverToday ? { date: day } : {} });
-    },
-    pickDay(day) {
-      this.$refs.dayPicker.hide();
-      if (day) {
-        this.goToDay(day);
-      }
-    },
-    // q-date passes days as YYYY/MM/DD.
-    isSelectableDay(day) {
-      return !this.serverToday || day <= this.serverToday.replaceAll("-", "/");
     },
     shiftDay(days) {
       return date.formatDate(date.addToDate(date.extractDate(this.day, "YYYY-MM-DD"), { days }), "YYYY-MM-DD");
@@ -466,8 +443,9 @@ export default {
     day() {
       return this.$route.query.date || this.serverToday;
     },
-    dayLabel() {
-      return date.formatDate(date.extractDate(this.day, "YYYY-MM-DD"), "ddd YYYY-MM-DD");
+    // The day shown, as DD.MM.YYYY for the page title.
+    dayTitle() {
+      return this.day ? date.formatDate(date.extractDate(this.day, "YYYY-MM-DD"), "DD.MM.YYYY") : "";
     },
     previousDay() {
       return this.shiftDay(-1);
@@ -490,9 +468,9 @@ export default {
     menuRow() {
       return this.controlResults.find((row) => row.process_id === this.menuProcessId) || null;
     },
-    // Counts of the listed (filtered) runs, in the order of the type and status constants.
+    // Totals of all runs of the day, whatever the filters, in the order of the type and status constants.
     summary() {
-      const rows = this.filteredControlResults;
+      const rows = this.hasDay ? this.controlResults : [];
       const countBy = (field, order) => {
         const counts = new Map();
         rows.forEach((row) => counts.set(row[field], (counts.get(row[field]) || 0) + 1));
@@ -562,6 +540,20 @@ a:visited {
   color: #009688;
 }
 
+/* The day buttons are as tall as the Run control button beside them, and no wider than their icon. */
+.day-btn {
+  height: 51px;
+  min-width: 0;
+}
+
+.name-filter {
+  min-width: 180px;
+}
+
+.results-day {
+  font-size: 0.6em;
+}
+
 .sortable {
   cursor: pointer;
   user-select: none;
@@ -571,9 +563,9 @@ a:visited {
    the width of the longest name of the day (nameColumnWidth), else the table scrolls sideways. */
 .results-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(1156px + var(--name-column-width));
+  min-width: calc(1168px + var(--name-column-width));
 }
-.results-table th:nth-child(1) { width: 72px; }
+.results-table th:nth-child(1) { width: 84px; }
 .results-table th:nth-child(2) { width: 144px; }
 .results-table th:nth-child(3) { width: 66px; }
 .results-table th:nth-child(4) { width: 92px; }

@@ -23,7 +23,7 @@ const router = createRouter({
   },
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/controls" },
+    { path: "/", redirect: "/results" },
     {
       name: "controls",
       path: "/controls",
@@ -80,7 +80,7 @@ const router = createRouter({
       meta: { hideSearch: true },
       component: TokenBox,
     },
-    { path: "/:notfound(.*)", redirect: "/controls" },
+    { path: "/:notfound(.*)", redirect: "/results" },
   ],
 });
 
