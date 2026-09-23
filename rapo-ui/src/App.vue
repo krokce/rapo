@@ -53,7 +53,16 @@
       </q-toolbar>
     </q-header>
 
-    <q-drawer v-model="leftDrawerOpen" show-if-above bordered class="bg-grey-2" :width="170" :breakpoint="500" v-if="getTokenIsValid">
+    <q-drawer
+      v-model="leftDrawerOpen"
+      show-if-above
+      bordered
+      class="bg-grey-2"
+      :width="170"
+      :mini="miniDrawer"
+      :mini-width="60"
+      :breakpoint="500"
+      v-if="getTokenIsValid">
       <q-scroll-area class="fit">
         <q-list padding class="menu-list">
           <q-item v-for="link in menuLinks" :key="link.text" v-ripple clickable :to="link.route">
@@ -63,6 +72,7 @@
             <q-item-section>
               <q-item-label>{{ link.text }}</q-item-label>
             </q-item-section>
+            <q-tooltip v-if="miniDrawer" anchor="center right" self="center left" :offset="[8, 0]">{{ link.text }}</q-tooltip>
           </q-item>
         </q-list>
       </q-scroll-area>
@@ -71,7 +81,12 @@
     <q-page-container>
       <q-page padding>
         <div class="q-ma-lg">
-          <router-view></router-view>
+          <!-- The list pages are kept alive, so going back to them shows their rows, filters and scroll at once. -->
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="['ControlCatalogue', 'ControlResults']">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
       </q-page>
     </q-page-container>
@@ -123,17 +138,40 @@ import { notifyError, signOut } from "./api";
 import { schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
 
+// The drawer collapsed to its icons (the burger button), remembered by the browser across sessions.
+const MINI_DRAWER_KEY = "rapo_mini_drawer";
+
+function readMiniDrawer() {
+  try {
+    return localStorage.getItem(MINI_DRAWER_KEY) === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
 export default {
   data() {
     return {
       leftDrawerOpen: false,
+      miniDrawer: readMiniDrawer(),
       instanceDialog: false,
     };
   },
   methods: {
     ...mapActions(["updateSearch", "updateSchedulerStatus", "updateEnvironment"]),
+    // Collapses the drawer to its icons, or expands it back. Below the drawer breakpoint (500px), where the drawer
+    // overlays the page and Quasar ignores mini, it opens and closes it instead.
     toggleLeftDrawer() {
-      this.leftDrawerOpen = !this.leftDrawerOpen;
+      if (this.$q.screen.width < 500) {
+        this.leftDrawerOpen = !this.leftDrawerOpen;
+        return;
+      }
+      this.miniDrawer = !this.miniDrawer;
+      try {
+        localStorage.setItem(MINI_DRAWER_KEY, String(this.miniDrawer));
+      } catch (error) {
+        // Storage unavailable (private mode, blocked): the choice lasts for this page load only.
+      }
     },
     flattenEntries(source, parentKey = "") {
       if (!source || typeof source !== "object") {
@@ -208,7 +246,7 @@ export default {
         { icon: "fas fa-clock", text: "Scheduler", route: "/scheduler" },
       ];
       if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
-        links.push({ icon: "fas fa-bullseye", text: "KPI types", route: "/kpi-types" });
+        links.push({ icon: "fas fa-calculator", text: "KPI types", route: "/kpi-types" });
       }
       return links;
     },
@@ -303,4 +341,19 @@ export default {
     padding: 2px 10px 2px 0
     vertical-align: top
     word-break: break-word
+
+// A virtual-scroll table on a list page (utils/layout.js): as tall as its rows, but no taller than the rest of the
+// page, where it scrolls instead, with its header kept in view.
+.list-table
+  flex: 0 1 auto
+  min-height: 0
+
+  thead th
+    position: sticky
+    top: 0
+    z-index: 1
+    background: #cfd8dc
+
+.skeleton-row td
+  height: 45px
 </style>

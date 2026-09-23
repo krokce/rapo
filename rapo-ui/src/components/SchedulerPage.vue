@@ -1,12 +1,7 @@
 <template>
-  <q-page>
+  <q-page class="column no-wrap" :style-fn="fillViewport">
     <h2 class="row q-gutter-lg q-mb-lg">
       <div>Scheduler</div>
-      <div v-if="!loaded">
-        <q-avatar size="lg" color="grey-5">
-          <q-icon name="fas fa-sync fa-spin" />
-        </q-avatar>
-      </div>
     </h2>
 
     <q-card class="q-mb-lg" v-if="status">
@@ -88,7 +83,18 @@
       </template>
     </q-card>
 
-    <q-card>
+    <q-card class="q-mb-lg" v-if="!status">
+      <q-card-section class="row items-center q-gutter-lg">
+        <q-skeleton type="QChip" width="120px" height="40px" />
+        <div v-for="index in 4" :key="index" class="status-item">
+          <q-skeleton type="text" width="110px" />
+          <q-skeleton type="text" width="150px" height="24px" />
+          <q-skeleton type="text" width="90px" />
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <q-card class="tabs-card">
       <q-tabs
         v-model="tab"
         class="text-white bg-blue-grey-7"
@@ -104,9 +110,9 @@
 
       <q-separator />
 
-      <q-tab-panels v-model="tab" keep-alive>
+      <q-tab-panels v-model="tab" keep-alive class="fill-panels">
         <q-tab-panel name="upcoming">
-          <div class="q-ma-lg q-gutter-y-md">
+          <div class="q-ma-lg q-gutter-y-md fill-column">
             <div class="row items-center">
               <q-select
                 v-model="upcomingHours"
@@ -123,21 +129,28 @@
                 <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
               </div>
             </div>
-            <q-markup-table dense flat>
-              <thead>
-                <tr class="bg-blue-grey-2">
-                  <th class="text-left">Time</th>
-                  <th class="text-left">In</th>
-                  <th class="text-left">Type</th>
-                  <th class="text-left">Control</th>
-                  <th class="text-left">Group</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!filteredUpcoming.length">
-                  <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
-                </tr>
-                <tr v-for="(fire, index) in filteredUpcoming" :key="fire.control_id + fire.scheduled_time">
+            <q-virtual-scroll
+              type="table"
+              dense
+              flat
+              class="list-table upcoming-table"
+              :items="filteredUpcoming"
+              :virtual-scroll-item-size="41"
+              :virtual-scroll-sticky-size-start="28"
+              :table-colspan="5">
+              <template #before>
+                <thead>
+                  <tr class="bg-blue-grey-2">
+                    <th class="text-left">Time</th>
+                    <th class="text-left">In</th>
+                    <th class="text-left">Type</th>
+                    <th class="text-left">Control</th>
+                    <th class="text-left">Group</th>
+                  </tr>
+                </thead>
+              </template>
+              <template #default="{ item: fire, index }">
+                <tr :key="fire.control_id + fire.scheduled_time">
                   <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
                     <div class="text-blue-grey-7">
                       <strong>{{ toDateString(fire.scheduled_time) }}</strong>
@@ -157,13 +170,23 @@
                   </td>
                   <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fire.control_group }}</td>
                 </tr>
-              </tbody>
-            </q-markup-table>
+              </template>
+              <template #after>
+                <tbody v-if="!loaded">
+                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['text', 'text', 'QChip', 'text', 'text']" />
+                </tbody>
+                <tbody v-else-if="!filteredUpcoming.length">
+                  <tr>
+                    <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
+                  </tr>
+                </tbody>
+              </template>
+            </q-virtual-scroll>
           </div>
         </q-tab-panel>
 
         <q-tab-panel name="history">
-          <div class="q-ma-lg q-gutter-y-md">
+          <div class="q-ma-lg q-gutter-y-md fill-column">
             <div class="row items-center">
               <q-input clearable class="col-3 q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
               <q-select
@@ -192,27 +215,35 @@
               <q-space />
               <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
             </div>
-            <q-markup-table dense flat>
-              <thead>
-                <tr class="bg-blue-grey-2">
-                  <th class="text-left">Recorded</th>
-                  <th class="text-left">Scheduled for</th>
-                  <th class="text-left">Trigger</th>
-                  <th class="text-left">Event</th>
-                  <th class="text-left">Type</th>
-                  <th class="text-left">Control</th>
-                  <th class="text-center">PID</th>
-                  <th class="text-left">Run</th>
-                  <th class="text-left">Run from</th>
-                  <th class="text-left">Message</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!filteredEvents.length">
-                  <td colspan="11" class="text-grey-7 text-center">No events</td>
-                </tr>
-                <tr v-for="(event, index) in filteredEvents" :key="event.event_id">
+            <q-virtual-scroll
+              type="table"
+              dense
+              flat
+              class="list-table history-table"
+              :style="{ '--name-column-width': eventNameWidth + 'px' }"
+              :items="filteredEvents"
+              :virtual-scroll-item-size="41"
+              :virtual-scroll-sticky-size-start="28"
+              :table-colspan="11">
+              <template #before>
+                <thead>
+                  <tr class="bg-blue-grey-2">
+                    <th class="text-left">Recorded</th>
+                    <th class="text-left">Scheduled for</th>
+                    <th class="text-left">Trigger</th>
+                    <th class="text-left">Event</th>
+                    <th class="text-left">Type</th>
+                    <th class="text-left">Control</th>
+                    <th class="text-center">PID</th>
+                    <th class="text-left">Run</th>
+                    <th class="text-left">Run from</th>
+                    <th class="text-left">Message</th>
+                    <th></th>
+                  </tr>
+                </thead>
+              </template>
+              <template #default="{ item: event, index }">
+                <tr :key="event.event_id">
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <div class="text-blue-grey-7">
                       <strong>{{ toDateString(event.event_time) }}</strong>
@@ -258,14 +289,24 @@
                     {{ toDateString(event.date_from) }}
                   </td>
                   <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
-                  <td style="width: 50px" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <q-btn v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
                       <q-tooltip>Run for this moment</q-tooltip>
                     </q-btn>
                   </td>
                 </tr>
-              </tbody>
-            </q-markup-table>
+              </template>
+              <template #after>
+                <tbody v-if="!loaded">
+                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['text', 'text', 'text', 'QChip', 'text', 'text', 'QChip', 'text', 'text', 'text', null]" />
+                </tbody>
+                <tbody v-else-if="!filteredEvents.length">
+                  <tr>
+                    <td colspan="11" class="text-grey-7 text-center">No events</td>
+                  </tr>
+                </tbody>
+              </template>
+            </q-virtual-scroll>
           </div>
         </q-tab-panel>
       </q-tab-panels>
@@ -277,11 +318,13 @@
 import { Dialog, Notify } from "quasar";
 import { mapActions, mapState } from "vuex";
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
+import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, controlTypeColor, runStatus, schedulerEventType, schedulerState } from "../constants";
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { fillViewport, textWidth } from "../utils/layout";
 
 // Naive server datetime string as milliseconds, read as local time like the server wrote it.
 function toMillis(value) {
@@ -291,6 +334,7 @@ function toMillis(value) {
 export default {
   components: {
     SchedulerToggleButton,
+    SkeletonRows,
   },
   data() {
     return {
@@ -320,6 +364,14 @@ export default {
     };
   },
   computed: {
+    // The History Control column fits the longest control name (bold 13px, plus padding), within limits.
+    eventNameWidth() {
+      const width = textWidth(
+        this.events.map((event) => event.control_name || `Deleted control ${event.control_id}`),
+        "bold 13px Roboto, sans-serif"
+      );
+      return Math.min(Math.max(width + 24, 140), 320);
+    },
     ...mapState({ status: "schedulerStatus" }),
     state() {
       return schedulerState(this.status && this.status.state);
@@ -356,6 +408,7 @@ export default {
     triggerType(type) {
       return TRIGGER_TYPES[type] || { label: type, icon: "fas fa-question" };
     },
+    fillViewport,
     newDay(rows, index, key) {
       return index > 0 && toDateString(rows[index - 1][key]) !== toDateString(rows[index][key]);
     },
@@ -461,7 +514,49 @@ a:hover {
 }
 
 .message {
-  max-width: 320px;
   white-space: normal;
 }
+
+/* The tabs card and its panel shrink to their table, which is as tall as its rows up to the rest of the page
+   (list-table in App.vue), so a long list scrolls inside the table instead of the page. */
+.tabs-card,
+.fill-panels,
+.fill-panels :deep(.q-panel),
+.fill-panels :deep(.q-tab-panel),
+.fill-column {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.fill-panels :deep(.q-panel) {
+  overflow: hidden;
+}
+.upcoming-table,
+.history-table {
+  min-height: 160px;
+}
+
+/* Fixed columns, so rows swapped in while scrolling don't resize them. */
+.upcoming-table :deep(table),
+.history-table :deep(table) {
+  table-layout: fixed;
+}
+.upcoming-table th:nth-child(1) { width: 170px; }
+.upcoming-table th:nth-child(2) { width: 130px; }
+.upcoming-table th:nth-child(3) { width: 100px; }
+.history-table :deep(table) {
+  min-width: calc(1110px + var(--name-column-width));
+}
+.history-table th:nth-child(1) { width: 145px; }
+.history-table th:nth-child(2) { width: 140px; }
+.history-table th:nth-child(3) { width: 100px; }
+.history-table th:nth-child(4) { width: 110px; }
+.history-table th:nth-child(5) { width: 65px; }
+.history-table th:nth-child(6) { width: var(--name-column-width); }
+.history-table th:nth-child(7) { width: 95px; }
+.history-table th:nth-child(8) { width: 105px; }
+.history-table th:nth-child(9) { width: 90px; }
+.history-table th:nth-child(11) { width: 50px; }
+.history-table td:nth-child(6) { white-space: normal; overflow-wrap: anywhere; }
 </style>
