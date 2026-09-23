@@ -16,8 +16,8 @@
           <div class="status-item">
             <div class="status-label">Scheduling server</div>
             <div class="status-value">{{ status.holder.server || "N/A" }} <small v-if="status.holder.pid">PID {{ status.holder.pid }}</small></div>
-            <small class="text-grey-7" v-if="status.holder.alive">since {{ toDateTimeString(status.holder.start_date) }}</small>
-            <small class="text-grey-7" v-else-if="status.holder.stop_date">stopped {{ toDateTimeString(status.holder.stop_date) }}</small>
+            <div v-if="status.holder.alive"><small class="text-grey-7">since</small> <date-time-text :value="status.holder.start_date" /></div>
+            <div v-else-if="status.holder.stop_date"><small class="text-grey-7">stopped</small> <date-time-text :value="status.holder.stop_date" /></div>
           </div>
           <div class="status-item">
             <div class="status-label">Heartbeat</div>
@@ -32,11 +32,12 @@
           <div class="status-item" v-if="status.leader">
             <div class="status-label">Scheduled controls</div>
             <div class="status-value">{{ status.scheduled_controls }}</div>
-            <small class="text-grey-7">last fire {{ toDateTimeString(status.last_fire) || "none yet" }}</small>
+            <div v-if="status.last_fire"><small class="text-grey-7">last fire</small> <date-time-text :value="status.last_fire" /></div>
+            <small v-else class="text-grey-7">last fire none yet</small>
           </div>
           <div class="status-item" v-if="status.next_maintenance">
             <div class="status-label">Next maintenance</div>
-            <div class="status-value">{{ toDateTimeString(status.next_maintenance) }}</div>
+            <div class="status-value"><date-time-text :value="status.next_maintenance" /></div>
           </div>
           <q-space />
           <scheduler-toggle-button />
@@ -137,14 +138,17 @@
               :items="filteredUpcoming"
               :virtual-scroll-item-size="41"
               :virtual-scroll-sticky-size-start="28"
-              :table-colspan="5">
+              :table-colspan="7">
               <template #before>
                 <thead>
                   <tr class="bg-blue-grey-2">
-                    <th class="text-left">Time</th>
-                    <th class="text-left">In</th>
+
                     <th class="text-left">Type</th>
+                    <th class="text-left">Scheduled for</th>
+                    <th class="text-left">In</th>
                     <th class="text-left">Control</th>
+                    <th class="text-left">Run from</th>
+                    <th class="text-left">Run to</th>
                     <th class="text-left">Group</th>
                   </tr>
                 </thead>
@@ -152,32 +156,35 @@
               <template #default="{ item: fire, index }">
                 <tr :key="fire.control_id + fire.scheduled_time">
                   <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <div class="text-blue-grey-7">
-                      <strong>{{ toDateString(fire.scheduled_time) }}</strong>
-                      <small class="text-grey-7 q-px-sm">{{ toTimeString(fire.scheduled_time) }}</small>
-                    </div>
-                  </td>
-                  <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
-                  <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
                     <q-chip size="11px" text-color="white" :class="'bg-' + controlTypeColor(fire.control_type)" class="text-weight-bold">
                       {{ fire.control_type }}
                     </q-chip>
                   </td>
+                  <td :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    <date-time-text :value="fire.scheduled_time" />
+                  </td>
+                  <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
                     <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id } }" :class="'text-' + controlTypeColor(fire.control_type)">
                       {{ fire.control_name }}
                     </router-link>
+                  </td>
+                  <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    {{ toDateString(fire.date_from) }}
+                  </td>
+                  <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
+                    {{ toDateString(fire.date_to) }}
                   </td>
                   <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fire.control_group }}</td>
                 </tr>
               </template>
               <template #after>
                 <tbody v-if="!loaded">
-                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['text', 'text', 'QChip', 'text', 'text']" />
+                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text']" />
                 </tbody>
                 <tbody v-else-if="!filteredUpcoming.length">
                   <tr>
-                    <td colspan="5" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
+                    <td colspan="7" class="text-grey-7 text-center">No fires within {{ upcomingHours }} hours</td>
                   </tr>
                 </tbody>
               </template>
@@ -224,19 +231,21 @@
               :items="filteredEvents"
               :virtual-scroll-item-size="41"
               :virtual-scroll-sticky-size-start="28"
-              :table-colspan="11">
+              :table-colspan="12">
               <template #before>
                 <thead>
                   <tr class="bg-blue-grey-2">
+
+                    <th class="text-left">Type</th>
                     <th class="text-left">Recorded</th>
                     <th class="text-left">Scheduled for</th>
+                    <th class="text-center">PID</th>
+                    <th class="text-left">Control</th>
+                    <th class="text-left">Run from</th>
+                    <th class="text-left">Run to</th>
                     <th class="text-left">Trigger</th>
                     <th class="text-left">Event</th>
-                    <th class="text-left">Type</th>
-                    <th class="text-left">Control</th>
-                    <th class="text-center">PID</th>
                     <th class="text-left">Run</th>
-                    <th class="text-left">Run from</th>
                     <th class="text-left">Message</th>
                     <th></th>
                   </tr>
@@ -245,13 +254,33 @@
               <template #default="{ item: event, index }">
                 <tr :key="event.event_id">
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <div class="text-blue-grey-7">
-                      <strong>{{ toDateString(event.event_time) }}</strong>
-                      <small class="text-grey-7 q-px-sm">{{ toTimeString(event.event_time) }}</small>
-                    </div>
+                    <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
+                      {{ event.control_type }}
+                    </q-chip>
                   </td>
-                  <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    {{ toDateTimeString(event.scheduled_time) }}
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <date-time-text :value="event.event_time" />
+                  </td>
+                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <date-time-text :value="event.scheduled_time" />
+                  </td>
+                  <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ event.process_id }}
+                  </td>
+                  <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    <router-link
+                      v-if="event.control_name"
+                      :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
+                      :class="'text-' + controlTypeColor(event.control_type)">
+                      {{ event.control_name }}
+                    </router-link>
+                    <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
+                  </td>
+                  <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ toDateString(event.date_from) }}
+                  </td>
+                  <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                    {{ toDateString(event.date_to) }}
                   </td>
                   <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
@@ -263,30 +292,10 @@
                     </q-chip>
                   </td>
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <q-chip v-if="event.control_type" size="11px" text-color="white" :class="'bg-' + controlTypeColor(event.control_type)" class="text-weight-bold">
-                      {{ event.control_type }}
-                    </q-chip>
-                  </td>
-                  <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <router-link
-                      v-if="event.control_name"
-                      :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
-                      :class="'text-' + controlTypeColor(event.control_type)">
-                      {{ event.control_name }}
-                    </router-link>
-                    <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
-                  </td>
-                  <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    {{ event.process_id }}
-                  </td>
-                  <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <q-chip v-if="event.process_id" dense>
                       <q-avatar :icon="runStatus(event.status).icon" :color="runStatus(event.status).color" text-color="white" />
                       {{ runStatus(event.status).label }}
                     </q-chip>
-                  </td>
-                  <td class="text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    {{ toDateString(event.date_from) }}
                   </td>
                   <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
@@ -298,11 +307,11 @@
               </template>
               <template #after>
                 <tbody v-if="!loaded">
-                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['text', 'text', 'text', 'QChip', 'text', 'text', 'QChip', 'text', 'text', 'text', null]" />
+                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'QChip', 'QChip', 'text', null]" />
                 </tbody>
                 <tbody v-else-if="!filteredEvents.length">
                   <tr>
-                    <td colspan="11" class="text-grey-7 text-center">No events</td>
+                    <td colspan="12" class="text-grey-7 text-center">No events</td>
                   </tr>
                 </tbody>
               </template>
@@ -317,6 +326,7 @@
 <script>
 import { Dialog, Notify } from "quasar";
 import { mapActions, mapState } from "vuex";
+import DateTimeText from "./DateTimeText.vue";
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
@@ -333,6 +343,7 @@ function toMillis(value) {
 
 export default {
   components: {
+    DateTimeText,
     SchedulerToggleButton,
     SkeletonRows,
   },
@@ -403,7 +414,6 @@ export default {
     schedulerEventType,
     toDateString,
     toTimeString,
-    toDateTimeString,
     cancelRun,
     triggerType(type) {
       return TRIGGER_TYPES[type] || { label: type, icon: "fas fa-question" };
@@ -542,21 +552,24 @@ a:hover {
 .history-table :deep(table) {
   table-layout: fixed;
 }
-.upcoming-table th:nth-child(1) { width: 170px; }
-.upcoming-table th:nth-child(2) { width: 130px; }
-.upcoming-table th:nth-child(3) { width: 100px; }
+.upcoming-table th:nth-child(1) { width: 72px; }
+.upcoming-table th:nth-child(2) { width: 170px; }
+.upcoming-table th:nth-child(3) { width: 130px; }
+.upcoming-table th:nth-child(5),
+.upcoming-table th:nth-child(6) { width: 95px; }
 .history-table :deep(table) {
-  min-width: calc(1110px + var(--name-column-width));
+  min-width: calc(1212px + var(--name-column-width));
 }
-.history-table th:nth-child(1) { width: 145px; }
-.history-table th:nth-child(2) { width: 140px; }
-.history-table th:nth-child(3) { width: 100px; }
-.history-table th:nth-child(4) { width: 110px; }
-.history-table th:nth-child(5) { width: 65px; }
-.history-table th:nth-child(6) { width: var(--name-column-width); }
+.history-table th:nth-child(1) { width: 72px; }
+.history-table th:nth-child(2) { width: 145px; }
+.history-table th:nth-child(3) { width: 140px; }
+.history-table th:nth-child(4) { width: 95px; }
+.history-table th:nth-child(5) { width: var(--name-column-width); }
+.history-table th:nth-child(6),
 .history-table th:nth-child(7) { width: 95px; }
-.history-table th:nth-child(8) { width: 105px; }
-.history-table th:nth-child(9) { width: 90px; }
-.history-table th:nth-child(11) { width: 50px; }
-.history-table td:nth-child(6) { white-space: normal; overflow-wrap: anywhere; }
+.history-table th:nth-child(8) { width: 100px; }
+.history-table th:nth-child(9) { width: 110px; }
+.history-table th:nth-child(10) { width: 105px; }
+.history-table th:nth-child(12) { width: 50px; }
+.history-table td:nth-child(5) { white-space: normal; overflow-wrap: anywhere; }
 </style>
