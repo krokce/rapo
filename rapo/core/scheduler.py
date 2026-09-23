@@ -6,6 +6,7 @@ import os
 import platform
 import threading as th
 import time
+import types
 import uuid
 
 import sqlalchemy as sa
@@ -17,7 +18,7 @@ from ..reader import reader
 
 from . import journal
 from . import schedule
-from .control import Control
+from .control import Control, Parser
 from .runner import runner, get_runner_name
 
 
@@ -471,7 +472,8 @@ def upcoming(hours=24, control_name=None, limit=1000):
     Returns
     -------
     fires : list of dict
-        Fires ordered by time with control ID, name, type and group.
+        Fires ordered by time with control ID, name, type and group, and the
+        date window the run would get, computed the way a scheduled run does.
     """
     now = dt.datetime.now().replace(microsecond=0)
     until = now+dt.timedelta(hours=hours)
@@ -481,14 +483,29 @@ def upcoming(hours=24, control_name=None, limit=1000):
             continue
         for moment in schedule.next_fire(item['schedule'], now, limit=limit,
                                          before=until):
+            date_from, date_to = _fire_dates(item, moment)
             fires.append({'scheduled_time': moment,
                           'control_id': item['control_id'],
                           'control_name': name,
                           'control_type': item['control_type'],
-                          'control_group': item['control_group']})
+                          'control_group': item['control_group'],
+                          'date_from': date_from,
+                          'date_to': date_to})
     fires.sort(key=lambda fire: (fire['scheduled_time'],
                                  fire['control_name']))
     return fires[:limit]
+
+
+def _fire_dates(item, moment):
+    """Get the date window of a run fired at the moment, None if invalid."""
+    owner = types.SimpleNamespace(timestamp=moment,
+                                  period_back=item['period_back'],
+                                  period_number=item['period_number'],
+                                  period_type=item['period_type'])
+    try:
+        return Parser(owner).parse_dates()
+    except Exception:
+        return None, None
 
 
 def _read_config_signature():

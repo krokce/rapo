@@ -173,8 +173,8 @@ def read_all():
     Yields
     ------
     control_name, item : str, dict
-        Control name and a dictionary with its `schedule` and `control_id`,
-        `control_type` and `control_group`.
+        Control name and a dictionary with its `schedule`, `control_id`,
+        `control_type`, `control_group` and `period_*` configuration.
     """
     from ..database import db
     from ..logger import logger
@@ -195,4 +195,7 @@ def read_all():
                 'control_id': int(record.control_id),
                 'control_type': record.control_type,
                 'control_group': record.control_group,
+                'period_back': record.period_back,
+                'period_number': record.period_number,
+                'period_type': record.period_type,
             }
