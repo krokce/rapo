@@ -971,7 +971,15 @@ import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
-import { EMAIL_CONTROL_TYPES, SHEET_NAME_INVALID, completeEmailConfig, defaultEmailConfig, defaultSheetName, isEmailAddress } from "../utils/email";
+import {
+  DEFAULT_SQL_SHEET_NAME,
+  EMAIL_CONTROL_TYPES,
+  SHEET_NAME_INVALID,
+  completeEmailConfig,
+  defaultEmailConfig,
+  defaultSheetName,
+  isEmailAddress,
+} from "../utils/email";
 
 export default {
   components: {
@@ -1627,14 +1635,19 @@ export default {
       if (email.max_records != null && !(Number.isInteger(email.max_records) && email.max_records > 0)) {
         return "Max records must be a whole number greater than 0.";
       }
-      const sheetKeys = this.control.control_type === "REC" ? ["a", "b"].filter((side) => email.sheets[side].enabled) : ["main"];
+      const resultKeys = this.control.control_type === "REC" ? ["a", "b"] : ["main"];
+      const sheetKeys = [...resultKeys, "sql"].filter((key) => email.sheets[key].enabled);
+      if (email.sheets.sql.enabled && !(email.sheets.sql.query || "").trim()) {
+        return "Please enter the query of the Free SQL sheet, or turn its Include off.";
+      }
       const invalidName = sheetKeys.map((key) => email.sheets[key].name).find((name) => name && SHEET_NAME_INVALID.test(name));
       if (invalidName) {
         return "Sheet name '" + invalidName + "' contains a character Excel does not allow: [ ] : * ? / \\";
       }
-      const sheetNames = sheetKeys.map((key) => (email.sheets[key].name || defaultSheetName(key, this.control.control_name)).trim().toLowerCase());
+      const defaultName = (key) => (key === "sql" ? DEFAULT_SQL_SHEET_NAME : defaultSheetName(key, this.control.control_name));
+      const sheetNames = sheetKeys.map((key) => (email.sheets[key].name || defaultName(key)).trim().toLowerCase());
       if (new Set(sheetNames).size < sheetNames.length) {
-        return "Sheets A and B need different names.";
+        return "The sheets of the email need different names.";
       }
       if (this.control.control_type === "REC") {
         const sides = ["a", "b"].filter((side) => email.sheets[side].enabled);
@@ -1642,9 +1655,9 @@ export default {
           ...(this.ruleConfigObject["need_issues_" + side] ? ["Loss", "Discrepancy"] : []),
           ...(this.ruleConfigObject["need_recons_" + side] ? ["Match"] : []),
         ];
-        const usable = sides.filter((side) => email.sheets[side].result_types.some((type) => available(side).includes(type)));
-        if (!usable.length) {
-          return "Please include at least one sheet (A or B) with a result type in the email.";
+        const empty = sides.find((side) => available(side).length && !email.sheets[side].result_types.some((type) => available(side).includes(type)));
+        if (empty) {
+          return "Please choose at least one result type for sheet " + empty.toUpperCase() + ", or turn its Include off.";
         }
       }
       return null;

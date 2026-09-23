@@ -32,7 +32,10 @@ PLSQL_KEYWORDS = ('begin', 'declare')
 TEXT_BIND = re.compile(r'(?<![:\w\\]):(\w+)(?!:)')
 
 KINDS = ('filter', 'error_sql', 'case_definition', 'prerequisite',
-         'preparation', 'completion', 'email_filter')
+         'preparation', 'completion', 'email_filter', 'email_sql')
+
+# The variables that limit a Free SQL sheet to the run being mailed.
+RUN_VARIABLES = re.compile(r'\{(process_id|control_date\w*)[}:!]')
 
 
 class CheckError(Exception):
@@ -144,7 +147,8 @@ def check(kind, statement, context=None):
     context : dict, optional
         The unsaved editor values it depends on: `control_name`,
         `control_type`, `source_name` (the datasource of a filter),
-        `side` (`a`/`b` of an email sheet) and `case_ids`.
+        `side` (`a`/`b` of an email sheet) and `case_ids`. An `email_sql`
+        (the Free SQL sheet of an email) needs none of them.
 
     Returns
     -------
@@ -201,6 +205,15 @@ def _check(kind, statement, context):
                     'warning': f'{table} does not exist yet, so only the '
                                'variables were checked. The first run '
                                'creates it.'}
+    elif kind == 'email_sql':
+        if first_keyword(statement) not in QUERY_KEYWORDS:
+            raise CheckError('The Free SQL sheet must be a query (select or '
+                             'with).')
+        variables = sample_variables(control_name, email=True)
+        query = strip_query(render(statement, variables))
+        if not RUN_VARIABLES.search(statement):
+            warning = ('The query uses neither {process_id} nor '
+                       '{control_date...}, so it is not limited to this run.')
     else:
         keywords = QUERY_KEYWORDS if kind == 'prerequisite' else SAFE_KEYWORDS
         keyword = first_keyword(statement)
