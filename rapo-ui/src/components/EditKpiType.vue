@@ -1,6 +1,13 @@
 <template>
   <q-page>
-    <div>
+    <div v-if="!ready">
+      <h2 class="row items-center q-mb-lg">
+        <q-skeleton type="QChip" width="90px" height="50px" class="q-mr-md" />
+        <q-skeleton type="text" width="300px" height="60px" />
+      </h2>
+      <editor-skeleton :rows="2" />
+    </div>
+    <div v-else>
       <h2 class="row q-mb-lg">
         <q-chip size="xl" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
         &nbsp;
@@ -215,6 +222,7 @@
 <script>
 import { mapActions, mapState } from "vuex";
 import CodeBox from "./CodeBox.vue";
+import EditorSkeleton from "./EditorSkeleton.vue";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import { api, notifyError } from "../api";
 import { controlTypeColor } from "../constants";
@@ -255,12 +263,14 @@ function emptyKpiType() {
 // One row of racs_kpi_type. The code is the primary key, so an edit that changes it is a rename: the controls
 // that use the type are moved over by the server, which is what the confirmation before saving is about.
 export default {
-  components: { CodeBox, SchedulePresentBox },
+  components: { CodeBox, EditorSkeleton, SchedulePresentBox },
   props: ["kpiCode"],
   data() {
     return {
       statements: STATEMENTS,
       tab: "main",
+      // A new type is ready at once; an existing one once it has loaded, so the form never shows empty first.
+      ready: this.kpiCode === "new",
       kpiType: emptyKpiType(),
       previousKpiType: null,
       usage: [],
@@ -446,8 +456,12 @@ export default {
     try {
       // Forced, because this page is where the catalogue is edited and the store caches it for the session.
       // The control catalogue feeds the Controls tab, and SchedulePresentBox reads it to name a cascade trigger.
-      const [types] = await Promise.all([this.updateKpiTypes({ force: true }), this.updateControlCatalogue()]);
-      this.usage = await api("get-kpi-type-usage", { loadingBar: false });
+      const [types, , usage] = await Promise.all([
+        this.updateKpiTypes({ force: true }),
+        this.updateControlCatalogue(),
+        api("get-kpi-type-usage", { loadingBar: false }),
+      ]);
+      this.usage = usage;
       if (this.kpiCode === "new") {
         return;
       }
@@ -458,6 +472,7 @@ export default {
         return;
       }
       this.loadKpiType(data);
+      this.ready = true;
     } catch (error) {
       notifyError("Failed to load the KPI type.", error);
     }

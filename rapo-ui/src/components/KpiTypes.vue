@@ -1,12 +1,8 @@
 <template>
   <q-page>
     <h2 class="row q-gutter-lg q-mb-lg">
-      <div>{{ filteredKpiTypesLen }} KPI type<span v-if="filteredKpiTypesLen != 1">s</span></div>
-      <div v-if="!loaded">
-        <q-avatar size="lg" color="grey-5">
-          <q-icon name="fas fa-sync fa-spin" />
-        </q-avatar>
-      </div>
+      <div v-if="!loaded">KPI types</div>
+      <div v-else>{{ filteredKpiTypesLen }} KPI type<span v-if="filteredKpiTypesLen != 1">s</span></div>
     </h2>
 
     <div class="row items-center q-mb-md">
@@ -84,7 +80,10 @@
             <th class="text-left"></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody v-if="!loaded">
+          <skeleton-rows :rows="8" :columns="['text', 'text', 'QChip', 'text', 'text', 'text', 'text', null]" />
+        </tbody>
+        <tbody v-else>
           <!-- The row opens the editor; what reacts on its own (the unit chip, the menu) stops the click. -->
           <tr
             v-for="kpiType in sortedKpiTypes"
@@ -158,15 +157,18 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 export default {
   components: {
     ConfirmDialog,
+    SkeletonRows,
   },
   data() {
     return {
+      // Until the first load, the table shows skeleton rows: the usage counts are never cached.
       loaded: false,
       // One row per (KPI type, control) of racs_kpi_config, which is what makes a type undeletable.
       usage: [],

@@ -1,3 +1,7 @@
+// Rows of the big lists are read-only snapshots replaced wholesale on every fetch, so they are frozen: Vue then
+// skips making thousands of rows deeply reactive.
+const freezeRows = (rows) => Object.freeze(rows.map(Object.freeze));
+
 export default {
   // have to be synchronous
   updateSearch(state, payload) {
@@ -13,10 +17,10 @@ export default {
     state.envParameters = payload;
   },
   updateControlCatalogue(state, payload) {
-    state.controlCatalogue = payload;
+    state.controlCatalogue = freezeRows(payload);
   },
   updateControlResults(state, payload) {
-    state.controlResults = payload.runs;
+    state.controlResults = freezeRows(payload.runs);
     state.controlResultsDay = payload.date;
     state.serverToday = payload.today;
   },

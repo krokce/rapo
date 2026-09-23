@@ -1,8 +1,9 @@
 <template>
-  <q-page>
+  <q-page class="column no-wrap" :style-fn="fillViewport">
     <h2 class="row q-gutter-lg q-mb-lg">
-      <div>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
-      <div v-if="!loaded">
+      <div v-if="showSkeleton">Controls</div>
+      <div v-else>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
+      <div v-if="refreshing && !showSkeleton">
         <q-avatar size="lg" color="grey-5">
           <q-icon name="fas fa-sync fa-spin" />
         </q-avatar>
@@ -67,11 +68,18 @@
       </q-btn>
     </div>
 
-    <div>
-      <q-markup-table>
+    <q-virtual-scroll
+      type="table"
+      class="list-table catalogue-table"
+      :style="{ '--name-column-width': nameColumnWidth + 'px' }"
+      :items="sortedControlCatalogue"
+      :virtual-scroll-item-size="90"
+      :virtual-scroll-sticky-size-start="48"
+      :table-colspan="5">
+      <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-center sortable" style="width: 50px" @click="toggleSort(sort, 'control_type')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'control_type')">
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -93,233 +101,255 @@
             <th class="text-left"></th>
           </tr>
         </thead>
-        <tbody>
-          <tr v-for="control in sortedControlCatalogue" :key="control.control_id">
-            <td>
-              <q-chip
-                size="12px"
-                text-color="white"
-                clickable
-                :class="'bg-' + controlTypeColor(control.control_type)"
-                class="text-weight-bold"
-                @click="filter.type = control.control_type">
-                {{ control.control_type }}
+      </template>
+      <template #default="{ item: control }">
+        <tr :key="control.control_id">
+          <td>
+            <q-chip
+              size="12px"
+              text-color="white"
+              clickable
+              :class="'bg-' + controlTypeColor(control.control_type)"
+              class="text-weight-bold"
+              @click="filter.type = control.control_type">
+              {{ control.control_type }}
+            </q-chip>
+          </td>
+          <td class="text-left">
+            <div class="text-weight-bold text-grey-9 control-name">
+              {{ control.control_name }}
+            </div>
+            <router-link
+              :to="{
+                name: 'edit-control',
+                params: { controlId: control.control_id },
+              }"
+              style="text-decoration: none">
+              <div>
+                <small class="text-indigo-4"> v.{{ toDateTimeString(control.updated_date) }} </small>
+              </div>
+            </router-link>
+          </td>
+
+          <td class="text-left">
+            <div style="white-space: normal; word-wrap: break-word">
+              {{ control.control_description }}
+            </div>
+
+            <div class="row justify-start items-center">
+              <q-chip v-if="control.status !== 'Y'" clickable size="sm" color="red-4" text-color="white" icon="fas fa-clock" @click="filter.status = 'N'">
+                Scheduler inactive
               </q-chip>
-            </td>
-            <td class="text-left" style="width: 300px">
-              <div class="text-weight-bold text-grey-9" style="font-size: 16px">
-                {{ control.control_name }}
-              </div>
-              <router-link
-                :to="{
-                  name: 'edit-control',
-                  params: { controlId: control.control_id },
-                }"
-                style="text-decoration: none">
-                <div>
-                  <small class="text-indigo-4"> v.{{ toDateTimeString(control.updated_date) }} </small>
-                </div>
-              </router-link>
-            </td>
 
-            <td class="text-left" style="width: 100%">
-              <div style="white-space: normal; word-wrap: break-word">
-                {{ control.control_description }}
-              </div>
+              <q-chip
+                clickable
+                v-if="control.need_postrun_hook != 'Y'"
+                size="sm"
+                color="red-4"
+                text-color="white"
+                icon="fas fa-bolt"
+                @click="addAttributeFilter('No Post-run hook')">
+                No Post-run hook
+              </q-chip>
 
-              <div class="row justify-start items-center">
-                <q-chip v-if="control.status !== 'Y'" clickable size="sm" color="red-4" text-color="white" icon="fas fa-clock" @click="filter.status = 'N'">
-                  Scheduler inactive
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="control.prerequisite_sql"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-database"
+                @click="addAttributeFilter('Prerequisite SQL')">
+                Prerequisite SQL
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.need_postrun_hook != 'Y'"
-                  size="sm"
-                  color="red-4"
-                  text-color="white"
-                  icon="fas fa-bolt"
-                  @click="addAttributeFilter('No Post-run hook')">
-                  No Post-run hook
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="control.preparation_sql"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-database"
+                @click="addAttributeFilter('Preparation SQL')">
+                Preparation SQL
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.prerequisite_sql"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-database"
-                  @click="addAttributeFilter('Prerequisite SQL')">
-                  Prerequisite SQL
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="control.completion_sql"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-database"
+                @click="addAttributeFilter('Completion SQL')">
+                Completion SQL
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.preparation_sql"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-database"
-                  @click="addAttributeFilter('Preparation SQL')">
-                  Preparation SQL
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="control.need_prerun_hook === 'Y'"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-bolt"
+                @click="addAttributeFilter('Pre-run hook')">
+                Pre-run hook
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.completion_sql"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-database"
-                  @click="addAttributeFilter('Completion SQL')">
-                  Completion SQL
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="control.case_config"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-tag"
+                @click="addAttributeFilter('Case definition')">
+                Case definition
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.need_prerun_hook === 'Y'"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-bolt"
-                  @click="addAttributeFilter('Pre-run hook')">
-                  Pre-run hook
-                </q-chip>
+              <q-chip
+                clickable
+                v-if="iterationCount(control) > 0"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-history"
+                @click="addAttributeFilter('Iterations')">
+                +{{ iterationCount(control) }} Iteration{{ iterationCount(control) > 1 ? "s" : "" }}
+              </q-chip>
 
-                <q-chip
-                  clickable
-                  v-if="control.case_config"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-tag"
-                  @click="addAttributeFilter('Case definition')">
-                  Case definition
-                </q-chip>
+              <q-chip
+                v-if="control.source_type_a"
+                clickable
+                color="green-8"
+                text-color="white"
+                size="sm"
+                icon-right="fas fa-plug fa-rotate-270"
+                @click="filter.system = control.source_type_a"
+                style="align-items: center">
+                {{ control.source_type_a }}
+              </q-chip>
+              <q-icon v-if="control.source_type_a && control.source_type_b" name="fas fa-wave-square" size="9px" color="green-8" />
+              <q-chip
+                v-if="control.source_type_b"
+                clickable
+                color="green-8"
+                text-color="white"
+                size="sm"
+                icon="fas fa-plug fa-rotate-90"
+                @click="filter.system = control.source_type_b"
+                style="align-items: center">
+                {{ control.source_type_b }}
+              </q-chip>
+              
+            </div>
+          </td>
+          <td>
+            <div class="row justify-start items-center">
+              <schedule-present-box :schedule="control.schedule_config" :period_back="control.period_back" :period_type="control.period_type"></schedule-present-box>
+            </div>
+          </td>
 
-                <q-chip
-                  clickable
-                  v-if="iterationCount(control) > 0"
-                  size="sm"
-                  color="indigo-4"
-                  text-color="white"
-                  icon="fas fa-history"
-                  @click="addAttributeFilter('Iterations')">
-                  +{{ iterationCount(control) }} Iteration{{ iterationCount(control) > 1 ? "s" : "" }}
-                </q-chip>
-
-                <q-chip
-                  v-if="control.source_type_a"
-                  clickable
-                  color="green-8"
-                  text-color="white"
-                  size="sm"
-                  icon-right="fas fa-plug fa-rotate-270"
-                  @click="filter.system = control.source_type_a"
-                  style="align-items: center">
-                  {{ control.source_type_a }}
-                </q-chip>
-                <q-icon v-if="control.source_type_a && control.source_type_b" name="fas fa-wave-square" size="9px" color="green-8" />
-                <q-chip
-                  v-if="control.source_type_b"
-                  clickable
-                  color="green-8"
-                  text-color="white"
-                  size="sm"
-                  icon="fas fa-plug fa-rotate-90"
-                  @click="filter.system = control.source_type_b"
-                  style="align-items: center">
-                  {{ control.source_type_b }}
-                </q-chip>
-                
-              </div>
-            </td>
-            <td style="width: 100px">
-              <div class="row justify-start items-center">
-                <schedule-present-box :schedule="control.schedule_config" :period_back="control.period_back" :period_type="control.period_type"></schedule-present-box>
-              </div>
-            </td>
-
-            <td>
-              <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
-                <q-menu>
-                  <q-list dense class="text-no-wrap">
-                    <run-control-dialog :control_name="control.control_name">
-                      <q-item dense clickable class="col items-center">
-                        <q-item-section> Run </q-item-section>
-                      </q-item>
-                    </run-control-dialog>
-                    <q-separator />
-                    <q-item
-                      clickable
-                      :to="{
-                        name: 'edit-control',
-                        params: { controlId: control.control_id },
-                      }">
-                      <q-item-section> Edit control </q-item-section>
-                    </q-item>
-                    <q-item
-                      clickable
-                      :to="{
-                        name: 'edit-control',
-                        params: { controlId: control.control_id },
-                        query: { clone: true },
-                      }"
-                      v-close-popup>
-                      <q-item-section> Clone control</q-item-section>
-                    </q-item>
-                    <q-separator />
-                    <confirm-dialog
-                      icon="fas fa-trash-alt"
-                      text="Recreate result tables? Past discrepancies will be deleted!"
-                      :action="recreateSchema"
-                      :argument="control.control_name">
-                      <q-item dense clickable>
-                        <q-item-section> Recreate schema </q-item-section>
-                      </q-item>
-                    </confirm-dialog>
-                    <confirm-dialog
-                      icon="fas fa-trash-alt"
-                      text="Do you really want to delete this control?"
-                      :action="deleteControl"
-                      :argument="control.control_id">
-                      <q-item dense clickable>
-                        <q-item-section> Delete control </q-item-section>
-                      </q-item>
-                    </confirm-dialog>
-                  </q-list>
-                </q-menu>
-              </q-btn>
-            </td>
+          <td>
+            <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
+          </td>
+        </tr>
+      </template>
+      <template #after>
+        <tbody v-if="showSkeleton">
+          <skeleton-rows v-if="!loadError" :columns="['QChip', 'text', 'text', 'QChip', null]" />
+          <tr v-else>
+            <td colspan="5" class="text-center text-grey-7 q-pa-lg">Controls could not be loaded</td>
           </tr>
         </tbody>
-      </q-markup-table>
-    </div>
+        <tbody v-else-if="!sortedControlCatalogue.length">
+          <tr>
+            <td colspan="5" class="text-center text-grey-7 q-pa-lg">No controls match the filters</td>
+          </tr>
+        </tbody>
+      </template>
+    </q-virtual-scroll>
+    <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
+      <q-list v-if="menuRow" dense class="text-no-wrap">
+        <run-control-dialog :control_name="menuRow.control_name">
+          <q-item dense clickable class="col items-center">
+            <q-item-section> Run </q-item-section>
+          </q-item>
+        </run-control-dialog>
+        <q-separator />
+        <q-item
+          clickable
+          :to="{
+            name: 'edit-control',
+            params: { controlId: menuRow.control_id },
+          }">
+          <q-item-section> Edit control </q-item-section>
+        </q-item>
+        <q-item
+          clickable
+          :to="{
+            name: 'edit-control',
+            params: { controlId: menuRow.control_id },
+            query: { clone: true },
+          }"
+          v-close-popup>
+          <q-item-section> Clone control</q-item-section>
+        </q-item>
+        <q-separator />
+        <confirm-dialog
+          icon="fas fa-trash-alt"
+          text="Recreate result tables? Past discrepancies will be deleted!"
+          :action="recreateSchema"
+          :argument="menuRow.control_name">
+          <q-item dense clickable>
+            <q-item-section> Recreate schema </q-item-section>
+          </q-item>
+        </confirm-dialog>
+        <confirm-dialog
+          icon="fas fa-trash-alt"
+          text="Do you really want to delete this control?"
+          :action="deleteControl"
+          :argument="menuRow.control_id">
+          <q-item dense clickable>
+            <q-item-section> Delete control </q-item-section>
+          </q-item>
+        </confirm-dialog>
+      </q-list>
+    </q-menu>
   </q-page>
 </template>
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
+import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlTypeColor } from "../constants";
 import { liveRefetch } from "../socket";
 import { toDateTimeString } from "../utils/format";
+import { fillViewport, textWidth } from "../utils/layout";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
+// Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
 export default {
+  name: "ControlCatalogue",
   components: {
     RunControlDialog,
     ConfirmDialog,
     SchedulePresentBox,
+    SkeletonRows,
   },
   data() {
     return {
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
       loaded: false,
+      refreshing: false,
+      loadError: false,
+      // The one row menu of the table, opened at the kebab button of the row it acts on.
+      menuTarget: false,
+      menuControlId: null,
       filter: {
         control_name: "",
         type: null,
@@ -339,6 +369,25 @@ export default {
     toDateTimeString,
     sortIcon,
     toggleSort,
+    fillViewport,
+    async refreshControlCatalogue() {
+      this.refreshing = true;
+      this.loadError = false;
+      try {
+        await this.updateControlCatalogue();
+        this.loaded = true;
+      } catch (error) {
+        this.loadError = true;
+        notifyError("Failed to load controls.", error);
+      } finally {
+        this.refreshing = false;
+      }
+    },
+    openRowMenu(event, row) {
+      this.menuTarget = event.currentTarget;
+      this.menuControlId = row.control_id;
+      this.$nextTick(() => this.$refs.rowMenu.show());
+    },
     async deleteControl(control_id) {
       try {
         await api("delete-control", { method: "DELETE", params: { control_id } });
@@ -397,6 +446,22 @@ export default {
   computed: {
     ...mapState(["controlCatalogue"]),
     ...mapGetters(["getSearch"]),
+    // Skeleton rows only while nothing is known yet; a catalogue already in the store is shown at once.
+    showSkeleton() {
+      return !this.loaded && !this.controlCatalogue.length;
+    },
+    // The Name column fits the longest control name (bold 16px, plus padding), within limits.
+    nameColumnWidth() {
+      const width = textWidth(
+        this.controlCatalogue.map((control) => control.control_name),
+        "bold 16px Roboto, sans-serif"
+      );
+      return Math.min(Math.max(width + 36, 200), 360);
+    },
+    // Looked up by ID, so an open menu follows live updates of its control.
+    menuRow() {
+      return this.controlCatalogue.find((control) => control.control_id === this.menuControlId) || null;
+    },
     sortedControlCatalogue() {
       const key = this.sort.key;
       if (!key) {
@@ -443,16 +508,12 @@ export default {
       return this.filteredControlCatalogue.length;
     },
   },
-  async mounted() {
+  // Also runs after the first mount.
+  activated() {
     this.stopLiveUpdates = liveRefetch("controls:changed", this.updateControlCatalogue);
-    try {
-      await this.updateControlCatalogue();
-      this.loaded = true;
-    } catch (error) {
-      notifyError("Failed to load controls.", error);
-    }
+    this.refreshControlCatalogue();
   },
-  unmounted() {
+  deactivated() {
     this.stopLiveUpdates();
   },
 };
@@ -462,5 +523,21 @@ export default {
 .sortable {
   cursor: pointer;
   user-select: none;
+}
+
+/* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
+.catalogue-table :deep(table) {
+  table-layout: fixed;
+  min-width: calc(560px + var(--name-column-width));
+}
+.catalogue-table th:nth-child(1) { width: 88px; }
+.catalogue-table th:nth-child(2) { width: var(--name-column-width); }
+.catalogue-table th:nth-child(4) { width: 320px; }
+.catalogue-table th:nth-child(5) { width: 62px; }
+.catalogue-table td:nth-child(4) { white-space: normal; }
+.control-name {
+  font-size: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 </style>

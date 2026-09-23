@@ -1,6 +1,13 @@
 <template>
   <q-page>
-    <div>
+    <div v-if="!ready">
+      <h2 class="row items-center q-mb-lg">
+        <q-skeleton type="QChip" width="90px" height="50px" class="q-mr-md" />
+        <q-skeleton type="text" width="420px" height="60px" />
+      </h2>
+      <editor-skeleton />
+    </div>
+    <div v-else>
       <h2 class="row q-mb-lg">
         <q-chip
           size="xl"
@@ -29,7 +36,7 @@
           <q-tab name="sql" label="SQL Scripts" icon="fas fa-code" />
           <q-tab v-if="control.control_type !== 'REP' && control.control_type !== 'REC'" name="case" label="Case definition" icon="fas fa-tag" />
           <q-tab name="scheduler" label="Scheduler" icon="fas fa-clock" />
-          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-chart-line" />
+          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-calculator" />
           <q-tab v-if="control.control_id" name="log" label="Run log" icon="fas fa-file-medical-alt" />
         </q-tabs>
 
@@ -888,6 +895,7 @@ import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERI
 import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
+import EditorSkeleton from "./EditorSkeleton.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
@@ -904,6 +912,7 @@ import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from 
 export default {
   components: {
     CodeBox,
+    EditorSkeleton,
     RunLogDialog,
     ScheduleEditBox,
     ReconciliationDiscrepancyCheckboxes,
@@ -924,6 +933,8 @@ export default {
   data() {
     return {
       tab: "main",
+      // False until the control (or a new one) is set up, so the editor never shows an empty form first.
+      ready: false,
       control: {},
       controlVersions: [],
       controlVersion: null,
@@ -1654,16 +1665,23 @@ export default {
   },
   async mounted() {
     this.getDatasources();
-    await this.loadKpiTypes();
+    // Both are usually cached. The KPI types must be in before loadControl, which reads kpiAvailable; a new
+    // control doesn't wait for them, its KPIs tab appears when they arrive.
+    const kpiTypesLoaded = this.loadKpiTypes();
 
     let controlData = this.controlCatalogueById(this.controlId);
 
     if (!controlData && this.controlId != "new") {
-      await this.updateControlCatalogue();
+      try {
+        await this.updateControlCatalogue();
+      } catch (error) {
+        notifyError("Failed to load controls.", error);
+      }
       controlData = this.controlCatalogueById(this.controlId);
     }
 
     if (controlData) {
+      await kpiTypesLoaded;
       // Before the clone rename, so a clone starts with the KPIs of the control it was cloned from.
       const kpiControlName = controlData.control_name;
       if (this.$route.query.clone) {
@@ -1671,6 +1689,7 @@ export default {
         controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
       }
       await this.loadControl(controlData, kpiControlName);
+      this.ready = true;
       if (this.control.control_id) {
         this.getControlVersions(this.controlId);
         this.getControlLogs(this.control.control_name, this.log_days_back);
@@ -1696,6 +1715,7 @@ export default {
         period_back: 1,
         period_number: 1,
       };
+      this.ready = true;
     }
   },
   unmounted() {
