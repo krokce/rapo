@@ -88,9 +88,10 @@
             <code-box
               v-if="!usesDefault(item, statement)"
               :label="statement.label"
-              :control-name="controlName"
               :tables="statement.field === 'kpi_sql_statement' ? kpiSqlTables : null"
               :binds="[statement.bind.slice(1)]"
+              :examples="statementExamples(item, statement)"
+              :check="(text) => checkStatement(statement, text)"
               v-model="kpiConfigObject[index][statement.field]">
               <template v-slot:actions>
                 <q-toggle
@@ -100,7 +101,6 @@
                   @update:model-value="useDefault(index, statement, true)"
                   label="Use type default"
                   class="q-mr-sm" />
-                <q-btn class="col-auto" flat size="sm" label="Check" :loading="checking == checkKey(item, statement)" @click="checkStatement(item, statement)" />
               </template>
             </code-box>
 
@@ -138,9 +138,6 @@
               Binds <span class="text-weight-medium">{{ statement.bind }}</span
               >. Must return a single numeric column.
             </div>
-            <div v-if="checkResult(item, statement)" class="text-caption q-mt-xs" :class="checkClass(item, statement)">
-              {{ checkResult(item, statement) }}
-            </div>
           </div>
         </q-tab-panel>
       </q-tab-panels>
@@ -150,8 +147,9 @@
 
 <script>
 import { mapState } from "vuex";
-import { api, notifyError } from "../api";
+import { api } from "../api";
 import CodeBox from "./CodeBox.vue";
+import { examplesFor } from "../utils/codeExamples";
 
 // The two statements of a KPI, as RACS_KPI_PKG runs them: the KPI value for a run, then the alarm level for
 // that value. A NULL column means the type's default is used, which is what the "Use type default" toggle
@@ -162,6 +160,7 @@ const STATEMENTS = [
     defaultField: "default_kpi_sql_statement",
     label: "KPI SQL statement",
     bind: ":v_processid",
+    kind: "kpi",
     noDefault: "No default — no KPI value will be calculated.",
   },
   {
@@ -169,6 +168,7 @@ const STATEMENTS = [
     defaultField: "default_alarm_sql_statement",
     label: "Alarm SQL statement",
     bind: ":v_kpi_value",
+    kind: "alarm",
     noDefault: "No default — no alarm level will be set.",
   },
 ];
@@ -186,8 +186,6 @@ export default {
     return {
       statements: STATEMENTS,
       kpiTab: null,
-      checks: {},
-      checking: null,
       tableColumns: {},
       // Pending/finished get-datasource-columns requests by table name (see resultTableNames). Set here rather
       // than in created(): the resultTableNames watcher below is immediate, and immediate watchers run before
@@ -226,7 +224,6 @@ export default {
   watch: {
     // The parent swaps the array on load, clone and version switch.
     modelValue() {
-      this.checks = {};
       this.selectFirstTab();
     },
     resultTableNames: {
@@ -268,7 +265,6 @@ export default {
       // Turning the toggle off starts from a copy of the default, so it can be adjusted instead of retyped.
       const item = this.kpiConfigObject[index];
       item[statement.field] = value ? null : this.typeDefault(item.kpi_type, statement);
-      delete this.checks[this.checkKey(item, statement)];
     },
     selectFirstTab() {
       const selected = this.kpiConfigObject.map((item) => item.kpi_type);
@@ -294,41 +290,14 @@ export default {
         this.kpiTab = neighbour ? neighbour.kpi_type : null;
       }
     },
-    checkKey(item, statement) {
-      return item.kpi_type + ":" + statement.field;
-    },
-    checkResult(item, statement) {
-      const check = this.checks[this.checkKey(item, statement)];
-      return check ? check.message : null;
-    },
-    checkClass(item, statement) {
-      const check = this.checks[this.checkKey(item, statement)];
-      return check ? check.color : null;
+    statementExamples(item, statement) {
+      const field = statement.field === "kpi_sql_statement" ? "kpi_sql" : "alarm_sql";
+      return examplesFor({ field, controlType: this.controlType, controlName: this.controlName, kpiType: item.kpi_type });
     },
     // Parses the statement on the server without executing it. A control that has never run has no result
     // table yet, so a failure here is informative only and never blocks saving.
-    async checkStatement(item, statement) {
-      const key = this.checkKey(item, statement);
-      this.checking = key;
-      try {
-        const result = await api("validate-kpi-sql", {
-          method: "POST",
-          body: { statement: item[statement.field] },
-          loadingBar: false,
-        });
-        if (!result.valid) {
-          this.checks[key] = { message: result.error, color: "text-negative" };
-        } else if (result.warning) {
-          this.checks[key] = { message: result.warning, color: "text-warning" };
-        } else {
-          const column = result.columns[0];
-          this.checks[key] = { message: `OK — 1 column, ${column.type}`, color: "text-positive" };
-        }
-      } catch (error) {
-        notifyError("Statement was not checked.", error);
-      } finally {
-        this.checking = null;
-      }
+    checkStatement(statement, text) {
+      return api("validate-kpi-sql", { method: "POST", body: { statement: text, kind: statement.kind }, loadingBar: false });
     },
   },
 };

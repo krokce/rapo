@@ -152,7 +152,14 @@
               :label="type" />
           </div>
 
-          <code-box label="Filter" v-model="email.sheets[sheet.key].filter" :columns="sheet.columns" :template-vars="true"> </code-box>
+          <code-box
+            label="Filter"
+            v-model="email.sheets[sheet.key].filter"
+            :columns="sheet.columns"
+            :template-vars="true"
+            :examples="filterExamples(sheet.key)"
+            :check="filterChecker(sheet.key)">
+          </code-box>
 
           <div>
             <div class="row items-center q-gutter-sm q-mb-sm">
@@ -245,6 +252,7 @@
 <script>
 import { api, notifyError } from "../api";
 import CodeBox from "./CodeBox.vue";
+import { examplesFor } from "../utils/codeExamples";
 import { EMAIL_VARIABLES, RESULT_META_COLUMNS, SEND_WHEN_OPTIONS, SHEET_NAME_INVALID, completeEmailConfig, defaultSheetName, isEmailAddress } from "../utils/email";
 
 // rule_config.email of a control. modelValue is the parent's object and is edited in place.
@@ -334,6 +342,18 @@ export default {
     },
   },
   methods: {
+    filterExamples(side) {
+      return examplesFor({ field: "email_filter", controlType: this.controlType, controlName: this.controlName, side });
+    },
+    // The filter is checked against the sheet's result table, with sample values for the {variables}.
+    filterChecker(side) {
+      return (statement) =>
+        api("validate-sql", {
+          method: "POST",
+          loadingBar: false,
+          body: { kind: "email_filter", statement, control_name: this.controlName, control_type: this.controlType, side },
+        });
+    },
     isEmailAddress,
     sheetNameInvalid(key) {
       return SHEET_NAME_INVALID.test(this.email.sheets[key].name || "");

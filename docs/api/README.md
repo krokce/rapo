@@ -38,7 +38,7 @@ section and answer 404 otherwise. Redoc is disabled.
 ## Conventions
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
-  `save-kpi-type` and `validate-kpi-sql`, which take a JSON body.
+  `save-kpi-type`, `validate-kpi-sql` and `validate-sql`, which take a JSON body.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -201,6 +201,32 @@ configuration of the control. See [Email](#email).
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched.
 
+#### `POST /api/validate-sql`
+Parse one statement of the control editor with Oracle without executing it, the way the engine will run it. The
+body is JSON:
+
+| Key            | Meaning                                                                                  |
+|----------------|------------------------------------------------------------------------------------------|
+| `kind`         | `filter`, `error_sql`, `case_definition`, `prerequisite`, `preparation`, `completion` or `email_filter`. |
+| `statement`    | The text as it is in the box.                                                            |
+| `source_name`  | The datasource a `filter`, `error_sql` or `case_definition` is checked against.          |
+| `control_name`, `control_type` | Name the result table of an `email_filter` and the value of `{control_name}`. |
+| `side`         | `a` or `b`: the result table of an `email_filter` of a REC control.                      |
+| `case_ids`     | The IDs of the Case config, for a warning when `case_definition` returns another one.    |
+
+A filter and the mismatch criteria are parsed as `select * from <source_name> where (<statement>)`, a case
+mapping as `select <statement> from <source_name>`, and an email filter against `RAPO_REST_`/`RAPO_RESA_`/
+`RAPO_RESB_<name>` (only its variables are checked while that table does not exist). JSON mismatch criteria are
+checked as JSON and their columns against the datasource. `{variables}` are replaced with sample values first
+(today, `process_id` 0), so a wrong or unknown one is reported.
+
+Oracle's parse compiles queries, DML and PL/SQL blocks but **executes DDL**, so Preparation and Completion SQL are
+parsed only when they start with `select`, `with`, `insert`, `update`, `delete`, `merge`, `begin` or `declare`,
+and a Prerequisite only when it is a query. Anything else is refused with an error, not run.
+
+The answer is `{"valid", "error"|"columns", "warning", "message", "statement"}`, where `statement` is what was
+parsed. Always `200`.
+
 ### KPIs
 
 KPI values are calculated after a run by the Oracle package `RACS_KPI_PKG`, which reads two tables of that
@@ -239,9 +265,17 @@ Delete a KPI type (`kpi_type`) from `racs_kpi_type`. `400` naming the controls w
 it - `racs_kpi_config` references the code and nothing is deleted for you.
 
 #### `POST /api/validate-kpi-sql`
-Parse a KPI or alarm statement without executing it. The body is `{"statement": "..."}` and the answer is
-`{"valid": true, "columns": [...]}` or `{"valid": false, "error": "..."}`, with a `warning` when the statement
-parses but would not produce one numeric value. Always `200`: this is an opinion, not a verdict.
+Parse a KPI or alarm statement without executing it. The body is `{"statement": "...", "kind": "kpi"|"alarm"}`
+(`kind` defaults to `kpi`) and the answer is `{"valid": true, "columns": [...]}` or
+`{"valid": false, "error": "..."}`, with a `warning` when the statement parses but would not produce one numeric
+value, or does not use its bind (`:v_processid`, or `:v_kpi_value` for an alarm), which RACS_KPI_PKG fails to
+bind. Only a query is parsed. Always `200`: this is an opinion, not a verdict.
+
+An alarm also gets `thresholds`, `[{"condition": "KPI>1000", "alarm": "3"}, ...]`: what
+`racs_kpi_pkg.get_kpi_thresholds_json` will read from it for the dashboard, computed by a port of its regular
+expressions. The `warning` says when that reading goes wrong (a level outside 1-3, a condition that is not a plain
+comparison on `:v_kpi_value`). The shape it understands is
+`case when <condition> then 1..3 ... else 0 end from dual`.
 
 ### Email
 

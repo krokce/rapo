@@ -460,19 +460,38 @@
 
                 <div class="row q-my-sm q-gutter-md">
                   <div class="col" v-if="control.control_type === 'ANL' || control.control_type === 'REP'">
-                    <code-box label="Filter" v-model="control.source_filter" :columns="datasourceColumns"> </code-box>
+                    <code-box label="Filter" v-model="control.source_filter" :columns="datasourceColumns" :examples="codeExamples.filter" :check="checker('filter', 'source_name')">
+                    </code-box>
                   </div>
                   <div class="col" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
-                    <code-box label="Filter (Datasource A)" v-model="control.source_filter_a" :columns="datasourceAColumns"> </code-box>
+                    <code-box
+                      label="Filter (Datasource A)"
+                      v-model="control.source_filter_a"
+                      :columns="datasourceAColumns"
+                      :examples="codeExamples.filter"
+                      :check="checker('filter', 'source_name_a')">
+                    </code-box>
                   </div>
                   <div class="col" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
-                    <code-box label="Filter (Datasource B)" v-model="control.source_filter_b" :columns="datasourceBColumns"> </code-box>
+                    <code-box
+                      label="Filter (Datasource B)"
+                      v-model="control.source_filter_b"
+                      :columns="datasourceBColumns"
+                      :examples="codeExamples.filter"
+                      :check="checker('filter', 'source_name_b')">
+                    </code-box>
                   </div>
                 </div>
 
                 <div class="row q-my-xs q-gutter-md" v-if="control.control_type == 'ANL'">
                   <div class="col">
-                    <code-box label="Mismatch criteria (Error definition)" v-model="control.error_definition" :columns="datasourceColumns"> </code-box>
+                    <code-box
+                      label="Mismatch criteria (Error definition)"
+                      v-model="control.error_definition"
+                      :columns="datasourceColumns"
+                      :examples="codeExamples.error_definition"
+                      :check="checker('error_sql', 'source_name')">
+                    </code-box>
                   </div>
                 </div>
 
@@ -638,7 +657,14 @@
               <div class="q-ma-lg q-gutter-y-lg">
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Preparation SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.preparation_sql"></code-box>
+                    <code-box
+                      label="Preparation SQL"
+                      :template-vars="true"
+                      :tables="ruleDatasourceTables"
+                      v-model="control.preparation_sql"
+                      :examples="codeExamples.preparation"
+                      :check="checker('preparation')">
+                    </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Preparation SQL is executed before the control is started. It can be used to prepare the data for the control. See the enclosed examples.
                     </q-tooltip>
@@ -647,7 +673,14 @@
 
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Prerequisite SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.prerequisite_sql"> </code-box>
+                    <code-box
+                      label="Prerequisite SQL"
+                      :template-vars="true"
+                      :tables="ruleDatasourceTables"
+                      v-model="control.prerequisite_sql"
+                      :examples="codeExamples.prerequisite"
+                      :check="checker('prerequisite')">
+                    </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Prerequisite SQL is executed before the control is started. If the number returned is 0 the control will be terminated. See the enclosed
                       positive and negative examples.
@@ -657,7 +690,14 @@
 
                 <div class="row q-gutter-md">
                   <div class="col">
-                    <code-box label="Completion SQL" :template-vars="true" :tables="ruleDatasourceTables" v-model="control.completion_sql"> </code-box>
+                    <code-box
+                      label="Completion SQL"
+                      :template-vars="true"
+                      :tables="ruleDatasourceTables"
+                      v-model="control.completion_sql"
+                      :examples="codeExamples.completion"
+                      :check="checker('completion')">
+                    </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[-120, -20]">
                       Completion SQL is executed after the control is finished. It can be used to clean-up data, log results or execute chain of controls. See
                       the enclosed examples.
@@ -674,7 +714,13 @@
                     <case-config-box class="col" v-model="caseConfigObject"> </case-config-box>
                   </div>
                   <div class="col">
-                    <code-box label="Case mapping" v-model="control.case_definition"> </code-box>
+                    <code-box
+                      label="Case mapping"
+                      v-model="control.case_definition"
+                      :columns="datasourceColumns"
+                      :examples="codeExamples.case_definition"
+                      :check="checker('case_definition', 'source_name')">
+                    </code-box>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                       Use simple SQL case structure to define which discrepancies will be mapped to which Case IDs defined above. See the enclosed example.
                     </q-tooltip>
@@ -922,6 +968,7 @@ import KpiConfigBox from "./KpiConfigBox.vue";
 import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
+import { examplesFor } from "../utils/codeExamples";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { EMAIL_CONTROL_TYPES, SHEET_NAME_INVALID, completeEmailConfig, defaultEmailConfig, defaultSheetName, isEmailAddress } from "../utils/email";
@@ -1001,6 +1048,12 @@ export default {
     window.addEventListener("beforeunload", this.onBeforeUnload);
   },
   computed: {
+    // The Example menus of the code boxes, for this control's type and name.
+    codeExamples() {
+      const context = { controlType: this.control.control_type, controlName: this.control.control_name };
+      const fields = ["filter", "error_definition", "case_definition", "preparation", "prerequisite", "completion"];
+      return Object.fromEntries(fields.map((field) => [field, examplesFor({ ...context, field })]));
+    },
     ...mapGetters(["controlCatalogueById"]),
     ...mapState(["kpiTypes"]),
     // The PL-SQL engine implements reconciliation only, so it is offered there.
@@ -1077,6 +1130,23 @@ export default {
     },
   },
   methods: {
+    // The Check of a code box: validate-sql parses the text against the unsaved form (datasource, name, case
+    // IDs), so a statement can be checked before it is saved.
+    checker(kind, sourceField) {
+      return (statement) =>
+        api("validate-sql", {
+          method: "POST",
+          loadingBar: false,
+          body: {
+            kind,
+            statement,
+            control_name: this.control.control_name,
+            control_type: this.control.control_type,
+            source_name: sourceField ? this.control[sourceField] : null,
+            case_ids: this.caseConfigObject.map((item) => item.case_id),
+          },
+        });
+    },
     ...mapActions(["updateControlCatalogue", "updateKpiTypes"]),
     updateLogDaysBack() {
       return this.refreshLogs();

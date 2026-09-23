@@ -21,6 +21,7 @@ from ...core import journal
 from ...core import logs
 from ...core import mailer
 from ...core import schedule
+from ...core import sqlcheck
 from ...core.control import Control
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming
@@ -344,7 +345,14 @@ def delete_kpi_type(kpi_type: str):
 @api.post('/validate-kpi-sql')
 def validate_kpi_sql(data: dict = fastapi.Body(...)):
     """Parse KPI or alarm statement without executing it."""
-    return kpi.validate_statement(data.get('statement'))
+    return kpi.validate_statement(data.get('statement'),
+                                  kind=data.get('kind') or 'kpi')
+
+
+@api.post('/validate-sql')
+def validate_sql(data: dict = fastapi.Body(...)):
+    """Parse a statement of the control editor without executing it."""
+    return sqlcheck.check(data.get('kind'), data.get('statement'), data)
 
 
 @api.post('/save-control')
