@@ -352,9 +352,20 @@ def save_control(data: dict = fastapi.Body(...)):
     """Create or update control in configuration table."""
     # An absent key leaves the KPI configuration alone, an empty list clears it.
     kpi_config = data.pop('kpi_config', None)
+    # The updated_date the editor loaded: a row changed since then is not
+    # overwritten (optimistic lock). Callers without it overwrite as before.
+    expected_updated_date = data.pop('expected_updated_date', None)
     control_id = data.get('control_id')
     previous_name = (reader.read_control_name_by_id(control_id)
                      if control_id else None)
+    if control_id and expected_updated_date:
+        stamp = reader.read_control_stamp(control_id=control_id)
+        expected = dt.datetime.fromisoformat(str(expected_updated_date))
+        if stamp and stamp['updated_date'] != expected:
+            changed = f"{stamp['updated_date']:%d.%m.%Y %H:%M:%S}"
+            who = f" by {stamp['updated_by']}" if stamp['updated_by'] else ''
+            detail = f'The control was changed{who} at {changed}.'
+            raise fastapi.HTTPException(status_code=409, detail=detail)
     try:
         reader.save_control(data)
     except Exception as error:
@@ -376,7 +387,21 @@ def save_control(data: dict = fastapi.Body(...)):
                    f'{error}')
     scheduler.refresh()
     events.poke()
-    return {'status': 200}
+    return {'status': 200, **saved_stamp(data)}
+
+
+def saved_stamp(data):
+    """Get ID and updated_date of a control just saved, read back from the DB.
+
+    The date is the one rapo_config_upd_trg stamped with the DB clock, which
+    is what the editor compares against on its next save.
+    """
+    stamp = reader.read_control_stamp(control_id=data.get('control_id'),
+                                      control_name=data.get('control_name'))
+    if not stamp:
+        return {}
+    return {'control_id': stamp['control_id'],
+            'updated_date': stamp['updated_date']}
 
 
 @api.delete('/delete-control')

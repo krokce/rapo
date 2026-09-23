@@ -14,7 +14,7 @@ export function signOut() {
 
 // Single entry point for /api calls: adds the Bearer token, encodes query params (null values are left out),
 // shows the loading bar for the duration of the request, and throws an Error with FastAPI's `detail` on HTTP
-// errors. A rejected token (401) signs the user out. With raw the Response is returned as is (e.g. for a download).
+// errors (its `status` is the HTTP code). A rejected token (401) signs the user out. With raw the Response is returned as is (e.g. for a download).
 export async function api(path, { method = "GET", params, body, loadingBar = true, raw = false } = {}) {
   const query = params ? "?" + new URLSearchParams(Object.entries(params).filter(([, value]) => value != null)) : "";
   const headers = { Authorization: `Bearer ${store.getters.getToken}` };
@@ -33,7 +33,9 @@ export async function api(path, { method = "GET", params, body, loadingBar = tru
     }
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      throw new Error(typeof data.detail === "string" ? data.detail : `${response.status} ${response.statusText}`);
+      const error = new Error(typeof data.detail === "string" ? data.detail : `${response.status} ${response.statusText}`);
+      error.status = response.status;
+      throw error;
     }
     return raw ? response : await response.json();
   } finally {

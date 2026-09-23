@@ -235,7 +235,7 @@
         {{
           canTest
             ? "Sends this configuration for the last finished run of the control, to this address only."
-            : "Save the control first: the test uses the saved configuration and the last finished run."
+            : "Apply your changes first: the test uses the saved configuration and the last finished run."
         }}
       </div>
     </div>
@@ -258,7 +258,7 @@ export default {
     ruleConfig: Object,
     // Source columns per sheet ({ main, a, b }), offered while the result table does not exist yet.
     sourceColumns: { type: Object, default: () => ({}) },
-    // Whether the control is saved and its email configuration unchanged since, so a test send can use it.
+    // Whether the control is saved and the form unchanged since, so a test send uses what is shown.
     saved: Boolean,
   },
   data() {
