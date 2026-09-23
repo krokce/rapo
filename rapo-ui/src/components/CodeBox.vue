@@ -53,7 +53,7 @@
       :extensions="extensions"
       @ready="onReady" />
     <div v-if="variableList.length && !readonly" class="row items-center q-gutter-xs q-mt-xs text-caption text-grey-7">
-      <span>Variables:</span>
+      <span>{{ templateVariables.length ? "Variables:" : "Binds:" }}</span>
       <span v-for="variable in variableList" :key="variable.name" class="code-variable" @mousedown.prevent @click="insertText(variable.token)">
         {{ variable.token }}
         <q-tooltip v-if="variable.label">{{ variable.label }} — click to insert</q-tooltip>
@@ -88,6 +88,12 @@ function describeCheck(result) {
   else if (columns.length > 1) message = `OK — ${columns.length} columns`;
   return { color: "text-positive", message, thresholds };
 }
+
+// What the binds of RACS_KPI_PKG hold, for the tooltips of their chips.
+const BIND_LABELS = {
+  v_processid: "Process ID of the run",
+  v_kpi_value: "The value the KPI statement returned",
+};
 
 // A completion source for the fixed set of Oracle bind variables a statement is run with (e.g. RACS_KPI_PKG's
 // :v_processid). It only activates right after a ":", independently of the schema/keyword sources sql() adds.
@@ -156,7 +162,7 @@ export default {
     tables: Object,
     binds: Array,
     // true: the engine's TEMPLATE_VARIABLES. An array of {name, format, label} replaces them. Either way they are
-    // completed after "{" and listed under the box, each token inserted at the cursor on a click.
+    // completed after "{" and listed under the box, each token inserted at the cursor on a click, as are the binds.
     templateVars: [Boolean, Array],
     // {items, more} from utils/codeExamples.js examplesFor().
     examples: Object,
@@ -222,7 +228,9 @@ export default {
       return this.templateVars ? TEMPLATE_VARIABLES : [];
     },
     variableList() {
-      return this.templateVariables.map((variable) => ({ ...variable, token: variableToken(variable) }));
+      const variables = this.templateVariables.map((variable) => ({ ...variable, token: variableToken(variable) }));
+      const binds = (this.binds || []).map((name) => ({ name, label: BIND_LABELS[name], token: ":" + name }));
+      return [...variables, ...binds];
     },
     hasExamples() {
       return Boolean(this.examples && (this.examples.items.length || (this.examples.more || []).length));

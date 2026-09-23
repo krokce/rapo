@@ -184,6 +184,17 @@ def _check(kind, statement, context):
         if bind:
             warning = (f'":{bind.group(1)}" is read as a bind variable when '
                        f'the control runs; write it as "\\:{bind.group(1)}".')
+        if kind in ('filter', 'error_sql'):
+            # Rendered as the engine does: only known {variables}, every other
+            # brace is kept as written.
+            variables = sample_variables(control_name)
+            unknown = utils.find_unknown_variables(statement, variables)
+            if unknown and not warning:
+                names = ', '.join(f'{{{name}}}' for name in unknown)
+                warning = (f'Unknown variable {names} is left as written. '
+                           'Known: ' + ', '.join(f'{{{key}}}'
+                                                 for key in variables) + '.')
+            statement = utils.render(statement, variables)
         condition = statement.rstrip(';').replace('\\:', ':')
         if kind == 'case_definition':
             query = f'select {condition} as rapo_case_id from {source_name}'

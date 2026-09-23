@@ -9,7 +9,6 @@ import io
 import re
 import ssl
 import json
-import string
 import smtplib
 import decimal
 import datetime as dt
@@ -22,6 +21,7 @@ import sqlalchemy as sa
 from ..config import config
 from ..database import db
 from ..logger import logger
+from ..utils import utils
 
 
 SEND_WHEN = ('done_with_results', 'done', 'done_or_error')
@@ -81,35 +81,9 @@ def read_last_done_run(control_name):
     return db.execute(query, as_scalar=True)
 
 
-class _Formatter(string.Formatter):
-    """Formatter leaving unknown or failing placeholders as they are."""
-
-    def vformat(self, format_string, args, kwargs):
-        pattern = r'\{([A-Za-z_][A-Za-z0-9_]*)(![rsa])?(:[^{}]*)?\}'
-
-        def replace(match):
-            name, conversion, spec = match.groups()
-            if name not in kwargs:
-                return match.group(0)
-            value = kwargs[name]
-            try:
-                if conversion:
-                    value = self.convert_field(value, conversion[1])
-                if value is None:
-                    return ''
-                return format(value, spec[1:] if spec else '')
-            except Exception:
-                return match.group(0)
-
-        return re.sub(pattern, replace, format_string or '')
-
-
-formatter = _Formatter()
-
-
 def render(text, variables):
     """Substitute {variables} in the text, leaving unknown ones untouched."""
-    return formatter.vformat(text, (), variables)
+    return utils.render(text, variables)
 
 
 def attachment_name(control, email_config=None, variables=None):

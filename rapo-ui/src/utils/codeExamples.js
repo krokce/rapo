@@ -3,9 +3,10 @@
 //
 // Each example is { title, caption, text }. Business tables and columns (ds_calls, charge, msisdn, ...) are
 // placeholders; everything else is the real rapo / RACS_KPI_PKG API. The texts respect how the engine runs them:
-//   - datasource filters, mismatch criteria and case mappings are raw SQL without {variables};
-//   - Preparation/Prerequisite/Completion SQL and email filters get {control_name}, {process_id}, {control_date},
-//     {control_date_from} and {control_date_to} (dates take a strftime format, e.g. {control_date:%Y%m%d});
+//   - case mappings are raw SQL without {variables};
+//   - datasource filters, mismatch criteria, Preparation/Prerequisite/Completion SQL and email filters get
+//     {control_name}, {process_id}, {control_date}, {control_date_from} and {control_date_to} (dates take a
+//     strftime format, e.g. {control_date:%Y%m%d}); in filters and mismatch criteria any other brace stays as written;
 //   - the email's Free SQL is a query (select/with) with the same variables plus the run facts of
 //     mailer.build_variables ({status}, {fetched_number}, ...), substituted as text;
 //   - KPI statements get only the bind :v_processid, and alarm statements :v_kpi_value, which must be used;
@@ -48,6 +49,11 @@ const FILTER = [
       "to_number(to_char(event_date, 'HH24')) between 8 and 19\n" +
       "and to_char(event_date, 'DY', 'NLS_DATE_LANGUAGE=ENGLISH') not in ('SAT', 'SUN')",
   },
+  {
+    title: "Day partition of the run (using variables)",
+    caption: "{control_date} is the run's day; dates are substituted as text, so they are quoted.",
+    text: "partition_day = '{control_date:%Y%m%d}'",
+  },
 ];
 
 const ERROR_DEFINITION = [
@@ -70,6 +76,16 @@ const ERROR_DEFINITION = [
     title: "Mismatch outside an allow list",
     caption: "Known exceptions are kept out with a subselect.",
     text: "(charge <> calc_charge or calc_charge is null)\nand imsi not in (\n    select imsi\n    from ref_imsi_whitelist\n    where imsi is not null\n)",
+  },
+  {
+    title: "Above the limit valid on the run's day (using variables)",
+    caption: "{control_date} is the run's day; dates are substituted as text, so they are quoted and converted.",
+    text:
+      "charge > (\n" +
+      "    select l.max_charge\n" +
+      "    from ref_charge_limits l\n" +
+      `    where ${CONTROL_DATE} between l.valid_from and nvl(l.valid_to, date '9999-12-31')\n` +
+      ")",
   },
   {
     title: "The same in JSON syntax",

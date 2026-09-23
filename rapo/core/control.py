@@ -1787,7 +1787,12 @@ class Parser:
         return self._parse_filter('source_filter_b')
 
     def _parse_filter(self, filter_name):
-        return self.control.config[filter_name]
+        # {variables} are rendered from the raw config on every call, so a
+        # rendered text is never rendered again; other braces stay as they are.
+        custom_filter = self.control.config[filter_name]
+        if custom_filter:
+            return utils.render(custom_filter, self.c.variables)
+        return custom_filter
 
     def _parse_time_shift_delta(self):
         shift_from_sec, shift_to_sec = 0, 0
@@ -2065,7 +2070,10 @@ class Parser:
                 expression.append(relation)
                 value = i['value']
                 is_column = i['is_column']
-                value = str(table.c[value]) if is_column else value
+                if is_column:
+                    value = str(table.c[value])
+                elif isinstance(value, str):
+                    value = utils.render(value, self.c.variables)
                 expression.append(value)
                 expression = ' '.join(expression)
                 expressions.append(expression)
@@ -2226,13 +2234,13 @@ class Parser:
             'need_b': bool(control.need_b),
             'source_a': {
                 'name': control.source_name_a,
-                'filter': control.config['source_filter_a'],
+                'filter': control.source_filter_a,
                 'date_field': control.source_date_field_a,
                 'key_field': control.source_key_field_a
             },
             'source_b': {
                 'name': control.source_name_b,
-                'filter': control.config['source_filter_b'],
+                'filter': control.source_filter_b,
                 'date_field': control.source_date_field_b,
                 'key_field': control.source_key_field_b
             },
@@ -2301,7 +2309,7 @@ class Parser:
         return config
 
     def _parse_sql_filter(self, string):
-        return string
+        return utils.render(string, self.c.variables)
 
     def parse_output_columns(self):
         """Get control output columns.

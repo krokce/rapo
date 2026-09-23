@@ -213,6 +213,10 @@ body is JSON:
 | `control_name`, `control_type` | Name the result table of an `email_filter` and the value of `{control_name}`. |
 | `side`         | `a` or `b`: the result table of an `email_filter` of a REC control.                      |
 
+A `filter` or `error_sql` gets sample values for its `{variables}` the way a run renders them: only a known
+`{name}` or `{name:format}` is replaced, every other brace stays as written, and an unknown `{name}` is reported
+as a `warning`.
+
 An `email_sql` is the Free SQL sheet of an email. It must be a query (`select`/`with`), its `{variables}` are
 replaced with sample values, and it needs no saved control. The answer lists its `columns`, and carries a
 `warning` when it uses neither `{process_id}` nor a `{control_date...}` variable, since it is then not limited to

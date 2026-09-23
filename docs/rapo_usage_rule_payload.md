@@ -71,7 +71,7 @@ A payload is therefore self-contained: capture one from the run log and it repla
 | Key | Meaning |
 |---|---|
 | `name` | Table, view or materialized view in the current schema |
-| `filter` | Raw SQL predicate, or null. Wrapped in parentheses and ANDed |
+| `filter` | SQL predicate, or null, with its `{variables}` already rendered by rapo (other braces as written). Wrapped in parentheses and ANDed |
 | `date_field` | The correlation date column. Cast to `DATE`, so a `TIMESTAMP` loses sub-second precision exactly as the Python engine's fetch does |
 | `key_field` | The row identity. If the source has no such column, `rowid` is aliased under that name — the same fallback `_parse_select` makes |
 
