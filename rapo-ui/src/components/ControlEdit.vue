@@ -393,7 +393,7 @@
                       <q-icon name="fas fa-list-ol" @click.stop.prevent />
                     </template>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Limit the number of records in the output table. <br />Leave empty for no limit.
+                      Limit the number of records in the output table. <br />Leave empty or 0 for no limit.
                     </q-tooltip>
                   </q-input>
 
@@ -417,7 +417,7 @@
                       <q-icon name="fas fa-list-ol" @click.stop.prevent />
                     </template>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Limit the number of records in the output table. <br />Leave empty for no limit.
+                      Limit the number of records in the output table. <br />Leave empty or 0 for no limit.
                     </q-tooltip>
                   </q-input>
 

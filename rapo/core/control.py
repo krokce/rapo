@@ -3544,6 +3544,7 @@ class Executor:
             output_columns = output_table.columns
             process_id = self.control.key_column
             select = sa.select(*input_columns, process_id)
+            select = self._limit_output(select)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
             logger.debug(f'{self.c} Saving done')
@@ -3558,9 +3559,25 @@ class Executor:
             output_columns = output_table.columns
             process_id = self.control.key_column
             select = sa.select(*input_columns, process_id)
+            select = self._limit_output(select)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
             logger.debug(f'{self.c} Saving done')
+
+    def _limit_output(self, select):
+        """Apply output_limit to the select of an ANL/REP/CMP result save.
+
+        NULL or 0 means no limit. The run's counts stay the full ones.
+        """
+        output_limit = self.control.config['output_limit']
+        if not output_limit or int(output_limit) <= 0:
+            return select
+        output_limit = int(output_limit)
+        error_number = self.control.error_number
+        if error_number is not None and error_number > output_limit:
+            logger.info(f'{self.c} Output limited to {output_limit} '
+                        f'of {error_number} records')
+        return select.limit(output_limit)
 
     def save_matches(self):
         """Save found matches as RAPO results."""
