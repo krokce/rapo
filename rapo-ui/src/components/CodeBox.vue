@@ -108,11 +108,11 @@ function bindCompletionSource(binds) {
 // format, since the substitution is meaningless without one; %Y-%m-%d matches the format used in the box's own
 // "Insert log line" example. boost puts them ahead of unrelated keyword/property matches for the same prefix.
 const TEMPLATE_VARIABLES = [
-  { name: "control_name" },
-  { name: "process_id" },
-  { name: "control_date", format: "%Y-%m-%d" },
-  { name: "control_date_from", format: "%Y-%m-%d" },
-  { name: "control_date_to", format: "%Y-%m-%d" },
+  { name: "control_name", label: "Control name" },
+  { name: "process_id", label: "Process ID" },
+  { name: "control_date", format: "%Y-%m-%d", label: "Run date" },
+  { name: "control_date_from", format: "%Y-%m-%d", label: "Run from" },
+  { name: "control_date_to", format: "%Y-%m-%d", label: "Run to" },
 ];
 
 function variableToken({ name, format }) {
@@ -155,8 +155,8 @@ export default {
     columns: Array,
     tables: Object,
     binds: Array,
-    // true: the engine's TEMPLATE_VARIABLES. An array of {name, format, label} replaces them and is also listed under
-    // the box, each token inserted at the cursor on a click.
+    // true: the engine's TEMPLATE_VARIABLES. An array of {name, format, label} replaces them. Either way they are
+    // completed after "{" and listed under the box, each token inserted at the cursor on a click.
     templateVars: [Boolean, Array],
     // {items, more} from utils/codeExamples.js examplesFor().
     examples: Object,
@@ -204,9 +204,8 @@ export default {
       if (this.binds && this.binds.length) {
         extensions.push(PLSQL.language.data.of({ autocomplete: bindCompletionSource(this.binds) }));
       }
-      if (this.templateVars) {
-        const variables = Array.isArray(this.templateVars) ? this.templateVars : TEMPLATE_VARIABLES;
-        extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource(variables) }));
+      if (this.templateVariables.length) {
+        extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource(this.templateVariables) }));
       }
       return extensions;
     },
@@ -218,9 +217,12 @@ export default {
         this.$emit("update:modelValue", value);
       },
     },
+    templateVariables() {
+      if (Array.isArray(this.templateVars)) return this.templateVars;
+      return this.templateVars ? TEMPLATE_VARIABLES : [];
+    },
     variableList() {
-      if (!Array.isArray(this.templateVars)) return [];
-      return this.templateVars.map((variable) => ({ ...variable, token: variableToken(variable) }));
+      return this.templateVariables.map((variable) => ({ ...variable, token: variableToken(variable) }));
     },
     hasExamples() {
       return Boolean(this.examples && (this.examples.items.length || (this.examples.more || []).length));
