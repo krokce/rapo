@@ -66,8 +66,7 @@
                     v-model="kpiType[statement.field]">
                   </code-box>
                   <div class="text-caption text-grey-7 q-mt-xs">
-                    Binds <span class="text-weight-medium">{{ statement.bind }}</span
-                    >. Must return a single numeric column. {{ statement.empty }}
+                    Must return a single numeric column. {{ statement.empty }}
                   </div>
                 </div>
 

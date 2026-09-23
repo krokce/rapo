@@ -1,7 +1,9 @@
 """Contains application utils."""
 
 import os
+import re
 import json
+import string
 import datetime as dt
 import calendar as cd
 import sqlalchemy as sa
@@ -175,5 +177,54 @@ class Utils:
         text = open(file_path, 'r', encoding='utf-8').read()
         return text
 
+    def render(self, text, variables):
+        """Substitute known {variables} in the text, leaving the rest as is.
+
+        Only `{name}`, `{name!conversion}` and `{name:format}` whose name is
+        in `variables` are replaced. Every other brace is kept verbatim: an
+        unknown name, a regexp quantifier like `{3}`, JSON, and a doubled
+        token such as `{{control_date}}`, which is how a literal one is
+        written. A value that can not be formatted is left as written too.
+
+        Parameters
+        ----------
+        text : str or None
+            Text with {variables}, e.g. a filter or an email subject.
+        variables : dict
+            Values by variable name.
+
+        Returns
+        -------
+        text : str
+            The rendered text, empty for None.
+        """
+        def replace(match):
+            name, conversion, spec = match.groups()
+            if name not in variables:
+                return match.group(0)
+            value = variables[name]
+            try:
+                if conversion:
+                    value = FORMATTER.convert_field(value, conversion[1])
+                if value is None:
+                    return ''
+                return format(value, spec[1:] if spec else '')
+            except Exception:
+                return match.group(0)
+
+        return VARIABLE.sub(replace, text or '')
+
+    def find_unknown_variables(self, text, variables):
+        """Get the {identifier} tokens of the text that render leaves as is."""
+        names = [match.group(1) for match in VARIABLE.finditer(text or '')]
+        return [name for name in dict.fromkeys(names)
+                if name not in variables]
+
+
+# A {name}, {name!r} or {name:format} token that is not part of a doubled
+# {{...}} one.
+VARIABLE = re.compile(
+    r'(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)(![rsa])?(:[^{}]*)?\}(?!\})')
+FORMATTER = string.Formatter()
 
 utils = Utils()

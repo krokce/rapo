@@ -33,3 +33,13 @@ The upgrade steps are in the [migration instructions](README.md).
    SQL sheet count toward *Done, with results* only when it is the only sheet. The Free SQL and the sheet filters
    list every variable they accept under the box (click to insert) and complete them after `{`, including the run
    facts such as `{status}` and `{fetched_number}`. Details in the [migration instructions](README.md#email-free-sql-sheet-and-file-name).
+5. **Variables in datasource filters and mismatch criteria.** The datasource filters of every control type (both
+   sides of a reconciliation, for the DB and the PL-SQL engine) and the mismatch criteria of analysis controls
+   accept `{control_name}`, `{process_id}`, `{control_date}`, `{control_date_from}` and `{control_date_to}`,
+   e.g. `partition_day = '{control_date:%Y%m%d}'`, listed under the box as chips and completed after `{`. Only
+   those names are replaced: any other brace, such as the `{3}` of a regular expression, an unknown `{name}` or a
+   doubled `{{control_date}}` (how a literal one is written), stays exactly as written, so existing filters are
+   unchanged. *Check* reports an unknown variable as a warning.
+6. **Braces in logged SQL.** A run whose logged SQL held a brace, e.g. a filter with `regexp_like(x, '^\d{3}$')`,
+   failed with `IndexError: Replacement index 3 out of range`, because the log line was formatted as a template;
+   and `{thread}` or `{{x}}` in it were rewritten in the log. Log lines are now written exactly as they are.

@@ -460,7 +460,13 @@
 
                 <div class="row q-my-sm q-gutter-md">
                   <div class="col" v-if="control.control_type === 'ANL' || control.control_type === 'REP'">
-                    <code-box label="Filter" v-model="control.source_filter" :columns="datasourceColumns" :examples="codeExamples.filter" :check="checker('filter', 'source_name')">
+                    <code-box
+                      label="Filter"
+                      v-model="control.source_filter"
+                      :columns="datasourceColumns"
+                      :template-vars="true"
+                      :examples="codeExamples.filter"
+                      :check="checker('filter', 'source_name')">
                     </code-box>
                   </div>
                   <div class="col" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
@@ -468,6 +474,7 @@
                       label="Filter (Datasource A)"
                       v-model="control.source_filter_a"
                       :columns="datasourceAColumns"
+                      :template-vars="true"
                       :examples="codeExamples.filter"
                       :check="checker('filter', 'source_name_a')">
                     </code-box>
@@ -477,6 +484,7 @@
                       label="Filter (Datasource B)"
                       v-model="control.source_filter_b"
                       :columns="datasourceBColumns"
+                      :template-vars="true"
                       :examples="codeExamples.filter"
                       :check="checker('filter', 'source_name_b')">
                     </code-box>
@@ -489,6 +497,7 @@
                       label="Mismatch criteria (Error definition)"
                       v-model="control.error_definition"
                       :columns="datasourceColumns"
+                      :template-vars="true"
                       :examples="codeExamples.error_definition"
                       :check="checker('error_sql', 'source_name')">
                     </code-box>

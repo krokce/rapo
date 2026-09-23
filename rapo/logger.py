@@ -55,9 +55,29 @@ def open_run_log(control_id, process_id):
                      maxsize=False, maxdays=False)
 
 
+def verbatim(record):
+    """Make a logger write every message exactly as it is given.
+
+    pepperoni formats a message as a template (`message.format(...)`) and
+    catches only KeyError, so a logged SQL text holding a brace, e.g. the
+    `{3}` of a regexp in a filter, failed the run with IndexError, and a
+    `{thread}` or `{{x}}` in it was rewritten. The message is passed as the
+    value of a placeholder instead, which str.format never parses again.
+    An error record (`error=True`) is built from pepperoni's own template,
+    whose exception text is already a value, so it is left alone.
+    """
+    def wrapper(rectype, message, error=False, **kwargs):
+        if error is False and message is not None:
+            kwargs['rapo_verbatim_message'] = message
+            message = '{rapo_verbatim_message}'
+        return record(rectype, message, error=error, **kwargs)
+    return wrapper
+
+
 LOG_DIR = get_log_dir()
 
 logger = pepperoni.logger(file=True)
+logger.record = verbatim(logger.record)
 logger.configure(format='{isodate}\t{thread}\t{rectype}\t{message}\n')
 
 if config.check('LOGGING'):
