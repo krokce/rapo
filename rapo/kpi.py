@@ -17,8 +17,11 @@ installation without them simply gets empty answers and no KPI tab in the web
 UI.
 """
 
+import re
+
 import sqlalchemy as sa
 
+from .core import sqlcheck
 from .database import db
 
 
@@ -205,8 +208,16 @@ class Kpi:
                     record.get('rerun_on_new_data_days_back')))
             db.execute(insert)
 
-    def validate_statement(self, statement):
+    def validate_statement(self, statement, kind='kpi'):
         """Parse a KPI or alarm statement without executing it.
+
+        Parameters
+        ----------
+        statement : str
+            The KPI or alarm statement.
+        kind : str
+            `kpi` or `alarm`. An alarm also gets the thresholds the dashboard
+            reads from it.
 
         Returns
         -------
@@ -217,41 +228,77 @@ class Kpi:
             return {'valid': False, 'error': 'Statement is empty.'}
         if not self.available:
             return {'valid': False, 'error': 'KPI tables are not available.'}
-        connection = db.engine.raw_connection()
-        try:
-            cursor = connection.cursor()
-            # parse() checks syntax, names and privileges without running the
-            # statement, so a KPI can be checked without touching its data.
-            cursor.parse(self._query(statement))
-            description = cursor.description or []
-        except Exception as error:
-            return {'valid': False, 'error': str(error).strip()}
-        finally:
-            connection.close()
-        columns = [{'name': column[0], 'type': str(column[1]).split()[-1]
-                    .rstrip('>').replace('DB_TYPE_', '')}
-                   for column in description]
-        result = {'valid': True, 'columns': columns}
-        if not columns:
-            result['warning'] = ('Statement returns no columns, so it can not '
-                                 'produce a value.')
-        elif len(columns) > 1:
-            result['warning'] = (f'Statement returns {len(columns)} columns, '
-                                 'only the first one is used.')
-        elif columns[0]['type'] != 'NUMBER':
-            result['warning'] = (f'Column {columns[0]["name"]} is '
-                                 f'{columns[0]["type"]}, not a number.')
+        if sqlcheck.first_keyword(statement) not in sqlcheck.QUERY_KEYWORDS:
+            return {'valid': False,
+                    'error': 'A KPI or alarm statement must be a query '
+                             '(select) returning one number.'}
+        result = sqlcheck.parse(sqlcheck.strip_query(statement))
+        if not result['valid']:
+            return result
+        columns = result['columns']
+        bind = ':v_kpi_value' if kind == 'alarm' else ':v_processid'
+        warnings = [sqlcheck.number_warning(columns)]
+        if bind not in statement.lower():
+            warnings.append(f'{bind} is not used, so RACS_KPI_PKG fails to '
+                            'bind it.')
+        if kind == 'alarm':
+            thresholds, problem = self.alarm_thresholds(statement)
+            result['thresholds'] = thresholds
+            warnings.append(problem)
+        warnings = [warning for warning in warnings if warning]
+        if warnings:
+            result['warning'] = ' '.join(warnings)
         return result
 
-    def _query(self, statement):
-        """Drop the trailing semicolon a query is often written with.
+    def alarm_thresholds(self, statement):
+        """Get the thresholds the dashboard reads from an alarm statement.
 
-        Only for a query: in PL/SQL the last semicolon is part of the block.
+        A line-for-line port of racs_kpi_pkg.get_kpi_thresholds_json, which
+        turns the statement into conditions with plain regular expressions.
+
+        Returns
+        -------
+        thresholds : list of dict
+            `{condition, alarm}`, highest alarm first, as the package sorts.
+        problem : str or None
+            Why the dashboard would show wrong thresholds, if it would.
         """
-        statement = statement.strip()
-        if statement.lower().startswith(('select', 'with')):
-            statement = statement.rstrip(';')
-        return statement
+        text = re.sub(r'--.*', '', statement)
+        text = re.sub(r'(case|select|end|from|dual|\s)', '', text.lower())
+        text = re.sub(r'/\*.*\*/', '', text)
+        text = re.sub(r'then([0-9]{1})', r'(\1)', text)
+        text = re.sub(r'else([0-9]{1})', r'|else (\1)', text)
+        text = re.sub(r':v_kpi_value', 'KPI', text)
+        text = re.sub(r'^when', '', text)
+        text = re.sub(r'when', ',', text)
+        text = re.sub(r'and', ' & ', text)
+        text = text.replace('|else (0)', '')
+        for level in '321':
+            text = text.replace(f'({level})', f'|{level}')
+        thresholds = []
+        for part in text.split(','):
+            tokens = [token for token in part.strip().split('|') if token]
+            condition = tokens[0] if tokens else None
+            alarm = tokens[1] if len(tokens) > 1 else None
+            thresholds.append({'condition': condition, 'alarm': alarm})
+        thresholds.sort(key=lambda item: item['alarm'] or '', reverse=True)
+        problems = []
+        for item in thresholds:
+            condition, alarm = item['condition'], item['alarm']
+            if alarm not in ('1', '2', '3'):
+                problems.append(f'"{condition}" has no alarm level 1-3')
+            elif not condition or 'KPI' not in condition:
+                problems.append(f'level {alarm} has no condition on '
+                                ':v_kpi_value')
+            elif re.search(r'[a-z]', condition.replace('KPI', '')
+                                                .replace('abs', '')):
+                problems.append(f'"{condition}" is not a plain comparison')
+        problem = None
+        if problems:
+            problem = ('The dashboard can not read the thresholds: '
+                       + '; '.join(problems) + '. Keep the shape "case when '
+                       ':v_kpi_value > N then 1..3 ... else 0 end from dual".')
+        return thresholds, problem
 
     def _code(self, value):
         """Normalize a KPI type code, which is always stored upper case."""

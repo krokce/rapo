@@ -58,17 +58,16 @@
                 </div>
 
                 <div v-for="statement in statements" :key="statement.field">
-                  <code-box :label="statement.label" :binds="[statement.bind.slice(1)]" v-model="kpiType[statement.field]">
-                    <template v-slot:actions>
-                      <q-btn class="col-auto" flat size="sm" label="Check" :loading="checking === statement.field" @click="checkStatement(statement)" />
-                    </template>
+                  <code-box
+                    :label="statement.label"
+                    :binds="[statement.bind.slice(1)]"
+                    :examples="statementExamples(statement)"
+                    :check="(text) => checkStatement(statement, text)"
+                    v-model="kpiType[statement.field]">
                   </code-box>
                   <div class="text-caption text-grey-7 q-mt-xs">
                     Binds <span class="text-weight-medium">{{ statement.bind }}</span
                     >. Must return a single numeric column. {{ statement.empty }}
-                  </div>
-                  <div v-if="checks[statement.field]" class="text-caption q-mt-xs" :class="checks[statement.field].color">
-                    {{ checks[statement.field].message }}
                   </div>
                 </div>
 
@@ -218,6 +217,7 @@
 <script>
 import { mapActions, mapState } from "vuex";
 import CodeBox from "./CodeBox.vue";
+import { examplesFor } from "../utils/codeExamples";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import { api, notifyError } from "../api";
@@ -232,12 +232,16 @@ const STATEMENTS = [
     field: "default_kpi_sql_statement",
     label: "Default KPI SQL statement",
     bind: ":v_processid",
+    kind: "kpi",
+    examples: "default_kpi_sql",
     empty: "Left empty, only the controls that bring their own statement get a value for this KPI.",
   },
   {
     field: "default_alarm_sql_statement",
     label: "Default alarm SQL statement",
     bind: ":v_kpi_value",
+    kind: "alarm",
+    examples: "default_alarm_sql",
     empty: "Left empty, only the controls that bring their own statement get an alarm level for this KPI.",
   },
 ];
@@ -270,8 +274,6 @@ export default {
       kpiType: emptyKpiType(),
       previousKpiType: null,
       usage: [],
-      checks: {},
-      checking: null,
       saving: false,
       sort: {
         key: null,
@@ -423,29 +425,14 @@ export default {
       this.$q.notify({ type: "warning", message: "Changes discarded" });
       this.$router.push({ name: "kpi-types" });
     },
+    // Examples by the family of the code being edited, e.g. monetary ones for MVA.
+    statementExamples(statement) {
+      return examplesFor({ field: statement.examples, kpiType: this.kpiType.kpi_type });
+    },
     // Parses the statement on the server without executing it, and never blocks saving: a default statement may
     // well name a table that only some controls have.
-    async checkStatement(statement) {
-      this.checking = statement.field;
-      try {
-        const result = await api("validate-kpi-sql", {
-          method: "POST",
-          body: { statement: this.kpiType[statement.field] },
-          loadingBar: false,
-        });
-        if (!result.valid) {
-          this.checks[statement.field] = { message: result.error, color: "text-negative" };
-        } else if (result.warning) {
-          this.checks[statement.field] = { message: result.warning, color: "text-warning" };
-        } else {
-          const column = result.columns[0];
-          this.checks[statement.field] = { message: `OK — 1 column, ${column.type}`, color: "text-positive" };
-        }
-      } catch (error) {
-        notifyError("Statement was not checked.", error);
-      } finally {
-        this.checking = null;
-      }
+    checkStatement(statement, text) {
+      return api("validate-kpi-sql", { method: "POST", body: { statement: text, kind: statement.kind }, loadingBar: false });
     },
   },
   async mounted() {
