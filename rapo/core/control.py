@@ -21,6 +21,7 @@ from ..config import (
     FUZZY_OPTIMIZATION, NORMALIZATION_TYPE, DISCREPANCY_MATCHING
 )
 
+from . import mailer
 from .fields import (
     RESULT_KEY, RESULT_VALUE, RESULT_TYPE, DISCREPANCY_ID,
     DISCREPANCY_DESCRIPTION
@@ -959,6 +960,7 @@ class Control:
                                 if self._finish():
                                     if self._complete():
                                         if self._done():
+                                            self._email()
                                             self._postrun_hook()
                     else:
                         self._do_not_resume()
@@ -1108,6 +1110,7 @@ class Control:
             logger.error()
         else:
             logger.info(f'{self} ended with error at {self.end_date}')
+            self._email()
 
     def _continue(self):
         return True
@@ -1340,6 +1343,12 @@ class Control:
                 self._save_text_message(message)
                 return False
         return True
+
+    def _email(self):
+        try:
+            mailer.send_run_email(self)
+        except Exception:
+            logger.error()
 
     def _postrun_hook(self):
         if self.need_hook and self.need_postrun_hook:

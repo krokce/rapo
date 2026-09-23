@@ -311,6 +311,9 @@
         <q-item v-if="menuRow.status == 'E'" dense clickable class="col items-center" @click="showErrorLog(menuRow)" v-close-popup>
           <q-item-section> Show error log </q-item-section>
         </q-item>
+        <q-item v-if="menuRow.status == 'D' && menuRowSendsEmail" dense clickable class="col items-center" @click="sendEmail(menuRow)" v-close-popup>
+          <q-item-section> Send email </q-item-section>
+        </q-item>
         <q-item dense clickable @click="dropTemporaryTables(menuRow)" v-close-popup>
           <q-item-section> Drop temporary tables </q-item-section>
         </q-item>
@@ -327,7 +330,8 @@ import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, showErrorLog } from "../runActions";
+import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
+import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
 import { fillViewport, textWidth } from "../utils/layout";
@@ -378,6 +382,7 @@ export default {
     revokeRun,
     dropTemporaryTables,
     showErrorLog,
+    sendEmail,
     copyResultsSql,
     sortIcon,
     toggleSort,
@@ -468,6 +473,11 @@ export default {
     menuRow() {
       return this.controlResults.find((row) => row.process_id === this.menuProcessId) || null;
     },
+    // The email configuration is in the catalogue. Until it is loaded, every type that can send one is offered.
+    menuRowSendsEmail() {
+      const control = this.menuRow && this.controlCatalogueById(this.menuRow.control_id);
+      return control ? sendsEmail(control) : Boolean(this.menuRow) && EMAIL_CONTROL_TYPES.includes(this.menuRow.control_type);
+    },
     // Totals of all runs of the day, whatever the filters, in the order of the type and status constants.
     summary() {
       const rows = this.hasDay ? this.controlResults : [];
@@ -483,7 +493,7 @@ export default {
         statuses: countBy("status", Object.keys(RUN_STATUSES)),
       };
     },
-    ...mapGetters(["getSearch"]),
+    ...mapGetters(["getSearch", "controlCatalogueById"]),
     sortedControlResults() {
       return sortRows(this.filteredControlResults, this.getSortValue, this.sort.dir);
     },
