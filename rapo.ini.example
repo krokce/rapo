@@ -80,3 +80,25 @@ token=change_me
 # Neither can carry the Bearer token, so they describe the whole API to
 # anyone able to reach the port. Off unless set.
 docs=False
+
+[EMAIL]
+# Sending of control results per email, configured per control in the
+# editor's Email tab. Off unless set: no email leaves this instance.
+enabled=False
+# SMTP server. security is starttls (default), ssl or none.
+host=smtp.example.com
+port=587
+security=starttls
+# Login, when the server requires one.
+user=
+password=
+# Sender address and display name, and an optional Reply-To.
+sender=rapo@example.com
+sender_name=RAPO
+reply_to=
+# Seconds to wait for the SMTP server.
+timeout=30
+# Upper bounds of an attachment. Above either one the email is sent
+# without the file, with a note. A control's own limit can only be lower.
+max_attachment_rows=100000
+max_attachment_mb=20

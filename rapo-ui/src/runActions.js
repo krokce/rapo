@@ -114,6 +114,19 @@ export async function revokeRun(run, onDone) {
   }
 }
 
+// Sends the email of a finished run again, with the control's current email configuration.
+export async function sendEmail(run) {
+  if (!(await confirm(run.control_name, `Send the email of run PID:${run.process_id} again, with the current email configuration?`))) {
+    return;
+  }
+  try {
+    await api("send-control-email", { method: "POST", params: { process_id: run.process_id } });
+    Notify.create({ type: "positive", message: `Email of control run ${runLabel(run)} was sent` });
+  } catch (error) {
+    notifyError(`Email of control run ${runLabel(run)} was not sent.`, error);
+  }
+}
+
 export async function dropTemporaryTables(run) {
   if (!(await confirm(run.control_name, `Do you really want to drop all debug temporary tables for execution with PID: ${run.process_id} ?`))) {
     return;

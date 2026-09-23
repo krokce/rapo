@@ -19,6 +19,7 @@ from ...reader import reader
 
 from ...core import journal
 from ...core import logs
+from ...core import mailer
 from ...core import schedule
 from ...core.control import Control
 from ...core.runner import runner
@@ -194,6 +195,35 @@ def revoke_control_run(id: int):
     control = find_control(id)
     control.revoke()
     events.poke()
+    return {'status': 200}
+
+
+@api.post('/send-control-email')
+def send_control_email(process_id: int):
+    """Send the email of a finished control run again."""
+    control = find_control(process_id)
+    if control.status != 'D':
+        detail = f'Run {process_id} has status {control.status}, not D'
+        raise fastapi.HTTPException(status_code=400, detail=detail)
+    try:
+        mailer.send_run_email(control, trigger='resend')
+    except mailer.EmailError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'status': 200}
+
+
+@api.post('/send-test-email')
+def send_test_email(control_name: str, to: str):
+    """Send the email of the control's last finished run to an address."""
+    process_id = mailer.read_last_done_run(control_name)
+    if not process_id:
+        detail = f'Control {control_name} has no finished run (status D)'
+        raise fastapi.HTTPException(status_code=400, detail=detail)
+    control = find_control(process_id)
+    try:
+        mailer.send_run_email(control, trigger='test', override_to=to)
+    except mailer.EmailError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
     return {'status': 200}
 
 

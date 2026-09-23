@@ -59,7 +59,7 @@
         map-options
         multiple
         use-chips
-        :options="['Preparation SQL', 'Prerequisite SQL', 'Completion SQL', 'Iterations', 'Case definition', 'Pre-run hook', 'No Post-run hook']"
+        :options="['Preparation SQL', 'Prerequisite SQL', 'Completion SQL', 'Iterations', 'Case definition', 'Pre-run hook', 'No Post-run hook', 'Email']"
         label="Control attributes">
       </q-select>
 
@@ -178,6 +178,17 @@
                 icon="fas fa-database"
                 @click="addAttributeFilter('Completion SQL')">
                 Completion SQL
+              </q-chip>
+
+              <q-chip
+                clickable
+                v-if="sendsEmail(control)"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-envelope"
+                @click="addAttributeFilter('Email')">
+                Email
               </q-chip>
 
               <q-chip
@@ -323,6 +334,7 @@ import ConfirmDialog from "./ConfirmDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlType } from "../constants";
 import { liveRefetch } from "../socket";
+import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
 import { fillViewport, textWidth } from "../utils/layout";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -412,6 +424,7 @@ export default {
         return 0;
       }
     },
+    sendsEmail,
     clearFilters() {
       this.filter.control_name = null;
       this.filter.type = null;
@@ -488,7 +501,8 @@ export default {
             (attr === "Iterations" && this.iterationCount(item) > 0) ||
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||
-            (attr === "No Post-run hook" && item.need_postrun_hook !== "Y")
+            (attr === "No Post-run hook" && item.need_postrun_hook !== "Y") ||
+            (attr === "Email" && sendsEmail(item))
           );
             })
           : true;

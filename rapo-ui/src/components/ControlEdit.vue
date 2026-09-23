@@ -34,6 +34,7 @@
           <q-tab v-if="control.control_type !== 'REP' && control.control_type !== 'REC'" name="case" label="Case definition" icon="fas fa-tag" />
           <q-tab name="scheduler" label="Scheduler" icon="fas fa-clock" />
           <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-calculator" />
+          <q-tab v-if="emailEnabled" name="email" label="Email" icon="fas fa-envelope" />
           <q-tab v-if="control.control_id" name="log" label="Run log" icon="fas fa-file-medical-alt" />
         </q-tabs>
 
@@ -137,6 +138,16 @@
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                       If 'Yes' is selected post-run hook will be executed after control execution completes. <br />
                       procedure RAPO_POSTRUN_CONTROL_HOOK
+                    </q-tooltip>
+                  </q-select>
+
+                  <q-select v-if="emailSupported" class="col" outlined emit-value map-options v-model="sendEmail" :options="yesNoOptions" label="Send email">
+                    <template v-slot:prepend>
+                      <q-icon name="fas fa-envelope" @click.stop.prevent />
+                    </template>
+                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                      If 'Yes' is selected the results are sent per email when a run finishes. <br />
+                      Recipients, condition and attachment are set in the Email tab.
                     </q-tooltip>
                   </q-select>
                 </div>
@@ -742,6 +753,23 @@
                 </div>
               </div>
             </q-tab-panel>
+            <q-tab-panel v-if="emailEnabled" name="email">
+              <div class="q-ma-lg q-gutter-y-md">
+                <email-config-box
+                  v-model="ruleConfigObject.email"
+                  :control-name="control.control_name"
+                  :control-type="control.control_type"
+                  :rule-config="control.control_type === 'REC' ? ruleConfigObject : null"
+                  :source-columns="emailSourceColumns"
+                  :saved="emailSaved">
+                </email-config-box>
+
+                <div class="row q-gutter-md">
+                  <q-btn label="Save" type="submit" color="primary" />
+                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
+                </div>
+              </div>
+            </q-tab-panel>
             <q-tab-panel name="log">
               <div class="q-ma-lg q-gutter-y-md">
                 <div class="row q-my-lg">
@@ -901,10 +929,12 @@ import ReconciliationMisMatchCriteriaBox from "./ReconciliationMisMatchCriteriaB
 import CaseConfigBox from "./CaseConfigBox.vue";
 import IterationConfigBox from "./IterationConfigBox.vue";
 import KpiConfigBox from "./KpiConfigBox.vue";
+import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
+import { EMAIL_CONTROL_TYPES, SHEET_NAME_INVALID, completeEmailConfig, defaultEmailConfig, defaultSheetName, isEmailAddress } from "../utils/email";
 
 export default {
   components: {
@@ -918,6 +948,7 @@ export default {
     CaseConfigBox,
     IterationConfigBox,
     KpiConfigBox,
+    EmailConfigBox,
     ComparisonCriteriaBox,
     ComparisonOutputTableBox,
   },
@@ -983,6 +1014,46 @@ export default {
     },
     scheduleType() {
       return scheduleType(this.scheduleObject);
+    },
+    // The email lives in rule_config, which CMP keeps as a list, so CMP has none.
+    emailSupported() {
+      return EMAIL_CONTROL_TYPES.includes(this.control.control_type);
+    },
+    emailEnabled() {
+      return this.emailSupported && Boolean(this.ruleConfigObject && this.ruleConfigObject.email && this.ruleConfigObject.email.enabled);
+    },
+    // Switching it off keeps the rest of the configuration, so switching it back on restores it.
+    sendEmail: {
+      get() {
+        return this.emailEnabled ? "Y" : "N";
+      },
+      set(value) {
+        if (!this.ruleConfigObject.email) {
+          this.ruleConfigObject.email = defaultEmailConfig(this.control.control_type);
+        }
+        this.ruleConfigObject.email.enabled = value === "Y";
+      },
+    },
+    // Whether the email configuration being edited is the saved one, so a test send (which reads the saved
+    // configuration) sends what the user sees.
+    emailSaved() {
+      const saved = this.control.control_id && this.controlCatalogueById(this.control.control_id);
+      if (!saved || saved.control_name !== this.control.control_name || !saved.rule_config) {
+        return false;
+      }
+      try {
+        const savedEmail = JSON.parse(saved.rule_config).email;
+        return Boolean(savedEmail) && JSON.stringify(completeEmailConfig(savedEmail, saved.control_type)) === JSON.stringify(this.ruleConfigObject.email);
+      } catch (error) {
+        return false;
+      }
+    },
+    // Source columns per attachment sheet, offered while the result table does not exist yet.
+    emailSourceColumns() {
+      if (this.singleSource) {
+        return { main: this.control.output_table_columns || this.datasourceColumns || [] };
+      }
+      return { a: this.control.output_table_a_columns || this.datasourceAColumns || [], b: this.control.output_table_b_columns || this.datasourceBColumns || [] };
     },
     // ANL and REP read one datasource (source_name), REC and CMP read A and B.
     singleSource() {
@@ -1155,7 +1226,7 @@ export default {
         this.ruleConfigObject = [];
         this.ruleErrorObject = [];
       } else {
-        this.ruleConfigObject = null;
+        this.ruleConfigObject = {};
       }
     },
     async getControlVersions(controlId) {
@@ -1267,7 +1338,11 @@ export default {
         } else if (this.control.control_type === "CMP") {
           this.ruleConfigObject = ruleConfig || [];
         } else {
-          this.ruleConfigObject = ruleConfig;
+          // ANL and REP keep only the email in rule_config.
+          this.ruleConfigObject = ruleConfig && !Array.isArray(ruleConfig) ? ruleConfig : {};
+        }
+        if (this.ruleConfigObject.email && this.emailSupported) {
+          completeEmailConfig(this.ruleConfigObject.email, this.control.control_type);
         }
 
         this.scheduleObject = this.control.schedule_config ? parseSchedule(this.control.schedule_config) : defaultSchedule();
@@ -1360,6 +1435,11 @@ export default {
         } else {
           this.control.case_config = null;
         }
+      }
+
+      // ANL and REP keep only the email in rule_config.
+      if (this.control.control_type === "ANL" || this.control.control_type === "REP") {
+        this.control.rule_config = Object.keys(this.ruleConfigObject || {}).length ? JSON.stringify(this.ruleConfigObject) : null;
       }
 
       // REP rule
@@ -1459,6 +1539,45 @@ export default {
       this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
       this.$router.push({ name: "controls" });
     },
+    // The first problem of an enabled email configuration, or null.
+    emailConfigError() {
+      const email = this.ruleConfigObject.email;
+      const recipients = [...email.to, ...email.cc, ...email.bcc];
+      if (!email.to.length) {
+        return "Please enter at least one email recipient (To).";
+      }
+      const invalid = recipients.filter((address) => !isEmailAddress(address));
+      if (invalid.length) {
+        return "Not an email address: " + invalid.join(", ");
+      }
+      if (!email.subject || !email.subject.trim()) {
+        return "Please enter an email subject.";
+      }
+      if (email.max_records != null && !(Number.isInteger(email.max_records) && email.max_records > 0)) {
+        return "Max records must be a whole number greater than 0.";
+      }
+      const sheetKeys = this.control.control_type === "REC" ? ["a", "b"].filter((side) => email.sheets[side].enabled) : ["main"];
+      const invalidName = sheetKeys.map((key) => email.sheets[key].name).find((name) => name && SHEET_NAME_INVALID.test(name));
+      if (invalidName) {
+        return "Sheet name '" + invalidName + "' contains a character Excel does not allow: [ ] : * ? / \\";
+      }
+      const sheetNames = sheetKeys.map((key) => (email.sheets[key].name || defaultSheetName(key, this.control.control_name)).trim().toLowerCase());
+      if (new Set(sheetNames).size < sheetNames.length) {
+        return "Sheets A and B need different names.";
+      }
+      if (this.control.control_type === "REC") {
+        const sides = ["a", "b"].filter((side) => email.sheets[side].enabled);
+        const available = (side) => [
+          ...(this.ruleConfigObject["need_issues_" + side] ? ["Loss", "Discrepancy"] : []),
+          ...(this.ruleConfigObject["need_recons_" + side] ? ["Match"] : []),
+        ];
+        const usable = sides.filter((side) => email.sheets[side].result_types.some((type) => available(side).includes(type)));
+        if (!usable.length) {
+          return "Please include at least one sheet (A or B) with a result type in the email.";
+        }
+      }
+      return null;
+    },
     isBlank(value) {
       // Number inputs give "" when cleared; 0 is a valid value.
       return value == null || value === "";
@@ -1503,6 +1622,14 @@ export default {
           message: "Please select a data source.",
         });
         errorTab = "data";
+      }
+
+      if (!errorTab && this.emailEnabled) {
+        const emailError = this.emailConfigError();
+        if (emailError) {
+          this.$q.notify({ type: "negative", message: emailError });
+          errorTab = "email";
+        }
       }
 
       if (!errorTab && (this.isBlank(this.control.period_back) || this.isBlank(this.control.period_number))) {
