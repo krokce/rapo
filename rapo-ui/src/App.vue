@@ -4,7 +4,7 @@
       <q-toolbar>
         <q-btn flat dense round @click="toggleLeftDrawer" aria-label="Menu" icon="menu" />
 
-        <q-btn flat no-caps no-wrap class="q-ml-xs" v-if="$q.screen.gt.xs" :to="{ name: 'controls' }">
+        <q-btn flat no-caps no-wrap class="q-ml-xs" v-if="$q.screen.gt.xs" :to="{ name: 'results' }">
           <q-icon name="fas fa-poll" color="teal" size="40px" />
           <q-toolbar-title shrink class="column text-left">
             <span class="text-weight-bold">Rapo</span>
@@ -65,9 +65,18 @@
       v-if="getTokenIsValid">
       <q-scroll-area class="fit">
         <q-list padding class="menu-list">
-          <q-item v-for="link in menuLinks" :key="link.text" v-ripple clickable :to="link.route">
+          <!-- active is passed explicitly, so an editor route highlights the list it belongs to. -->
+          <q-item
+            v-for="link in menuLinks"
+            :key="link.text"
+            v-ripple
+            clickable
+            :to="link.route"
+            :active="isActiveLink(link)"
+            active-class="menu-link--active"
+            :class="{ 'q-mt-lg': link.gap }">
             <q-item-section avatar>
-              <q-icon color="grey" :name="link.icon" />
+              <q-icon :color="isActiveLink(link) ? 'teal' : 'grey'" :name="link.icon" />
             </q-item-section>
             <q-item-section>
               <q-item-label>{{ link.text }}</q-item-label>
@@ -173,6 +182,9 @@ export default {
         // Storage unavailable (private mode, blocked): the choice lasts for this page load only.
       }
     },
+    isActiveLink(link) {
+      return link.routes.includes(this.$route.name);
+    },
     flattenEntries(source, parentKey = "") {
       if (!source || typeof source !== "object") {
         return [];
@@ -238,16 +250,16 @@ export default {
     ...mapGetters(["getSearch", "getTokenIsValid", "getSocketConnected", "getEnvVersion", "getEnvInfo", "getEnvParameters"]),
     ...mapState(["schedulerStatus"]),
     // KPI types are only manageable where the RACS KPI tables are deployed, the same condition that gives the
-    // control editor its KPIs tab.
+    // control editor its KPIs tab. routes are the route names in which a link shows as active.
     menuLinks() {
       const links = [
-        { icon: "fas fa-chart-line", text: "Controls", route: "/controls" },
-        { icon: "fas fa-tasks", text: "Results", route: "/results" },
-        { icon: "fas fa-clock", text: "Scheduler", route: "/scheduler" },
+        { icon: "fas fa-tasks", text: "Results", route: "/results", routes: ["results"] },
+        { icon: "fas fa-chart-line", text: "Controls", route: "/controls", routes: ["controls", "edit-control"] },
       ];
       if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
-        links.push({ icon: "fas fa-calculator", text: "KPI types", route: "/kpi-types" });
+        links.push({ icon: "fas fa-calculator", text: "KPI types", route: "/kpi-types", routes: ["kpi-types", "edit-kpi-type"] });
       }
+      links.push({ icon: "fas fa-clock", text: "Scheduler", route: "/scheduler", routes: ["scheduler"], gap: true });
       return links;
     },
     schedulerStateInfo() {
@@ -319,6 +331,11 @@ export default {
 
     &:hover
       color: #000
+.menu-link--active
+  color: #009688
+  background: #e0f2f1
+  font-weight: 500
+
 .instance-paths
   font-family: Monospace, sans-serif
   font-size: 12px

@@ -30,7 +30,7 @@ export default {
       rememberToken: false,
       connectError: false,
       tokenValidationInProgress: false,
-      redirectPath: this.$route.query.redirect || "/controls",
+      redirectPath: this.$route.query.redirect || "/results",
     };
   },
   methods: {

@@ -116,12 +116,8 @@
                       :class="{ 'clickable-row': !row.missing }"
                       @click="!row.missing && $router.push({ name: 'edit-control', params: { controlId: row.control.control_id } })">
                       <td>
-                        <q-chip
-                          v-if="!row.missing"
-                          size="12px"
-                          text-color="white"
-                          :class="'bg-' + controlTypeColor(row.control.control_type)"
-                          class="text-weight-bold">
+                        <q-chip v-if="!row.missing" size="12px" :title="controlType(row.control.control_type).label">
+                          <q-avatar :icon="controlType(row.control.control_type).icon" :color="controlType(row.control.control_type).color" text-color="white" />
                           {{ row.control.control_type }}
                         </q-chip>
                       </td>
@@ -225,7 +221,7 @@ import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import { api, notifyError } from "../api";
-import { controlTypeColor } from "../constants";
+import { controlType } from "../constants";
 import { toDateTimeString } from "../utils/format";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
@@ -312,7 +308,7 @@ export default {
   },
   methods: {
     ...mapActions(["updateKpiTypes", "updateControlCatalogue"]),
-    controlTypeColor,
+    controlType,
     toDateTimeString,
     sortIcon,
     toggleSort,

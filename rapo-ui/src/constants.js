@@ -1,15 +1,22 @@
-// Control types (rapo_ref_types) with the Quasar color used for their chips, tabs and names.
+// code-compare exists only in Font Awesome 6; the app loads the v5 font, so it is imported as an SVG icon.
+import { fasCodeCompare } from "@quasar/extras/fontawesome-v6";
+
+// Control types (rapo_ref_types) with the icon and Quasar color used for their chips, tabs and names.
 export const CONTROL_TYPES = {
-  ANL: { label: "Analysis", color: "pink-8" },
-  REC: { label: "Reconciliation", color: "teal-8" },
-  CMP: { label: "Comparison", color: "lime-8" },
-  REP: { label: "Report", color: "indigo-6" },
+  ANL: { label: "Analysis", icon: "fas fa-microscope", color: "pink-8" },
+  REC: { label: "Reconciliation", icon: fasCodeCompare, color: "teal-8" },
+  CMP: { label: "Comparison", icon: "fas fa-not-equal", color: "lime-8" },
+  REP: { label: "Report", icon: "fas fa-file-alt", color: "indigo-6" },
 };
 
 export const CONTROL_TYPE_OPTIONS = Object.entries(CONTROL_TYPES).map(([value, type]) => ({ label: `${value} - ${type.label}`, value }));
 
 export function controlTypeColor(type) {
   return CONTROL_TYPES[type] ? CONTROL_TYPES[type].color : "grey-6";
+}
+
+export function controlType(type) {
+  return CONTROL_TYPES[type] || { label: type || "Unknown", icon: "fas fa-question-circle", color: "grey-6" };
 }
 
 // Control engines (rapo_ref_engines). DB runs the SQL pipeline from Python, PL

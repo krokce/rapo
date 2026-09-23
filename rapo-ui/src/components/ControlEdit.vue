@@ -9,11 +9,8 @@
     </div>
     <div v-else>
       <h2 class="row q-mb-lg">
-        <q-chip
-          size="xl"
-          text-color="white"
-          :class="'bg-' + controlTypeColor(control.control_type)"
-          class="text-weight-bold">
+        <q-chip size="xl" :title="controlType(control.control_type).label">
+          <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" class="type-avatar" />
           {{ control.control_type }}
         </q-chip>
         &nbsp;
@@ -891,7 +888,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
-import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlTypeColor, runStatus } from "../constants";
+import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
@@ -1014,6 +1011,7 @@ export default {
     updateLogDaysBack() {
       return this.refreshLogs();
     },
+    controlType,
     controlTypeColor,
     formatNumber,
     round,
@@ -1727,6 +1725,11 @@ export default {
 </script>
 
 <style lang="css" scoped>
+/* A chip rounds its avatar with a fixed radius, which is not a circle at size xl. */
+.q-chip .type-avatar {
+  border-radius: 50%;
+}
+
 .new-day-separator > td {
   border-top: 2px solid #cfd8dc !important;
 }
