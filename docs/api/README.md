@@ -12,6 +12,7 @@ outside this repository.
   * [Reads](#reads)
   * [Configuration](#configuration)
   * [KPIs](#kpis)
+  * [Email](#email)
   * [Scheduler](#scheduler)
   * [Service](#service)
 * [Live events](#live-events)
@@ -38,7 +39,8 @@ section and answer 404 otherwise. Redoc is disabled.
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
   `save-kpi-type` and `validate-kpi-sql`, which take a JSON body.
-* **Mutations answer `{"status": 200}`.** Reads answer their payload directly.
+* **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
+  Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
 
   | Code | Meaning                                                                            |
@@ -46,7 +48,7 @@ section and answer 404 otherwise. Redoc is disabled.
   | 401  | Missing or wrong token.                                                             |
   | 400  | The request was understood but could not be performed (bad control, failed save).   |
   | 404  | No such run, control, record or log file.                                           |
-  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`. |
+  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, or a `save-control` refused because the control changed since `expected_updated_date`. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
   | 503  | The run manager is not running, so no run can be accepted.                          |
 
@@ -185,6 +187,17 @@ inserted. `updated_date` is set by the server.
 Saving reloads the schedules at once, so a new or changed schedule applies without a restart. `400` with the
 reason when the row cannot be written.
 
+The answer is `{"status": 200, "control_id": 94, "updated_date": "2026-09-23T11:43:56"}`: the row as saved, read
+back from the database. `updated_date` is stamped by the database trigger, with the database's clock.
+
+**Optimistic lock.** Send the `updated_date` you read the control with as `expected_updated_date` (a body key
+beside the columns). If the row has been saved since, nothing is written and the answer is `409` with
+`"The control was changed by <user> at <dd.mm.yyyy hh24:mi:ss>."`. Without the key the last writer wins, as
+before. The web UI always sends it, and its Overwrite choice repeats the save without it.
+
+For analysis, report and reconciliation controls, `rule_config` may carry an `email` object, the email
+configuration of the control. See [Email](#email).
+
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched.
 
@@ -229,6 +242,27 @@ it - `racs_kpi_config` references the code and nothing is deleted for you.
 Parse a KPI or alarm statement without executing it. The body is `{"statement": "..."}` and the answer is
 `{"valid": true, "columns": [...]}` or `{"valid": false, "error": "..."}`, with a `warning` when the statement
 parses but would not produce one numeric value. Always `200`: this is an opinion, not a verdict.
+
+### Email
+
+A control of type `ANL`, `REP` or `REC` can mail its results when a run finishes. The configuration is the
+`email` key of its `rule_config` (written through `save-control`), and the SMTP server is the `[EMAIL]` section of
+`rapo.ini`, whose `enabled` switch turns email off for the whole instance. The shape of the object and the
+meaning of each key are in the [v0.8.2 migration instructions](../../migrations/v0.8.2/README.md#setting-up-an-email).
+
+After a run, the control's own process sends the email and logs each step in the run log. The two routes below
+send outside of a run, in the server process. Both answer `{"status": 200}` once the SMTP server has accepted the
+message, and `400` with the reason otherwise: email disabled in `rapo.ini` or for the control, no recipients, an
+SMTP error.
+
+#### `POST /api/send-control-email`
+Send the email of a finished run (`process_id`) again, with the control's **current** configuration. The run
+must have status `D` (otherwise `400`), and its rows must still be in the result table. The *Send when*
+condition is not applied: the email is sent even when the run has no rows.
+
+#### `POST /api/send-test-email`
+Send the email of a control's (`control_name`) last run with status `D` to one address (`to`) instead of its
+recipients, with `[TEST]` before the subject. `400` when the control has no such run.
 
 ### Scheduler
 

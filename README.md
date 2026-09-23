@@ -18,15 +18,16 @@ UI are versioned, released and installed as one thing and no Node is needed to i
 
 On top of that the fork adds the FastAPI web server, live updates over socket.io, a scheduler that runs inside
 the server with a lease, an event history and missed-fire handling, a run manager that gives every run its own
-process, per-run log files shown in the UI, a documented web API, and an optional Oracle-side execution engine
-for reconciliation controls. The releases are described in
+process, per-run log files shown in the UI, a documented web API, an optional Oracle-side execution engine
+for reconciliation controls, results sent per email, and a KPI catalogue editor. The releases are described in
 [migrations/v0.7.0](migrations/v0.7.0/README.md),
-[migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md) and
-[migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md).
+[migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md),
+[migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md) and
+[migrations/v0.8.2](migrations/v0.8.2/CHANGELOG.md).
 
 Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
 
-Releases of the fork carry a local version segment - `0.8.1+krokce.1` - because the original project keeps its own
+Releases of the fork carry a local version segment - `0.8.2+krokce.1` - because the original project keeps its own
 numbering and is at v0.6.15; the two version lines say nothing about each other.
 
 ## Prologue
@@ -58,7 +59,8 @@ If you are a young RA Team or looking for some alternatives, try Rapo because:
   A control is a row in the `rapo_config` table: its sources, SQL filters, matching rules, output and schedule.
   The Python package is the generic engine that reads that row and runs its SQL against the database.
 * **A web UI** to write and edit those controls, to follow their runs day by day, to read the log of a single run
-  and to watch and steer the scheduler - served by the server itself, on the same port as the API.
+  and to watch and steer the scheduler - served by the server itself, on the same port as the API. The editor
+  saves in place (Apply), so a control can be changed, run and checked without leaving it.
 * **One server process**. `rapo-server` serves the API, the UI and the scheduler. Several servers may run against
   the same database: they share the scheduler through a lease with a heartbeat, and each of them performs its own
   runs.
@@ -70,6 +72,9 @@ If you are a young RA Team or looking for some alternatives, try Rapo because:
   moment. Every run request is kept in `rapo_scheduler_event` with its trigger and its outcome.
 * **Live updates**. The server diffs the relevant tables and pushes the changes over socket.io, so the UI reacts
   to what happens in the database rather than polling.
+* **Results per email**. A control can mail its results when a run finishes: recipients, a subject and body with
+  run variables, and an Excel file of the run's rows, filtered and with the fields you choose. SMTP is set once in
+  the `[EMAIL]` section of `rapo.ini`.
 * **Logs you can read**. One file per control run under `controls/<control_id>/<process_id>.log`, everything else
   in `rapo-server_YYYYMMDD.log`, both cleaned up on a retention of their own and both reachable from the UI.
 * **A documented web API** ([reference](docs/api/README.md)) for reports, dashboards and scripts outside this
