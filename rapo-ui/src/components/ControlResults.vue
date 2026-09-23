@@ -1,5 +1,5 @@
 <template>
-  <q-page class="column no-wrap" :style-fn="fillViewport">
+  <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end q-mb-lg">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
@@ -334,7 +334,7 @@ import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, sendE
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
-import { fillViewport, textWidth } from "../utils/layout";
+import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
@@ -386,7 +386,7 @@ export default {
     copyResultsSql,
     sortIcon,
     toggleSort,
-    fillViewport,
+    fillViewportToBottom,
     async refreshControlResults() {
       this.refreshing = true;
       this.loadError = false;

@@ -1,5 +1,5 @@
 <template>
-  <q-page class="column no-wrap" :style-fn="fillViewport">
+  <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <h2 class="row q-gutter-lg q-mb-lg">
       <div v-if="showSkeleton">Controls</div>
       <div v-else>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
@@ -105,7 +105,7 @@
       <template #default="{ item: control }">
         <tr :key="control.control_id">
           <td>
-            <q-chip size="12px" clickable :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
+            <q-chip clickable :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
               <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" />
               {{ control.control_type }}
             </q-chip>
@@ -336,7 +336,7 @@ import { CONTROL_TYPE_OPTIONS, controlType } from "../constants";
 import { liveRefetch } from "../socket";
 import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
-import { fillViewport, textWidth } from "../utils/layout";
+import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
@@ -376,7 +376,7 @@ export default {
     toDateTimeString,
     sortIcon,
     toggleSort,
-    fillViewport,
+    fillViewportToBottom,
     async refreshControlCatalogue() {
       this.refreshing = true;
       this.loadError = false;
@@ -537,9 +537,9 @@ export default {
 /* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
 .catalogue-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(560px + var(--name-column-width));
+  min-width: calc(586px + var(--name-column-width));
 }
-.catalogue-table th:nth-child(1) { width: 88px; }
+.catalogue-table th:nth-child(1) { width: 114px; }
 .catalogue-table th:nth-child(2) { width: var(--name-column-width); }
 .catalogue-table th:nth-child(4) { width: 320px; }
 .catalogue-table th:nth-child(5) { width: 62px; }
