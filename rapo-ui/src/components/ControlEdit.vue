@@ -465,6 +465,7 @@
                       v-model="control.source_filter"
                       :columns="datasourceColumns"
                       :template-vars="true"
+                      :hide-chips="filterHiddenChips"
                       :examples="codeExamples.filter"
                       :check="checker('filter', 'source_name')">
                     </code-box>
@@ -475,6 +476,7 @@
                       v-model="control.source_filter_a"
                       :columns="datasourceAColumns"
                       :template-vars="true"
+                      :hide-chips="filterHiddenChips"
                       :examples="codeExamples.filter"
                       :check="checker('filter', 'source_name_a')">
                     </code-box>
@@ -485,6 +487,7 @@
                       v-model="control.source_filter_b"
                       :columns="datasourceBColumns"
                       :template-vars="true"
+                      :hide-chips="filterHiddenChips"
                       :examples="codeExamples.filter"
                       :check="checker('filter', 'source_name_b')">
                     </code-box>
@@ -1015,6 +1018,9 @@ export default {
   },
   data() {
     return {
+      // The window variables are still completed in the datasource filters, but get no chip: the date column
+      // already limits the fetch to the window.
+      filterHiddenChips: ["control_date_from", "control_date_to"],
       tab: "main",
       // False until the control (or a new one) is set up, so the editor never shows an empty form first.
       ready: false,

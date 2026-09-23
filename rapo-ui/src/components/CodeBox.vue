@@ -164,6 +164,8 @@ export default {
     // true: the engine's TEMPLATE_VARIABLES. An array of {name, format, label} replaces them. Either way they are
     // completed after "{" and listed under the box, each token inserted at the cursor on a click, as are the binds.
     templateVars: [Boolean, Array],
+    // Names of template variables that are completed but get no chip under the box.
+    hideChips: { type: Array, default: () => [] },
     // {items, more} from utils/codeExamples.js examplesFor().
     examples: Object,
     // An async function(text) answering validate-sql / validate-kpi-sql; shows the Check button.
@@ -228,7 +230,9 @@ export default {
       return this.templateVars ? TEMPLATE_VARIABLES : [];
     },
     variableList() {
-      const variables = this.templateVariables.map((variable) => ({ ...variable, token: variableToken(variable) }));
+      const variables = this.templateVariables
+        .filter((variable) => !this.hideChips.includes(variable.name))
+        .map((variable) => ({ ...variable, token: variableToken(variable) }));
       const binds = (this.binds || []).map((name) => ({ name, label: BIND_LABELS[name], token: ":" + name }));
       return [...variables, ...binds];
     },
