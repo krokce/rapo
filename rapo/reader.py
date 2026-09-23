@@ -76,6 +76,17 @@ class Reader:
                     .where(config.c.control_id == control_id))
         return db.execute(select, as_scalar=True)
 
+    def read_control_stamp(self, control_id=None, control_name=None):
+        """Get ID and last change of a control by ID or name, or None."""
+        config = db.tables.config
+        select = sa.select(config.c.control_id, config.c.updated_date,
+                           config.c.updated_by)
+        if control_id is not None:
+            select = select.where(config.c.control_id == control_id)
+        else:
+            select = select.where(config.c.control_name == control_name)
+        return db.execute(select, as_dict=True)
+
     def read_run_state(self, process_id):
         """Get the state a running control run is supervised by.
 

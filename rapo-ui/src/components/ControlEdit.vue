@@ -8,13 +8,23 @@
       <editor-skeleton />
     </div>
     <div v-else>
-      <h2 class="row q-mb-lg">
+      <h2 class="row items-center q-mb-lg">
         <q-chip size="xl" :title="controlType(control.control_type).label">
           <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" class="type-avatar" />
           {{ control.control_type }}
         </q-chip>
         &nbsp;
         {{ control.control_name ? control.control_name : "New control" }}
+        <q-space />
+        <template v-if="control.control_id">
+          <run-control-dialog v-if="!dirty" :control_name="control.control_name" :hook="runStarted">
+            <q-btn color="primary" icon="fas fa-play" label="Run" />
+          </run-control-dialog>
+          <span v-else>
+            <q-btn color="primary" icon="fas fa-play" label="Run" disable />
+            <q-tooltip anchor="bottom right" self="top right" :offset="[0, 5]">Apply your changes first: a run uses the saved configuration</q-tooltip>
+          </span>
+        </template>
       </h2>
 
       <q-card>
@@ -40,7 +50,7 @@
 
         <q-separator />
 
-        <q-form @submit="validateAndSave" @reset="cancel" ref="myForm">
+        <q-form @submit="persist('stay')" @reset="cancel" ref="myForm">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -210,10 +220,8 @@
                   </q-input>
                 </div>
 
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                  <q-btn v-if="control.control_id" label="Recreate schema" color="red" flat class="q-ml-auto" @click="recreateSchema(control)" />
+                <div v-if="control.control_id" class="row q-my-md q-gutter-md">
+                  <q-btn label="Recreate schema" color="red" flat class="q-ml-auto" @click="recreateSchema(control)" />
                 </div>
               </div>
             </q-tab-panel>
@@ -623,11 +631,6 @@
                   </reconciliation-discrepancy-checkboxes>
                   <br />
                 </div>
-
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
 
@@ -661,11 +664,6 @@
                     </q-tooltip>
                   </div>
                 </div>
-
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
 
@@ -681,11 +679,6 @@
                       Use simple SQL case structure to define which discrepancies will be mapped to which Case IDs defined above. See the enclosed example.
                     </q-tooltip>
                   </div>
-                </div>
-
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
                 </div>
               </div>
             </q-tab-panel>
@@ -733,11 +726,6 @@
                 <div v-if="scheduleType !== 'C'" class="row q-gutter-md">
                   <iteration-config-box class="col" v-model="iterationConfigObject" :pb="control.period_back"> </iteration-config-box>
                 </div>
-
-                <div class="row q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
             <q-tab-panel name="kpi">
@@ -745,11 +733,6 @@
                 <div class="row q-gutter-md">
                   <kpi-config-box class="col" v-model="kpiConfigObject" :control-name="control.control_name" :control-type="control.control_type">
                   </kpi-config-box>
-                </div>
-
-                <div class="row q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
                 </div>
               </div>
             </q-tab-panel>
@@ -761,13 +744,8 @@
                   :control-type="control.control_type"
                   :rule-config="control.control_type === 'REC' ? ruleConfigObject : null"
                   :source-columns="emailSourceColumns"
-                  :saved="emailSaved">
+                  :saved="Boolean(control.control_id) && !dirty">
                 </email-config-box>
-
-                <div class="row q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
             <q-tab-panel name="log">
@@ -874,8 +852,9 @@
                         <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
                           <q-menu>
                             <q-list dense class="text-no-wrap">
-                              <q-item dense clickable @click="reRun(logRun(log), refreshLogs)" v-close-popup>
+                              <q-item dense clickable :disable="dirty" @click="reRun(logRun(log), refreshLogs)" v-close-popup>
                                 <q-item-section> Re-run </q-item-section>
+                                <q-tooltip v-if="dirty">Apply your changes first: a run uses the saved configuration</q-tooltip>
                               </q-item>
                               <q-separator />
                               <q-item v-if="activeRunStatuses.includes(log.status)" dense clickable @click="cancelRun(logRun(log), refreshLogs)" v-close-popup>
@@ -897,14 +876,24 @@
                     </tr>
                   </tbody>
                 </q-markup-table>
-
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
           </q-tab-panels>
+
+          <div class="editor-actions row items-center q-gutter-sm q-px-lg q-py-sm">
+            <q-btn label="Save" color="primary" :loading="saving" @click="persist('close')">
+              <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Save and return to the controls</q-tooltip>
+            </q-btn>
+            <q-btn label="Apply" color="primary" outline :disable="!dirty || saving" @click="persist('stay')">
+              <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Save and keep editing (Ctrl+S)</q-tooltip>
+            </q-btn>
+            <q-btn label="Cancel" type="reset" color="primary" flat />
+            <q-space />
+            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap">
+              <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
+              Unsaved changes
+            </div>
+          </div>
         </q-form>
       </q-card>
     </div>
@@ -922,6 +911,7 @@ import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import RunLogDialog from "./RunLogDialog.vue";
+import RunControlDialog from "./RunControlDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
 import ReconciliationMatchCriteriaBox from "./ReconciliationMatchCriteriaBox.vue";
@@ -941,6 +931,7 @@ export default {
     CodeBox,
     EditorSkeleton,
     RunLogDialog,
+    RunControlDialog,
     ScheduleEditBox,
     ReconciliationDiscrepancyCheckboxes,
     ReconciliationMatchCriteriaBox,
@@ -988,9 +979,15 @@ export default {
       controlLogs: [],
       versionChanges: [],
       saving: false,
+      // The saved state as JSON (buildControlPayload / kpiConfigObject), compared with the form for dirty.
+      // null control: never saved (a clone); null KPIs: not loaded yet, not compared.
+      savedControlJson: null,
+      savedKpiJson: null,
       // True while a control is being loaded, so the datasource watchers don't reset its saved fields.
       initializing: false,
       loadedUpdatedDate: null,
+      // The other person's change already notified, so the notice shows once per change.
+      noticedUpdatedDate: null,
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
       yesNoOptions: YES_NO_OPTIONS,
       periodTypeOptions: PERIOD_TYPE_OPTIONS,
@@ -1000,6 +997,8 @@ export default {
   created() {
     // Pending/finished get-datasource-columns requests by datasource name (see getDatasourceColumns).
     this.columnRequests = {};
+    window.addEventListener("keydown", this.onKeydown);
+    window.addEventListener("beforeunload", this.onBeforeUnload);
   },
   computed: {
     ...mapGetters(["controlCatalogueById"]),
@@ -1014,6 +1013,20 @@ export default {
     },
     scheduleType() {
       return scheduleType(this.scheduleObject);
+    },
+    ...mapState(["controlCatalogue"]),
+    // Whether the form differs from the saved control, so Apply has something to write.
+    dirty() {
+      if (!this.ready) {
+        return false;
+      }
+      if (this.savedControlJson === null) {
+        return true;
+      }
+      if (JSON.stringify(this.buildControlPayload()) !== this.savedControlJson) {
+        return true;
+      }
+      return this.savedKpiJson !== null && JSON.stringify(this.kpiConfigObject) !== this.savedKpiJson;
     },
     // The email lives in rule_config, which CMP keeps as a list, so CMP has none.
     emailSupported() {
@@ -1033,20 +1046,6 @@ export default {
         }
         this.ruleConfigObject.email.enabled = value === "Y";
       },
-    },
-    // Whether the email configuration being edited is the saved one, so a test send (which reads the saved
-    // configuration) sends what the user sees.
-    emailSaved() {
-      const saved = this.control.control_id && this.controlCatalogueById(this.control.control_id);
-      if (!saved || saved.control_name !== this.control.control_name || !saved.rule_config) {
-        return false;
-      }
-      try {
-        const savedEmail = JSON.parse(saved.rule_config).email;
-        return Boolean(savedEmail) && JSON.stringify(completeEmailConfig(savedEmail, saved.control_type)) === JSON.stringify(this.ruleConfigObject.email);
-      } catch (error) {
-        return false;
-      }
     },
     // Source columns per attachment sheet, offered while the result table does not exist yet.
     emailSourceColumns() {
@@ -1118,6 +1117,7 @@ export default {
     // racs_kpi_config rows of one control, by name. Not versioned, so a version switch reloads the same rows.
     async loadControlKpis(controlName) {
       this.kpiConfigObject = [];
+      this.savedKpiJson = null;
       if (!this.kpiAvailable || !controlName) {
         return;
       }
@@ -1126,6 +1126,8 @@ export default {
       } catch (error) {
         notifyError("KPI configuration was not loaded.", error);
       }
+      // Not versioned, so these rows are the saved state whichever version is shown.
+      this.savedKpiJson = JSON.stringify(this.kpiConfigObject);
     },
     async getDatasources() {
       try {
@@ -1412,132 +1414,131 @@ export default {
       }
       return str;
     },
-    async save() {
+    // The rapo_config row as it would be saved, built from the form without touching it, so that it can also be
+    // compared with the saved state (dirty). kpi_config is kept apart, since the KPIs load separately.
+    buildControlPayload() {
+      const control = { ...this.control };
+      // Set by getControlVersions for the version selector only.
+      delete control.label;
       // Add new line if last line contains a comment to avoid RAPO SQL builder issue
-      this.control.source_filter = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter);
-      this.control.source_filter_a = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter_a);
-      this.control.source_filter_b = this.addNewLineIfLastLineStartsWithDoubleDash(this.control.source_filter_b);
+      control.source_filter = this.addNewLineIfLastLineStartsWithDoubleDash(control.source_filter);
+      control.source_filter_a = this.addNewLineIfLastLineStartsWithDoubleDash(control.source_filter_a);
+      control.source_filter_b = this.addNewLineIfLastLineStartsWithDoubleDash(control.source_filter_b);
 
-      this.control.schedule_config = serializeSchedule(this.scheduleObject);
+      control.schedule_config = serializeSchedule(this.scheduleObject);
 
       // ANL rule
-      if (this.control.control_type === "ANL") {
-        if (!this.control.output_table_columns) {
-          this.control.output_table = null;
+      if (control.control_type === "ANL") {
+        if (!control.output_table_columns) {
+          control.output_table = null;
         } else {
-          this.control.output_table = JSON.stringify({
-            columns: this.control.output_table_columns,
+          control.output_table = JSON.stringify({
+            columns: control.output_table_columns,
           });
         }
 
         if (this.caseConfigObject.length > 0) {
-          this.control.case_config = JSON.stringify(this.caseConfigObject);
+          control.case_config = JSON.stringify(this.caseConfigObject);
         } else {
-          this.control.case_config = null;
+          control.case_config = null;
         }
       }
 
       // ANL and REP keep only the email in rule_config.
-      if (this.control.control_type === "ANL" || this.control.control_type === "REP") {
-        this.control.rule_config = Object.keys(this.ruleConfigObject || {}).length ? JSON.stringify(this.ruleConfigObject) : null;
+      if (control.control_type === "ANL" || control.control_type === "REP") {
+        control.rule_config = Object.keys(this.ruleConfigObject || {}).length ? JSON.stringify(this.ruleConfigObject) : null;
       }
 
       // REP rule
-      if (this.control.control_type === "REP") {
-        if (!this.control.output_table_columns) {
-          this.control.output_table = null;
+      if (control.control_type === "REP") {
+        if (!control.output_table_columns) {
+          control.output_table = null;
         } else {
-          this.control.output_table = JSON.stringify({
-            columns: this.control.output_table_columns,
+          control.output_table = JSON.stringify({
+            columns: control.output_table_columns,
           });
         }
       }
 
       // REC rule
-      if (this.control.control_type === "REC") {
+      if (control.control_type === "REC") {
         // output limit should not be used for REC rules - instead use output_limit_a and output_limit_b in rule_config
-        this.control.output_limit = null;
+        control.output_limit = null;
 
-        if (!this.control.output_table_a_columns) {
-          this.control.output_table_a = null;
+        if (!control.output_table_a_columns) {
+          control.output_table_a = null;
         } else {
-          this.control.output_table_a = JSON.stringify({
-            columns: this.control.output_table_a_columns,
+          control.output_table_a = JSON.stringify({
+            columns: control.output_table_a_columns,
           });
         }
 
-        if (!this.control.output_table_b_columns) {
-          this.control.output_table_b = null;
+        if (!control.output_table_b_columns) {
+          control.output_table_b = null;
         } else {
-          this.control.output_table_b = JSON.stringify({
-            columns: this.control.output_table_b_columns,
+          control.output_table_b = JSON.stringify({
+            columns: control.output_table_b_columns,
           });
         }
 
         if (this.ruleConfigObject.need_issues_a || this.ruleConfigObject.need_recons_a) {
-          this.control.need_a = "Y";
+          control.need_a = "Y";
         } else {
-          this.control.need_a = "N";
+          control.need_a = "N";
         }
 
         if (this.ruleConfigObject.need_issues_b || this.ruleConfigObject.need_recons_b) {
-          this.control.need_b = "Y";
+          control.need_b = "Y";
         } else {
-          this.control.need_b = "N";
+          control.need_b = "N";
         }
 
-        if (!this.control.source_key_field_a) {
-          this.control.source_key_field_a = "TAG";
+        if (!control.source_key_field_a) {
+          control.source_key_field_a = "TAG";
         }
-        if (!this.control.source_key_field_b) {
-          this.control.source_key_field_b = "TAG";
+        if (!control.source_key_field_b) {
+          control.source_key_field_b = "TAG";
         }
 
-        this.control.rule_config = JSON.stringify(this.ruleConfigObject);
+        control.rule_config = JSON.stringify(this.ruleConfigObject);
       }
 
       // CMP rule
-      if (this.control.control_type === "CMP") {
-        this.control.output_table_a = null;
-        this.control.output_table_b = null;
+      if (control.control_type === "CMP") {
+        control.output_table_a = null;
+        control.output_table_b = null;
 
-        this.cmpOutputTable = this.normalizeOutputColumns(this.cmpOutputTable);
-        this.control.output_table = JSON.stringify({
-          columns: this.cmpOutputTable,
+        control.output_table = JSON.stringify({
+          columns: this.normalizeOutputColumns(this.cmpOutputTable),
         });
 
-        this.control.error_definition = JSON.stringify(this.ruleErrorObject);
+        control.error_definition = JSON.stringify(this.ruleErrorObject);
 
-        this.control.rule_config = JSON.stringify(this.ruleConfigObject);
+        control.rule_config = JSON.stringify(this.ruleConfigObject);
 
         if (this.caseConfigObject.length > 0) {
-          this.control.case_config = JSON.stringify(this.caseConfigObject);
+          control.case_config = JSON.stringify(this.caseConfigObject);
         } else {
-          this.control.case_config = null;
+          control.case_config = null;
         }
       }
 
       if (this.iterationConfigObject.length > 0) {
-        this.control.iteration_config = JSON.stringify(this.iterationConfigObject);
+        control.iteration_config = JSON.stringify(this.iterationConfigObject);
       } else {
-        this.control.iteration_config = null;
+        control.iteration_config = null;
       }
 
-      // The KPIs are stored outside rapo_config, so they travel beside the control's own columns. The key
-      // is left out entirely when there are no KPI tables, which tells the server not to touch them.
-      const body = this.kpiAvailable ? { ...this.control, kpi_config: this.kpiConfigObject } : this.control;
-
-      this.saving = true;
-      try {
-        await api("save-control", { method: "POST", body });
-      } catch (error) {
-        // stay on the page so unsaved edits are not lost
-        this.saving = false;
-        notifyError("Control was not saved.", error);
-        return;
+      return control;
+    },
+    // The KPIs travel beside the control's own columns. The key is left out entirely when there are no KPI tables,
+    // which tells the server not to touch them.
+    buildPayload() {
+      const body = this.buildControlPayload();
+      if (this.kpiAvailable) {
+        body.kpi_config = this.kpiConfigObject;
       }
-      this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
-      this.$router.push({ name: "controls" });
+      return body;
     },
     // The first problem of an enabled email configuration, or null.
     emailConfigError() {
@@ -1582,7 +1583,8 @@ export default {
       // Number inputs give "" when cleared; 0 is a valid value.
       return value == null || value === "";
     },
-    validateAndSave() {
+    // Checks the form, and on a problem notifies and jumps to the tab where it is. Returns whether it may be saved.
+    validate() {
       var errorTab = null;
       if (!this.control.control_name) {
         this.$q.notify({
@@ -1640,18 +1642,154 @@ export default {
         errorTab = "scheduler";
       }
 
-      if (!errorTab) {
-        this.save(); // Call your save method
-      } else {
+      if (errorTab) {
         this.tab = errorTab;
       }
+      return !errorTab;
+    },
+    // Save ("close": back to the list) or Apply ("stay"). A form without changes is not written at all, so no
+    // version is added to rapo_config_bak.
+    async persist(mode) {
+      if (this.saving) {
+        return;
+      }
+      if (!this.dirty) {
+        this.$q.notify({ color: "grey-7", message: "No changes" });
+        if (mode === "close") {
+          this.$router.push({ name: "controls" });
+        }
+        return;
+      }
+      if (this.validate()) {
+        await this.submit(mode, true);
+      }
+    },
+    // With lock, the server refuses (409) to overwrite a row changed since it was loaded here.
+    async submit(mode, lock) {
+      const body = this.buildPayload();
+      if (lock && this.control.control_id && this.loadedUpdatedDate) {
+        body.expected_updated_date = this.loadedUpdatedDate;
+      }
+      this.saving = true;
+      let result;
+      try {
+        result = await api("save-control", { method: "POST", body });
+      } catch (error) {
+        if (error.status === 409) {
+          this.saving = false;
+          this.resolveConflict(mode, error.message);
+          return;
+        }
+        // The control row is written, only its KPIs are not: take the row as saved, leave the KPIs changed.
+        if (error.message.startsWith("Control was saved")) {
+          await this.afterSave({}, false);
+        }
+        // stay on the page so unsaved edits are not lost
+        this.saving = false;
+        notifyError("Control was not saved.", error);
+        return;
+      }
+      if (mode === "close") {
+        this.savedControlJson = JSON.stringify(this.buildControlPayload());
+        this.savedKpiJson = null;
+        this.saving = false;
+        this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
+        this.$router.push({ name: "controls" });
+        return;
+      }
+      await this.afterSave(result, true);
+      this.saving = false;
+      this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved." });
+    },
+    // Takes the saved row's ID and stamps into the form (an insert has none yet, and the next save needs them),
+    // re-takes the saved state and, for a control saved for the first time, moves to its own URL.
+    async afterSave(result, withKpis) {
+      const firstSave = !this.control.control_id || this.$route.query.clone;
+      try {
+        await this.updateControlCatalogue();
+      } catch (error) {
+        notifyError("Failed to reload controls.", error);
+      }
+      const saved = this.controlCatalogueById(result.control_id || this.control.control_id) || this.controlCatalogue.find((row) => row.control_name === this.control.control_name);
+      if (saved) {
+        for (const key of ["control_id", "created_by", "created_date", "updated_by", "updated_date"]) {
+          this.control[key] = saved[key];
+        }
+      }
+      this.loadedUpdatedDate = this.control.updated_date;
+      this.savedControlJson = JSON.stringify(this.buildControlPayload());
+      if (withKpis) {
+        this.savedKpiJson = JSON.stringify(this.kpiConfigObject);
+      }
+      this.versionChanges = [];
+      if (!this.control.control_id) {
+        return;
+      }
+      this.getControlVersions(this.control.control_id);
+      if (firstSave) {
+        await this.$router.replace({ name: "edit-control", params: { controlId: String(this.control.control_id) } });
+        this.getControlLogs(this.control.control_name, this.log_days_back);
+        if (!this.stopLiveUpdates) {
+          this.startLiveUpdates();
+        }
+      }
+    },
+    resolveConflict(mode, message) {
+      this.$q
+        .dialog({
+          title: "Control changed meanwhile",
+          message: `${message} Overwrite it with your version, or reload it and lose your changes?`,
+          cancel: { label: "Keep editing", flat: true },
+          persistent: true,
+          options: {
+            type: "radio",
+            model: "reload",
+            items: [
+              { label: "Reload the saved version (discard my changes)", value: "reload" },
+              { label: "Overwrite it with my version", value: "overwrite" },
+            ],
+          },
+        })
+        .onOk(async (choice) => {
+          if (choice === "overwrite") {
+            await this.submit(mode, false);
+            return;
+          }
+          try {
+            await this.updateControlCatalogue();
+          } catch (error) {
+            notifyError("Failed to reload controls.", error);
+            return;
+          }
+          const latest = this.controlCatalogueById(this.control.control_id);
+          if (latest) {
+            this.reloadControl(latest);
+          }
+        });
     },
     cancel() {
-      this.$q.notify({
-        type: "warning",
-        message: "Changes discarded",
-      });
+      // The route guard asks first when there are unsaved changes.
       this.$router.push({ name: "controls" });
+    },
+    // Ctrl+S / Cmd+S is Apply anywhere in the editor, and never the browser's "Save page as".
+    onKeydown(event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "s" || event.key === "S")) {
+        event.preventDefault();
+        if (this.ready) {
+          this.persist("stay");
+        }
+      }
+    },
+    onBeforeUnload(event) {
+      if (this.dirty) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    },
+    // After a run started from the header: its progress shows in the run log.
+    runStarted() {
+      this.tab = "log";
+      this.refreshLogs();
     },
     recreateSchema(control) {
       this.$q
@@ -1710,10 +1848,11 @@ export default {
         this.$q.notify({ type: "warning", message: "This control was deleted by someone else.", timeout: 0, actions: [{ label: "Close", color: "white" }] });
         return;
       }
-      if (latest.updated_date === this.loadedUpdatedDate) {
+      if (latest.updated_date === this.loadedUpdatedDate || latest.updated_date === this.noticedUpdatedDate) {
         return;
       }
-      this.loadedUpdatedDate = latest.updated_date;
+      // Noticed once. loadedUpdatedDate stays what the form is based on, so a save still meets the lock (409).
+      this.noticedUpdatedDate = latest.updated_date;
       this.$q.notify({
         type: "warning",
         message: "This control was changed by someone else.",
@@ -1725,10 +1864,12 @@ export default {
         ],
       });
     },
-    reloadControl(latest) {
+    async reloadControl(latest) {
       this.versionChanges = [];
-      this.loadControl(latest);
-      this.getControlVersions(this.controlId);
+      await this.loadControl(latest);
+      this.loadedUpdatedDate = latest.updated_date;
+      this.savedControlJson = JSON.stringify(this.buildControlPayload());
+      this.getControlVersions(this.control.control_id);
     },
   },
   watch: {
@@ -1820,6 +1961,10 @@ export default {
         this.getControlLogs(this.control.control_name, this.log_days_back);
       }
       this.loadedUpdatedDate = this.control.updated_date;
+      // A clone has never been saved, so it stays dirty (null) until it is.
+      if (!this.$route.query.clone) {
+        this.savedControlJson = JSON.stringify(this.buildControlPayload());
+      }
       this.startLiveUpdates();
     } else {
       // NEW CONTROL
@@ -1841,12 +1986,30 @@ export default {
         period_number: 1,
       };
       this.ready = true;
+      await this.$nextTick();
+      this.savedControlJson = JSON.stringify(this.buildControlPayload());
     }
   },
   unmounted() {
+    window.removeEventListener("keydown", this.onKeydown);
+    window.removeEventListener("beforeunload", this.onBeforeUnload);
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }
+  },
+  // Leaving with unsaved changes (Cancel, the side menu, back) asks first.
+  beforeRouteLeave(to, from, next) {
+    if (!this.dirty || this.saving) {
+      next();
+      return;
+    }
+    this.$q
+      .dialog({ title: "Unsaved changes", message: "Discard your unsaved changes?", ok: { label: "Discard", color: "negative" }, cancel: { label: "Keep editing", flat: true }, persistent: true })
+      .onOk(() => {
+        this.$q.notify({ type: "warning", message: "Changes discarded" });
+        next();
+      })
+      .onCancel(() => next(false));
   },
 };
 </script>
@@ -1855,6 +2018,15 @@ export default {
 /* A chip rounds its avatar with a fixed radius, which is not a circle at size xl. */
 .q-chip .type-avatar {
   border-radius: 50%;
+}
+
+/* Save / Apply / Cancel stay in view on every tab, at the bottom of the window while the card is longer. */
+.editor-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: white;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .new-day-separator > td {
