@@ -24,3 +24,28 @@ There is **no database schema change**.
     ```bash
     .venv/bin/rapo-server start
     ```
+
+## Email: Free SQL sheet and file name
+
+Existing email configurations keep working unchanged. Three keys are new in the `email` object of `rule_config`:
+
+```json
+{"email": {
+  "attachment_name": "Losses_{control_date_from:%Y%m%d}",
+  "sheets": {
+    "main": {"enabled": true, "name": "Discrepancies"},
+    "sql": {"enabled": true, "name": "Summary",
+            "query": "select rapo_result_type as \"Result type\", count(*) as \"Records\" from rapo_rest_my_control where rapo_process_id = {process_id} group by rapo_result_type"}
+  }
+}}
+```
+
+- `attachment_name`: the file name, with `{variables}`. `.xlsx` is added when missing, and `\ / : * ? " < > |`
+  become `_`. Empty or `null` keeps `<NAME>_<from>[_<to>].xlsx`.
+- `sheets.main.enabled` (ANL, REP): whether the result sheet is in the file, as `a`/`b` already have. A missing
+  key means included.
+- `sheets.sql`: one sheet from a query of your own, placed last. Only `select`/`with` queries run; anything else,
+  or a query that fails, is skipped with a line in the run log. Its `{variables}` are replaced as text, so dates
+  are quoted (`to_date('{control_date_from:%Y-%m-%d}', 'yyyy-mm-dd')`). The headers are the column names as
+  Oracle returns them, so a quoted alias keeps its case. Its rows count toward `max_records` and the size limit,
+  and toward *Done, with results* only when no other sheet is in the file.

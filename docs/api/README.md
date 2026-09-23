@@ -207,11 +207,16 @@ body is JSON:
 
 | Key            | Meaning                                                                                  |
 |----------------|------------------------------------------------------------------------------------------|
-| `kind`         | `filter`, `error_sql`, `case_definition`, `prerequisite`, `preparation`, `completion` or `email_filter`. |
+| `kind`         | `filter`, `error_sql`, `case_definition`, `prerequisite`, `preparation`, `completion`, `email_filter` or `email_sql`. |
 | `statement`    | The text as it is in the box.                                                            |
 | `source_name`  | The datasource a `filter`, `error_sql` or `case_definition` is checked against.          |
 | `control_name`, `control_type` | Name the result table of an `email_filter` and the value of `{control_name}`. |
 | `side`         | `a` or `b`: the result table of an `email_filter` of a REC control.                      |
+
+An `email_sql` is the Free SQL sheet of an email. It must be a query (`select`/`with`), its `{variables}` are
+replaced with sample values, and it needs no saved control. The answer lists its `columns`, and carries a
+`warning` when it uses neither `{process_id}` nor a `{control_date...}` variable, since it is then not limited to
+the run being mailed.
 | `case_ids`     | The IDs of the Case config, for a warning when `case_definition` returns another one.    |
 
 A filter and the mismatch criteria are parsed as `select * from <source_name> where (<statement>)`, a case
@@ -282,7 +287,9 @@ comparison on `:v_kpi_value`). The shape it understands is
 A control of type `ANL`, `REP` or `REC` can mail its results when a run finishes. The configuration is the
 `email` key of its `rule_config` (written through `save-control`), and the SMTP server is the `[EMAIL]` section of
 `rapo.ini`, whose `enabled` switch turns email off for the whole instance. The shape of the object and the
-meaning of each key are in the [v0.8.2 migration instructions](../../migrations/v0.8.2/README.md#setting-up-an-email).
+meaning of each key are in the [v0.8.2 migration instructions](../../migrations/v0.8.2/README.md#setting-up-an-email),
+and the Free SQL sheet, the per-sheet `enabled` of ANL/REP and the file name in the
+[v0.8.3 ones](../../migrations/v0.8.3/README.md#email-free-sql-sheet-and-file-name).
 
 After a run, the control's own process sends the email and logs each step in the run log. The two routes below
 send outside of a run, in the server process. Both answer `{"status": 200}` once the SMTP server has accepted the

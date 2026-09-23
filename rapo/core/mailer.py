@@ -112,12 +112,22 @@ def render(text, variables):
     return formatter.vformat(text, (), variables)
 
 
-def attachment_name(control):
+def attachment_name(control, email_config=None, variables=None):
     """Get the file name of the attachment of a control run.
 
-    The control name, then the date the window starts, then the date it
-    ends when that is another day, in ISO format.
+    The configured `attachment_name` with its {variables} rendered, else the
+    control name, then the date the window starts, then the date it ends
+    when that is another day, in ISO format.
     """
+    template = (email_config or {}).get('attachment_name')
+    if template and template.strip():
+        name = render(template, variables or {})
+        name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', name)
+        name = name.strip().strip('.')
+        if name.lower().endswith('.xlsx'):
+            name = name[:-5].rstrip()
+        if name:
+            return f'{name}.xlsx'
     date_from = control.date_from.date()
     date_to = control.date_to.date()
     dates = f'{date_from:%Y-%m-%d}'
@@ -158,6 +168,9 @@ def build_variables(control):
 
 class Sheet:
     """One sheet of the attachment: a filtered select from a result table."""
+
+    # Whether its rows are results for send_when 'done_with_results'.
+    counts_as_result = True
 
     def __init__(self, control, title, table_name, sheet_config,
                  variables, result_types=None):
@@ -225,6 +238,69 @@ class Sheet:
         return db.execute(self.select_query(), as_records=True)
 
 
+class SqlSheet:
+    """The Free SQL sheet of the attachment: a query of the user's own.
+
+    Only a query (select/with) is run, so an email never executes DML or DDL.
+    Its headers are the column names as Oracle returns them, so a quoted
+    alias keeps its case and spaces.
+    """
+
+    counts_as_result = False
+
+    def __init__(self, control, title, sheet_config, variables):
+        self.control = control
+        self.title = title
+        self.config = sheet_config or {}
+        self.variables = variables
+        self.query = None
+        self.columns = []
+        self.labels = []
+        self.count = 0
+
+    def prepare(self):
+        """Render the query and count its rows."""
+        from .sqlcheck import first_keyword
+
+        query = (self.config.get('query') or '').strip()
+        if not query:
+            logger.warning(f'{self.control} Email: Free SQL sheet has no '
+                           'query, sheet skipped')
+            return False
+        if first_keyword(query) not in ('select', 'with'):
+            logger.warning(f'{self.control} Email: Free SQL sheet is not a '
+                           'query (select/with), sheet skipped')
+            return False
+        query = render(query, self.variables).strip().rstrip(';').rstrip()
+        # A colon would be read as a bind parameter, e.g. in 'HH24:MI'.
+        self.query = query.replace(':', r'\:')
+        try:
+            count = sa.text(f'select count(*) from ({self.query})')
+            self.count = db.execute(count, as_scalar=True) or 0
+        except Exception:
+            logger.warning(f'{self.control} Email: Free SQL sheet failed, '
+                           'sheet skipped')
+            logger.error()
+            return False
+        logger.info(f'{self.control} Email: {self.count} rows for sheet '
+                    f'{self.title} from Free SQL')
+        return True
+
+    def fetch(self):
+        """Get the rows of the sheet and set its columns from the cursor."""
+        connection = db.connect()
+        try:
+            result = connection.execute(sa.text(self.query))
+            names = [column[0] for column in result.cursor.description]
+            rows = result.fetchall()
+        finally:
+            connection.close()
+        # Untyped columns: their Excel formats come from the values alone.
+        self.columns = [sa.column(name) for name in names]
+        self.labels = names
+        return rows
+
+
 def sheet_title(sheet_config, default, taken):
     """Get the Excel name of a sheet: its configured name, else the default.
 
@@ -269,10 +345,25 @@ def build_sheets(control, email_config, variables):
                                 variables, result_types=result_types))
     else:
         sheet_config = sheets_config.get('main') or {}
-        title = sheet_title(sheet_config, control.name, taken)
-        sheets.append(Sheet(control, title, control.output_name,
-                            sheet_config, variables))
+        if sheet_config.get('enabled', True):
+            title = sheet_title(sheet_config, control.name, taken)
+            sheets.append(Sheet(control, title, control.output_name,
+                                sheet_config, variables))
+    sql_config = sheets_config.get('sql') or {}
+    if sql_config.get('enabled'):
+        title = sheet_title(sql_config, 'SQL', taken)
+        sheets.append(SqlSheet(control, title, sql_config, variables))
     return [sheet for sheet in sheets if sheet.prepare()]
+
+
+def count_results(sheets):
+    """Get the rows that count as results for 'done_with_results'.
+
+    The result-table sheets; the Free SQL sheet only when it is the only
+    sheet, since a summary query returns rows for every run.
+    """
+    results = [sheet for sheet in sheets if sheet.counts_as_result]
+    return sum(sheet.count for sheet in results or sheets)
 
 
 def column_formats(column, values):
@@ -507,7 +598,8 @@ def send_run_email(control, trigger='run', override_to=None):
             sheets = build_sheets(control, email_config, variables)
             total = sum(sheet.count for sheet in sheets)
             variables['attachment_rows'] = total
-            if send_when == 'done_with_results' and total == 0 and not manual:
+            if send_when == 'done_with_results' and not manual and \
+                    count_results(sheets) == 0:
                 logger.info(f'{control} Email not sent: no result rows')
                 return False
             if email_config.get('attach', True) and sheets:
@@ -533,7 +625,8 @@ def send_run_email(control, trigger='run', override_to=None):
                         logger.warning(f'{control} Email: {note}')
                         content = None
                     else:
-                        name = attachment_name(control)
+                        name = attachment_name(control, email_config,
+                                               variables)
                         logger.info(f'{control} Email: attachment {name} '
                                     f'with {total} rows, {size:.2f} MB')
 

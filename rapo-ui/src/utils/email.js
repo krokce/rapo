@@ -12,12 +12,14 @@ export const SEND_WHEN_OPTIONS = [
 // Result types a REC side can export: Loss and Discrepancy when its issues are saved, Match when its matches are.
 export const REC_RESULT_TYPES = ["Loss", "Discrepancy", "Match"];
 
-// The {variables} of the subject, the body and the sheet filters (mailer.build_variables). Dates carry a sample
-// strftime format, since a bare datetime prints its time too.
+// The {variables} of the subject, the body, the attachment name and the sheet queries (mailer.build_variables).
+// Dates carry a sample strftime format, since a bare datetime prints its time too. `sheets: false` marks the ones
+// that are empty while the sheets are built, so the filter and Free SQL boxes do not offer them.
 export const EMAIL_VARIABLES = [
   { token: "{control_name}", label: "Control name" },
   { token: "{control_description}", label: "Control description" },
   { token: "{process_id}", label: "Process ID" },
+  { token: "{control_date:%Y-%m-%d}", label: "Run date" },
   { token: "{control_date_from:%Y-%m-%d}", label: "Run from (date)" },
   { token: "{control_date_to:%Y-%m-%d}", label: "Run to (date)" },
   { token: "{control_date_from:%d.%m.%Y %H:%M:%S}", label: "Run from (date and time)" },
@@ -34,8 +36,27 @@ export const EMAIL_VARIABLES = [
   { token: "{success_number_b}", label: "Success B", rec: true },
   { token: "{error_number_a}", label: "Errors A", rec: true },
   { token: "{error_number_b}", label: "Errors B", rec: true },
-  { token: "{attachment_rows}", label: "Attachment rows" },
+  { token: "{attachment_rows}", label: "Attachment rows", sheets: false },
 ];
+
+// The variables of a control type's subject, body and attachment name.
+export function emailVariables(controlType) {
+  const rec = controlType === "REC";
+  return EMAIL_VARIABLES.filter((variable) => (rec ? !variable.single : !variable.rec));
+}
+
+// The variables of the sheet filters and the Free SQL, as CodeBox `templateVars`: one entry per variable, dates with
+// their first sample format.
+export function sheetVariables(controlType) {
+  const seen = new Set();
+  return emailVariables(controlType)
+    .filter((variable) => variable.sheets !== false)
+    .map((variable) => {
+      const [name, format] = variable.token.slice(1, -1).split(/:(.*)/);
+      return { name, format: format || null, label: variable.label.replace(/ \(date( and time)?\)$/, "") };
+    })
+    .filter((variable) => !seen.has(variable.name) && seen.add(variable.name));
+}
 
 // Metadata columns of the result tables (rapo/core/fields.py), offered while a result table does not exist yet.
 export const RESULT_META_COLUMNS = {
@@ -58,8 +79,16 @@ export function defaultSheetName(key, controlName) {
 }
 
 function defaultSheet(recSide) {
-  const sheet = { name: null, filter: null, fields: [] };
-  return recSide ? { enabled: true, result_types: [...REC_RESULT_TYPES], ...sheet } : sheet;
+  const sheet = { enabled: true, name: null, filter: null, fields: [] };
+  return recSide ? { ...sheet, result_types: [...REC_RESULT_TYPES] } : sheet;
+}
+
+// The sheet name used when none is set for the Free SQL sheet.
+export const DEFAULT_SQL_SHEET_NAME = "SQL";
+
+// The Free SQL sheet (mailer.SqlSheet), last in the file and off until chosen.
+function defaultSqlSheet() {
+  return { enabled: false, name: null, query: null };
 }
 
 export function defaultEmailConfig(controlType) {
@@ -74,7 +103,12 @@ export function defaultEmailConfig(controlType) {
     include_summary: true,
     attach: true,
     max_records: null,
-    sheets: controlType === "REC" ? { a: defaultSheet(true), b: defaultSheet(true) } : { main: defaultSheet(false) },
+    // null: <NAME>_<run from>[_<run to>].xlsx (mailer.attachment_name).
+    attachment_name: null,
+    sheets: {
+      ...(controlType === "REC" ? { a: defaultSheet(true), b: defaultSheet(true) } : { main: defaultSheet(false) }),
+      sql: defaultSqlSheet(),
+    },
   };
 }
 

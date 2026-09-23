@@ -50,7 +50,15 @@
       :indent-with-tab="true"
       :smart-indent="true"
       :tab-size="4"
-      :extensions="extensions" />
+      :extensions="extensions"
+      @ready="onReady" />
+    <div v-if="variableList.length && !readonly" class="row items-center q-gutter-xs q-mt-xs text-caption text-grey-7">
+      <span>Variables:</span>
+      <span v-for="variable in variableList" :key="variable.name" class="code-variable" @mousedown.prevent @click="insertText(variable.token)">
+        {{ variable.token }}
+        <q-tooltip v-if="variable.label">{{ variable.label }} — click to insert</q-tooltip>
+      </span>
+    </div>
     <div v-if="checkResult" class="text-caption q-mt-xs check-result" :class="checkResult.color">
       {{ checkResult.message }}
       <div v-if="checkResult.thresholds" class="text-grey-8">Dashboard thresholds: {{ checkResult.thresholds }}</div>
@@ -107,18 +115,32 @@ const TEMPLATE_VARIABLES = [
   { name: "control_date_to", format: "%Y-%m-%d" },
 ];
 
+function variableToken({ name, format }) {
+  return `{${name}${format ? ":" + format : ""}}`;
+}
+
+// Inserts a token over the typed "{name", swallowing the "}" that bracket closing added after the cursor.
+function applyToken(token) {
+  return (view, completion, from, to) => {
+    const end = view.state.sliceDoc(to, to + 1) === "}" ? to + 1 : to;
+    view.dispatch({ changes: { from, to: end, insert: token }, selection: { anchor: from + token.length } });
+  };
+}
+
 // A completion source for those variables. It only activates right after a "{", and inserts the full
 // {name} or {name:format} token in one go, closing brace included.
-function templateVariableCompletionSource() {
+function templateVariableCompletionSource(variables) {
   return (context) => {
     const match = context.matchBefore(/\{\w*/);
     if (!match) return null;
     return {
       from: match.from,
-      options: TEMPLATE_VARIABLES.map(({ name, format }) => ({
-        label: `{${name}${format ? ":" + format : ""}}`,
+      options: variables.map((variable) => ({
+        label: variableToken(variable),
+        detail: variable.label,
         type: "variable",
         boost: 99,
+        apply: applyToken(variableToken(variable)),
       })),
       validFor: /^\{\w*$/,
     };
@@ -133,7 +155,9 @@ export default {
     columns: Array,
     tables: Object,
     binds: Array,
-    templateVars: Boolean,
+    // true: the engine's TEMPLATE_VARIABLES. An array of {name, format, label} replaces them and is also listed under
+    // the box, each token inserted at the cursor on a click.
+    templateVars: [Boolean, Array],
     // {items, more} from utils/codeExamples.js examplesFor().
     examples: Object,
     // An async function(text) answering validate-sql / validate-kpi-sql; shows the Check button.
@@ -181,7 +205,8 @@ export default {
         extensions.push(PLSQL.language.data.of({ autocomplete: bindCompletionSource(this.binds) }));
       }
       if (this.templateVars) {
-        extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource() }));
+        const variables = Array.isArray(this.templateVars) ? this.templateVars : TEMPLATE_VARIABLES;
+        extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource(variables) }));
       }
       return extensions;
     },
@@ -192,6 +217,10 @@ export default {
       set(value) {
         this.$emit("update:modelValue", value);
       },
+    },
+    variableList() {
+      if (!Array.isArray(this.templateVars)) return [];
+      return this.templateVars.map((variable) => ({ ...variable, token: variableToken(variable) }));
     },
     hasExamples() {
       return Boolean(this.examples && (this.examples.items.length || (this.examples.more || []).length));
@@ -204,6 +233,22 @@ export default {
     },
   },
   methods: {
+    onReady({ view }) {
+      this.view = view;
+    },
+    // Replaces the selection with the text. An editor never focused has its cursor at 0, so the text is appended.
+    insertText(text) {
+      const view = this.view;
+      if (!view) {
+        this.code = (this.code || "") + text;
+        return;
+      }
+      const end = view.state.doc.length;
+      const selection = view.state.selection.main;
+      const { from, to } = view.hasFocus || selection.from > 0 ? selection : { from: end, to: end };
+      view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true });
+      view.focus();
+    },
     // An example replaces the whole text, so a text of one's own is replaced only after a confirmation.
     pickExample(example) {
       if (!this.code || !this.code.trim() || this.code === example.text) {
@@ -279,6 +324,19 @@ export default {
 
 .code-examples {
   max-width: 460px;
+}
+
+.code-variable {
+  font-family: monospace;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #eceff1;
+  cursor: pointer;
+}
+
+.code-variable:hover {
+  background: #cfd8dc;
+  color: #263238;
 }
 
 .check-result {

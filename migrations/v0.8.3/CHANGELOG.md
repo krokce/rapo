@@ -1,8 +1,9 @@
 # Rapo v0.8.3 Change Log
 
 ## Annotation
-This release makes the Output limit work for analysis, report and comparison controls, and gives every SQL box of
-the editors curated examples and a Check button. There is no schema change.
+This release makes the Output limit work for analysis, report and comparison controls, gives every SQL box of
+the editors curated examples and a Check button, and lets an email attach a sheet from a query of your own.
+There is no schema change.
 The upgrade steps are in the [migration instructions](README.md).
 
 1. **Output limit for ANL, REP and CMP.** The *Output limit* in the editor's Main tab was stored but ignored for
@@ -25,3 +26,10 @@ The upgrade steps are in the [migration instructions](README.md).
    from the Case config, and colons that would be read as bind variables. DDL such as `truncate` is refused rather
    than parsed, because Oracle's parser would execute it. An alarm check also shows the thresholds the dashboard
    will draw from the statement, and warns when `get_kpi_thresholds_json` would misread it.
+4. **Email: Free SQL sheet, Include per sheet and file name.** The Email tab has a *Free SQL* card: a query of your
+   own becomes the last sheet of the attachment, with its own name, *Example* menu and *Check*. The result sheet of
+   analysis and report controls now has an *Include* switch, like the A and B sheets of a reconciliation, so a
+   file can hold only the Free SQL sheet. The attachment's *File name* can be set, with variables. Rows of the Free
+   SQL sheet count toward *Done, with results* only when it is the only sheet. The Free SQL and the sheet filters
+   list every variable they accept under the box (click to insert) and complete them after `{`, including the run
+   facts such as `{status}` and `{fetched_number}`. Details in the [migration instructions](README.md#email-free-sql-sheet-and-file-name).

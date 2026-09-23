@@ -6,6 +6,8 @@
 //   - datasource filters, mismatch criteria and case mappings are raw SQL without {variables};
 //   - Preparation/Prerequisite/Completion SQL and email filters get {control_name}, {process_id}, {control_date},
 //     {control_date_from} and {control_date_to} (dates take a strftime format, e.g. {control_date:%Y%m%d});
+//   - the email's Free SQL is a query (select/with) with the same variables plus the run facts of
+//     mailer.build_variables ({status}, {fetched_number}, ...), substituted as text;
 //   - KPI statements get only the bind :v_processid, and alarm statements :v_kpi_value, which must be used;
 //   - alarm statements are also read by racs_kpi_pkg.get_kpi_thresholds_json with regular expressions, so they
 //     keep the shape "case when <condition on :v_kpi_value> then 1..3 ... else 0 end from dual".
@@ -279,6 +281,83 @@ const EMAIL_FILTER = [
     caption: "For analysis and report controls, whose results carry the case type.",
     text: "rapo_result_type in ('Loss', 'Duplicate')",
     types: ["ANL", "REP"],
+  },
+];
+
+// The email's Free SQL sheet: a whole query, whose column names (quoted aliases keep their case) become the headers.
+const EMAIL_SQL = [
+  {
+    title: "This run's results, chosen columns",
+    caption: "Quoted aliases become the headers of the sheet.",
+    text:
+      "select msisdn as \"MSISDN\",\n" +
+      "       charge as \"Charge\",\n" +
+      "       rapo_result_type as \"Result\"\n" +
+      "from <result_table>\n" +
+      "where rapo_process_id = {process_id}\n" +
+      "order by charge desc",
+  },
+  {
+    title: "Count per result type",
+    caption: "A small summary sheet next to the detail.",
+    text:
+      "select rapo_result_type as \"Result type\",\n" +
+      "       count(*) as \"Records\"\n" +
+      "from <result_table>\n" +
+      "where rapo_process_id = {process_id}\n" +
+      "group by rapo_result_type\n" +
+      "order by 2 desc",
+  },
+  {
+    title: "Losses of both sides in one sheet",
+    caption: "Sides A and B are separate result tables; a SIDE column tells them apart.",
+    text:
+      "select 'A' as side, msisdn, charge\n" +
+      "from <result_table>\n" +
+      "where rapo_process_id = {process_id}\n" +
+      "  and rapo_result_type = 'Loss'\n" +
+      "union all\n" +
+      "select 'B' as side, msisdn, charge\n" +
+      "from <result_table_b>\n" +
+      "where rapo_process_id = {process_id}\n" +
+      "  and rapo_result_type = 'Loss'",
+    types: ["REC"],
+  },
+  {
+    title: "Discrepancies per differing fields",
+    caption: "rapo_discrepancy_description lists them as FIELD|value; — the values are dropped to group.",
+    text:
+      "select regexp_replace(rapo_discrepancy_description, '\\|[^;]*', '') as \"Differing fields\",\n" +
+      "       count(*) as \"Records\"\n" +
+      "from <result_table>\n" +
+      "where rapo_process_id = {process_id}\n" +
+      "  and rapo_result_type = 'Discrepancy'\n" +
+      "group by regexp_replace(rapo_discrepancy_description, '\\|[^;]*', '')\n" +
+      "order by 2 desc",
+    types: ["REC"],
+  },
+  {
+    title: "Source rows of the run's window",
+    caption: "Dates are substituted as text, so they are quoted and converted.",
+    text: "select *\n" + "from ds_calls\n" + `where call_date >= ${WINDOW_FROM}\n` + `  and call_date <= ${WINDOW_TO}`,
+  },
+  {
+    title: "Trend of the last 10 runs",
+    caption: "Result counts of this control's runs up to this one, from rapo_log.",
+    text:
+      "select *\n" +
+      "from (\n" +
+      "    select l.process_id as \"Process ID\",\n" +
+      "           l.date_from as \"Run from\",\n" +
+      "           l.status as \"Status\",\n" +
+      "           (select count(*) from <result_table> r where r.rapo_process_id = l.process_id) as \"Results\"\n" +
+      "    from rapo_log l\n" +
+      "    join rapo_config c on c.control_id = l.control_id\n" +
+      "    where c.control_name = '{control_name}'\n" +
+      "      and l.process_id <= {process_id}\n" +
+      "    order by l.process_id desc\n" +
+      ")\n" +
+      "where rownum <= 10",
   },
 ];
 
@@ -646,7 +725,7 @@ function filled(menu, context) {
  *
  * @param {object} context
  * @param {string} context.field - filter, error_definition, case_definition, preparation, prerequisite,
- *   completion, email_filter, kpi_sql, alarm_sql, default_kpi_sql or default_alarm_sql.
+ *   completion, email_filter, email_sql, kpi_sql, alarm_sql, default_kpi_sql or default_alarm_sql.
  * @param {string} [context.controlType] - ANL, REC, CMP or REP; picks the result table and type-bound examples.
  * @param {string} [context.controlName] - fills <control_name> and the result table names.
  * @param {string} [context.kpiType] - the KPI type code, whose family comes first.
@@ -672,6 +751,8 @@ export function examplesFor(context) {
       return plain(COMPLETION);
     case "email_filter":
       return plain(EMAIL_FILTER);
+    case "email_sql":
+      return plain(EMAIL_SQL);
     case "kpi_sql":
       return filled(grouped(KPI, familyLabels(), family, controlType), context);
     case "default_kpi_sql":
@@ -687,7 +768,7 @@ export function examplesFor(context) {
 // Every example, for tests: [{ field, group, title, text }].
 export function allExamples() {
   const lists = { filter: FILTER, error_definition: ERROR_DEFINITION, case_definition: CASE_DEFINITION };
-  Object.assign(lists, { preparation: PREPARATION, prerequisite: PREREQUISITE, completion: COMPLETION, email_filter: EMAIL_FILTER });
+  Object.assign(lists, { preparation: PREPARATION, prerequisite: PREREQUISITE, completion: COMPLETION, email_filter: EMAIL_FILTER, email_sql: EMAIL_SQL });
   const rows = [];
   Object.entries(lists).forEach(([field, items]) => items.forEach((item) => rows.push({ field, group: null, ...item })));
   Object.entries(KPI).forEach(([group, items]) => items.forEach((item) => rows.push({ field: "kpi_sql", group, ...item })));

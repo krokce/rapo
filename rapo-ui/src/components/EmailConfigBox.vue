@@ -100,16 +100,46 @@
 
     <div class="text-grey-7 text-caption">
       Variables such as <span class="text-mono">{control_name}</span> or <span class="text-mono">{control_date_from:%Y-%m-%d}</span> are replaced in the
-      subject, the body and the sheet filters. An unknown one stays as it is.
+      subject, the body, the file name, the sheet filters and the Free SQL. An unknown one stays as it is.
     </div>
 
-    <div class="text-subtitle1 q-mt-lg">
-      {{ email.attach ? "Attachment" : "Results" }}
-      <span v-if="email.attach" class="text-grey-7 text-body2 q-ml-sm text-mono">{{ attachmentName }}</span>
+    <div class="text-subtitle1 q-mt-lg">{{ email.attach ? "Attachment" : "Results" }}</div>
+    <div v-if="email.attach" class="row">
+      <q-input
+        ref="attachment_name"
+        class="col"
+        outlined
+        :model-value="email.attachment_name"
+        @update:model-value="(value) => (email.attachment_name = value && value.trim() ? value : null)"
+        label="File name"
+        :placeholder="attachmentName"
+        stack-label>
+        <template v-slot:prepend>
+          <q-icon name="fas fa-file-excel" @click.stop.prevent />
+        </template>
+        <template v-slot:append>
+          <q-btn flat dense size="sm" icon="fas fa-code" @click.stop>
+            <q-tooltip>Insert variable</q-tooltip>
+            <q-menu>
+              <q-list dense>
+                <q-item v-for="variable in variables" :key="variable.token" clickable v-close-popup @click="insertVariable('attachment_name', variable.token)">
+                  <q-item-section>{{ variable.label }}</q-item-section>
+                  <q-item-section side class="text-mono">{{ variable.token }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </template>
+        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+          Name of the Excel file, with variables, e.g. Losses_{control_date_from:%Y%m%d}. .xlsx is added when missing,<br />
+          and \ / : * ? " &lt; &gt; | become _. Empty = {{ attachmentName }}.
+        </q-tooltip>
+      </q-input>
     </div>
     <div v-if="!email.attach" class="text-grey-7 text-caption">
       No file is attached. The sheets below still decide which rows count as results for 'Done, with results'.
     </div>
+    <div v-else-if="!anySheetIncluded" class="text-warning text-caption">No sheet is included, so no file is attached and 'Done, with results' never sends.</div>
 
     <q-card v-for="sheet in sheets" :key="sheet.key" flat bordered>
       <q-card-section class="q-gutter-y-md">
@@ -135,13 +165,12 @@
           <div class="text-grey-7 text-mono">{{ sheet.table }}</div>
           <q-space />
           <q-toggle
-            v-if="sheet.rec"
             v-model="email.sheets[sheet.key].enabled"
-            :disable="sheet.available.length === 0"
-            :label="sheet.available.length === 0 ? 'No output saved for this side' : 'Include'" />
+            :disable="sheet.rec && sheet.available.length === 0"
+            :label="sheet.rec && sheet.available.length === 0 ? 'No output saved for this side' : 'Include'" />
         </div>
 
-        <template v-if="!sheet.rec || email.sheets[sheet.key].enabled">
+        <template v-if="email.sheets[sheet.key].enabled">
           <div v-if="sheet.rec" class="row items-center q-gutter-md">
             <span class="text-grey-8">Result types</span>
             <q-checkbox
@@ -156,7 +185,7 @@
             label="Filter"
             v-model="email.sheets[sheet.key].filter"
             :columns="sheet.columns"
-            :template-vars="true"
+            :template-vars="sheetVariables"
             :examples="filterExamples(sheet.key)"
             :check="filterChecker(sheet.key)">
           </code-box>
@@ -220,6 +249,49 @@
       </q-card-section>
     </q-card>
 
+    <q-card flat bordered>
+      <q-card-section class="q-gutter-y-md">
+        <div class="row items-center q-gutter-md">
+          <div class="text-weight-bold">Free SQL</div>
+          <q-input
+            dense
+            outlined
+            style="width: 260px"
+            maxlength="31"
+            :model-value="email.sheets.sql.name"
+            @update:model-value="(value) => (email.sheets.sql.name = value && value.trim() ? value : null)"
+            label="Sheet name"
+            :placeholder="defaultSqlSheetName"
+            stack-label
+            :error="sheetNameInvalid('sql')"
+            hide-bottom-space>
+            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+              Name of the sheet in the Excel file, up to 31 characters without [ ] : * ? / \.<br />
+              Empty = {{ defaultSqlSheetName }}.
+            </q-tooltip>
+          </q-input>
+          <div class="text-grey-7">A query of your own, as the last sheet</div>
+          <q-space />
+          <q-toggle v-model="email.sheets.sql.enabled" label="Include" />
+        </div>
+        <template v-if="email.sheets.sql.enabled">
+          <code-box
+            label="Query"
+            v-model="email.sheets.sql.query"
+            :tables="sqlTables"
+            :template-vars="sheetVariables"
+            :examples="sqlExamples"
+            :check="sqlChecker">
+          </code-box>
+          <div class="text-grey-7 text-caption">
+            A select or with query. Its columns are the sheet's columns, named as the query returns them, so a quoted alias such as "Loss amount" becomes the
+            header. Variables are replaced as text, so quote dates, e.g. to_date('{control_date_from:%Y-%m-%d}', 'yyyy-mm-dd'). Its rows count toward the
+            limits, and toward 'Done, with results' only when no other sheet is included.
+          </div>
+        </template>
+      </q-card-section>
+    </q-card>
+
     <div class="row items-start q-gutter-md q-mt-lg">
       <q-input
         class="col-4"
@@ -253,7 +325,17 @@
 import { api, notifyError } from "../api";
 import CodeBox from "./CodeBox.vue";
 import { examplesFor } from "../utils/codeExamples";
-import { EMAIL_VARIABLES, RESULT_META_COLUMNS, SEND_WHEN_OPTIONS, SHEET_NAME_INVALID, completeEmailConfig, defaultSheetName, isEmailAddress } from "../utils/email";
+import {
+  DEFAULT_SQL_SHEET_NAME,
+  RESULT_META_COLUMNS,
+  SEND_WHEN_OPTIONS,
+  SHEET_NAME_INVALID,
+  completeEmailConfig,
+  defaultSheetName,
+  emailVariables,
+  isEmailAddress,
+  sheetVariables,
+} from "../utils/email";
 
 // rule_config.email of a control. modelValue is the parent's object and is edited in place.
 export default {
@@ -272,6 +354,7 @@ export default {
   data() {
     return {
       sendWhenOptions: SEND_WHEN_OPTIONS,
+      defaultSqlSheetName: DEFAULT_SQL_SHEET_NAME,
       recipientFields: [
         { key: "to", label: "To", icon: "fas fa-envelope" },
         { key: "cc", label: "CC", icon: "fas fa-copy" },
@@ -291,7 +374,23 @@ export default {
       return this.controlType === "REC";
     },
     variables() {
-      return EMAIL_VARIABLES.filter((variable) => (this.isRec ? !variable.single : !variable.rec));
+      return emailVariables(this.controlType);
+    },
+    // The variables of the filters and the Free SQL: listed under the box and completed after "{".
+    sheetVariables() {
+      return sheetVariables(this.controlType);
+    },
+    // The control's result tables with their columns, so the Free SQL completes them.
+    sqlTables() {
+      if (!this.controlName) return {};
+      return Object.fromEntries(this.sheets.map((sheet) => [sheet.table, sheet.columns]));
+    },
+    sqlExamples() {
+      return examplesFor({ field: "email_sql", controlType: this.controlType, controlName: this.controlName, side: "a" });
+    },
+    anySheetIncluded() {
+      const included = this.sheets.some((sheet) => this.email.sheets[sheet.key].enabled && (!sheet.rec || sheet.available.length));
+      return included || this.email.sheets.sql.enabled;
     },
     tableNames() {
       const name = (this.controlName || "<NAME>").toUpperCase();
@@ -353,6 +452,14 @@ export default {
           loadingBar: false,
           body: { kind: "email_filter", statement, control_name: this.controlName, control_type: this.controlType, side },
         });
+    },
+    // The query is checked with sample values for the {variables}; it needs no saved control.
+    sqlChecker(statement) {
+      return api("validate-sql", {
+        method: "POST",
+        loadingBar: false,
+        body: { kind: "email_sql", statement, control_name: this.controlName, control_type: this.controlType },
+      });
     },
     isEmailAddress,
     sheetNameInvalid(key) {
