@@ -20,7 +20,7 @@ On top of that the fork adds the FastAPI web server, live updates over socket.io
 the server with a lease, an event history and missed-fire handling, a run manager that gives every run its own
 process, per-run log files shown in the UI, a documented web API, an optional Oracle-side execution engine
 for reconciliation controls, results sent per email, and a KPI catalogue editor. The releases are described in
-[migrations/v0.7.0](migrations/v0.7.0/README.md),
+[migrations/v0.7.0](migrations/v0.7.0/CHANGELOG.md),
 [migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md),
 [migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md),
 [migrations/v0.8.2](migrations/v0.8.2/CHANGELOG.md) and

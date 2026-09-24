@@ -169,12 +169,13 @@ Schema: `rapo_scheduler` lease columns, new `rapo_scheduler_event` table.
   - Swagger is served only with `[API] docs`.
   - *Instance details* shows the paths and every `rapo.ini` parameter, secrets masked.
   - `rapo-ctl.sh` (renamed `rapoctl.sh` in v0.8.3) supports unattended `@reboot` starts with `--wait`.
-- **Distribution.** Runs from source with a `.venv` instead of PyPI; version marked `+fork`; upstream credited in
+- **Distribution.** Version marked `+fork`; PyPI metadata dropped; upstream credited in
   README, LICENSE and NOTICE.
 
 ## v0.7.0 — 2026-09-19
 
-Schema: index on `rapo_log.updated`. `rapo.ini` moves to the application folder (or `$RAPO_CONFIG`).
+Schema: index on `rapo_log.updated`. `rapo.ini` moves to the application folder (or `$RAPO_CONFIG`). Runs from source
+in a `.venv` instead of PyPI; Python >= 3.10.
 
 - **FastAPI replaces Flask.**
   - uvicorn with one worker; routes under `/api` behind a Bearer token, with real HTTP error codes.
