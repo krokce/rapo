@@ -198,8 +198,9 @@ inserted. `updated_date` is set by the server.
 Saving reloads the schedules at once, so a new or changed schedule applies without a restart. `400` with the
 reason when the row cannot be written.
 
-The answer is `{"status": 200, "control_id": 94, "updated_date": "2026-09-23T11:43:56"}`: the row as saved, read
-back from the database. `updated_date` is stamped by the database trigger, with the database's clock.
+The answer is `{"status": 200, "control_id": 94, "updated_date": "2026-09-23T11:43:56", "renamed_dependents": []}`:
+the row as saved, read back from the database. `updated_date` is stamped by the database trigger, with the
+database's clock. `renamed_dependents` names the controls whose datasources followed a rename (see below).
 
 **Optimistic lock.** Send the `updated_date` you read the control with as `expected_updated_date` (a body key
 beside the columns). If the row has been saved since, nothing is written and the answer is `409` with
@@ -212,7 +213,18 @@ configuration of the control. See [Email](#email).
 **Rename.** When `control_name` changes, the result tables (`rapo_rest_`/`rapo_resa_`/`rapo_resb_<name>`) and
 their `rapo_process_id` index are renamed with it. When a table of the new name already exists, the control is
 still saved, the tables stay under the old name, and the answer is `400` with
-`"Control was saved, but its result tables were not renamed: ..."`.
+`"Control was saved, but its result tables, or the datasources reading them, were not renamed: ..."`. The controls
+reading the result tables (chain-rules, below) get their `source_name*` renamed in the same save, each as a new
+version.
+
+**Chain-rules.** A datasource named `rapo_rest_`/`rapo_resa_`/`rapo_resb_<name>` of an existing control (a plain
+name, not owner-qualified, linked or with `{variables}`) makes the control read that control's results: each run
+first runs it for the same period and reads only its records, with no date window and no time-shift widening
+(so a reconciliation pair straddling midnight shows its other record as a Loss on the neighbouring day's run). Nothing is written and the answer is `400` when the
+control would read its own result table, read a table the other control does not write (e.g. `rapo_resb_` of a
+reconciliation with `need_b = 'N'`), close a cycle (`"Controls would read each other's results in a cycle: A -> B
+-> A."`), be cascaded (`trigger_id`) from a control it runs first, or when a control reading this one's results
+would read a table it no longer writes.
 
 ### Result table schema
 
@@ -321,7 +333,8 @@ control, is not a result table (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_`), or does
 datasource.
 
 #### `DELETE /api/delete-control`
-Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched.
+Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched. `400` naming them
+while other controls read its results (chain-rules, see `save-control`).
 
 #### `POST /api/validate-sql`
 Parse one statement of the control editor with Oracle without executing it, the way the engine will run it. The
@@ -468,7 +481,7 @@ The run request history, latest first.
 |----------------|------|---------|------------------------------------------------|
 | `control_name` | str  | -       | Filter by control.                             |
 | `event_type`   | str  | -       | `FIRED`, `STARTED`, `MISSED`, `FAILED`, `CANCELED`. |
-| `trigger_type` | str  | -       | `SCHEDULE`, `MANUAL`, `CATCHUP`, `ITERATION`, `CASCADE`. |
+| `trigger_type` | str  | -       | `SCHEDULE`, `MANUAL`, `CATCHUP`, `ITERATION`, `CASCADE`, `UPSTREAM`. |
 | `date_from`    | date | -       | Events from this day on.                       |
 | `date_to`      | date | -       | Events up to and including this day.           |
 | `limit`        | int  | 500     | Maximum number of rows, 1 .. 5000.             |
@@ -580,7 +593,8 @@ started run is not repeated here; it is the `rapo_log` row linked by `process_id
 
 **Trigger types** (`rapo_scheduler_event.trigger_type`): `SCHEDULE` a scheduled fire, `MANUAL` a run asked for
 through `run-control`, `CATCHUP` a missed fire run afterwards, `ITERATION` an iteration of another run, `CASCADE` a
-control triggered by another control.
+control triggered by another control, `UPSTREAM` a control run first because another reads its results (the
+`message` is `For <control> [<process_id>]`).
 
 **Scheduler states** (`scheduler-status.state`): `running` this server holds the lease and schedules, `standby`
 another server does, `stopped` scheduling is switched off in the database for every server, `off` the scheduler is

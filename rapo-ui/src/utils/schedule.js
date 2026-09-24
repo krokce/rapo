@@ -2,6 +2,8 @@
 // Types: D daily, W weekly, M monthly, C cascade (no time, triggered by another control),
 // X complex (cron-like ranges, steps or lists the simple editors can't represent).
 
+import { allUpstreams } from "./chain";
+
 export function defaultSchedule() {
   return { mday: null, wday: null, hour: "8", min: "15", sec: "0", trigger_id: null };
 }
@@ -57,13 +59,13 @@ export function scheduleTime(schedule) {
   return [schedule.hour, schedule.min, schedule.sec].map((value) => String(value ?? 0).padStart(2, "0")).join(":");
 }
 
-// Everything a run of this control performs besides the control itself: its enabled iterations,
-// and the enabled controls cascading from it (the ones triggered by its control_id).
-// Malformed configuration of one control must not break the caller.
+// Everything a run of this control performs besides the control itself: the controls whose results it reads,
+// which run first (upstream), its enabled iterations, and the enabled controls cascading from it (the ones
+// triggered by its control_id). Malformed configuration of one control must not break the caller.
 export function chainOf(controlName, catalogue) {
   const control = (catalogue || []).find((item) => item.control_name === controlName);
   if (!control) {
-    return { iterations: 0, cascade: [] };
+    return { iterations: 0, cascade: [], upstream: [] };
   }
   let iterations = 0;
   try {
@@ -82,7 +84,7 @@ export function chainOf(controlName, catalogue) {
       return false;
     }
   });
-  return { iterations, cascade: cascade.map((item) => item.control_name) };
+  return { iterations, cascade: cascade.map((item) => item.control_name), upstream: allUpstreams(controlName, catalogue) };
 }
 
 // A sentence naming the controls a run cascades into, or "" when it cascades into none.

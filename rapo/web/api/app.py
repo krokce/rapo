@@ -28,6 +28,7 @@ from ...core import mailer
 from ...core import schedule
 from ...core import sqlcheck
 from ...core import drift
+from ...core import chain
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming
@@ -625,13 +626,26 @@ def save_control(data: dict = fastapi.Body(...)):
             who = f" by {stamp['updated_by']}" if stamp['updated_by'] else ''
             detail = f'The control was changed{who} at {changed}.'
             raise fastapi.HTTPException(status_code=409, detail=detail)
+    rename_error = None
+    # A control reading the results of another one (a chain-rule) must not
+    # read its own, close a cycle or read a table the other does not write.
+    try:
+        renames = chain.validate(data, previous_name)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
     try:
         reader.save_control(data)
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    # The controls reading the result tables follow a rename too.
+    for rename in renames:
+        try:
+            reader.update_control(rename['control_id'], rename['values'])
+        except Exception as error:
+            logger.error()
+            rename_error = rename_error or error
     # The result tables are named after the control, so they follow a rename.
-    rename_error = None
     control_name = data.get('control_name')
     if previous_name and control_name and previous_name != control_name:
         try:
@@ -658,9 +672,12 @@ def save_control(data: dict = fastapi.Body(...)):
     if rename_error:
         raise fastapi.HTTPException(
             status_code=400,
-            detail=f'Control was saved, but its result tables were not '
-                   f'renamed: {rename_error}')
-    return {'status': 200, **saved_stamp(data)}
+            detail=f'Control was saved, but its result tables, or the '
+                   f'datasources reading them, were not renamed: '
+                   f'{rename_error}')
+    return {'status': 200, **saved_stamp(data),
+            'renamed_dependents': [rename['control_name']
+                                   for rename in renames]}
 
 
 def saved_stamp(data):
@@ -680,6 +697,14 @@ def saved_stamp(data):
 @api.delete('/delete-control')
 def delete_control(control_id: int):
     """Delete control from configuration table."""
+    name = reader.read_control_name_by_id(control_id)
+    dependents = [dependent['row']['control_name']
+                  for dependent in chain.dependents(name)] if name else []
+    if dependents:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Control {name} can not be deleted: '
+                   f'{", ".join(dependents)} read its results.')
     reader.delete_control(control_id)
     scheduler.refresh()
     events.poke()

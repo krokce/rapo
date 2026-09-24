@@ -113,6 +113,7 @@ export const TRIGGER_TYPES = {
   CATCHUP: { label: "Catch-up", icon: "fas fa-history" },
   ITERATION: { label: "Iteration", icon: "fas fa-redo" },
   CASCADE: { label: "Cascade", icon: "fas fa-sitemap" },
+  UPSTREAM: { label: "Upstream", icon: "fas fa-link" },
 };
 
 export const TRIGGER_TYPE_OPTIONS = Object.entries(TRIGGER_TYPES).map(([value, type]) => ({ label: type.label, value }));

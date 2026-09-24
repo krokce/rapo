@@ -4,6 +4,7 @@ import { Dialog, Notify } from "quasar";
 import { api, notifyError } from "./api";
 import store from "./store";
 import { cascadeMessage, chainOf } from "./utils/schedule";
+import { upstreamMessage } from "./utils/chain";
 import { copyText, escapeHtml, toDateString, toDateTimeString } from "./utils/format";
 
 // Resolves to false on cancel, otherwise to the selected options (an empty array when there are none).
@@ -29,7 +30,7 @@ async function chainOfRun(controlName) {
     try {
       await store.dispatch("updateControlCatalogue");
     } catch (error) {
-      return { iterations: 0, cascade: [] };
+      return { iterations: 0, cascade: [], upstream: [] };
     }
   }
   return chainOf(controlName, store.state.controlCatalogue);
@@ -65,7 +66,7 @@ export async function reRun(run, onDone) {
   const from = toDateString(run.date_from);
   const to = toDateString(run.date_to);
   const chain = await chainOfRun(run.control_name);
-  const note = cascadeMessage(chain.cascade);
+  const note = [upstreamMessage(chain.upstream), cascadeMessage(chain.cascade)].filter(Boolean).join(" ");
   const question = `Re-run for '${from}'${from !== to ? ` - '${to}'` : ""}?`;
   const selected = await confirm(run.control_name, note ? `${question} ${note}` : question, await iterationOption(run, chain));
   if (!selected) {

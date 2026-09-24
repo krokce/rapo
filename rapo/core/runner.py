@@ -30,6 +30,9 @@ from .control import Control
 
 SUPERVISION_INTERVAL = 2
 WATCHDOG_INTERVAL = 5
+# Most runs one job process follows: its run, the upstream runs of a chain,
+# the iterations and the cascade.
+CHAIN_LIMIT = 256
 
 
 def _is_late(since, limit):
@@ -46,9 +49,12 @@ def _waiting_since(job, state):
     own start says nothing about how long the run it currently performs has
     been waiting. That run is counted from its own initiation, and the first
     run of the process from the moment the process was spawned, so that time
-    spent in the execution queue is not counted against its timeout.
+    spent in the execution queue is not counted against its timeout. A run
+    that waited for its upstream runs (a chain-rule) is counted from the
+    moment it became the performed one again.
     """
-    moments = [moment for moment in (job.started, state['added']) if moment]
+    moments = [moment for moment in (job.started, state['added'],
+                                     job.switched) if moment]
     return max(moments) if moments else None
 
 
@@ -71,6 +77,9 @@ class Job:
         self.started = None
         self.process = None
         self.current = None
+        self.runs = None
+        self.switched = None
+        self.seen = None
         self.canceled = False
 
     @property
@@ -79,6 +88,18 @@ class Job:
         if self.current is not None:
             return self.current.value
         return self.control.process_id
+
+    @property
+    def process_ids(self):
+        """Get IDs of every run the job process has initiated so far."""
+        if self.runs is None:
+            return [self.control.process_id]
+        with self.runs.get_lock():
+            count = self.runs[0]
+            process_ids = list(self.runs[1:count+1])
+        if self.control.process_id not in process_ids:
+            process_ids.insert(0, self.control.process_id)
+        return process_ids
 
     def describe(self):
         """Get job description for the status report."""
@@ -199,8 +220,9 @@ class RunManager:
             if job:
                 self.pending.remove(job)
             else:
+                # Any run of a chain stops the whole chain.
                 job = next((job for job in self.running
-                            if job.process_id == process_id), None)
+                            if process_id in job.process_ids), None)
                 if not job:
                     return False
                 self.running.remove(job)
@@ -210,7 +232,7 @@ class RunManager:
         if job.process is None:
             self._drop(job, message)
         else:
-            self._kill(job, message)
+            self._kill(job, message, origin=process_id)
         self._notify()
         return True
 
@@ -288,9 +310,11 @@ class RunManager:
             return
         context = mp.get_context('spawn')
         job.current = context.Value('q', control.process_id)
+        job.runs = context.Array('q', CHAIN_LIMIT+1)
         process = context.Process(name=control.name, target=operate,
                                   args=(control, job.cascade, job.iterations,
-                                        job.current, os.getpid(), self.name))
+                                        job.current, job.runs, os.getpid(),
+                                        self.name))
         # Started under the lock, so that a cancel arriving right now either
         # stops the job here or finds a process it can terminate.
         with self.condition:
@@ -332,12 +356,23 @@ class RunManager:
             time.sleep(SUPERVISION_INTERVAL)
 
     def _check(self, job):
-        state = reader.read_run_state(job.process_id)
+        process_id = job.process_id
+        if process_id != job.seen:
+            job.seen = process_id
+            job.switched = dt.datetime.now()
+        state = reader.read_run_state(process_id)
         if not state:
             return
         status, timeout = state['status'], state['timeout']
+        head = job.control.process_id
+        origin = process_id
         if status is None:
             reason = 'request'
+        elif process_id != head and (reader.read_run_state(head) or
+                                     {}).get('status', 'I') is None:
+            # The run waits for its upstream runs, and was canceled by
+            # another server, which only voids it.
+            reason, origin = 'request', head
         elif status in ('S', 'P', 'F') and _is_late(state['start_date'],
                                                     timeout):
             reason = 'timeout'
@@ -354,7 +389,8 @@ class RunManager:
                 return
             self.running.remove(job)
             self.condition.notify_all()
-        self._kill(job, f'Control execution stopped because of the {reason}.')
+        self._kill(job, f'Control execution stopped because of the {reason}.',
+                   failed=reason == 'timeout', origin=origin)
         self._notify()
 
     def _settle(self, job):
@@ -366,13 +402,15 @@ class RunManager:
         running until the next server start sweeps it.
         """
         exitcode = job.process.exitcode if job.process else None
-        try:
-            self._finalize(job.process_id,
-                           'Control execution stopped because the control '
-                           'process finished unexpectedly '
-                           f'(exit code {exitcode}).')
-        except Exception:
-            logger.error()
+        # A run of a chain waiting for its upstream runs is left too.
+        for process_id in job.process_ids:
+            try:
+                self._finalize(process_id,
+                               'Control execution stopped because the '
+                               'control process finished unexpectedly '
+                               f'(exit code {exitcode}).')
+            except Exception:
+                logger.error()
 
     def _finalize(self, process_id, message):
         """Finish a run that nobody is performing any more.
@@ -402,20 +440,47 @@ class RunManager:
         control._set_as_error()
         return True
 
-    def _kill(self, job, message):
+    def _kill(self, job, message, failed=False, origin=None):
+        """Terminate the job process and stop the runs it left.
+
+        Besides the run performed, the runs of a chain waiting for their
+        upstream runs are stopped. The run the stop is for (origin, the
+        performed one by default) gets the message, the others are canceled
+        with it, or fail when it was stopped because of its timeout.
+        """
         process_id = job.process_id
+        origin = origin or process_id
         if job.process and job.process.is_alive():
             logger.info(f'{job.control} Terminating process at PID '
                         f'{job.process.pid}...')
             job.process.terminate()
             job.process.join(10)
         try:
-            control = Control(process_id=process_id)
-            if control.status not in ('D', 'E', 'C', 'X'):
-                control._save_text_message(message)
-                control._cancel()
+            label = f'{reader.read_control_name(origin)} [{origin}]'
         except Exception:
-            logger.error()
+            label = f'[{origin}]'
+        others = [other for other in job.process_ids if other != process_id]
+        for other_id in [process_id, *others]:
+            try:
+                control = Control(process_id=other_id)
+                if control.status in ('D', 'E', 'C', 'X'):
+                    continue
+                if other_id == origin:
+                    control._save_text_message(message)
+                    control._cancel()
+                elif failed:
+                    control._save_text_message(
+                        f'Upstream control {label} ended C.')
+                    control._save_text_error(
+                        f'Upstream control {label} ended C: {message}')
+                    control.executor.release_lock()
+                    control._set_as_error()
+                else:
+                    control._save_text_message(
+                        f'Control execution stopped with {label}: {message}')
+                    control._cancel()
+            except Exception:
+                logger.error()
 
     def _drop(self, job, message):
         try:
@@ -436,17 +501,32 @@ class RunManager:
                 logger.error()
 
 
-def operate(control, cascade, iterations, current, parent_pid,
+def operate(control, cascade, iterations, current, runs, parent_pid,
             runner):
     """Perform control run in the spawned process."""
     watchdog = th.Thread(name='Watchdog', target=watch, args=(parent_pid,),
                          daemon=True)
     watchdog.start()
 
-    def observe(run):
+    def remember(process_id):
+        with runs.get_lock():
+            count = runs[0]
+            if count < CHAIN_LIMIT:
+                runs[count+1] = process_id
+                runs[0] = count+1
+
+    def observe(run, resumed=False):
         current.value = run.process_id
         open_run_log(run.id, run.process_id)
-        if run.trigger:
+        if resumed:
+            return
+        remember(run.process_id)
+        if run.trigger == journal.UPSTREAM:
+            journal.record(run.id, run.trigger, journal.STARTED,
+                           process_id=run.process_id, runner=runner,
+                           start_time=dt.datetime.now(),
+                           message=f'For {run.pulled_by}')
+        elif run.trigger:
             # The timestamp of a manual run is reconstructed from its window,
             # so it is not a moment anything was scheduled for.
             fired = run.timestamp if run.scheduled else None
@@ -458,8 +538,10 @@ def operate(control, cascade, iterations, current, parent_pid,
     open_run_log(control.id, control.process_id)
     logger.info(f'{control} Performed by process {os.getpid()} of {runner}')
     control.observer = observe
-    if control._throttle():
-        control._resume()
+    remember(control.process_id)
+    if control._pull():
+        if control._throttle():
+            control._resume()
     if iterations:
         control.iterate()
     if cascade:

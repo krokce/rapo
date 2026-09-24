@@ -445,6 +445,14 @@ class Reader:
             result = db.execute(insert)
         return result
 
+    def update_control(self, control_id, values):
+        """Update the given columns of the control with the passed ID."""
+        config = db.tables.config
+        update = (config.update()
+                        .where(config.c.control_id == control_id)
+                        .values(**values, updated_date=dt.datetime.now()))
+        return db.execute(update)
+
     def delete_control(self, control_id):
         """Delete control from the config table of the passed control_id."""
         config = db.tables.config

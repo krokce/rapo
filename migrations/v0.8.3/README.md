@@ -21,6 +21,11 @@ There is **no database schema change**.
    no longer used and can be removed. The Oracle Instant Client is still required, as before, and `install.sh`
    warns when it is found only through `LD_LIBRARY_PATH`, which a start from cron does not have: set
    `[DATABASE] client_path` then.
+1. If you deployed the `PL` engine, redeploy its procedure as the Rapo schema owner, so that a reconciliation can
+   read the results of another control (chain-rules).
+    ```bash
+    sqlplus <user>/<password>@<database> @schema/rapo_usage_rule.sql
+    ```
 1. Before starting, check the controls that have an output limit, since it now applies to their results.
     ```sql
     select control_name, control_type, output_limit from rapo_config
