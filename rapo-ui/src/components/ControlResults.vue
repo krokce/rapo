@@ -160,7 +160,7 @@
       <template #default="{ item: control }">
         <tr :key="control.process_id">
           <td class="text-center">
-            <q-chip clickable size="11px" :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
+            <q-chip clickable :title="controlType(control.control_type).label" @click="filter.type = control.control_type">
               <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" />
               {{ control.control_type }}
             </q-chip>
@@ -573,9 +573,9 @@ a:visited {
    the width of the longest name of the day (nameColumnWidth), else the table scrolls sideways. */
 .results-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(1168px + var(--name-column-width));
+  min-width: calc(1198px + var(--name-column-width));
 }
-.results-table th:nth-child(1) { width: 84px; }
+.results-table th:nth-child(1) { width: 114px; }
 .results-table th:nth-child(2) { width: 144px; }
 .results-table th:nth-child(3) { width: 66px; }
 .results-table th:nth-child(4) { width: 92px; }

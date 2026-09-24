@@ -19,6 +19,32 @@ export function controlType(type) {
   return CONTROL_TYPES[type] || { label: type || "Unknown", icon: "fas fa-question-circle", color: "grey-6" };
 }
 
+// KPI type chips: one icon for all, the avatar colored by the unit (racs_kpi_type.kpi_value_unit, free text).
+// The common units are pinned; any other unit is hashed into a palette without their colors, so it never looks
+// like one of them.
+export const KPI_ICON = "fas fa-calculator";
+
+const KPI_UNIT_COLORS = { rec: "blue-8", "%": "orange-8", "€": "green-8", pts: "purple-7", mb: "cyan-8" };
+
+const KPI_UNIT_PALETTE = [
+  "red-7",
+  "brown-6",
+  "deep-purple-6",
+  "light-green-8",
+  "amber-9",
+  "blue-grey-7",
+  "pink-6",
+];
+
+export function kpiUnitColor(unit) {
+  const key = (unit || "").trim().toLowerCase();
+  if (!key) return "blue-grey-4";
+  if (KPI_UNIT_COLORS[key]) return KPI_UNIT_COLORS[key];
+  let hash = 0;
+  for (const char of key) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
+  return KPI_UNIT_PALETTE[hash % KPI_UNIT_PALETTE.length];
+}
+
 // Control engines (rapo_ref_engines). DB runs the SQL pipeline from Python, PL
 // runs it inside Oracle through RAPO_USAGE_RULE, PY is referenced but not built.
 export const CONTROL_ENGINES = {
