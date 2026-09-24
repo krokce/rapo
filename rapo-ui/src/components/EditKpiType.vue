@@ -8,10 +8,15 @@
       <editor-skeleton :rows="2" />
     </div>
     <div v-else>
+      <!-- The chip is colored by the unit as saved, not by the one being typed. -->
       <h2 class="row q-mb-lg">
-        <q-chip size="xl" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
+        <q-chip v-if="savedKpiType" size="xl" :title="savedKpiType.kpi_value_unit || 'No unit'">
+          <q-avatar :icon="kpiIcon" :color="kpiUnitColor(savedKpiType.kpi_value_unit)" text-color="white" class="type-avatar" />
+          {{ savedKpiType.kpi_type }}
+        </q-chip>
+        <q-chip v-else size="xl" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
         &nbsp;
-        {{ previousKpiType ? previousKpiType : "New KPI type" }}
+        {{ savedKpiType ? savedKpiType.kpi_type_desc : "New KPI type" }}
       </h2>
 
       <q-card>
@@ -220,7 +225,7 @@ import { examplesFor } from "../utils/codeExamples";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import { api, notifyError } from "../api";
-import { controlType } from "../constants";
+import { controlType, KPI_ICON, kpiUnitColor } from "../constants";
 import { toDateTimeString } from "../utils/format";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
@@ -272,6 +277,7 @@ export default {
       ready: this.kpiCode === "new",
       kpiType: emptyKpiType(),
       previousKpiType: null,
+      kpiIcon: KPI_ICON,
       usage: [],
       saving: false,
       sort: {
@@ -282,6 +288,9 @@ export default {
   },
   computed: {
     ...mapState(["kpiTypes", "controlCatalogue"]),
+    savedKpiType() {
+      return this.previousKpiType ? this.kpiTypes.find((item) => item.kpi_type === this.previousKpiType) || null : null;
+    },
     controlsTabLabel() {
       return this.usedControls.length ? "Controls (" + this.usedControls.length + ")" : "Controls";
     },
@@ -310,6 +319,7 @@ export default {
   methods: {
     ...mapActions(["updateKpiTypes", "updateControlCatalogue"]),
     controlType,
+    kpiUnitColor,
     toDateTimeString,
     sortIcon,
     toggleSort,
@@ -463,6 +473,11 @@ export default {
 </script>
 
 <style scoped>
+/* A chip rounds its avatar with a fixed radius, which is not a circle at size xl. */
+.q-chip .type-avatar {
+  border-radius: 50%;
+}
+
 .sortable {
   cursor: pointer;
   user-select: none;

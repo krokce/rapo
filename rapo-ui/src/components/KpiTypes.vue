@@ -52,7 +52,7 @@
       <q-markup-table>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" style="width: 90px" @click="toggleSort(sort, 'kpi_type')">
+            <th class="text-left sortable" style="width: 120px" @click="toggleSort(sort, 'kpi_type')">
               Code
               <q-icon v-if="sort.key === 'kpi_type'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -81,7 +81,7 @@
           </tr>
         </thead>
         <tbody v-if="!loaded">
-          <skeleton-rows :rows="8" :columns="['text', 'text', 'QChip', 'text', 'text', 'text', 'text', null]" />
+          <skeleton-rows :rows="8" :columns="['QChip', 'text', 'QChip', 'text', 'text', 'text', 'text', null]" />
         </tbody>
         <tbody v-else>
           <!-- The row opens the editor; what reacts on its own (the unit chip, the menu) stops the click. -->
@@ -91,9 +91,10 @@
             class="clickable-row"
             @click="$router.push({ name: 'edit-kpi-type', params: { kpiCode: kpiType.kpi_type } })">
             <td class="text-left">
-              <div class="text-weight-bold text-grey-9" style="font-size: 16px">
+              <q-chip :title="kpiType.kpi_value_unit || 'No unit'">
+                <q-avatar :icon="kpiIcon" :color="kpiUnitColor(kpiType.kpi_value_unit)" text-color="white" />
                 {{ kpiType.kpi_type }}
-              </div>
+              </q-chip>
             </td>
             <td class="text-left">{{ kpiType.kpi_type_desc }}</td>
             <td class="text-center">
@@ -159,6 +160,7 @@ import { mapActions, mapGetters, mapState } from "vuex";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
+import { KPI_ICON, kpiUnitColor } from "../constants";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 export default {
@@ -168,6 +170,7 @@ export default {
   },
   data() {
     return {
+      kpiIcon: KPI_ICON,
       // Until the first load, the table shows skeleton rows: the usage counts are never cached.
       loaded: false,
       // One row per (KPI type, control) of racs_kpi_config, which is what makes a type undeletable.
@@ -187,6 +190,7 @@ export default {
     ...mapActions(["updateKpiTypes"]),
     sortIcon,
     toggleSort,
+    kpiUnitColor,
     usageOf(kpiType) {
       return this.usage.filter((item) => item.kpi_type === kpiType);
     },

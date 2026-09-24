@@ -59,7 +59,7 @@
         map-options
         multiple
         use-chips
-        :options="['Preparation SQL', 'Prerequisite SQL', 'Completion SQL', 'Iterations', 'Case definition', 'Pre-run hook', 'No Post-run hook', 'Email', 'Schema drift']"
+        :options="attributeOptions"
         label="Control attributes">
       </q-select>
 
@@ -145,6 +145,10 @@
                 icon="fas fa-bolt"
                 @click="addAttributeFilter('No Post-run hook')">
                 No Post-run hook
+              </q-chip>
+
+              <q-chip clickable v-if="lacksKpi(control)" size="sm" color="red-4" text-color="white" :icon="kpiIcon" @click="addAttributeFilter('No KPI')">
+                No KPI
               </q-chip>
 
               <q-chip
@@ -344,7 +348,7 @@ import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import { api, notifyError } from "../api";
-import { CONTROL_TYPE_OPTIONS, controlType } from "../constants";
+import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
 import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
@@ -363,6 +367,10 @@ export default {
   data() {
     return {
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
+      kpiIcon: KPI_ICON,
+      // The ids of the controls with at least one KPI (racs_kpi_config), or null when that is not known, e.g.
+      // where the KPI tables are not deployed, so no control is flagged "No KPI".
+      kpiControlIds: null,
       loaded: false,
       refreshing: false,
       loadError: false,
@@ -445,6 +453,21 @@ export default {
         console.error("Schema drift check failed:", error);
       }
     },
+    lacksKpi(control) {
+      return this.kpiControlIds !== null && !this.kpiControlIds.has(control.control_id);
+    },
+    async refreshKpiControls() {
+      if (!(this.getEnvInfo && this.getEnvInfo.kpi_available)) {
+        this.kpiControlIds = null;
+        return;
+      }
+      try {
+        const usage = await api("get-kpi-type-usage", { loadingBar: false });
+        this.kpiControlIds = new Set(usage.map((item) => item.control_id).filter((id) => id != null));
+      } catch (error) {
+        console.error("KPI usage check failed:", error);
+      }
+    },
     addAttributeFilter(attr) {
       if (!this.filter.other_attributes.includes(attr)) {
         this.filter.other_attributes.push(attr);
@@ -487,7 +510,12 @@ export default {
   },
   computed: {
     ...mapState(["controlCatalogue", "schemaDrift"]),
-    ...mapGetters(["getSearch"]),
+    ...mapGetters(["getSearch", "getEnvInfo"]),
+    attributeOptions() {
+      const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
+      if (this.kpiControlIds !== null) options.push("No KPI");
+      return [...options, "Email", "Schema drift"];
+    },
     // Skeleton rows only while nothing is known yet; a catalogue already in the store is shown at once.
     showSkeleton() {
       return !this.loaded && !this.controlCatalogue.length;
@@ -535,7 +563,9 @@ export default {
             (attr === "Iterations" && this.iterationCount(item) > 0) ||
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||
+            (attr === "Post-run hook" && item.need_postrun_hook === "Y") ||
             (attr === "No Post-run hook" && item.need_postrun_hook !== "Y") ||
+            (attr === "No KPI" && this.lacksKpi(item)) ||
             (attr === "Email" && sendsEmail(item)) ||
             (attr === "Schema drift" && this.driftOf(item))
           );
@@ -552,19 +582,29 @@ export default {
       return this.filteredControlCatalogue.length;
     },
   },
+  watch: {
+    // The instance details can arrive after the page was opened.
+    "getEnvInfo.kpi_available"() {
+      this.refreshKpiControls();
+    },
+  },
   // Also runs after the first mount.
   activated() {
     const stopCatalogue = liveRefetch("controls:changed", this.updateControlCatalogue);
     // A save or a schema update fixes drift, and so does a run (it updates its tables before saving).
     const stopDriftConfig = liveRefetch("controls:changed", this.refreshSchemaDrift);
     const stopDriftRuns = liveRefetch("runs:changed", this.refreshSchemaDrift, { interval: 30000 });
+    // save-control writes the KPIs of a control; nothing watches racs_kpi_config itself.
+    const stopKpis = liveRefetch("controls:changed", this.refreshKpiControls);
     this.stopLiveUpdates = () => {
+      stopKpis();
       stopCatalogue();
       stopDriftConfig();
       stopDriftRuns();
     };
     this.refreshControlCatalogue();
     this.refreshSchemaDrift();
+    this.refreshKpiControls();
   },
   deactivated() {
     this.stopLiveUpdates();

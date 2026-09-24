@@ -7,7 +7,12 @@
 
       <q-card-section class="q-gutter-xs">
         <div class="row q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
-          <q-input outlined readonly class="col-1" :model-value="item.kpi_type" label="KPI" />
+          <div class="col-auto">
+            <q-chip size="18px" class="kpi-code" :title="typeUnit(item.kpi_type) || 'No unit'">
+              <q-avatar :icon="kpiIcon" :color="kpiUnitColor(typeUnit(item.kpi_type))" text-color="white" />
+              {{ item.kpi_type }}
+            </q-chip>
+          </div>
           <q-input outlined readonly class="col-4" :model-value="typeDescription(item.kpi_type)" label="Description" />
           <q-input outlined readonly class="col-1" :model-value="typeUnit(item.kpi_type)" label="Unit" />
           <q-input
@@ -51,7 +56,13 @@
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type">
                   <q-item-section @click="addKpi(type.kpi_type)">
-                    <q-item-label>{{ type.kpi_type }} &mdash; {{ type.kpi_type_desc }}</q-item-label>
+                    <q-item-label>
+                    <q-chip size="12px" class="q-ml-none menu-code">
+                      <q-avatar :icon="kpiIcon" :color="kpiUnitColor(type.kpi_value_unit)" text-color="white" />
+                      {{ type.kpi_type }}
+                    </q-chip>
+                    {{ type.kpi_type_desc }}
+                  </q-item-label>
                   </q-item-section>
                 </q-item>
               </q-list>
@@ -64,7 +75,13 @@
             <q-list dense class="text-no-wrap">
               <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type">
                 <q-item-section @click="addKpi(type.kpi_type)">
-                  <q-item-label>{{ type.kpi_type }} &mdash; {{ type.kpi_type_desc }}</q-item-label>
+                  <q-item-label>
+                    <q-chip size="12px" class="q-ml-none menu-code">
+                      <q-avatar :icon="kpiIcon" :color="kpiUnitColor(type.kpi_value_unit)" text-color="white" />
+                      {{ type.kpi_type }}
+                    </q-chip>
+                    {{ type.kpi_type_desc }}
+                  </q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -75,7 +92,11 @@
 
     <q-card v-if="kpiConfigObject.length > 0" class="q-pa-sm" flat bordered>
       <q-tabs v-model="kpiTab" dense align="left" active-color="primary" indicator-color="primary" narrow-indicator>
-        <q-tab v-for="item in kpiConfigObject" :key="item.kpi_type" :name="item.kpi_type" :label="item.kpi_type">
+        <q-tab v-for="item in kpiConfigObject" :key="item.kpi_type" :name="item.kpi_type">
+          <div class="row items-center no-wrap q-gutter-x-xs">
+            <q-icon :name="kpiIcon" :color="kpiUnitColor(typeUnit(item.kpi_type))" size="14px" />
+            <span class="text-weight-medium">{{ item.kpi_type }}</span>
+          </div>
           <q-tooltip>{{ typeDescription(item.kpi_type) }}</q-tooltip>
         </q-tab>
       </q-tabs>
@@ -149,6 +170,7 @@ import { mapState } from "vuex";
 import { api } from "../api";
 import CodeBox from "./CodeBox.vue";
 import { examplesFor } from "../utils/codeExamples";
+import { KPI_ICON, kpiUnitColor } from "../constants";
 
 // The two statements of a KPI, as RACS_KPI_PKG runs them: the KPI value for a run, then the alarm level for
 // that value. A NULL column means the type's default is used, which is what the "Use type default" toggle
@@ -184,6 +206,7 @@ export default {
   data() {
     return {
       statements: STATEMENTS,
+      kpiIcon: KPI_ICON,
       kpiTab: null,
       tableColumns: {},
       // Pending/finished get-datasource-columns requests by table name (see resultTableNames). Set here rather
@@ -245,6 +268,7 @@ export default {
     this.selectFirstTab();
   },
   methods: {
+    kpiUnitColor,
     type(code) {
       return this.kpiTypes.find((type) => type.kpi_type == code) || {};
     },
@@ -302,4 +326,14 @@ export default {
 };
 </script>
 
-<style></style>
+<style scoped>
+/* Wide enough for a four-character code, so the rows stay aligned with the least gap before the description. */
+.kpi-code {
+  min-width: 6em;
+}
+
+/* Equal-width code chips, so the descriptions in the Add KPI menu line up. */
+.menu-code {
+  min-width: 76px;
+}
+</style>
