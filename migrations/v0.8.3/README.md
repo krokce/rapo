@@ -17,7 +17,8 @@ There is **no database schema change**.
     .venv/bin/pip uninstall -y cx-Oracle
     ```
    `install.sh` (new in this release) updates the packages of the existing `.venv` in place; it is the reinstall
-   step of every upgrade from now on. The Oracle driver is now `oracledb`, which needs no compiler; `cx_Oracle` is
+   step of every upgrade from now on. It also installs `pandas` and `numpy`, new requirements of the data
+   analysis. The Oracle driver is now `oracledb`, which needs no compiler; `cx_Oracle` is
    no longer used and can be removed. The Oracle Instant Client is still required, as before, and `install.sh`
    warns when it is found only through `LD_LIBRARY_PATH`, which a start from cron does not have: set
    `[DATABASE] client_path` then.
@@ -36,6 +37,8 @@ There is **no database schema change**.
     ```
     @reboot /path/to/rapo/rapoctl.sh start --wait 600
     ```
+1. Optionally, add an `[ANALYSIS]` section to `rapo.ini` to change the limits of the data analysis (copy it from
+   `rapo.ini.example`). Without it the defaults apply.
 1. Start the web server.
     ```bash
     .venv/bin/rapo-server start

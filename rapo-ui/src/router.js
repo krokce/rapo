@@ -35,6 +35,13 @@ const router = createRouter({
       component: ControlResults,
     },
     {
+      // Its own chunk, so ECharts and the analysis components load only when a dataset is analysed.
+      name: "data-analysis",
+      path: "/analysis/:processId/:dataset",
+      meta: { hideSearch: true },
+      component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
+    },
+    {
       name: "scheduler",
       path: "/scheduler",
       meta: { hideSearch: true },

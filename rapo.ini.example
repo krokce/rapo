@@ -102,3 +102,19 @@ timeout=30
 # without the file, with a note. A control's own limit can only be lower.
 max_attachment_rows=100000
 max_attachment_mb=20
+
+[ANALYSIS]
+# Data analysis of a run's records, opened from the Results page. Each open
+# analysis page holds a sample of the records in a process of its own.
+# Rows loaded first, and added by each Extend.
+initial_rows=50000
+extend_rows=50000
+# Upper bound of a sample.
+max_rows=1000000
+# Samples open at once on this server (an analysis page holds one, two while
+# it compares); more are refused until one closes.
+max_sessions=4
+# An analysis not used for this long is closed and its memory freed.
+idle_minutes=15
+# A sample stops growing when its process uses more memory than this.
+max_memory_mb=2048

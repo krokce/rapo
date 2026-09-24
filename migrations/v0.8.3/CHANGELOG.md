@@ -2,8 +2,9 @@
 
 ## Annotation
 This release makes the Output limit work for analysis, report and comparison controls, gives every SQL box of
-the editors curated examples and a Check button, lets an email attach a sheet from a query of your own, and keeps
-the result tables in line with the control's configuration. There is no change to Rapo's own schema.
+the editors curated examples and a Check button, lets an email attach a sheet from a query of your own, keeps
+the result tables in line with the control's configuration, and lets you profile and browse the records behind any
+number of the Results page. There is no change to Rapo's own schema.
 The upgrade steps are in the [migration instructions](README.md).
 
 1. **Output limit for ANL, REP and CMP.** The *Output limit* in the editor's Main tab was stored but ignored for
@@ -169,3 +170,42 @@ The upgrade steps are in the [migration instructions](README.md).
     from one of the controls it runs first. Renaming a control renames the datasources of the controls reading its
     results; a control whose results others read cannot be deleted. For the `PL` engine, redeploy its procedure
     (see the [migration instructions](README.md)).
+19. **Data analysis from the Results page.** A click (left or right) on a *Fetched* or *Discrepancies* number, or an
+    error level, opens a menu with *Copy SQL to clipboard* and *Data analysis*. The SQL of a fetched number is the
+    select the engine runs for that run's window and datasource, filters included; it is built from the control's
+    **current** configuration, so a control changed after the run may select other records (the analysis page says
+    so). The SQL of a discrepancy number selects the run's rows of its result table; for a reconciliation it now
+    leaves out the `Match` rows saved with *Save reconciled*, so that it returns exactly the number shown. A
+    report's fetched number is its result table, which holds exactly what it fetched.
+    *Data analysis* opens a page that loads the first 50,000 rows of that dataset into a sample and profiles it,
+    as pandas-profiling does: an overview (rows, missing cells, duplicate rows, memory, column types) with alerts
+    (constant, empty, mostly missing, unique, imbalanced, high cardinality, many zeros, skewed), a card per column
+    (distinct and missing values, statistics and quantiles, histogram, distribution over time, hour of day and
+    weekday for dates, value lengths for text, most frequent and extreme values), missing values per column with a
+    nullity matrix, and the most frequent duplicate rows. *Extend* fetches the next 50,000 rows into the sample,
+    up to a limit. The *Data* tab shows the sample in a scrolling table with search, sort, filters per column and a
+    column chooser, and exports what it shows as Excel or CSV. Clicking a value, a bar, an alert or a duplicate row
+    of the profile opens the table on those rows. *Group by* in the table counts the rows by one or more columns (a
+    date by hour, day, month or year) with sums, means, minimums, maximums or distinct counts, and a click on a
+    group shows its rows. *Profile these rows* describes only the rows the filters leave, e.g. the losses alone.
+    The *Correlations* tab measures Pearson and Spearman correlation between numeric columns and Cramér's V
+    between columns with few distinct values, and names the strongest pairs. A result dataset opens with the split
+    of its rows by result type, case value and discrepancy description, and every dataset shows the trend of its
+    fetched and discrepancy counts over the control's last runs, where a click opens that run. Filters can also be
+    applied by the database (*Load from database*, or a *SQL filter* of your own, checked by Oracle before use):
+    the sample is then drawn from the matching records only, instead of from the first rows. The page's address
+    holds the view (tab, filters, grouping, database filter, comparison), so a copied link opens the same view.
+    The *Compare* tab sets the sample against another one: what this run fetched (to see what the discrepancies
+    have in common), the same dataset of the previous run (to see what changed), the other side of a
+    reconciliation, or any dataset of any run of any control. Columns are paired by name, for the two sides of a
+    reconciliation also by its criteria, and the pairs can be edited. The columns are ranked by how much their
+    distributions differ (Population Stability Index), and for each one the shares of its values or ranges are
+    charted side by side with their lift, so that a value over-represented in the discrepancies stands out, e.g. a
+    call type that is 12% of the source but 71% of the losses. A key-like column, nearly unique in both, is listed
+    but not ranked. In the *Data* tab of a reconciliation, the button on each row shows its counterpart: the other
+    side's records with the same correlation key (formula fields included), both those the run saved and those in
+    the other datasource for the run's window. The sample lives in a separate process on the server, which is
+    ended when the page opens another dataset, when the browser tab is closed, or after 15 minutes without use; a
+    comparison holds a second one.
+    The limits are in a new, optional `[ANALYSIS]` section of `rapo.ini` (see `rapo.ini.example`). This adds
+    `pandas` and `numpy` to the requirements.

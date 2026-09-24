@@ -92,7 +92,7 @@
         <div class="q-ma-lg">
           <!-- The list pages are kept alive, so going back to them shows their rows, filters and scroll at once. -->
           <router-view v-slot="{ Component }">
-            <keep-alive :include="['ControlCatalogue', 'ControlResults']">
+            <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DataAnalysis']">
               <component :is="Component" />
             </keep-alive>
           </router-view>
@@ -317,7 +317,7 @@ export default {
     // control editor its KPIs tab. routes are the route names in which a link shows as active.
     menuLinks() {
       const links = [
-        { icon: "fas fa-tasks", text: "Results", route: "/results", routes: ["results"] },
+        { icon: "fas fa-tasks", text: "Results", route: "/results", routes: ["results", "data-analysis"] },
         { icon: "fas fa-chart-line", text: "Controls", route: "/controls", routes: ["controls", "edit-control"] },
       ];
       if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
