@@ -244,6 +244,24 @@ changed.
 
 `400` when the body has no saved `control_id`.
 
+#### `GET /api/get-schema-drift`
+The drift of every control's result tables at once, keyed by `control_id`:
+
+```json
+{"94": {"level": "update", "changes": 1, "incompatible": 0,
+        "tables": ["RAPO_RESB_RAPO_FIX_REC"], "reason": null}}
+```
+
+`level` is `ok`, `update` (changes `update-control-schema` makes), `recreate` (incompatible columns), `error` (the
+configuration names a column its datasource lacks, see `reason`), `missing` (no result table yet) or
+`not_checked`. Controls that drop their tables on every run are left out.
+
+Unlike `check-control-schema`, which creates each expected table empty to learn Oracle's types, this reads the
+dictionary only (one pass over `all_tab_columns`), so it is cheap enough for the whole catalogue. The result
+tables are copies of plain datasource columns, so the answer is the same, except where only Oracle can type a
+column: a CMP output column that coalesces A and B, a datasource name with `{variables}`, and a datasource over a
+database link are `not_checked` with the `reason`.
+
 #### `GET /api/count-control-table-rows`
 Count the rows of one result table (`table`) of a saved control (`name`) exactly. A full scan, so it is meant
 to be asked for explicitly. Answers `{"table": "RAPO_RESA_MY_CONTROL", "rows": 1315, "counted":
