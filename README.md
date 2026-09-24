@@ -94,19 +94,32 @@ If you are a young RA Team or looking for some alternatives, try Rapo because:
 Rapo runs from its own folder (the application folder) with a virtual environment inside it. It is not published
 on PyPI.
 
-1. Get the source into the application folder and install it. Python 3.10 or newer is required.
+1. Get the source into the application folder and install it. Python 3.10 or newer and the
+   [Oracle Instant Client](https://www.oracle.com/database/technologies/instant-client.html) are required.
     ```bash
     git clone https://github.com/krokce/rapo.git rapo
     cd rapo
+    ./install.sh
+    ```
+   `install.sh` creates the virtual environment `.venv` in the application folder, lets you choose the Python it is
+   built with (or name it: `./install.sh --python python3.12`), installs the requirements and Rapo, creates
+   _rapo.ini_ from _rapo.ini.example_ when there is none, and checks that the Oracle Instant Client can be loaded.
+   Run it as the user that runs Rapo (`--allow-root` otherwise). Run again, it updates the packages of the existing
+   environment, which is also how an upgrade reinstalls them; `--force` deletes the environment and creates it anew,
+   and is refused while Rapo runs from it. `RAPO_HOME`, `RAPO_VENV` and `RAPO_CONFIG` override the paths, as for
+   `rapoctl.sh`. The built web UI is part of the source, and the Oracle driver (`oracledb`) needs no compiler, so
+   neither Node nor build tools are needed.
+
+   The same by hand:
+    ```bash
     python3 -m venv .venv
     .venv/bin/pip install -r requirements.txt
     .venv/bin/pip install --no-build-isolation -e .
     ```
-   The built web UI is part of the source, so Node is not needed to install Rapo.
 
 1. Deploy the database schema using the [scripts](schema/oracle.sql).
 
-1. Prepare the configuration file _rapo.ini_ (start from `cp rapo.ini.example rapo.ini` and fill in the credentials and token) and place it in the application folder (next to the `rapo` package), or point the `RAPO_CONFIG` environment variable to it.
+1. Prepare the configuration file _rapo.ini_ (`install.sh` creates it from _rapo.ini.example_; fill in the credentials and token, and set `client_path` to the Instant Client folder so that a start from cron finds it) and place it in the application folder (next to the `rapo` package), or point the `RAPO_CONFIG` environment variable to it.
 
 1. Start the server. It serves the API and the web UI on `[API] port` and runs the scheduler.
     ```bash
@@ -114,11 +127,11 @@ on PyPI.
     ```
    `rapo-server stop` stops it. The `rapo-scheduler` command is deprecated: the scheduler is part of the server.
 
-   To start, stop, restart or inspect the server from outside the application folder, use the `rapo-ctl.sh start [dev] | stop | restart | status` wrapper in it. It resolves its own paths and virtual environment, so it needs no environment of its own, which makes it the command to start Rapo on boot:
+   To start, stop, restart or inspect the server from outside the application folder, use the `rapoctl.sh start [dev] | stop | restart | status` wrapper in it. It resolves its own paths and virtual environment, so it needs no environment of its own, which makes it the command to start Rapo on boot:
     ```cron
-    @reboot /path/to/rapo/rapo-ctl.sh start --wait 600
+    @reboot /path/to/rapo/rapoctl.sh start --wait 600
     ```
-   `--wait` keeps retrying for that many seconds while the database is still coming up, and every action is logged to `rapo-ctl.log` in the log directory.
+   `--wait` keeps retrying for that many seconds while the database is still coming up, and every action is logged to `rapoctl.log` in the log directory.
 
 Upgrading from an earlier version? Follow the instructions of each release in [migrations](migrations/), in order.
 

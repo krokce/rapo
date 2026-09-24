@@ -18,6 +18,7 @@ import datetime as dt
 
 from ..database import db
 from ..utils import utils
+from .case import find_case_ids
 
 
 # The keywords a statement parsed as it is may start with. Everything else
@@ -269,8 +270,7 @@ def _case_warning(statement, case_ids):
     if case_ids is None:
         return None
     known = {int(i) for i in case_ids if str(i).strip().lstrip('-').isdigit()}
-    used = {int(i) for i in re.findall(r'\b(?:then|else)\s+(\d+)', statement,
-                                       re.I)}
+    used = {case_id for _, _, case_id in find_case_ids(statement)}
     missing = sorted(used - known)
     if not used:
         return 'No THEN <case ID> found: the mapping has to return the ' \

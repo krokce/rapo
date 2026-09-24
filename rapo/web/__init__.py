@@ -49,7 +49,7 @@ def find_server(host, port):
 
     The record names one instance only, so a server whose row was taken over
     by another one finds its own process by the command line it was started
-    with, the way `rapo-ctl.sh` does.
+    with, the way `rapoctl.sh` does.
 
     Returns
     -------

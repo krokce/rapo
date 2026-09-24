@@ -9,10 +9,16 @@ import urllib
 
 import sqlalchemy as sa
 import sqlparse as spa
-import cx_Oracle as oracle
+import oracledb as oracle
 
 from .config import config
 from .utils import utils
+
+# SQLAlchemy 1.4 has no python-oracledb dialect, so its cx_Oracle one runs on
+# oracledb registered under the old name, as python-oracledb documents. The
+# version it checks is the cx_Oracle API level that oracledb provides.
+oracle.version = '8.3.0'
+sys.modules['cx_Oracle'] = oracle
 
 
 class Database:
@@ -172,8 +178,9 @@ class Database:
             else:
                 url = f'{vendor_name}://{credentials}@{address}'
             url += f'/{identifier}'
-            if client_path:
-                oracle.init_oracle_client(lib_dir=client_path)
+            # Thick mode, as cx_Oracle always was: the Oracle Client comes
+            # from client_path, else from the library path.
+            oracle.init_oracle_client(lib_dir=client_path or None)
             settings = dict(max_identifier_length=max_identifier_length,
                             max_overflow=max_overflow,
                             pool_pre_ping=pool_pre_ping,

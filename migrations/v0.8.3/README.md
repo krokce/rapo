@@ -13,12 +13,23 @@ There is **no database schema change**.
     ```bash
     git fetch
     git checkout v0.8.3
-    .venv/bin/pip install --no-build-isolation -e .
+    ./install.sh
+    .venv/bin/pip uninstall -y cx-Oracle
     ```
+   `install.sh` (new in this release) updates the packages of the existing `.venv` in place; it is the reinstall
+   step of every upgrade from now on. The Oracle driver is now `oracledb`, which needs no compiler; `cx_Oracle` is
+   no longer used and can be removed. The Oracle Instant Client is still required, as before, and `install.sh`
+   warns when it is found only through `LD_LIBRARY_PATH`, which a start from cron does not have: set
+   `[DATABASE] client_path` then.
 1. Before starting, check the controls that have an output limit, since it now applies to their results.
     ```sql
     select control_name, control_type, output_limit from rapo_config
      where output_limit is not null and control_type != 'REC';
+    ```
+1. The control script `rapo-ctl.sh` is now `rapoctl.sh`, and its log `rapoctl.log`. If a crontab starts Rapo on
+   boot, point it to the new name (`crontab -e`):
+    ```
+    @reboot /path/to/rapo/rapoctl.sh start --wait 600
     ```
 1. Start the web server.
     ```bash
