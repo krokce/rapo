@@ -163,6 +163,7 @@ class Watcher:
 
 
 watcher = Watcher()
+main_loop = None
 
 
 @sio.event
@@ -188,3 +189,24 @@ def poke_scheduler():
     """Notify clients about a scheduler or run manager state change."""
     watcher.scheduler_changed = True
     watcher.poke()
+
+
+def bind(loop):
+    """Remember the server's event loop, for emits from other threads."""
+    global main_loop
+    main_loop = loop
+
+
+def emit_analysis(payload):
+    """Push an analysis session's state to the clients, from any thread.
+
+    Sessions are private to a page, which picks its own by `session_id`.
+    """
+    loop = main_loop
+    if loop is None or watcher.clients <= 0:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            sio.emit('analysis:progress', payload), loop)
+    except RuntimeError:
+        pass

@@ -4,12 +4,14 @@ import asyncio
 import configparser
 import contextlib
 import datetime as dt
+import json
 import os
 import traceback
 
 import fastapi
 import fastapi.responses
 import socketio
+from starlette.background import BackgroundTask
 import sqlalchemy as sa
 
 from . import events
@@ -32,6 +34,10 @@ from ...core import chain
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming
+from ...analysis import compare
+from ...analysis import datasets
+from ...analysis.sessions import sessions, SessionError
+from ...analysis.worker import EXCEL_MAX_ROWS
 
 
 UI_DIR = os.path.realpath(
@@ -54,12 +60,16 @@ def find_control(process_id):
 @contextlib.asynccontextmanager
 async def lifespan(app):
     """Run the run manager and the scheduler together with the server."""
+    events.bind(asyncio.get_running_loop())
     runner.listeners.append(events.poke_scheduler)
     scheduler.listeners.append(events.poke_scheduler)
+    sessions.listeners.append(events.emit_analysis)
     logs.cleaner.start()
     await asyncio.to_thread(runner.start)
     scheduler.start()
+    sessions.start()
     yield
+    await asyncio.to_thread(sessions.stop)
     await asyncio.to_thread(scheduler.stop)
     await asyncio.to_thread(runner.stop)
     logs.cleaner.stop()
@@ -880,6 +890,267 @@ def iteration_preview(name: str, date: str | None = None,
     except Exception as error:
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     return output_list
+
+
+def parse_json(name, value):
+    """Get a JSON query parameter, or answer 422."""
+    if value in (None, ''):
+        return None
+    try:
+        return json.loads(value)
+    except ValueError:
+        raise fastapi.HTTPException(status_code=422,
+                                    detail=f'{name} is not valid JSON')
+
+
+def analysis_session(session_id):
+    """Get an open analysis session, or answer its error."""
+    try:
+        return sessions.get(session_id)
+    except SessionError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+
+
+def analysis_request(session, command, **arguments):
+    """Ask a session's worker, answering its error as an HTTP error."""
+    try:
+        return session.request(command, **arguments)
+    except SessionError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+
+
+@api.get('/get-run-dataset-sql')
+def get_run_dataset_sql(process_id: int, dataset: str):
+    """Get the SQL of the records behind a number of a run.
+
+    `dataset` is fetched_a, fetched_b, result_a or result_b. A fetched
+    dataset is the engine's select for the run's window, built from the
+    current configuration.
+    """
+    try:
+        sql, meta = datasets.sql_text(process_id, dataset)
+    except datasets.DatasetError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'SQL can not be built: {error}')
+    return {'sql': sql, 'meta': meta}
+
+
+@api.post('/analysis-start')
+def analysis_start(process_id: int, dataset: str,
+                   pushdown: dict | None = fastapi.Body(None)):
+    """Start an analysis session on the records behind a number of a run.
+
+    The optional JSON body {filters, search, where} is applied by the
+    database, so the sample holds only the matching records.
+    """
+    try:
+        session = sessions.create(process_id, dataset, pushdown)
+    except SessionError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+    return session.describe()
+
+
+@api.get('/analysis-status')
+def analysis_status(session_id: str):
+    """Get an analysis session with the state of its sample."""
+    return analysis_session(session_id).describe()
+
+
+@api.post('/analysis-extend')
+def analysis_extend(session_id: str, rows: int | None = fastapi.Query(
+                        None, ge=1)):
+    """Fetch the next rows of the dataset into the sample."""
+    session = analysis_session(session_id)
+    return {'state': analysis_request(session, 'extend', rows=rows)}
+
+
+@api.post('/analysis-cancel')
+def analysis_cancel(session_id: str):
+    """Cancel the step an analysis session is performing."""
+    session = analysis_session(session_id)
+    return {'state': analysis_request(session, 'cancel')}
+
+
+@api.post('/analysis-close')
+def analysis_close(session_id: str):
+    """Close an analysis session and free its memory."""
+    sessions.close(session_id)
+    return {'status': 200}
+
+
+@api.get('/analysis-rows')
+def analysis_rows(session_id: str,
+                  offset: int = fastapi.Query(0, ge=0),
+                  limit: int = fastapi.Query(200, ge=1, le=5000),
+                  sort: str | None = None, search: str | None = None,
+                  filters: str | None = None):
+    """Get a window of the sample's rows, filtered, searched and sorted.
+
+    `sort` is a JSON list of {column, desc}; `filters` a JSON list of
+    {column, op, value}.
+    """
+    session = analysis_session(session_id)
+    return analysis_request(session, 'rows', offset=offset, limit=limit,
+                            sort=parse_json('sort', sort), search=search,
+                            filters=parse_json('filters', filters))
+
+
+@api.get('/analysis-profile')
+def analysis_profile(session_id: str, section: str,
+                     filters: str | None = None, search: str | None = None):
+    """Get a profile section of the sample, or start computing it.
+
+    With `filters` or `search` the section describes the rows they leave.
+    Answers `ready: false` while it is computed; the session's state then
+    lists the answer's `key` under `sections` once it is ready.
+    """
+    session = analysis_session(session_id)
+    return analysis_request(session, 'profile', section=section,
+                            filters=parse_json('filters', filters),
+                            search=search)
+
+
+@api.get('/analysis-groups')
+def analysis_groups(session_id: str, by: str,
+                    aggregates: str | None = None,
+                    filters: str | None = None, search: str | None = None,
+                    sort: str | None = None,
+                    limit: int = fastapi.Query(1000, ge=1, le=5000)):
+    """Group the sample's rows, filtered and searched, with aggregates.
+
+    `by` is a JSON list of {column, bucket}, `aggregates` of {column, fn},
+    `sort` a JSON {column, desc}.
+    """
+    session = analysis_session(session_id)
+    return analysis_request(session, 'groups', by=parse_json('by', by),
+                            aggregates=parse_json('aggregates', aggregates),
+                            filters=parse_json('filters', filters),
+                            search=search, sort=parse_json('sort', sort),
+                            limit=limit)
+
+
+@api.post('/validate-analysis-where')
+def validate_analysis_where(process_id: int, dataset: str,
+                            body: dict = fastapi.Body(...)):
+    """Parse a SQL filter against a dataset without running it.
+
+    The body is {where}. Answers like validate-sql.
+    """
+    return datasets.check_where(process_id, dataset, body.get('where'))
+
+
+@api.get('/get-analysis-targets')
+def get_analysis_targets(process_id: int, dataset: str):
+    """Get the datasets a run's dataset is usually compared with."""
+    try:
+        return datasets.targets(process_id, dataset)
+    except datasets.DatasetError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
+
+
+@api.get('/get-control-done-runs')
+def get_control_done_runs(control_name: str,
+                          limit: int = fastapi.Query(50, ge=1, le=500)):
+    """Get the latest done runs of a control, without their logs."""
+    return datasets.control_runs(control_name, limit)
+
+
+@api.get('/analysis-compare-mapping')
+def analysis_compare_mapping(session_id: str, other_id: str):
+    """Get the column pairs a comparison of two sessions starts with."""
+    first = analysis_session(session_id)
+    second = analysis_session(other_id)
+    return compare.default_mapping(first.meta, first.state.get('columns') or [],
+                                   second.meta,
+                                   second.state.get('columns') or [])
+
+
+@api.post('/analysis-compare')
+def analysis_compare(session_id: str, other_id: str,
+                     body: dict = fastapi.Body(...)):
+    """Compare the samples of two sessions over mapped columns.
+
+    The body is {pairs: [{a, b}]}, a naming a column of the first session's
+    sample and b one of the second's.
+    """
+    first = analysis_session(session_id)
+    second = analysis_session(other_id)
+    try:
+        return compare.compare(first, second, body.get('pairs'))
+    except SessionError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+
+
+@api.post('/analysis-counterpart')
+def analysis_counterpart(session_id: str, body: dict = fastapi.Body(...)):
+    """Find the other side's records of a reconciliation row.
+
+    The body is {row}, the row's values in the order of the session's
+    columns.
+    """
+    session = analysis_session(session_id)
+    try:
+        return datasets.counterpart(session.meta,
+                                    session.state.get('columns') or [],
+                                    body.get('row') or [])
+    except datasets.DatasetError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+
+
+@api.get('/get-control-trend')
+def get_control_trend(process_id: int, dataset: str,
+                      limit: int = fastapi.Query(30, ge=2, le=200)):
+    """Get the counts of a dataset over the control's last finished runs.
+
+    Read from the run log only. The runs are the latest `limit` done runs
+    of the run's control, oldest first, always including the run itself.
+    """
+    try:
+        return datasets.trend(process_id, dataset, limit)
+    except datasets.DatasetError as error:
+        raise fastapi.HTTPException(status_code=404, detail=str(error))
+
+
+@api.get('/analysis-export')
+def analysis_export(session_id: str, format: str = 'xlsx',
+                    sort: str | None = None, search: str | None = None,
+                    filters: str | None = None,
+                    columns: str | None = None):
+    """Download the viewed rows of the sample as xlsx or CSV."""
+    if format not in ('xlsx', 'csv'):
+        raise fastapi.HTTPException(status_code=422,
+                                    detail='format must be xlsx or csv')
+    session = analysis_session(session_id)
+    result = analysis_request(session, 'export', format=format,
+                              sort=parse_json('sort', sort), search=search,
+                              filters=parse_json('filters', filters),
+                              columns=parse_json('columns', columns),
+                              timeout=900)
+    meta = session.meta
+    name = f"{meta['control_name']}_{meta['process_id']}_{meta['dataset']}"
+    media_type = ('text/csv' if format == 'csv' else
+                  'application/vnd.openxmlformats-officedocument.'
+                  'spreadsheetml.sheet')
+    headers = {'X-Rapo-Rows': str(result['rows']),
+               'X-Rapo-Cut': str(EXCEL_MAX_ROWS) if result['cut'] else ''}
+    return fastapi.responses.FileResponse(
+        result['path'], media_type=media_type, filename=f'{name}.{format}',
+        headers=headers, background=BackgroundTask(remove_file,
+                                                   result['path']))
+
+
+def remove_file(path):
+    """Remove a temporary file once it is sent."""
+    if os.path.exists(path):
+        os.remove(path)
 
 
 fastapi_app.include_router(api)

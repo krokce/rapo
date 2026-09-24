@@ -202,43 +202,37 @@
             {{ toDateString(control.date_to) }}
           </td>
           <td class="text-right">
-            <span
-              v-if="control.fetched_number_a > 0 && control.control_type === 'REP'"
-              class="cursor-pointer text-red"
-              @click="copyResultsSql(control, 'A')">
+            <span v-if="control.fetched_number_a > 0" class="cursor-pointer number-link" @click="openNumberMenu($event, control, 'fetched_a')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_a')">
               {{ formatNumber(control.fetched_number_a) }}
             </span>
-            <span v-else>
-              {{ formatNumber(control.fetched_number_a) }}
+            <span v-else>{{ formatNumber(control.fetched_number_a) }}</span>
+          </td>
+          <td class="text-right">
+            <span v-if="control.fetched_number_b > 0" class="cursor-pointer number-link" @click="openNumberMenu($event, control, 'fetched_b')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_b')">
+              {{ formatNumber(control.fetched_number_b) }}
             </span>
+            <span v-else>{{ formatNumber(control.fetched_number_b) }}</span>
           </td>
           <td class="text-right">
-            {{ formatNumber(control.fetched_number_b) }}
-          </td>
-          <td class="text-right">
-            <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'A')">
+            <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_number_a) }}
             </span>
-            <span v-else>
-              {{ formatNumber(control.error_number_a) }}
-            </span>
+            <span v-else>{{ formatNumber(control.error_number_a) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'B')">
+            <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_number_b) }}
             </span>
-            <span v-else>
-              {{ formatNumber(control.error_number_b) }}
-            </span>
+            <span v-else>{{ formatNumber(control.error_number_b) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'A')">
+            <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_level_a, 2) }}%
             </span>
             <span v-else> {{ formatNumber(control.error_level_a, 2) }}% </span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" @click="copyResultsSql(control, 'B')">
+            <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_level_b, 2) }}%
             </span>
             <span v-else> {{ formatNumber(control.error_level_b, 2) }}% </span>
@@ -278,6 +272,19 @@
         </tbody>
       </template>
     </q-virtual-scroll>
+    <q-menu ref="numberMenu" :target="numberTarget" no-parent-event>
+      <q-list v-if="numberRow" dense class="text-no-wrap">
+        <q-item-label header class="q-py-xs text-caption">{{ numberLabel }}</q-item-label>
+        <q-item dense clickable v-close-popup @click="copyDatasetSql(numberRow, numberDataset, numberLabel)">
+          <q-item-section avatar class="menu-icon"><q-icon name="fas fa-copy" size="14px" color="blue-grey-7" /></q-item-section>
+          <q-item-section> Copy SQL to clipboard </q-item-section>
+        </q-item>
+        <q-item dense clickable v-close-popup :to="{ name: 'data-analysis', params: { processId: numberRow.process_id, dataset: numberDataset } }">
+          <q-item-section avatar class="menu-icon"><q-icon name="fas fa-chart-bar" size="14px" color="primary" /></q-item-section>
+          <q-item-section> Data analysis </q-item-section>
+        </q-item>
+      </q-list>
+    </q-menu>
     <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
         <q-list v-if="menuRow" dense class="text-no-wrap">
         <q-item dense clickable @click="reRun(menuRow, refreshControlResults)" v-close-popup>
@@ -330,7 +337,8 @@ import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, copyResultsSql, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
+import { cancelRun, copyDatasetSql, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
+import { datasetLabel } from "../utils/analysis";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
@@ -357,6 +365,10 @@ export default {
       // The one row menu of the table, opened at the kebab button of the row it acts on.
       menuTarget: false,
       menuProcessId: null,
+      // The one menu of the fetched and discrepancy numbers, opened at the number it acts on.
+      numberTarget: false,
+      numberProcessId: null,
+      numberDataset: null,
       filter: {
         control_name: null,
         type: null,
@@ -383,7 +395,7 @@ export default {
     dropTemporaryTables,
     showErrorLog,
     sendEmail,
-    copyResultsSql,
+    copyDatasetSql,
     sortIcon,
     toggleSort,
     fillViewportToBottom,
@@ -398,6 +410,12 @@ export default {
       } finally {
         this.refreshing = false;
       }
+    },
+    openNumberMenu(event, row, dataset) {
+      this.numberTarget = event.currentTarget;
+      this.numberProcessId = row.process_id;
+      this.numberDataset = dataset;
+      this.$nextTick(() => this.$refs.numberMenu.show());
     },
     openRowMenu(event, row) {
       this.menuTarget = event.currentTarget;
@@ -472,6 +490,17 @@ export default {
     // Looked up by PID, so an open menu follows live updates of its run.
     menuRow() {
       return this.controlResults.find((row) => row.process_id === this.menuProcessId) || null;
+    },
+    numberRow() {
+      return this.controlResults.find((row) => row.process_id === this.numberProcessId) || null;
+    },
+    // "Fetched A", "Discrepancies B", "Report rows", as the analysis page names the dataset.
+    numberLabel() {
+      if (!this.numberRow) {
+        return "";
+      }
+      const [kind, side] = this.numberDataset.split("_");
+      return datasetLabel({ control_type: this.numberRow.control_type, kind, side: side.toUpperCase() });
     },
     // The email configuration is in the catalogue. Until it is loaded, every type that can send one is offered.
     menuRowSendsEmail() {
@@ -567,6 +596,15 @@ a:visited {
 .sortable {
   cursor: pointer;
   user-select: none;
+}
+
+.number-link:hover {
+  color: #009688;
+  text-decoration: underline;
+}
+
+.menu-icon {
+  min-width: 28px;
 }
 
 /* Fixed columns, so rows swapped in while scrolling don't resize them. Processname takes the rest, but at least

@@ -38,7 +38,8 @@ section and answer 404 otherwise. Redoc is disabled.
 ## Conventions
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
-  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql` and `validate-sql`, which take a JSON body.
+  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `validate-sql` and `validate-analysis-where`, which
+  take a JSON body, and `analysis-start`, which takes an optional one.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -48,7 +49,7 @@ section and answer 404 otherwise. Redoc is disabled.
   | 401  | Missing or wrong token.                                                             |
   | 400  | The request was understood but could not be performed (bad control, failed save).   |
   | 404  | No such run, control, record or log file.                                           |
-  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, or a `save-control` refused because the control changed since `expected_updated_date`. |
+  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, or an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
   | 500  | An unexpected error in the route. `detail` is `<ErrorType>: <message>`, and the traceback is written to the server log (`rapo-server_YYYYMMDD.log`). |
   | 503  | The run manager is not running, so no run can be accepted.                          |
@@ -444,6 +445,135 @@ condition is not applied: the email is sent even when the run has no rows.
 Send the email of a control's (`control_name`) last run with status `D` to one address (`to`) instead of its
 recipients, with `[TEST]` before the subject. `400` when the control has no such run.
 
+### Data analysis
+
+The records behind a number of a run can be copied as SQL, or loaded into a sample that is profiled and browsed.
+A **dataset** names the number it stands for:
+
+| `dataset`   | Records                                                                                              |
+|-------------|------------------------------------------------------------------------------------------------------|
+| `fetched_a` | What the run read from datasource A (or the only datasource): the engine's select for the run's window, built from the control's **current** configuration. A REP's is its result table. |
+| `fetched_b` | The same for datasource B (REC, CMP).                                                                |
+| `result_a`  | The run's rows of `RAPO_RESA_<name>` (REC, without the `Match` rows) or `RAPO_REST_<name>` (other types). |
+| `result_b`  | The run's rows of `RAPO_RESB_<name>` (REC, without `Match`) or `RAPO_REST_<name>`.                   |
+
+A sample is held by an **analysis session**: a worker process on the server that keeps the dataset's cursor open,
+so that `analysis-extend` fetches the rows that follow. Sessions are local to the server that started them. One
+that gets no request for `[ANALYSIS] idle_minutes` is closed; any request to it then answers 404.
+
+The session **state** is `{status, step, progress, rows, version, exhausted, cursor_open, limited, memory_mb,
+columns, sections, error}`:
+- `status`: `starting`, `fetching`, `profiling`, `ready`, `canceled`, `error` (nothing loaded), `lost` (worker
+  gone), `expired`.
+- `progress`: `{done, total}` of the step, or null. `rows`: rows in the sample. `version` changes whenever the
+  sample does; rows and sections are always of the current version.
+- `exhausted`: every row of the dataset is loaded. `cursor_open`: the sample can be extended. `limited`: `rows`
+  (`max_rows` reached) or `memory` (`max_memory_mb` reached), else null.
+- `columns`: `[{name, kind, db_type}]` in the dataset's order, `kind` being `numeric`, `datetime` or `text`.
+- `sections`: the profile sections ready for this version.
+
+Changes of the state are pushed as the `analysis:progress` event (see Live events).
+
+**Viewer filters** (`filters`, a JSON list) are `{column, op, value}`: `eq`, `ne` (a value, null for missing),
+`in` (a list), `contains`, `starts` (case-insensitive text), `range` (`{min, max, max_inclusive}`, either bound
+null), `null`, `notnull`, and `{op: "duplicated"}` without a column (rows repeated in the sample). `sort` is a JSON
+list of `{column, desc}`, and `search` a case-insensitive text looked for in every column.
+
+#### `GET /api/get-run-dataset-sql`
+`process_id`, `dataset`. Answers `{sql, meta}`: the dataset's SQL, formatted, and its description (control, run
+window and status, `table_name`, `total` rows - exact for a result dataset, the run's count for a fetched one -
+and `stale`, true when the control was saved after the run started). 404 when the run, the dataset or the result
+table does not exist.
+
+#### `POST /api/analysis-start`
+`process_id`, `dataset`, and an optional JSON body `{filters, search, where}` applied by the database: the filters
+and the search become literal predicates over the dataset's select, and `where` is a condition of your own over its
+columns. The statement is parsed by Oracle first, so a wrong filter answers 404 with Oracle's message. Starts a
+session and answers `{session_id, meta, state, options}`, `options` being the `[ANALYSIS]` limits in effect. `meta`
+also holds `sql`, the statement the sample is drawn with (formatted), and `pushdown`; with a database filter, a
+fetched dataset's `total` is null, as counting it could scan the whole source. The first `initial_rows` are fetched
+at once, then the columns and the overview are profiled. 409 when all sessions are in use, 404 for an unknown
+dataset or a filter that does not parse, 503 while the server starts or stops.
+
+#### `GET /api/analysis-status`
+`session_id`. Answers the same as `analysis-start`, with the current state.
+
+#### `POST /api/analysis-extend`
+`session_id`, optional `rows` (default `extend_rows`). Fetches the next rows into the sample, up to `max_rows`.
+Answers `{state}`. 400 when the dataset has no more rows or its cursor was lost.
+
+#### `POST /api/analysis-cancel`
+`session_id`. Cancels the step in progress; rows fetched so far are kept. Answers `{state}`.
+
+#### `POST /api/analysis-close`
+`session_id`. Ends the session and its process. Answers `{"status": 200}`, also for a session already closed.
+
+#### `GET /api/analysis-rows`
+`session_id`, `offset` (0), `limit` (200, at most 5000), optional `sort`, `search`, `filters`. Answers `{version,
+total, offset, rows}`: `total` rows match, and `rows` are lists of values in the order of `state.columns`.
+
+#### `GET /api/analysis-profile`
+`session_id`, `section`: `overview`, `columns`, `missing`, `duplicates`, `correlations` or `breakdown`, and optional
+`filters` and `search`, which make the section describe only the rows they leave. Answers `{ready, version, key,
+data}`. A section not computed yet answers `ready: false` and is computed; the state lists its `key` under
+`sections` once it is ready (the section name, or `<section>@<hash>` for filtered rows). `correlations` holds
+`pearson`, `spearman` and `cramers` (`{columns, matrix}`), the strongest `pairs` and `alerts`; it is measured on the
+first 200,000 rows (`sampled`). `breakdown` counts the values of `rapo_result_type`, `rapo_result_value` and
+`rapo_discrepancy_description` where the dataset has them. `columns` is one object per column (`count`, `missing`, `distinct`, `top` values, `stats`, `histogram`
+`{counts, edges}`, and per kind `smallest`/`largest`, `hours`/`weekdays`, text lengths), each with its `alerts`.
+
+#### `GET /api/analysis-groups`
+`session_id`, `by` (a JSON list of `{column, bucket}`, `bucket` being `hour`, `day`, `month` or `year` for a
+date-time column), optional `aggregates` (a JSON list of `{column, fn}`, `fn` one of `sum`, `mean`, `min`, `max`,
+`nunique`), `filters`, `search`, `sort` (a JSON `{column, desc}`, `column` being `count`, a grouping column or
+`fn(column)`; by default the largest groups first) and `limit` (1000, at most 5000). Answers `{version, by,
+aggregates, rows, total_groups, total_rows}`, each row being `{keys, ends, count, values}`; `ends` gives, by key
+position, the end of a date bucket (exclusive).
+
+#### `POST /api/validate-analysis-where`
+`process_id`, `dataset`, JSON body `{where}`. Parses the dataset's select with that condition without running it,
+and answers like `validate-sql`.
+
+#### `GET /api/get-analysis-targets`
+`process_id`, `dataset`. Answers the datasets it is usually compared with, `[{key, label, process_id, dataset}]`:
+`source` (the other kind of the same side of the run: fetched for discrepancies and back; none for a REP),
+`previous` (the same dataset of the previous done run) and `other_side` (REC, and CMP fetched datasets).
+
+#### `GET /api/get-control-done-runs`
+`control_name`, `limit` (50, at most 500). Answers the latest done runs of a control, newest first, with their
+window and counts but without their logs, for picking one to compare with.
+
+#### `GET /api/analysis-compare-mapping`
+`session_id`, `other_id` (two sessions of this server). Answers `{pairs, unmatched_a, unmatched_b}`: the columns
+paired by name (case-insensitive; `rapo_process_id` and `rapo_discrepancy_id` left out) and, for the two sides of
+one reconciliation, by its correlation and discrepancy fields (`source` is `criteria` or `name`).
+
+#### `POST /api/analysis-compare`
+`session_id` (A), `other_id` (B), JSON body `{pairs: [{a, b}]}`. Compares the two samples column by column; no
+rows leave the workers. A numeric or date-time pair is binned on 20 common ranges, anything else by the 30 values
+most frequent in either sample, plus the missing and the other values. Answers `{rows_a, rows_b, version_a,
+version_b, columns}`, most divergent first, each `{a, b, kind, mode (bins or values), psi, level (stable, moderate,
+major, or unique for a key-like column, which is not ranked), missing_pct, distinct, stats {mean, median, min, max:
+[a, b]}, labels, shares_a, shares_b, lifts}`. `shares_*` are percentages of the rows per label, then missing, then
+other; each lift is `{index, label, missing, other, count_a, count_b, share_a, share_b, lift}`, lift being
+`share_a / share_b` (null when B has none).
+
+#### `POST /api/analysis-counterpart`
+`session_id` of a REC dataset, JSON body `{row}` (the row's values in the order of `state.columns`). Evaluates the
+row's correlation key with the control's own expressions and answers `{side, other_side, keys: [{expression,
+value}], results, source}`: the other side's rows of the run's result table and of its datasource for the run's
+window, each `{columns, rows, more, error}` (at most 100 rows, `more` when there are others). 400 for other types.
+
+#### `GET /api/get-control-trend`
+`process_id`, `dataset`, `limit` (30, 2 to 200). Answers `{side, process_id, runs}`: the latest `limit` done runs
+of the run's control (and the run itself), oldest first, each `{process_id, date_from, date_to, start_date, status,
+fetched, discrepancies, error_level}` of the dataset's side, from the run log only.
+
+#### `GET /api/analysis-export`
+`session_id`, `format` (`xlsx` or `csv`), optional `sort`, `search`, `filters`, `columns` (a JSON list of names, in
+the order wanted). Downloads the matching rows. Excel is cut at 1,048,575 rows, and the header `X-Rapo-Cut` then
+holds that limit.
+
 ### Scheduler
 
 #### `GET /api/scheduler-status`
@@ -560,6 +690,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `runs:changed`      | `{resync, process_ids, control_names}`            |
 | `controls:changed`  | `{resync, control_ids}`                           |
 | `scheduler:changed` | `{event_ids}`                                     |
+| `analysis:progress` | `{session_id, state}` - see Data analysis         |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*

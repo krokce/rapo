@@ -162,6 +162,18 @@ export async function copySql(statement, description) {
   }
 }
 
+// The SQL of the records behind a number of a run (fetched_a|b, result_a|b), built by the server: a fetched dataset
+// is the engine's select for the run's window, which only the engine can build.
+export async function copyDatasetSql(run, dataset, label) {
+  try {
+    const { sql } = await api("get-run-dataset-sql", { params: { process_id: run.process_id, dataset } });
+    await copyText(sql);
+    Notify.create({ type: "positive", message: `${label} SQL statement copied to clipboard` });
+  } catch (error) {
+    notifyError("Failed to copy SQL to clipboard.", error);
+  }
+}
+
 // Results are in RAPO_REST_<name>, or RAPO_RESA_/RAPO_RESB_<name> per side for reconciliations.
 export function copyResultsSql(run, side) {
   const suffix = run.control_type === "REC" ? side : "T";
