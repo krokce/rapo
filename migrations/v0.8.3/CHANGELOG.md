@@ -2,8 +2,8 @@
 
 ## Annotation
 This release makes the Output limit work for analysis, report and comparison controls, gives every SQL box of
-the editors curated examples and a Check button, and lets an email attach a sheet from a query of your own.
-There is no schema change.
+the editors curated examples and a Check button, lets an email attach a sheet from a query of your own, and keeps
+the result tables in line with the control's configuration. There is no change to Rapo's own schema.
 The upgrade steps are in the [migration instructions](README.md).
 
 1. **Output limit for ANL, REP and CMP.** The *Output limit* in the editor's Main tab was stored but ignored for
@@ -43,3 +43,27 @@ The upgrade steps are in the [migration instructions](README.md).
 6. **Braces in logged SQL.** A run whose logged SQL held a brace, e.g. a filter with `regexp_like(x, '^\d{3}$')`,
    failed with `IndexError: Replacement index 3 out of range`, because the log line was formatted as a template;
    and `{thread}` or `{{x}}` in it were rewritten in the log. Log lines are now written exactly as they are.
+7. **Result table schema follows the configuration.** The result tables (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_`)
+   used to be created by the first run and never changed, so a new datasource column, a changed output column or
+   a table altered by hand made later runs fail or lose columns, and the only fix was dropping the history. Now:
+   - The editor compares the tables with the configuration in the background, including unsaved changes, and
+     shows *Schema changes* or *Schema needs recreate* in the bottom bar next to *Unsaved changes*. Clicking it
+     lists every table with the columns that differ (added, widened, nullable, no longer output, incompatible),
+     the current and expected types, and how many rows a recreate would delete: the estimate of the optimizer
+     statistics, or an exact count on *Get exact count*, since counting scans the whole table. Only differences
+     that affect runs are reported: a result column wider than its datasource column (e.g. after the datasource
+     column was narrowed) still holds every value, so it is not shown and not changed.
+   - *Update schema* adds the missing columns, widens narrow ones and makes NOT NULL columns nullable, keeping
+     all results. *Recreate schema* drops the tables and creates them at once (it used to only drop them). Both
+     save unsaved changes first. A changed datasource or an incompatible type change (e.g. text to number)
+     highlights *Recreate schema*. Both buttons moved from the Main tab to the bottom bar; *Recreate schema* shows
+     the tables and their rows first. The *Recreate schema*
+     of the Controls list creates the tables at once too.
+   - A run makes the same safe changes itself before it saves, so a column added to a datasource no longer breaks
+     it. An incompatible column fails the run with `Recreate schema needed for <table>: <column> <type> -> <type>`.
+   - Renaming a control renames its result tables and their index, so the history stays with it.
+   - Analysis, report and comparison controls now save their results by column name, as reconciliations already
+     did, instead of by position. A comparison without output columns names its result columns `A_<column>` and
+     `B_<column>` in the working tables too; before, it failed when both datasources had a column of the same
+     name.
+   Controls that drop their tables on every run (*Keep past results: No, drop on each run*) are not checked.

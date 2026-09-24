@@ -220,9 +220,6 @@
                   </q-input>
                 </div>
 
-                <div v-if="control.control_id" class="row q-my-md q-gutter-md">
-                  <q-btn label="Recreate schema" color="red" flat class="q-ml-auto" @click="recreateSchema(control)" />
-                </div>
               </div>
             </q-tab-panel>
 
@@ -947,16 +944,51 @@
             </q-btn>
             <q-btn label="Cancel" type="reset" color="primary" flat />
             <q-space />
+            <div
+              v-if="schemaNotice"
+              class="schema-notice text-weight-medium row items-center no-wrap cursor-pointer"
+              :class="schemaNotice.class"
+              @click="$refs.schemaDialog.open()">
+              <q-icon :name="schemaNotice.icon" size="12px" class="q-mr-sm" />
+              {{ schemaNotice.label }}
+              <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">{{ schemaNotice.tooltip }}</q-tooltip>
+            </div>
             <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap">
               <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
               Unsaved changes
             </div>
+            <template v-if="schemaEnabled && !schemaCheck?.rebuilt_each_run">
+              <q-btn v-if="schemaSummary.safe" label="Update schema" color="primary" outline :disable="saving || schemaBusy" @click="applySchema('update')">
+                <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Add and widen columns of the result tables, keeping their data</q-tooltip>
+              </q-btn>
+              <q-btn
+                label="Recreate schema"
+                color="negative"
+                :flat="!schemaRecreateSuggested"
+                :unelevated="schemaRecreateSuggested"
+                :disable="saving || schemaBusy"
+                @click="$refs.schemaDialog.open()">
+                <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
+                  Drop the result tables and create them anew: past results are deleted. Shows the tables first.
+                </q-tooltip>
+              </q-btn>
+            </template>
           </div>
         </q-form>
       </q-card>
     </div>
 
     <run-log-dialog ref="runLogDialog" />
+    <schema-diff-dialog
+      ref="schemaDialog"
+      :check="schemaCheck"
+      :dirty="dirty"
+      :busy="saving || schemaBusy"
+      :exact-rows="schemaExactRows"
+      :counting-rows="schemaCountingRows"
+      @count="countSchemaRows"
+      @update="applySchema('update')"
+      @recreate="applySchema('recreate')" />
   </q-page>
 </template>
 
@@ -969,6 +1001,7 @@ import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import RunLogDialog from "./RunLogDialog.vue";
+import SchemaDiffDialog from "./SchemaDiffDialog.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
@@ -981,7 +1014,8 @@ import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
-import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import {
   DEFAULT_SQL_SHEET_NAME,
@@ -999,6 +1033,7 @@ export default {
     EditorSkeleton,
     RunLogDialog,
     RunControlDialog,
+    SchemaDiffDialog,
     ScheduleEditBox,
     ReconciliationDiscrepancyCheckboxes,
     ReconciliationMatchCriteriaBox,
@@ -1062,6 +1097,12 @@ export default {
       yesNoOptions: YES_NO_OPTIONS,
       periodTypeOptions: PERIOD_TYPE_OPTIONS,
       activeRunStatuses: ACTIVE_RUN_STATUSES,
+      // The answer of check-control-schema for the form as it is, null until the first one.
+      schemaCheck: null,
+      schemaBusy: false,
+      // Exact row counts asked for in SchemaDiffDialog ({table: {rows, counted}}), and the tables being counted.
+      schemaExactRows: {},
+      schemaCountingRows: {},
     };
   },
   created() {
@@ -1145,6 +1186,56 @@ export default {
         if (this.control.source_name_b) tables[this.control.source_name_b] = this.datasourceBColumns || [];
       }
       return tables;
+    },
+    // A saved control has result tables to compare; a new one or a clone gets them on its first run.
+    schemaEnabled() {
+      return this.ready && Boolean(this.control.control_id) && !this.$route.query.clone;
+    },
+    // The fields the result table schema depends on, as they would be saved. A change re-checks it.
+    schemaKey() {
+      if (!this.schemaEnabled) {
+        return null;
+      }
+      const payload = this.buildControlPayload();
+      const fields = ["control_name", "control_type", "with_drop", "source_name", "source_date_field", "output_table"];
+      const sides = ["source_name", "source_date_field", "source_key_field", "output_table"];
+      const keys = [...fields, ...sides.flatMap((field) => [field + "_a", field + "_b"])];
+      return JSON.stringify([...keys.map((key) => payload[key] ?? null), payload.control_type === "REC" ? payload.rule_config : null]);
+    },
+    schemaSummary() {
+      return summarizeSchema(this.schemaCheck);
+    },
+    // A new datasource or a column Update schema cannot convert: starting the tables anew is the better fix.
+    schemaRecreateSuggested() {
+      return this.schemaSummary.incompatible > 0 || Boolean(this.schemaCheck && this.schemaCheck.source_changed.length);
+    },
+    // The footer marker beside "Unsaved changes", which opens the details. None while the schema matches.
+    schemaNotice() {
+      const check = this.schemaCheck;
+      const summary = this.schemaSummary;
+      if (!this.schemaEnabled || !check) {
+        return null;
+      }
+      if (check.rebuilt_each_run) {
+        return { label: "Rebuilt on every run", icon: "fas fa-sync-alt", class: "text-grey-7", tooltip: "The result tables are dropped on each run, so their schema always follows the configuration." };
+      }
+      if (summary.level === "error") {
+        return { label: "Schema check failed", icon: "fas fa-exclamation-triangle", class: "text-negative", tooltip: summary.errors.join(" ") };
+      }
+      if (summary.level === "recreate") {
+        return { label: "Schema needs recreate", icon: "fas fa-exclamation-circle", class: "text-negative", tooltip: `${summary.incompatible} column(s) cannot be converted in place. Click for details.` };
+      }
+      if (summary.level === "update") {
+        const source = check.source_changed.length ? "Datasource changed: " : "";
+        return { label: "Schema changes", icon: "fas fa-circle", class: "text-amber-9", tooltip: `${source}${summary.safe} column change(s) for the result tables. Click for details.` };
+      }
+      if (check.source_changed.length) {
+        return { label: "Datasource changed", icon: "fas fa-circle", class: "text-amber-9", tooltip: "The result tables fit the new datasource. Recreate schema starts them anew. Click for details." };
+      }
+      if (summary.renamed) {
+        return { label: "Tables will be renamed", icon: "fas fa-circle", class: "text-blue-grey-7", tooltip: "Saving renames the result tables to the new control name." };
+      }
+      return null;
     },
     // Indexes of run log rows added on another day than the previous row, drawn with a separator line.
     newDayLogRows() {
@@ -1776,7 +1867,7 @@ export default {
         if (error.status === 409) {
           this.saving = false;
           this.resolveConflict(mode, error.message);
-          return;
+          return false;
         }
         // The control row is written, only its KPIs are not: take the row as saved, leave the KPIs changed.
         if (error.message.startsWith("Control was saved")) {
@@ -1785,7 +1876,7 @@ export default {
         // stay on the page so unsaved edits are not lost
         this.saving = false;
         notifyError("Control was not saved.", error);
-        return;
+        return false;
       }
       if (mode === "close") {
         this.savedControlJson = JSON.stringify(this.buildControlPayload());
@@ -1793,11 +1884,13 @@ export default {
         this.saving = false;
         this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
         this.$router.push({ name: "controls" });
-        return;
+        return true;
       }
       await this.afterSave(result, true);
       this.saving = false;
       this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved." });
+      this.checkSchema();
+      return true;
     },
     // Takes the saved row's ID and stamps into the form (an insert has none yet, and the next save needs them),
     // re-takes the saved state and, for a control saved for the first time, moves to its own URL.
@@ -1889,24 +1982,94 @@ export default {
       this.tab = "log";
       this.refreshLogs();
     },
-    recreateSchema(control) {
+    // Compares the result tables with the schema the form would create (debounced), for the footer marker.
+    // An answer overtaken by a later request is dropped.
+    checkSchema(delay = 0) {
+      clearTimeout(this.schemaTimer);
+      if (!this.schemaEnabled) {
+        this.schemaCheck = null;
+        return;
+      }
+      this.schemaTimer = setTimeout(async () => {
+        const request = (this.schemaRequest = (this.schemaRequest || 0) + 1);
+        try {
+          const check = await api("check-control-schema", { method: "POST", body: this.buildControlPayload(), loadingBar: false });
+          if (request === this.schemaRequest) {
+            this.schemaCheck = check;
+          }
+        } catch (error) {
+          if (request === this.schemaRequest) {
+            this.schemaCheck = { source_changed: [], tables: [], error: error.message };
+          }
+        }
+      }, delay);
+    },
+    // A count(*) scans the whole table, so it runs only on request. The table belongs to the saved control, which
+    // is still under its old name while a rename is unsaved.
+    async countSchemaRows(table) {
+      const name = this.schemaCheck.renamed_from || this.schemaCheck.control_name;
+      this.schemaCountingRows = { ...this.schemaCountingRows, [table]: true };
+      try {
+        const result = await api("count-control-table-rows", { params: { name, table } });
+        this.schemaExactRows = { ...this.schemaExactRows, [table]: result };
+      } catch (error) {
+        notifyError("Counting the rows of " + table.toUpperCase() + " failed.", error);
+      } finally {
+        this.schemaCountingRows = { ...this.schemaCountingRows, [table]: false };
+      }
+    },
+    // Update schema (add, widen, make nullable) or Recreate schema (drop and create now). A run reads the saved
+    // configuration, so unsaved changes are saved first, and the tables never get ahead of the saved row.
+    applySchema(action) {
+      const check = this.schemaCheck;
+      const summary = this.schemaSummary;
+      const lines = [];
+      if (this.dirty) {
+        lines.push("Your unsaved changes are saved first.");
+      }
+      for (const table of summary.tables) {
+        lines.push(describeTable(table, action, this.schemaExactRows[table.table]));
+      }
+      if (action === "update" && summary.incompatible) {
+        lines.push("Incompatible columns stay as they are, runs fail until the schema is recreated.");
+      }
+      if (check && check.active_run) {
+        lines.push("A run of this control is in progress and may fail.");
+      }
+      const recreate = action === "recreate";
       this.$q
         .dialog({
-          title: control.control_name,
-          message: "Recreate result tables? Past discrepancies will be deleted!",
-          cancel: true,
+          title: recreate ? "Recreate result tables?" : "Update result tables?",
+          message: lines.map((line) => `<div class="q-mb-xs">${escapeHtml(line)}</div>`).join("") + (recreate ? '<div class="text-negative q-mt-md">Past results will be deleted!</div>' : ""),
+          html: true,
+          ok: { label: recreate ? "Recreate" : "Update", color: recreate ? "negative" : "primary" },
+          cancel: { label: "Cancel", flat: true },
           persistent: true,
         })
         .onOk(async () => {
-          try {
-            await api("delete-control-output-tables", { method: "DELETE", params: { name: control.control_name } });
-            this.$q.notify({ type: "positive", message: "Schema for " + control.control_name + " was deleted. It will be recreated on the next run." });
-          } catch (error) {
-            notifyError("Schema deletion for " + control.control_name + " failed.", error);
+          if (this.dirty) {
+            if (!this.validate() || !(await this.submit("stay", true))) {
+              return;
+            }
           }
-        })
-        .onCancel(() => {
-          this.$q.notify({ message: "No action taken" });
+          const name = this.control.control_name;
+          this.schemaBusy = true;
+          try {
+            const result = await api(recreate ? "recreate-control-schema" : "update-control-schema", { method: "POST", params: { name } });
+            if (recreate) {
+              this.$q.notify({ type: "positive", message: "Result tables of " + name + " were recreated." });
+            } else if (result.incompatible && result.incompatible.length) {
+              this.$q.notify({ type: "warning", message: "Result tables of " + name + " were updated, except: " + result.incompatible.join(", ").toUpperCase() + ". Recreate the schema to fix them." });
+            } else {
+              this.$q.notify({ type: "positive", message: "Result tables of " + name + " were updated." });
+            }
+          } catch (error) {
+            notifyError((recreate ? "Recreating" : "Updating") + " the result tables of " + name + " failed.", error);
+          } finally {
+            this.schemaBusy = false;
+            this.schemaExactRows = {};
+            this.checkSchema();
+          }
         });
     },
     // SQL selecting the source records a run fetched: side "T" for single-source controls, "A"/"B" otherwise.
@@ -1924,7 +2087,7 @@ export default {
       copySql(`select * from ${table}\nwhere ${period}${filter};`, `Fetched records ${side === "T" ? "A" : side}-side`);
     },
     startLiveUpdates() {
-      const stopLogs = liveRefetch("runs:changed", this.updateLogDaysBack, {
+      const stopLogs = liveRefetch("runs:changed", this.onRunsChanged, {
         filter: (payload) => payload.control_names.includes(this.control.control_name),
       });
       const stopConfig = liveRefetch("controls:changed", this.checkControlChanged, {
@@ -1934,6 +2097,13 @@ export default {
         stopLogs();
         stopConfig();
       };
+    },
+    // A run may have created or updated the result tables, so a notice about them is re-checked.
+    onRunsChanged() {
+      this.updateLogDaysBack();
+      if (this.schemaNotice && !this.schemaCheck.rebuilt_each_run) {
+        this.checkSchema(2000);
+      }
     },
     async checkControlChanged() {
       // Own save triggers this event too, and clones have nothing to compare.
@@ -1971,6 +2141,11 @@ export default {
     },
   },
   watch: {
+    schemaKey(key, previous) {
+      if (key !== previous) {
+        this.checkSchema(previous === null ? 0 : 800);
+      }
+    },
     "control.source_name": function (newDatasource, oldDatasource) {
       if (this.initializing) {
         return;
@@ -2091,6 +2266,7 @@ export default {
   unmounted() {
     window.removeEventListener("keydown", this.onKeydown);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
+    clearTimeout(this.schemaTimer);
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }
@@ -2125,6 +2301,10 @@ export default {
   z-index: 2;
   background: white;
   border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.schema-notice:hover {
+  text-decoration: underline;
 }
 
 .new-day-separator > td {

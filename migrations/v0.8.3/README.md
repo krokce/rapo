@@ -25,6 +25,14 @@ There is **no database schema change**.
     .venv/bin/rapo-server start
     ```
 
+## Result table schema
+
+Nothing to do on upgrade. The first run of each control after it compares its result tables with its
+configuration and adds or widens columns that drifted (the run log shows each `ALTER TABLE`). A table with an
+incompatible column, e.g. a datasource column changed from text to number, fails the run until its schema is
+recreated from the editor or the Controls list. To see a control's state without running it, open it in the
+editor: the bottom bar shows *Schema changes* or *Schema needs recreate* when its tables differ.
+
 ## Email: Free SQL sheet and file name
 
 Existing email configurations keep working unchanged. Three keys are new in the `email` object of `rule_config`:

@@ -38,7 +38,7 @@ section and answer 404 otherwise. Redoc is disabled.
 ## Conventions
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
-  `save-kpi-type`, `validate-kpi-sql` and `validate-sql`, which take a JSON body.
+  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql` and `validate-sql`, which take a JSON body.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -96,7 +96,8 @@ Revoke a finished run (`id` = `process_id`): its results are deleted and the run
 Delete the temporary tables of one run (`id` = `process_id`), e.g. after a run in debug mode.
 
 #### `DELETE /api/delete-control-output-tables`
-Delete the result tables of a control (`name`). Irreversible.
+Delete the result tables of a control (`name`). Irreversible. The next run creates them again. To drop and create
+them at once, use [`recreate-control-schema`](#post-apirecreate-control-schema).
 
 #### `GET /api/iteration-preview`
 The runs the iterations of a manual run would perform: `name` and either `date` or `date_from`/`date_to`, the same
@@ -197,6 +198,69 @@ before. The web UI always sends it, and its Overwrite choice repeats the save wi
 
 For analysis, report and reconciliation controls, `rule_config` may carry an `email` object, the email
 configuration of the control. See [Email](#email).
+
+**Rename.** When `control_name` changes, the result tables (`rapo_rest_`/`rapo_resa_`/`rapo_resb_<name>`) and
+their `rapo_process_id` index are renamed with it. When a table of the new name already exists, the control is
+still saved, the tables stay under the old name, and the answer is `400` with
+`"Control was saved, but its result tables were not renamed: ..."`.
+
+### Result table schema
+
+The result tables are created by the first run from the datasource columns (or the configured output columns).
+These routes compare them with what the configuration would create now, and bring them in line.
+
+#### `POST /api/check-control-schema`
+Compare the result tables of a saved control with the schema of a configuration. The body is the control object
+as `save-control` takes it, possibly with unsaved changes; its `control_id` names the saved control. Nothing is
+changed.
+
+```json
+{"control_name": "MY_CONTROL", "renamed_from": null, "source_changed": ["A"],
+ "rebuilt_each_run": false, "active_run": false,
+ "tables": [{"table": "rapo_resa_my_control", "target": "rapo_resa_my_control", "exists": true,
+             "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04", "oldest": "2026-09-21T14:37:45",
+             "columns": [{"name": "amount", "status": "widened", "current": "NUMBER(8,2)",
+                          "expected": "NUMBER(12,4)", "ddl": "MODIFY (amount NUMBER(12,4))"}]}]}
+```
+
+- `source_changed`: the datasources that differ from the saved ones (`source`, `A`, `B`).
+- `renamed_from`: the saved name when `control_name` changed. `table` is then the existing table under the old
+  name and `target` its name after the save.
+- `rebuilt_each_run`: the control drops its tables on every run (`with_drop`), so there is nothing to compare and
+  `tables` is empty.
+- `active_run`: a run of the control is in status `I`/`W`/`S`/`P`/`F`.
+- `rows` / `rows_analyzed`: the row estimate of the optimizer statistics (`user_tables.num_rows`) and when they
+  were gathered, `null` without statistics. It is never counted here, since a `count(*)` scans the whole table;
+  see [`count-control-table-rows`](#get-apicount-control-table-rows).
+- `oldest`: the `added` time of the oldest run in the table (read from the `rapo_process_id` index).
+- `status` of a column: `ok` (the table column holds every value of the datasource column, so a column wider
+  than the datasource, e.g. `VARCHAR2(20)` for a datasource `VARCHAR2(15)`, is `ok` and never narrowed);
+  `added` (missing in the table); `widened` (too narrow for the datasource);
+  `nullable` (NOT NULL only in the table); `not_output` (no longer filled, kept with its history);
+  `incompatible` (the type cannot be converted in a table with data, e.g. `VARCHAR2` → `NUMBER`). `ddl` is the
+  change `update-control-schema` makes, or `null`.
+- A datasource that cannot be read is reported as `error` (top level), a table whose expected schema cannot be
+  built (e.g. an output column missing in the datasource) as `error` of that table. Both answer `200`.
+
+`400` when the body has no saved `control_id`.
+
+#### `GET /api/count-control-table-rows`
+Count the rows of one result table (`table`) of a saved control (`name`) exactly. A full scan, so it is meant
+to be asked for explicitly. Answers `{"table": "RAPO_RESA_MY_CONTROL", "rows": 1315, "counted":
+"2026-09-24T08:21:05"}`, `rows` being `null` when the table does not exist. `400` when `table` is not a result
+table of the control.
+
+#### `POST /api/update-control-schema`
+Apply the safe changes of `check-control-schema` to the existing result tables of a saved control (`name`):
+add missing columns, widen narrow ones, make NOT NULL columns nullable. Nothing is dropped and no data is
+changed. Answers `{"status": 200, "incompatible": ["rapo_rest_my_control.name"]}`, the columns left for
+`recreate-control-schema`. A run makes the same changes itself before it saves, and fails with
+`Recreate schema needed for <table>: ...` when an incompatible column is left.
+
+#### `POST /api/recreate-control-schema`
+Drop the result tables of a saved control (`name`) and create them at once with the schema of its saved
+configuration. Past results are deleted. `400` with the reason when a table cannot be created, e.g. a missing
+datasource.
 
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched.

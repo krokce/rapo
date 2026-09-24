@@ -7,6 +7,7 @@ import multiprocessing as mp
 
 import re
 import json
+import uuid
 import time as tm
 import datetime as dt
 
@@ -45,6 +46,9 @@ class Control:
         Data source date lower bound.
     date_to : str or datetime, optional
         Data source date upper bound.
+    config : dict, optional
+        Configuration to use instead of the stored one, e.g. an unsaved one
+        whose result table schema is being checked. Never run it.
 
     Attributes
     ----------
@@ -173,9 +177,11 @@ class Control:
 
     def __init__(self, name=None, timestamp=None, process_id=None,
                  iteration_id=None, date=None, date_from=None, date_to=None,
-                 debug_mode=False):
+                 debug_mode=False, config=None):
         self.name = name or reader.read_control_name(process_id)
-        self.config = reader.read_control_config(self.name)
+        # An unsaved configuration (the editor's form), used only to inspect
+        # what the control would do, e.g. the schema of its result tables.
+        self.config = config or reader.read_control_config(self.name)
         self.result = reader.read_control_result(process_id)
         self.id = int(self.config['control_id'])
         self.group = self.config['control_group']
@@ -3303,8 +3309,11 @@ class Executor:
         columns = []
         output_columns = self.control.output_columns
         if output_columns is None or len(output_columns) == 0:
-            columns.extend(table_a.columns)
-            columns.extend(table_b.columns)
+            # Named the way _prepare_output_columns names the result columns.
+            columns.extend(column.label(f'a_{column.name}')
+                           for column in table_a.columns)
+            columns.extend(column.label(f'b_{column.name}')
+                           for column in table_b.columns)
         else:
             for output_column in output_columns:
                 name = output_column['column']
@@ -3368,8 +3377,11 @@ class Executor:
         columns = []
         output_columns = self.control.output_columns
         if output_columns is None or len(output_columns) == 0:
-            columns.extend(table_a.columns)
-            columns.extend(table_b.columns)
+            # Named the way _prepare_output_columns names the result columns.
+            columns.extend(column.label(f'a_{column.name}')
+                           for column in table_a.columns)
+            columns.extend(column.label(f'b_{column.name}')
+                           for column in table_b.columns)
         else:
             for output_column in output_columns:
                 name = output_column['column']
@@ -3548,10 +3560,8 @@ class Executor:
         input_table = self.control.stage_table
         output_table = self.prepare_output_table()
         if input_table is not None:
-            input_columns = input_table.columns
-            output_columns = output_table.columns
-            process_id = self.control.key_column
-            select = sa.select(*input_columns, process_id)
+            output_columns, select = self._select_output(input_table,
+                                                         output_table)
             select = self._limit_output(select)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
@@ -3563,14 +3573,30 @@ class Executor:
         input_table = self.control.error_table
         output_table = self.prepare_output_table()
         if input_table is not None:
-            input_columns = input_table.columns
-            output_columns = output_table.columns
-            process_id = self.control.key_column
-            select = sa.select(*input_columns, process_id)
+            output_columns, select = self._select_output(input_table,
+                                                         output_table)
             select = self._limit_output(select)
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
             logger.debug(f'{self.c} Saving done')
+
+    def _select_output(self, input_table, output_table):
+        """Match the result table columns with the input table by name.
+
+        The result table may have columns the run does not fill (added by an
+        older configuration) or in another order (added by a schema update).
+        """
+        output_columns = []
+        input_columns = []
+        for output_column in output_table.columns:
+            if output_column.name == 'rapo_process_id':
+                continue
+            if output_column.name in input_table.columns:
+                output_columns.append(output_column)
+                input_columns.append(input_table.c[output_column.name])
+        output_columns.append(output_table.c.rapo_process_id)
+        select = sa.select(*input_columns, self.control.key_column)
+        return output_columns, select
 
     def _limit_output(self, select):
         """Apply output_limit to the select of an ANL/REP/CMP result save.
@@ -3684,26 +3710,252 @@ class Executor:
             elif self.control.with_drop:
                 self._delete_output_table(table_name)
         if not db.exists(table_name):
-            logger.debug(f'{self.c} Table {table_name} will be created')
-
-            columns = self._prepare_output_columns(table_name)
-            select = sa.select(*columns)
-            select = select.where(sa.literal(1) == sa.literal(0))
-            select = db.compile(select)
-            ctas = f'CREATE TABLE {table_name} AS\n{select}'
-            index = (f'CREATE INDEX {table_name}_rapo_process_id_ix '
-                     f'ON {table_name}(rapo_process_id) COMPRESS')
-            compress = (f'ALTER TABLE {table_name} '
-                        'MOVE ROW STORE COMPRESS ADVANCED')
-            text = db.formatter.document(ctas, index, compress)
-            logger.debug(f'{self.c} Creating table {table_name} '
-                         f'with query:\n{text}')
-            db.execute(ctas)
-            db.execute(index)
-            db.execute(compress)
-            logger.debug(f'{self.c} {table_name} created')
+            self._create_output_table(table_name)
+        else:
+            self.sync_output_table(table_name, heal=True)
         table = db.table(table_name)
         return table
+
+    def _create_output_table(self, table_name):
+        logger.debug(f'{self.c} Table {table_name} will be created')
+        select = self._select_output_columns(table_name)
+        ctas = f'CREATE TABLE {table_name} AS\n{select}'
+        index = (f'CREATE INDEX {table_name}_rapo_process_id_ix '
+                 f'ON {table_name}(rapo_process_id) COMPRESS')
+        compress = (f'ALTER TABLE {table_name} '
+                    'MOVE ROW STORE COMPRESS ADVANCED')
+        text = db.formatter.document(ctas, index, compress)
+        logger.debug(f'{self.c} Creating table {table_name} '
+                     f'with query:\n{text}')
+        db.execute(ctas)
+        db.execute(index)
+        db.execute(compress)
+        logger.debug(f'{self.c} {table_name} created')
+
+    def _select_output_columns(self, table_name):
+        """Compile the empty select a result table is created from."""
+        columns = self._prepare_output_columns(table_name)
+        if self.control.process_id is None:
+            # Outside a run the process ID literal is a NULL, which has no
+            # type, while a run's number makes it a NUMBER column.
+            columns = [sa.literal(0).label(column.name)
+                       if column.name == 'rapo_process_id' else column
+                       for column in columns]
+        select = sa.select(*columns)
+        select = select.where(sa.literal(1) == sa.literal(0))
+        return db.compile(select)
+
+    def _reflect_sources(self):
+        """Reflect the datasources outside a run, where _fetch did not."""
+        if self.control.is_analysis or self.control.is_report:
+            if self.control.source_table is None:
+                self.control.source_table = self.c.parser.parse_source_table()
+        else:
+            if self.control.source_table_a is None:
+                self.control.source_table_a = \
+                    self.c.parser.parse_source_table_a()
+            if self.control.source_table_b is None:
+                self.control.source_table_b = \
+                    self.c.parser.parse_source_table_b()
+
+    def expected_output_schema(self, table_name):
+        """Get the columns a new result table would have, in order.
+
+        The table is created empty under a scratch name through the same CTAS
+        a run uses and read back, so the types are exactly Oracle's.
+        """
+        scratch = f'rapo_temp_schema_{uuid.uuid4().hex[:16]}'
+        select = self._select_output_columns(table_name)
+        db.execute(f'CREATE TABLE {scratch} AS\n{select}')
+        try:
+            return self._read_table_schema(scratch)
+        finally:
+            db.execute(f'DROP TABLE {scratch} PURGE')
+
+    def _read_table_schema(self, table_name):
+        query = sa.text('select lower(column_name) name, data_type, '
+                        'data_length, char_length, char_used, '
+                        'data_precision, data_scale, nullable '
+                        'from user_tab_columns '
+                        'where table_name = :table_name order by column_id')
+        query = query.bindparams(table_name=table_name.upper())
+        return db.execute(query, as_table=True)
+
+    def diff_output_table(self, table_name, current_name=None, stats=True):
+        """Compare an existing result table with the expected schema.
+
+        Parameters
+        ----------
+        table_name : str
+            Name the control's result table has, which tells its side.
+        current_name : str, optional
+            Existing table to compare, if not table_name (e.g. before a
+            rename).
+        stats : bool
+            Add the row estimate and the first run, i.e. what a recreate
+            would delete.
+
+        Returns
+        -------
+        diff : dict
+            The table, whether it exists, its estimated rows (optimizer
+            statistics as of rows_analyzed, None without them), its first
+            run, and the columns, each with a status: ok, added, widened,
+            nullable, not_output (kept, only in the table) or incompatible.
+        """
+        current_name = current_name or table_name
+        diff = {'table': current_name, 'exists': db.exists(current_name),
+                'columns': [], 'rows': None, 'rows_analyzed': None,
+                'oldest': None}
+        expected = {column['name']: column
+                    for column in self.expected_output_schema(table_name)}
+        if not diff['exists']:
+            diff['columns'] = [self._diff_column(None, column)
+                               for column in expected.values()]
+            return diff
+        current = {column['name']: column
+                   for column in self._read_table_schema(current_name)}
+        for name, column in expected.items():
+            diff['columns'].append(self._diff_column(current.get(name),
+                                                     column))
+        for name, column in current.items():
+            if name not in expected:
+                diff['columns'].append(self._diff_column(column, None))
+        if stats:
+            diff.update(self._output_table_stats(current_name))
+        return diff
+
+    def _output_table_stats(self, table_name):
+        # No count(*): on a nullable column the index cannot count rows, so
+        # it would scan the whole table. The statistics estimate is free,
+        # and min() reads the ends of the rapo_process_id index only.
+        query = sa.text('select num_rows, last_analyzed from user_tables '
+                        'where table_name = :table_name')
+        query = query.bindparams(table_name=table_name.upper())
+        stats = db.execute(query, as_dict=True) or {}
+        oldest = None
+        pid = db.execute(f'select min(rapo_process_id) from {table_name}',
+                         as_scalar=True)
+        if pid is not None:
+            log = db.tables.log
+            select = sa.select(log.c.added).where(log.c.process_id == pid)
+            oldest = db.execute(select, as_scalar=True)
+        return {'rows': stats.get('num_rows'),
+                'rows_analyzed': stats.get('last_analyzed'),
+                'oldest': oldest}
+
+    def count_output_rows(self, table_name):
+        """Count the rows of a result table exactly: a full scan."""
+        if table_name not in self.control.output_names:
+            raise ValueError(f'{table_name.upper()} is not a result table '
+                             f'of {self.control.name}')
+        if not db.exists(table_name):
+            return None
+        return db.execute(f'select count(*) from {table_name}',
+                          as_scalar=True)
+
+    def _diff_column(self, current, expected):
+        name = (expected or current)['name']
+        item = {'name': name,
+                'current': _column_type(current) if current else None,
+                'expected': _column_type(expected) if expected else None,
+                'status': 'ok', 'ddl': None}
+        if current is None:
+            item['status'] = 'added'
+            item['ddl'] = f'ADD ({name} {item["expected"]})'
+        elif expected is None:
+            item['status'] = 'not_output'
+            if current['nullable'] == 'N':
+                item['ddl'] = f'MODIFY ({name} NULL)'
+        else:
+            fits = _column_fits(current, expected)
+            if fits is None:
+                item['status'] = 'incompatible'
+            elif fits is False:
+                item['status'] = 'widened'
+                widened = _column_widened(current, expected)
+                item['expected'] = widened
+                item['ddl'] = f'MODIFY ({name} {widened})'
+            elif current['nullable'] == 'N' and expected['nullable'] == 'Y':
+                item['status'] = 'nullable'
+                item['ddl'] = f'MODIFY ({name} NULL)'
+        return item
+
+    def sync_output_table(self, table_name, heal=False):
+        """Apply the safe schema changes to an existing result table.
+
+        Missing columns are added, too narrow ones widened and NOT NULL ones
+        that are no longer filled made nullable. Nothing is dropped.
+
+        Parameters
+        ----------
+        table_name : str
+            Result table of this control.
+        heal : bool
+            Raise when incompatible columns remain, since a run could not
+            save into them.
+
+        Returns
+        -------
+        diff : dict
+            The diff the changes were made from, see diff_output_table().
+        """
+        diff = self.diff_output_table(table_name, stats=False)
+        for column in diff['columns']:
+            if column['ddl']:
+                statement = (f'ALTER TABLE {table_name.upper()} '
+                             f'{column["ddl"]}')
+                logger.info(f'{self.c} Updating schema: {statement}')
+                db.execute(statement)
+        incompatible = [column for column in diff['columns']
+                        if column['status'] == 'incompatible']
+        if heal and incompatible:
+            details = ', '.join(f'{i["name"].upper()} {i["current"]} -> '
+                                f'{i["expected"]}' for i in incompatible)
+            message = (f'Recreate schema needed for {table_name.upper()}: '
+                       f'{details}')
+            raise ValueError(message)
+        return diff
+
+    def sync_output_tables(self):
+        """Apply the safe schema changes to all existing result tables."""
+        diffs = []
+        for table_name in self.control.output_names:
+            if db.exists(table_name):
+                diffs.append(self.sync_output_table(table_name))
+        return diffs
+
+    def recreate_output_tables(self):
+        """Drop the result tables and create them with the current schema."""
+        for table_name in self.control.output_names:
+            self._delete_output_table(table_name)
+            self._create_output_table(table_name)
+
+    def rename_output_tables(self, old_name):
+        """Rename the result tables of the control formerly named old_name."""
+        old_control_name = old_name.lower()
+        renames = []
+        for table_name in self.control.output_names:
+            prefix = table_name[:len('rapo_resx_')]
+            old_table_name = f'{prefix}{old_control_name}'
+            if old_table_name == table_name or not db.exists(old_table_name):
+                continue
+            if db.exists(table_name):
+                message = f'table {table_name.upper()} already exists'
+                raise ValueError(message)
+            renames.append((old_table_name, table_name))
+        for old_table_name, table_name in renames:
+            db.execute(f'ALTER TABLE {old_table_name} RENAME TO {table_name}')
+            query = sa.text('select count(*) from user_indexes '
+                            'where index_name = :index_name')
+            old_index = f'{old_table_name}_rapo_process_id_ix'
+            query = query.bindparams(index_name=old_index.upper())
+            if db.execute(query, as_scalar=True):
+                db.execute(f'ALTER INDEX {old_index} '
+                           f'RENAME TO {table_name}_rapo_process_id_ix')
+            logger.info(f'{self.c} {old_table_name.upper()} renamed to '
+                        f'{table_name.upper()}')
+        return [table_name for _, table_name in renames]
 
     def _prepare_output_columns(self, table_name):
         output_columns = []
@@ -3995,3 +4247,121 @@ class Executor:
         db.execute(create_index)
         db.execute(rebuild_index)
         logger.debug(f'{self.c} Index for {table_name} created')
+
+
+_TEXT_TYPES = ('VARCHAR2', 'NVARCHAR2', 'CHAR', 'NCHAR', 'RAW')
+
+
+def _column_type(column):
+    """Render a user_tab_columns row as the type of an ALTER TABLE."""
+    data_type = column['data_type']
+    if data_type in _TEXT_TYPES:
+        if data_type == 'RAW':
+            return f'RAW({column["data_length"]})'
+        if data_type.startswith('N'):
+            return f'{data_type}({column["char_length"]})'
+        unit = 'CHAR' if column['char_used'] == 'C' else 'BYTE'
+        return f'{data_type}({column["char_length"]} {unit})'
+    if data_type == 'NUMBER':
+        precision, scale = column['data_precision'], column['data_scale']
+        if precision is None and scale is None:
+            return 'NUMBER'
+        if precision is None:
+            return f'NUMBER(*,{scale})'
+        return f'NUMBER({precision},{scale or 0})'
+    if data_type == 'FLOAT':
+        return f'FLOAT({column["data_precision"]})'
+    return data_type
+
+
+def _type_family(data_type):
+    if data_type in ('VARCHAR2', 'CHAR'):
+        return 'CHAR'
+    if data_type in ('NVARCHAR2', 'NCHAR'):
+        return 'NCHAR'
+    if data_type == 'DATE' or re.fullmatch(r'TIMESTAMP\(\d\)', data_type):
+        return 'DATE'
+    return data_type
+
+
+def _number_digits(column):
+    """Get the integer and fraction digits a NUMBER column holds.
+
+    None stands for any, i.e. an unconstrained or floating NUMBER.
+    """
+    precision, scale = column['data_precision'], column['data_scale']
+    if scale is None:
+        return None, None
+    return (precision or 38) - scale, scale
+
+
+def _text_length(column):
+    """Get the length a text column is limited by, in its own unit."""
+    if column['char_used'] == 'C':
+        return column['char_length']
+    return column['data_length']
+
+
+def _column_fits(current, expected):
+    """Tell whether the current column holds every value of the expected one.
+
+    Returns True when it does, False when a MODIFY can widen it, None when
+    the types cannot be converted in a table with data.
+    """
+    current_type, expected_type = current['data_type'], expected['data_type']
+    if _type_family(current_type) != _type_family(expected_type):
+        return None
+    if current_type in _TEXT_TYPES:
+        # A CHAR-semantics column counts characters, and an expected text
+        # of n bytes has up to n characters.
+        if current['char_used'] == 'C':
+            return current['char_length'] >= _text_length(expected)
+        return current['data_length'] >= expected['data_length']
+    if current_type == 'NUMBER':
+        integer, fraction = _number_digits(current)
+        if integer is None:
+            return True
+        expected_integer, expected_fraction = _number_digits(expected)
+        if expected_integer is None:
+            return False
+        return integer >= expected_integer and fraction >= expected_fraction
+    if current_type == expected_type:
+        return True
+    if _type_family(current_type) == 'DATE':
+        # A TIMESTAMP holds a DATE, and a DATE converts to a TIMESTAMP.
+        if expected_type == 'DATE':
+            return True
+        return current_type != 'DATE' and current_type >= expected_type
+    return None
+
+
+def _column_widened(current, expected):
+    """Get the type an existing column is widened to so both fit in it."""
+    data_type = current['data_type']
+    if data_type in _TEXT_TYPES:
+        data_type = ('VARCHAR2' if 'VARCHAR2' in (data_type,
+                                                   expected['data_type'])
+                     else data_type)
+        if data_type in ('VARCHAR2', 'CHAR') and 'C' in (current['char_used'],
+                                                         expected['char_used']):
+            length = min(max(_text_length(current), _text_length(expected)),
+                         4000)
+            return f'{data_type}({length} CHAR)'
+        if data_type.startswith('N'):
+            length = max(current['char_length'], expected['char_length'])
+            return f'{data_type}({length})'
+        length = max(current['data_length'], expected['data_length'])
+        if data_type in ('VARCHAR2', 'CHAR'):
+            return f'{data_type}({length} BYTE)'
+        return f'{data_type}({length})'
+    if data_type == 'NUMBER':
+        integer, fraction = _number_digits(current)
+        expected_integer, expected_fraction = _number_digits(expected)
+        if expected_integer is None:
+            return 'NUMBER'
+        integer = max(integer, expected_integer)
+        fraction = max(fraction, expected_fraction)
+        if integer + fraction > 38:
+            return 'NUMBER'
+        return f'NUMBER({integer + fraction},{fraction})'
+    return _column_type(expected)
