@@ -59,6 +59,10 @@
 
       <q-separator />
 
+      <q-card-section v-if="upstreamNote" class="text-caption text-grey-8">
+        <q-icon name="fas fa-link" class="q-mr-xs" />{{ upstreamNote }}
+      </q-card-section>
+
       <q-card-section v-if="cascadeNote" class="text-caption text-grey-8">
         <q-icon name="fas fa-diagram-project" class="q-mr-xs" />{{ cascadeNote }}
       </q-card-section>
@@ -74,6 +78,7 @@
 import { mapActions, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { cascadeMessage, chainOf } from "../utils/schedule";
+import { upstreamMessage } from "../utils/chain";
 import { localDate, toDateString } from "../utils/format";
 
 // Run a control for a date or a date range. With a control_name prop it runs that control, otherwise the user
@@ -101,6 +106,10 @@ export default {
     // A run always cascades into the controls following it, so the dialog names them.
     cascadeNote() {
       return cascadeMessage(this.chain.cascade);
+    },
+    // The controls whose results it reads run first, for the same period.
+    upstreamNote() {
+      return upstreamMessage(this.chain.upstream);
     },
     iterationCount() {
       return this.chain.iterations;

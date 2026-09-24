@@ -23,13 +23,15 @@ A payload is therefore self-contained: capture one from the run log and it repla
     "name": "ds_fix_msw",
     "filter": "ORIG_PARTY_GRP is not null",
     "date_field": "start_time",
-    "key_field": "tag"
+    "key_field": "tag",
+    "process_id": null
   },
   "source_b": {
     "name": "ds_fix_dr_msw",
     "filter": null,
     "date_field": "start_date_time",
-    "key_field": "tag"
+    "key_field": "tag",
+    "process_id": null
   },
   "rule_config": {
     "correlation_config": [
@@ -74,6 +76,7 @@ A payload is therefore self-contained: capture one from the run log and it repla
 | `filter` | SQL predicate, or null, with its `{variables}` already rendered by rapo (other braces as written). Wrapped in parentheses and ANDed |
 | `date_field` | The correlation date column. Cast to `DATE`, so a `TIMESTAMP` loses sub-second precision exactly as the Python engine's fetch does |
 | `key_field` | The row identity. If the source has no such column, `rowid` is aliased under that name — the same fallback `_parse_select` makes |
+| `process_id` | Null, or for a source that is another control's result table (a chain-rule) the `rapo_process_id` of the upstream run. The side then reads only that run's rows, with no date window (not in the fetch, the null-key select, the output re-filter or the join-back), and leaves out the source's `RAPO_PROCESS_ID`, `RAPO_RESULT_TYPE` and `RAPO_DISCREPANCY_*` columns, which it writes itself |
 
 ## `rule_config`
 

@@ -258,6 +258,18 @@
               </q-chip>
 
               <q-chip
+                clickable
+                v-if="chains.has(control.control_name)"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-link"
+                :title="chainTitle(control)"
+                @click="addAttributeFilter('Chain')">
+                Chain
+              </q-chip>
+
+              <q-chip
                 v-if="control.source_type_a"
                 clickable
                 color="green-8"
@@ -369,6 +381,7 @@ import OrphanTablesDialog from "./OrphanTablesDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
+import { chainIndex } from "../utils/chain";
 import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
@@ -500,6 +513,16 @@ export default {
         console.error("KPI usage check failed:", error);
       }
     },
+    // What the Chain chip says on hover: whose results the control reads, and who reads its results.
+    chainTitle(control) {
+      const chain = this.chains.get(control.control_name);
+      return [
+        chain.upstream.length ? `Runs ${chain.upstream.join(", ")} first and reads the results.` : "",
+        chain.dependents.length ? `Its results are read by ${chain.dependents.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    },
     addAttributeFilter(attr) {
       if (!this.filter.other_attributes.includes(attr)) {
         this.filter.other_attributes.push(attr);
@@ -555,8 +578,12 @@ export default {
     },
     ...mapState(["controlCatalogue", "schemaDrift"]),
     ...mapGetters(["getSearch", "getEnvInfo"]),
+    // Controls reading the results of other controls, or read by them (chain-rules), by control name.
+    chains() {
+      return chainIndex(this.controlCatalogue);
+    },
     attributeOptions() {
-      const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
+      const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
       if (this.kpiControlIds !== null) options.push("No KPI");
       return [...options, "Email", "Schema drift"];
     },
@@ -605,6 +632,7 @@ export default {
             (attr === "Prerequisite SQL" && item.prerequisite_sql) ||
             (attr === "Completion SQL" && item.completion_sql) ||
             (attr === "Iterations" && this.iterationCount(item) > 0) ||
+            (attr === "Chain" && this.chains.has(item.control_name)) ||
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||
             (attr === "Post-run hook" && item.need_postrun_hook === "Y") ||

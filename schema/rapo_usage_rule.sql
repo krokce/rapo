@@ -126,6 +126,8 @@ AS
     v_key_field_b     VARCHAR2(128);
     v_key_rowid_a     BOOLEAN;               -- key is not a real column: use rowid, the same fallback _parse_select makes
     v_key_rowid_b     BOOLEAN;
+    v_upstream_a      NUMBER;                -- a chain-rule side: the upstream run whose rows are read, instead of the window
+    v_upstream_b      NUMBER;
 
     v_shift_from      NUMBER;                -- candidate reach, seconds
     v_shift_to        NUMBER;
@@ -259,6 +261,19 @@ AS
         RETURN dbms_assert.simple_sql_name(name);
     END quoted;
 
+    -- The rows of one side in scope: those in the window, or, for a side read from another control's results (a chain-rule), those saved
+    -- by the upstream run, which applied the window itself.
+    FUNCTION scope_predicate (side CHAR, alias VARCHAR2, date_field VARCHAR2, win_from DATE, win_to DATE) RETURN VARCHAR2 IS
+        upstream NUMBER := CASE WHEN side = 'A' THEN v_upstream_a ELSE v_upstream_b END;
+    BEGIN
+        IF upstream IS NOT NULL THEN
+            RETURN alias || '.rapo_process_id = ' || to_char(upstream);
+        END IF;
+        RETURN alias || '.' || quoted(date_field)
+               || ' between to_date(''' || to_char(win_from, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')'
+               || ' and to_date(''' || to_char(win_to, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')';
+    END scope_predicate;
+
     -- The canonical text form of a correlation key. The cursor's ORDER BY and cmp_keys must impose the same ordering, so the conversion has
     -- to be type-stable: an implicit date-to-text conversion would follow NLS_DATE_FORMAT and drop the time. Hence the explicit masks.
     FUNCTION canon (expr VARCHAR2, data_type VARCHAR2) RETURN VARCHAR2 IS
@@ -326,11 +341,13 @@ AS
         v_filter_a     := json_value(json_input, '$.source_a.filter' RETURNING CLOB);
         v_date_field_a := json_value(json_input, '$.source_a.date_field');
         v_key_field_a  := json_value(json_input, '$.source_a.key_field');
+        v_upstream_a   := json_value(json_input, '$.source_a.process_id' RETURNING NUMBER);
 
         v_source_b     := json_value(json_input, '$.source_b.name');
         v_filter_b     := json_value(json_input, '$.source_b.filter' RETURNING CLOB);
         v_date_field_b := json_value(json_input, '$.source_b.date_field');
         v_key_field_b  := json_value(json_input, '$.source_b.key_field');
+        v_upstream_b   := json_value(json_input, '$.source_b.process_id' RETURNING NUMBER);
 
         v_shift_from     := jn('$.rule_config.time_shift_from', 0);
         v_shift_to       := jn('$.rule_config.time_shift_to', 0);
@@ -551,9 +568,7 @@ AS
         END LOOP;
 
         stmt := stmt || ' from ' || source_name || ' ' || alias
-                     || ' where ' || alias || '.' || quoted(date_field)
-                     || ' between to_date(''' || to_char(win_from, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')'
-                     || ' and to_date(''' || to_char(win_to, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')';
+                     || ' where ' || scope_predicate(side, alias, date_field, win_from, win_to);
 
         IF filter IS NOT NULL AND length(filter) > 0 THEN
             stmt := stmt || ' and (' || filter || ')';
@@ -614,9 +629,7 @@ AS
         END IF;
         stmt := stmt || ' as row_id'
                      || ' from ' || source_name || ' ' || alias
-                     || ' where ' || alias || '.' || quoted(date_field)
-                     || ' between to_date(''' || to_char(v_date_from, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')'
-                     || ' and to_date(''' || to_char(v_date_to, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')';
+                     || ' where ' || scope_predicate(side, alias, date_field, v_date_from, v_date_to);
         IF filter IS NOT NULL AND length(filter) > 0 THEN
             stmt := stmt || ' and (' || filter || ')';
         END IF;
@@ -1482,8 +1495,11 @@ AS
             r_id := grp_b(idx).row_id; r_dt := grp_b(idx).dt; r_type := grp_b(idx).corr_type; r_matched := grp_b(idx).matched;
         END IF;
 
-        -- both s08 and s09 re-filter to the unshifted window, so rows pulled in only as shift padding never reach the output
-        IF r_dt < v_date_from OR r_dt > v_date_to THEN RETURN; END IF;
+        -- both s08 and s09 re-filter to the unshifted window, so rows pulled in only as shift padding never reach the output; a side read
+        -- from an upstream run has no padding and keeps every row
+        IF CASE WHEN side = 'A' THEN v_upstream_a ELSE v_upstream_b END IS NULL AND (r_dt < v_date_from OR r_dt > v_date_to) THEN
+            RETURN;
+        END IF;
 
         -- a row with no candidate has a NULL correlation type, and NULL IN (...) is NULL rather than FALSE, so guard it explicitly
         branch_two := r_type IS NOT NULL AND (r_type IN ('A', 'B', 'M') OR (r_type = 'F' AND NOT r_matched));
@@ -1531,12 +1547,16 @@ AS
     -- the same column names the DB engine's source table would have: every column, plus the two adjustments that engine also makes - a
     -- TIMESTAMP date field narrowed to DATE, and the key aliased from rowid when it is not a real column. Listed explicitly rather than with
     -- a.*, because those adjustments have to replace columns rather than duplicate them. Hidden columns are left out; virtual ones are kept.
+    -- An upstream run's own result columns are left out where this control writes the same ones, as Parser._parse_select does.
     FUNCTION column_list (source_name VARCHAR2, alias VARCHAR2, date_field VARCHAR2, key_field VARCHAR2, key_rowid BOOLEAN) RETURN CLOB IS
-        list CLOB := NULL;
+        list     CLOB := NULL;
+        upstream NUMBER := CASE WHEN alias = 'a' THEN v_upstream_a ELSE v_upstream_b END;
     BEGIN
         FOR c IN (
             SELECT column_name, data_type FROM user_tab_cols WHERE table_name = upper(source_name) AND hidden_column = 'NO' ORDER BY column_id
         ) LOOP
+            CONTINUE WHEN upstream IS NOT NULL
+                      AND c.column_name IN ('RAPO_PROCESS_ID', 'RAPO_RESULT_TYPE', 'RAPO_DISCREPANCY_ID', 'RAPO_DISCREPANCY_DESCRIPTION');
             IF list IS NOT NULL THEN list := list || ', '; END IF;
             IF upper(c.column_name) = upper(date_field) AND c.data_type LIKE 'TIMESTAMP%' THEN
                 list := list || 'cast(' || alias || '."' || c.column_name || '" as date) as "' || c.column_name || '"';
@@ -1584,9 +1604,7 @@ AS
             join_rule := 'cast(' || alias || '.' || quoted(key_field) || ' as varchar2(4000)) = v.row_id';
         END IF;
         base := ' from ' || source_name || ' ' || alias || ' join ' || verdict || ' v on ' || join_rule
-                || ' where ' || alias || '.' || quoted(date_field)
-                || ' between to_date(''' || to_char(v_date_from, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')'
-                || ' and to_date(''' || to_char(v_date_to, 'YYYY-MM-DD HH24:MI:SS') || ''', ''YYYY-MM-DD HH24:MI:SS'')';
+                || ' where ' || scope_predicate(side, alias, date_field, v_date_from, v_date_to);
         IF filter IS NOT NULL AND length(filter) > 0 THEN
             base := base || ' and (' || filter || ')';
         END IF;

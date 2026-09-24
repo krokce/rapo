@@ -151,3 +151,21 @@ The upgrade steps are in the [migration instructions](README.md).
     analysis and comparison working tables and all reconciliation stages. This cuts redo only on a database that is
     not in `FORCE LOGGING` mode (e.g. with Data Guard, Oracle logs them anyway). The result tables (`RAPO_REST_`/
     `RAPO_RESA_`/`RAPO_RESB_`) keep `LOGGING`, as they must be recoverable. Results are unchanged.
+18. **Chain-rules: controls reading other controls' results.** A control may use the result table of another
+    control (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<name>`) as its datasource. Every run of it then first runs that
+    control, and the one that control reads in turn, for **its own period**, whatever their own period settings
+    are. It then reads only the records those runs saved (`rapo_process_id`), with no date window of its own on
+    that datasource. This applies to scheduled, manual, catch-up, iteration and cascade runs alike. Such a
+    datasource is not widened by a reconciliation's *Time shift* either: a record near midnight whose partner lies
+    on the other side of the boundary finds it on the day it belongs to, but its partner is reported as a *Loss*
+    on the neighbouring day's run, where a control reading the source table directly would pair them again. A control
+    reached twice in one chain runs once, and a disabled one still runs. An upstream run performs only itself: no
+    iterations and no cascade. When one does not end *Done*, the controls waiting for it end with an error naming
+    it; cancelling any run of the chain cancels the chain. The chain runs as one unit in one execution slot, each
+    run with its own timeout. Upstream runs are listed on the Scheduler page as *Upstream*, with the run they were
+    for. The editor names the controls a run will perform first under the datasources, the Run and Re-run dialogs
+    say so, and the Controls list has a *Chain* chip and filter. Saving refuses a control that reads its own
+    results, one that closes a cycle, a table the other control does not write, and a cascade (*Triggered by*)
+    from one of the controls it runs first. Renaming a control renames the datasources of the controls reading its
+    results; a control whose results others read cannot be deleted. For the `PL` engine, redeploy its procedure
+    (see the [migration instructions](README.md)).

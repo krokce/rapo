@@ -20,9 +20,10 @@ from ..utils import utils
 
 from ..config import get_algorithm_setting
 
+from . import chain
 from . import mailer
 from .fields import (
-    RESULT_KEY, RESULT_VALUE, RESULT_TYPE, DISCREPANCY_ID,
+    PROCESS_ID, RESULT_KEY, RESULT_VALUE, RESULT_TYPE, DISCREPANCY_ID,
     DISCREPANCY_DESCRIPTION
 )
 from .case import (
@@ -198,6 +199,16 @@ class Control:
         # can follow every run performed in one control process.
         self.observer = None
         self.trigger = None
+
+        # A chain-rule reads the result tables of other controls, which it
+        # runs first for its own window (see _pull). The names of the runs
+        # pulling this one, the runs of the chain by control name, shared by
+        # all of its runs, and the process IDs this run reads by side.
+        self.chain_stack = ()
+        self.chain_runs = None
+        self.upstream_pids = {}
+        self.pulled_by = None
+        self._upstreams = None
 
         self.process_id = process_id
         if self.result:
@@ -670,6 +681,13 @@ class Control:
         return self.parser.parse_iteration_config()
 
     @property
+    def upstreams(self):
+        """Get the controls whose result tables this control reads."""
+        if self._upstreams is None:
+            self._upstreams = self.parser.parse_upstreams()
+        return self._upstreams
+
+    @property
     def cascade_config(self):
         """Get control cascade configuration."""
         return self.parser.parse_cascade_config()
@@ -757,8 +775,9 @@ class Control:
         """Run control in an ordinary way."""
         logger.debug(f'{self} Running control...')
         if self._initiate():
-            if self._throttle():
-                self._resume()
+            if self._pull():
+                if self._throttle():
+                    self._resume()
 
     def launch(self):
         """Run control as a separate accompanied stoppable process."""
@@ -834,6 +853,83 @@ class Control:
                             f'from control {source_label}...')
                 control.run()
                 logger.info(f'Control {target_label} performed')
+
+    def _pull(self):
+        """Run the controls whose result tables this control reads.
+
+        Each upstream runs, before this run starts, for exactly its window,
+        and its own upstreams run before it. A control reached twice in one
+        chain runs once. Only the main run is performed: no iterations and
+        no cascade. The records this run reads are then those of that run
+        (Parser._parse_select). An upstream run not ending done fails this
+        one.
+        """
+        try:
+            upstreams = self.upstreams
+        except Exception:
+            logger.error()
+            return self._escape()
+        if not upstreams:
+            return self._continue()
+        if self.chain_runs is None:
+            self.chain_runs = {}
+        stack = self.chain_stack+(self.name,)
+        for upstream in upstreams:
+            name = upstream['control_name']
+            if name in stack:
+                cycle = ' -> '.join(stack[stack.index(name):]+(name,))
+                return self._fail_chain('Controls read each other\'s '
+                                        f'results in a cycle: {cycle}.')
+            run = self.chain_runs.get(name)
+            if run is None:
+                logger.info(f'{self} Running upstream control {name} '
+                            f'for {self.date_from} - {self.date_to}...')
+                try:
+                    control = self.__class__(name=name,
+                                             date_from=self.date_from,
+                                             date_to=self.date_to,
+                                             debug_mode=self.debug_mode)
+                except Exception:
+                    logger.error()
+                    return self._escape()
+                control.observer = self.observer
+                control.trigger = 'UPSTREAM'
+                control.chain_stack = stack
+                control.chain_runs = self.chain_runs
+                control.pulled_by = f'{self.name} [{self.process_id}]'
+                control.run()
+                state = reader.read_run_state(control.process_id)
+                status = state['status'] if state else control.status
+                run = {'process_id': control.process_id, 'status': status}
+                self.chain_runs[name] = run
+                self._announce()
+                logger.info(f'{self} Upstream control {name} '
+                            f'[{run["process_id"]}] ended {status}')
+            if run['status'] != 'D':
+                status = run['status'] or 'canceled'
+                return self._fail_chain(f'Upstream control {name} '
+                                        f'[{run["process_id"]}] ended '
+                                        f'{status}.')
+            self.upstream_pids[upstream['side']] = run['process_id']
+        return self._continue()
+
+    def _announce(self):
+        """Tell the observer this run is the one performed again."""
+        if self.observer:
+            try:
+                self.observer(self, resumed=True)
+            except Exception:
+                logger.error()
+
+    def _fail_chain(self, message):
+        logger.error(f'{self} {message}')
+        try:
+            self._save_text_message(message)
+            self._save_text_error(message)
+        except Exception:
+            logger.error()
+        self._error()
+        return False
 
     def prerequisite(self):
         """Get the result of the prerequisite statement."""
@@ -1007,8 +1103,9 @@ class Control:
         logger.info(f'{self} Running as process on PID {self.process.pid}')
 
     def _operate(self):
-        if self._throttle():
-            self._resume()
+        if self._pull():
+            if self._throttle():
+                self._resume()
 
     def _handle(self):
         process = self.process
@@ -1736,6 +1833,18 @@ class Parser:
                       key_field=None, shift_from_sec=0, shift_to_sec=0):
         logger.debug(f'{self.c} Parsing {table} select...')
         columns = db.normalize(table.columns, date_fields=[date_field])
+        side = None if alias == 's' else alias
+        if not self.control.is_comparison and any(
+            upstream['side'] == side for upstream in self.control.upstreams
+        ):
+            # The result metadata of the upstream is not fetched where this
+            # control writes columns of the same names itself; the filter can
+            # still use it. The result table leaves them out the same way.
+            reserved = [column.column_name
+                        for column in self.control.mandatory_columns]
+            reserved.append(PROCESS_ID.column_name)
+            columns = [column for column in columns
+                       if column.name not in reserved]
 
         if key_field:
             if db.is_table(table) and not db.is_column(key_field, table):
@@ -1765,7 +1874,14 @@ class Parser:
                     not_null_column = sa.literal_column(not_null_field)
                 select = select.where(not_null_column.is_not(None))
 
-        if date_field and isinstance(date_field, str):
+        upstream_pid = self.control.upstream_pids.get(
+            None if alias == 's' else alias)
+        if upstream_pid is not None:
+            # A chain-rule reads only what its upstream run saved, which is
+            # already limited to the window, so no window is applied again.
+            process_column = source.columns['rapo_process_id']
+            select = select.where(process_column == upstream_pid)
+        elif date_field and isinstance(date_field, str):
             date_from = self.control.date_from
             date_to = self.control.date_to
             if shift_from_sec or shift_to_sec:
@@ -2269,13 +2385,15 @@ class Parser:
                 'name': control.source_name_a,
                 'filter': control.source_filter_a,
                 'date_field': control.source_date_field_a,
-                'key_field': control.source_key_field_a
+                'key_field': control.source_key_field_a,
+                'process_id': control.upstream_pids.get('a')
             },
             'source_b': {
                 'name': control.source_name_b,
                 'filter': control.source_filter_b,
                 'date_field': control.source_date_field_b,
-                'key_field': control.source_key_field_b
+                'key_field': control.source_key_field_b,
+                'process_id': control.upstream_pids.get('b')
             },
             'rule_config': control.rule_config
         }
@@ -2505,6 +2623,16 @@ class Parser:
             }
             output_config.append(add_config)
         return output_config
+
+    def parse_upstreams(self):
+        """Get the controls whose result tables the control reads.
+
+        Returns
+        -------
+        upstreams : list
+            Dictionaries with the side, the control name and the table.
+        """
+        return chain.upstreams(self.control.config, chain.read_names())
 
     def parse_cascade_config(self):
         config = db.tables.config
@@ -2889,6 +3017,15 @@ class Executor:
 
         date_from = self.control.date_from
         date_to = self.control.date_to
+        # A side read from an upstream run keeps every record of that run,
+        # the window was applied by the upstream (Parser._parse_select).
+        window_a, window_b = (
+            '1 = 1' if side in self.control.upstream_pids else
+            f"{date_field} between to_date('{date_from:%Y-%m-%d %H:%M:%S}', "
+            "'YYYY-MM-DD HH24:MI:SS') and to_date("
+            f"'{date_to:%Y-%m-%d %H:%M:%S}', 'YYYY-MM-DD HH24:MI:SS')"
+            for side, date_field in (('a', date_field_a), ('b', date_field_b))
+        )
         time_shift_from = rule_config['time_shift_from']
         time_shift_to = rule_config['time_shift_to']
         time_tolerance_from = rule_config['time_tolerance_from']
@@ -3239,6 +3376,7 @@ class Executor:
         save_error_a = save_error_a.format(
             process_id=self.control.process_id,
             parallelism=parallelism,
+            window_a=window_a,
             key_field_a=key_field_a,
             date_field_a=date_field_a,
             date_from=date_from,
@@ -3251,6 +3389,7 @@ class Executor:
         save_error_b = save_error_b.format(
             process_id=self.control.process_id,
             parallelism=parallelism,
+            window_b=window_b,
             key_field_b=key_field_b,
             date_field_b=date_field_b,
             date_from=date_from,
@@ -3263,6 +3402,7 @@ class Executor:
         save_stage_a = save_stage_a.format(
             process_id=self.control.process_id,
             parallelism=parallelism,
+            window_a=window_a,
             key_field_a=key_field_a,
             key_field_name_a=key_field_a[2:],
             date_field_a=date_field_a,
@@ -3272,6 +3412,7 @@ class Executor:
         save_stage_b = save_stage_b.format(
             process_id=self.control.process_id,
             parallelism=parallelism,
+            window_b=window_b,
             key_field_b=key_field_b,
             key_field_name_b=key_field_b[2:],
             date_field_b=date_field_b,

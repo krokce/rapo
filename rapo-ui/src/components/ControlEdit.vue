@@ -360,6 +360,10 @@
                   <q-input class="col-1" outlined v-model="control.source_type_b" label="System B" maxlength="90" />
                 </div>
 
+                <div v-if="chainNote" class="text-caption text-grey-8">
+                  <q-icon name="fas fa-link" class="q-mr-xs" />{{ chainNote }}
+                </div>
+
                 <div class="row q-gutter-md">
                   <q-select
                     v-if="control.control_type === 'ANL' || control.control_type === 'REP'"
@@ -1036,6 +1040,7 @@ import { diffControl, diffKpis } from "../utils/controlDiff";
 import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
+import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
 import {
   DEFAULT_SQL_SHEET_NAME,
   EMAIL_CONTROL_TYPES,
@@ -1158,6 +1163,19 @@ export default {
       return scheduleType(this.scheduleObject);
     },
     ...mapState(["controlCatalogue"]),
+    // A datasource that is the result table of another control makes this a chain-rule (utils/chain.js):
+    // said under the datasources, from the form as it is, with every control a run would perform first.
+    chainNote() {
+      const others = this.controlCatalogue.filter((row) => row.control_id !== this.control.control_id && row.control_name !== this.control.control_name);
+      const catalogue = [...others, this.control];
+      const direct = upstreamsOf(this.control, nameIndex(catalogue));
+      if (!direct.length) {
+        return "";
+      }
+      const sources = direct.map((item) => `${item.side ? `Datasource ${item.side.toUpperCase()}` : "The datasource"} is the result table of ${item.control_name}`).join("; ");
+      const upstream = allUpstreams(this.control.control_name, catalogue);
+      return `${sources}. A run first runs ${upstream.join(", ")} for the same period and reads only the records of those runs, so no date window is applied to ${direct.length > 1 ? "these datasources" : "it"}.`;
+    },
     pastVersions() {
       return this.controlVersions.slice(1);
     },
@@ -1941,6 +1959,10 @@ export default {
         this.saving = false;
         notifyError("Control was not saved.", error);
         return false;
+      }
+      // The controls reading this one's results follow a rename (chain-rules).
+      if (result.renamed_dependents && result.renamed_dependents.length) {
+        this.$q.notify({ message: `The datasources of ${result.renamed_dependents.join(", ")} now read the renamed result tables.` });
       }
       if (mode === "close") {
         this.savedControlJson = JSON.stringify(this.buildControlPayload());
