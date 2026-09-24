@@ -565,9 +565,11 @@ value}], results, source}`: the other side's rows of the run's result table and 
 window, each `{columns, rows, more, error}` (at most 100 rows, `more` when there are others). 400 for other types.
 
 #### `GET /api/get-control-trend`
-`process_id`, `dataset`, `limit` (30, 2 to 200). Answers `{side, process_id, runs}`: the latest `limit` done runs
-of the run's control (and the run itself), oldest first, each `{process_id, date_from, date_to, start_date, status,
-fetched, discrepancies, error_level}` of the dataset's side, from the run log only.
+`process_id`, `dataset`, `limit` (30, 2 to 200). Answers `{side, process_id, runs}`: the latest `limit` periods of
+the run's control in date order, each `{process_id, date_from, date_to, start_date, status, fetched, discrepancies,
+error_level}` of the dataset's side, from the run log only. A period is the days of `date_from` and `date_to`, and
+is shown by its last done run (the highest `process_id`), since a day is often run more than once; the period of
+the run itself is shown by that run.
 
 #### `GET /api/analysis-export`
 `session_id`, `format` (`xlsx` or `csv`), optional `sort`, `search`, `filters`, `columns` (a JSON list of names, in
