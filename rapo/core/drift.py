@@ -50,9 +50,10 @@ def schema_drift():
         (incompatible columns), error (the configuration names a column the
         datasource lacks), missing (no result table yet), not_checked, or
         rebuilt (the control drops its tables on every run). orphans are its
-        existing tables runs no longer write.
-        unowned: [{table, rows, rows_analyzed, oldest}], the result tables of
-        no control.
+        existing tables runs no longer write, as {table, rows, rows_analyzed,
+        reason}: the optimizer statistics, and why nothing writes it.
+        unowned: [{table, rows, rows_analyzed}], the result tables of no
+        control.
     """
     config = db.tables.config
     select = sa.select(
@@ -85,8 +86,9 @@ def schema_drift():
         names = output_table_names(control['control_name'])
         owned.update(names)
         written = _result_tables(control)
-        orphans = [name.upper() for name in names
-                   if name not in written and name in existing]
+        orphans = [{'table': name.upper(), **existing[name],
+                    'reason': _orphan_reason(control, name)}
+                   for name in names if name not in written and name in existing]
         if control['with_drop'] == 'Y':
             drift = {'level': 'rebuilt', 'changes': 0, 'incompatible': 0,
                      'tables': [], 'reason': None}
@@ -96,8 +98,7 @@ def schema_drift():
         answer['controls'][str(control['control_id'])] = drift
     for name, stats in sorted(existing.items()):
         if name not in owned:
-            answer['unowned'].append({'table': name.upper(), **stats,
-                                      'oldest': _oldest_run(name)})
+            answer['unowned'].append({'table': name.upper(), **stats})
     return answer
 
 
@@ -119,6 +120,16 @@ def _checked_drift(control, columns):
         return dict(failed, reason=f'{type(error).__name__}: {error}')
 
 
+def _orphan_reason(control, table_name):
+    """Tell why runs of a control no longer write one of its tables."""
+    side = {'rapo_resa_': 'A', 'rapo_resb_': 'B'}.get(table_name[:10])
+    if control['control_type'] == 'REC' and side:
+        return f'no discrepancies of side {side} are written'
+    if side:
+        return 'left from when the control was a reconciliation'
+    return 'left from when the control was not a reconciliation'
+
+
 def _existing_result_tables():
     """Get the result tables of the schema with their statistics."""
     query = ("select lower(table_name) name, num_rows, last_analyzed "
@@ -127,27 +138,6 @@ def _existing_result_tables():
     return {row['name']: {'rows': row['num_rows'],
                           'rows_analyzed': row['last_analyzed']}
             for row in db.execute(query, as_table=True)}
-
-
-def _oldest_run(table_name):
-    """Get when the oldest run in a result table was added, or None.
-
-    None as well for a table that cannot be read that way, e.g. a copy made by
-    hand without rapo_process_id: it is still listed, just without the date.
-    """
-    try:
-        # min() reads the ends of the rapo_process_id index only.
-        pid = db.execute(f'select min(rapo_process_id) from {table_name}',
-                         as_scalar=True)
-    except Exception as error:
-        logger.warning(f'Oldest run of {table_name.upper()} cannot be read: '
-                       f'{type(error).__name__}: {error}')
-        return None
-    if pid is None:
-        return None
-    log = db.tables.log
-    select = sa.select(log.c.added).where(log.c.process_id == pid)
-    return db.execute(select, as_scalar=True)
 
 
 def _owner(table_name):

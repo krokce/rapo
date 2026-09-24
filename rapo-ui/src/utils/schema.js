@@ -62,6 +62,22 @@ export function summarizeSchema(check) {
   return summary;
 }
 
+// The tables Recreate schema recreates: those that drifted (column changes, or the datasource of their side changed),
+// e.g. only side B of a reconciliation; when none did, all the control writes, to start them anew.
+export function recreateTargets(check) {
+  if (!check) {
+    return [];
+  }
+  const tables = (check.tables || []).filter((table) => !table.error);
+  const changed = check.source_changed || [];
+  const sourceChanged = (target) => {
+    const side = { rapo_resa_: "A", rapo_resb_: "B" }[target.slice(0, 10)];
+    return side ? changed.includes(side) : changed.length > 0;
+  };
+  const drifted = tables.filter((table) => (table.exists && table.columns.some((column) => column.ddl || column.status === "incompatible")) || sourceChanged(table.target));
+  return (drifted.length ? drifted : tables).map((table) => table.target);
+}
+
 // The rows of a result table: exact once counted on request (count-control-table-rows), otherwise the optimizer
 // statistics estimate, since a count(*) scans the whole table.
 export function rowsText(table, exact) {

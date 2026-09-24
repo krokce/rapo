@@ -17,10 +17,12 @@
           </q-tooltip>
         </q-chip>
       </div>
-      <div v-if="unownedTables.length">
+      <div v-if="orphanTables.length">
         <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
-          {{ unownedTables.length }} orphaned result table{{ unownedTables.length > 1 ? "s" : "" }}
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Result tables of no control: review and drop them</q-tooltip>
+          {{ orphanTables.length }} orphaned result table{{ orphanTables.length > 1 ? "s" : "" }}
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
+            Result tables no run writes any more: review and drop them
+          </q-tooltip>
         </q-chip>
       </div>
     </h2>
@@ -353,7 +355,7 @@
         </confirm-dialog>
       </q-list>
     </q-menu>
-    <orphan-tables-dialog ref="orphanDialog" :tables="unownedTables" @changed="refreshSchemaDrift" />
+    <orphan-tables-dialog ref="orphanDialog" :tables="orphanTables" @changed="refreshSchemaDrift" />
   </q-page>
 </template>
 
@@ -461,7 +463,7 @@ export default {
       return drift.level === "update" && !drift.orphans.length ? "amber-8" : "red-4";
     },
     driftTitle(drift) {
-      const orphans = drift.orphans.length ? ` Orphaned, no longer written: ${drift.orphans.join(", ")}.` : "";
+      const orphans = drift.orphans.length ? ` Orphaned, no longer written: ${drift.orphans.map((orphan) => orphan.table).join(", ")}.` : "";
       if (drift.level === "error") {
         return `Schema check failed: ${drift.reason}.${orphans} Open the control to fix it.`;
       }
@@ -539,9 +541,17 @@ export default {
     },
   },
   computed: {
-    // Result tables of no control (get-schema-drift), reviewed in OrphanTablesDialog.
-    unownedTables() {
-      return this.schemaDrift.unowned || [];
+    // Every result table no run writes (get-schema-drift), reviewed in OrphanTablesDialog: those of a control whose
+    // configuration no longer writes them, by control name, then those of no control.
+    orphanTables() {
+      const byId = new Map(this.controlCatalogue.map((control) => [String(control.control_id), control]));
+      const owned = Object.entries(this.schemaDrift.controls || {}).flatMap(([controlId, drift]) => {
+        const control = byId.get(controlId);
+        return drift.orphans.map((orphan) => ({ ...orphan, control_id: Number(controlId), control_name: control ? control.control_name : null }));
+      });
+      owned.sort((a, b) => (a.control_name || "").localeCompare(b.control_name || "") || a.table.localeCompare(b.table));
+      const unowned = (this.schemaDrift.unowned || []).map((table) => ({ ...table, control_id: null, control_name: null, reason: null }));
+      return [...owned, ...unowned];
     },
     ...mapState(["controlCatalogue", "schemaDrift"]),
     ...mapGetters(["getSearch", "getEnvInfo"]),

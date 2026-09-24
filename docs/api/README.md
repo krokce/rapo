@@ -224,9 +224,9 @@ writes `rapo_resa_<name>` only when it saves side A (`need_a = 'Y'`, i.e. an A o
 *Discrepancies*) and `rapo_resb_<name>` only when it saves side B (`need_b = 'Y'`). Only those tables are
 checked, updated and created. Another existing result table of the control's name is **orphaned**: no run writes
 it any more, e.g. side B after its output was unticked, or `rapo_rest_<name>` after the type changed to REC.
-Orphans are never changed by an update; they are dropped explicitly (`drop-orphaned-table`) or by
-`recreate-control-schema`. Result tables whose name matches no control at all (a deleted control, or one
-renamed outside the application) are listed by `get-schema-drift` as `unowned`.
+Orphans are never changed by an update or a recreate; they are only dropped explicitly (`drop-orphaned-table`).
+Result tables whose name matches no control at all (a deleted control, or one renamed outside the application)
+are listed by `get-schema-drift` as `unowned`.
 
 #### `POST /api/check-control-schema`
 Compare the result tables of a saved control with the schema of a configuration. The body is the control object
@@ -274,15 +274,19 @@ control:
 
 ```json
 {"controls": {"94": {"level": "update", "changes": 1, "incompatible": 0,
-                     "tables": ["RAPO_RESB_RAPO_FIX_REC"], "orphans": [], "reason": null}},
- "unowned": [{"table": "RAPO_RESA_OLD_CONTROL", "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04",
-              "oldest": "2026-01-28T15:10:54"}]}
+                     "tables": ["RAPO_RESA_RAPO_FIX_REC"], "reason": null,
+                     "orphans": [{"table": "RAPO_RESB_RAPO_FIX_REC", "rows": 1488,
+                                  "rows_analyzed": "2026-09-21T22:00:04",
+                                  "reason": "no discrepancies of side B are written"}]}},
+ "unowned": [{"table": "RAPO_RESA_OLD_CONTROL", "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04"}]}
 ```
 
 `level` is `ok`, `update` (changes `update-control-schema` makes), `recreate` (incompatible columns), `error` (the
 configuration names a column its datasource lacks, see `reason`), `missing` (no written table exists yet),
 `not_checked`, or `rebuilt` (the control drops its tables on every run, so only its `orphans` are reported).
-`orphans` are the control's tables its saved configuration no longer writes.
+`orphans` are the control's tables its saved configuration no longer writes, with the optimizer statistics
+(`rows`/`rows_analyzed`, `null` without them) and why nothing writes them. `unowned` carries the same statistics.
+Nothing is counted and no table is read here, so a few hundred result tables cost one dictionary query.
 
 Unlike `check-control-schema`, which creates each expected table empty to learn Oracle's types, this reads the
 dictionary only (one pass over `all_tab_columns`), so it is cheap enough for the whole catalogue. The result
@@ -305,8 +309,10 @@ changed. Answers `{"status": 200, "incompatible": ["rapo_rest_my_control.name"]}
 `Recreate schema needed for <table>: ...` when an incompatible column is left.
 
 #### `POST /api/recreate-control-schema`
-Drop all result tables of a saved control (`name`), orphans included, and create the ones its saved configuration
-writes at once, with its schema. Past results are deleted.
+Drop result tables of a saved control (`name`) and create them at once with the schema of its saved configuration:
+those named in `tables` (comma-separated, e.g. `tables=rapo_resb_my_control` to recreate only the side that drifted),
+by default all it writes. Past results of those tables are deleted; the others and any orphans are not touched.
+`400` when a named table is not one the control writes.
 
 #### `POST /api/drop-orphaned-table`
 Drop one result table (`table`) that no run writes any more: an orphan of a control according to its **saved**

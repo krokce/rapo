@@ -374,10 +374,34 @@ class Reader:
             type (TABLE or VIEW) under 'object_type'. A table that does not
             exist is absent.
         """
-        schema = db.execute("select sys_context('userenv', 'current_schema') "
-                            "from dual", as_scalar=True)
+        schema, user = db.execute(
+            "select sys_context('userenv', 'current_schema'), user from dual",
+            as_one=True)
         keys = sorted({(owner or schema, name) for owner, name in tables})
         found = {}
+        # The tables of the own schema, i.e. every result table and most
+        # datasources, are read from user_tab_columns: all_tab_columns has to
+        # check privileges on the whole dictionary and takes several times
+        # longer for the same rows.
+        local = [name for owner, name in keys if owner == user == schema]
+        keys = [key for key in keys if not (key[0] == user == schema)]
+        for i in range(0, len(local), chunk):
+            part = local[i:i + chunk]
+            names = ', '.join(f':t{j}' for j in range(len(part)))
+            params = {f't{j}': name for j, name in enumerate(part)}
+            query = sa.text(
+                'select c.table_name, lower(c.column_name) name, '
+                'c.data_type, c.data_length, c.char_length, c.char_used, '
+                'c.data_precision, c.data_scale, c.nullable, '
+                "nvl2(t.table_name, 'TABLE', 'VIEW') object_type "
+                'from user_tab_columns c '
+                'left join user_tables t on t.table_name = c.table_name '
+                f'where c.table_name in ({names}) '
+                'order by c.table_name, c.column_id'
+            ).bindparams(**params)
+            for row in db.execute(query, as_table=True):
+                key = (schema, row.pop('table_name'))
+                found.setdefault(key, []).append(row)
         for i in range(0, len(keys), chunk):
             part = keys[i:i + chunk]
             pairs = ', '.join(f'(:o{j}, :t{j})' for j in range(len(part)))

@@ -3929,13 +3929,26 @@ class Executor:
                 diffs.append(self.sync_output_table(table_name))
         return diffs
 
-    def recreate_output_tables(self):
-        """Drop all result tables of the control, orphaned ones included, and
-        create those runs write with the current schema."""
-        for table_name in output_table_names(self.control.name):
+    def recreate_output_tables(self, tables=None):
+        """Drop result tables and create them with the current schema.
+
+        Parameters
+        ----------
+        tables : list of str, optional
+            The tables to recreate, e.g. only the side of a reconciliation
+            that drifted. Each must be one runs write. By default all of them.
+            Orphaned tables are never touched here: drop_orphan_table.
+        """
+        written = self.control.written_output_names
+        tables = [table.lower() for table in tables] if tables else written
+        for table_name in tables:
+            if table_name not in written:
+                raise ValueError(f'{table_name.upper()} is not a result table '
+                                 f'{self.control.name} writes')
+        for table_name in tables:
             self._delete_output_table(table_name)
-        for table_name in self.control.written_output_names:
             self._create_output_table(table_name)
+        return tables
 
     def drop_orphan_table(self, table_name):
         """Drop a result table of the control that runs no longer write."""
