@@ -209,20 +209,34 @@ still saved, the tables stay under the old name, and the answer is `400` with
 The result tables are created by the first run from the datasource columns (or the configured output columns).
 These routes compare them with what the configuration would create now, and bring them in line.
 
+**Which tables a control writes.** An analysis, report or comparison writes `rapo_rest_<name>`. A reconciliation
+writes `rapo_resa_<name>` only when it saves side A (`need_a = 'Y'`, i.e. an A output is ticked under
+*Discrepancies*) and `rapo_resb_<name>` only when it saves side B (`need_b = 'Y'`). Only those tables are
+checked, updated and created. Another existing result table of the control's name is **orphaned**: no run writes
+it any more, e.g. side B after its output was unticked, or `rapo_rest_<name>` after the type changed to REC.
+Orphans are never changed by an update; they are dropped explicitly (`drop-orphaned-table`) or by
+`recreate-control-schema`. Result tables whose name matches no control at all (a deleted control, or one
+renamed outside the application) are listed by `get-schema-drift` as `unowned`.
+
 #### `POST /api/check-control-schema`
 Compare the result tables of a saved control with the schema of a configuration. The body is the control object
 as `save-control` takes it, possibly with unsaved changes; its `control_id` names the saved control. Nothing is
 changed.
 
 ```json
-{"control_name": "MY_CONTROL", "renamed_from": null, "source_changed": ["A"],
+{"control_name": "MY_CONTROL", "control_type": "REC", "renamed_from": null, "source_changed": ["A"],
  "rebuilt_each_run": false, "active_run": false,
+ "orphans": [{"table": "rapo_resb_my_control", "target": "rapo_resb_my_control", "rows": 820,
+              "rows_analyzed": "2026-09-21T22:00:04", "oldest": "2026-09-02T06:00:11"}],
  "tables": [{"table": "rapo_resa_my_control", "target": "rapo_resa_my_control", "exists": true,
              "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04", "oldest": "2026-09-21T14:37:45",
              "columns": [{"name": "amount", "status": "widened", "current": "NUMBER(8,2)",
                           "expected": "NUMBER(12,4)", "ddl": "MODIFY (amount NUMBER(12,4))"}]}]}
 ```
 
+- `tables`: the tables runs of this configuration write (see above), compared column by column.
+- `orphans`: the existing tables of the control that runs of this configuration no longer write, with the same
+  `rows`/`rows_analyzed`/`oldest` as a table. They are listed even when `rebuilt_each_run`.
 - `source_changed`: the datasources that differ from the saved ones (`source`, `A`, `B`).
 - `renamed_from`: the saved name when `control_name` changed. `table` is then the existing table under the old
   name and `target` its name after the save.
@@ -245,16 +259,20 @@ changed.
 `400` when the body has no saved `control_id`.
 
 #### `GET /api/get-schema-drift`
-The drift of every control's result tables at once, keyed by `control_id`:
+The drift and orphaned tables of every control at once, keyed by `control_id`, and the result tables of no
+control:
 
 ```json
-{"94": {"level": "update", "changes": 1, "incompatible": 0,
-        "tables": ["RAPO_RESB_RAPO_FIX_REC"], "reason": null}}
+{"controls": {"94": {"level": "update", "changes": 1, "incompatible": 0,
+                     "tables": ["RAPO_RESB_RAPO_FIX_REC"], "orphans": [], "reason": null}},
+ "unowned": [{"table": "RAPO_RESA_OLD_CONTROL", "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04",
+              "oldest": "2026-01-28T15:10:54"}]}
 ```
 
 `level` is `ok`, `update` (changes `update-control-schema` makes), `recreate` (incompatible columns), `error` (the
-configuration names a column its datasource lacks, see `reason`), `missing` (no result table yet) or
-`not_checked`. Controls that drop their tables on every run are left out.
+configuration names a column its datasource lacks, see `reason`), `missing` (no written table exists yet),
+`not_checked`, or `rebuilt` (the control drops its tables on every run, so only its `orphans` are reported).
+`orphans` are the control's tables its saved configuration no longer writes.
 
 Unlike `check-control-schema`, which creates each expected table empty to learn Oracle's types, this reads the
 dictionary only (one pass over `all_tab_columns`), so it is cheap enough for the whole catalogue. The result
@@ -263,10 +281,11 @@ column: a CMP output column that coalesces A and B, a datasource name with `{var
 database link are `not_checked` with the `reason`.
 
 #### `GET /api/count-control-table-rows`
-Count the rows of one result table (`table`) of a saved control (`name`) exactly. A full scan, so it is meant
-to be asked for explicitly. Answers `{"table": "RAPO_RESA_MY_CONTROL", "rows": 1315, "counted":
-"2026-09-24T08:21:05"}`, `rows` being `null` when the table does not exist. `400` when `table` is not a result
-table of the control.
+Count the rows of one result table (`table`) exactly: one of a saved control (`name`), its orphans included, or,
+without `name`, one of no control. A full scan, so it is meant to be asked for explicitly. Answers
+`{"table": "RAPO_RESA_MY_CONTROL", "rows": 1315, "counted": "2026-09-24T08:21:05"}`, `rows` being `null` when the
+table does not exist. `400` when `table` is not a result table of the control, or, without `name`, belongs to a
+control.
 
 #### `POST /api/update-control-schema`
 Apply the safe changes of `check-control-schema` to the existing result tables of a saved control (`name`):
@@ -276,8 +295,13 @@ changed. Answers `{"status": 200, "incompatible": ["rapo_rest_my_control.name"]}
 `Recreate schema needed for <table>: ...` when an incompatible column is left.
 
 #### `POST /api/recreate-control-schema`
-Drop the result tables of a saved control (`name`) and create them at once with the schema of its saved
-configuration. Past results are deleted. `400` with the reason when a table cannot be created, e.g. a missing
+Drop all result tables of a saved control (`name`), orphans included, and create the ones its saved configuration
+writes at once, with its schema. Past results are deleted.
+
+#### `POST /api/drop-orphaned-table`
+Drop one result table (`table`) that no run writes any more: an orphan of a control according to its **saved**
+configuration, or a table of no control. Past results are deleted. `400` when the table is still written by its
+control, is not a result table (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_`), or does not exist. `400` with the reason when a table cannot be created, e.g. a missing
 datasource.
 
 #### `DELETE /api/delete-control`

@@ -24,8 +24,8 @@ from ...core import logs
 from ...core import mailer
 from ...core import schedule
 from ...core import sqlcheck
-from ...core.control import Control
-from ...core.drift import schema_drift
+from ...core import drift
+from ...core.control import Control, output_table_names
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming
 
@@ -276,12 +276,22 @@ def check_control_schema(data: dict = fastapi.Body(...)):
                       if (config.get(key) or '').lower()
                       != (saved.get(key) or '').lower()]
     answer = {'control_name': control.name,
+              'control_type': control.type,
               'renamed_from': (saved_name if saved_name.lower()
                                != control.name.lower() else None),
               'source_changed': source_changed,
               'rebuilt_each_run': control.with_drop,
               'active_run': _active_run(saved['control_id']),
-              'tables': []}
+              'tables': [], 'orphans': []}
+    # Tables of the control that runs of this configuration no longer write,
+    # e.g. side B of a reconciliation whose B output was unticked.
+    written = control.written_output_names
+    for table_name in output_table_names(control.name):
+        current_name = _current_table_name(table_name, answer['renamed_from'])
+        if table_name not in written and db.exists(current_name):
+            orphan = {'table': current_name, 'target': table_name}
+            orphan.update(control.executor._output_table_stats(current_name))
+            answer['orphans'].append(orphan)
     if control.with_drop:
         return answer
     try:
@@ -292,13 +302,8 @@ def check_control_schema(data: dict = fastapi.Body(...)):
     except Exception as error:
         answer['error'] = f'Datasource cannot be read: {error}'
         return answer
-    for table_name in control.output_names:
-        current_name = table_name
-        if answer['renamed_from']:
-            old_name = (table_name[:len('rapo_resx_')]
-                        + saved_name.lower())
-            if db.exists(old_name) and not db.exists(table_name):
-                current_name = old_name
+    for table_name in written:
+        current_name = _current_table_name(table_name, answer['renamed_from'])
         try:
             diff = control.executor.diff_output_table(table_name,
                                                       current_name)
@@ -310,20 +315,45 @@ def check_control_schema(data: dict = fastapi.Body(...)):
     return answer
 
 
+def _current_table_name(table_name, renamed_from):
+    """Get where a result table is now: under the saved name while a rename
+    is not saved yet."""
+    if renamed_from:
+        old_name = table_name[:len('rapo_resx_')] + renamed_from.lower()
+        if db.exists(old_name) and not db.exists(table_name):
+            return old_name
+    return table_name
+
+
 @api.get('/count-control-table-rows')
-def count_control_table_rows(name: str, table: str):
-    """Count the rows of a result table of a control exactly.
+def count_control_table_rows(table: str, name: str | None = None):
+    """Count the rows of a result table exactly.
 
     A full scan, so only on request: check-control-schema gives the
-    statistics estimate.
+    statistics estimate. With name the table must be one of that control's
+    result tables, without it one that belongs to no control.
     """
-    control = Control(name)
     try:
-        rows = control.executor.count_output_rows(table.lower())
+        if name:
+            rows = Control(name).executor.count_output_rows(table.lower())
+        else:
+            rows = drift.count_unowned_rows(table.lower())
     except ValueError as error:
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     return {'table': table.upper(), 'rows': rows,
             'counted': dt.datetime.now().replace(microsecond=0)}
+
+
+@api.post('/drop-orphaned-table')
+def drop_orphaned_table(table: str):
+    """Drop a result table no run writes any more: one of a control whose
+    configuration no longer writes it, or one that belongs to no control."""
+    try:
+        drift.drop_orphaned_table(table.lower())
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    events.poke()
+    return {'status': 200}
 
 
 @api.post('/update-control-schema')
@@ -385,8 +415,7 @@ def get_schema_drift():
     Built from the dictionary in one pass, so it is cheap enough for the
     controls list; check-control-schema is the exact check of one control.
     """
-    return {str(control_id): drift
-            for control_id, drift in schema_drift().items()}
+    return drift.schema_drift()
 
 
 @api.get('/get-control-versions')

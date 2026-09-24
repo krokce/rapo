@@ -18,13 +18,16 @@ export function isSafeChange(column) {
 }
 
 export function summarizeSchema(check) {
-  const summary = { tables: [], safe: 0, incompatible: 0, notOutput: 0, missing: 0, errors: [], renamed: false, level: "ok" };
+  const summary = { tables: [], orphans: [], safe: 0, incompatible: 0, notOutput: 0, missing: 0, errors: [], renamed: false, level: "ok" };
   if (!check) {
     return summary;
   }
   if (check.error) {
     summary.errors.push(check.error);
   }
+  // Result tables of the control that runs no longer write, e.g. side B of a reconciliation whose B output was
+  // unticked: flagged for an explicit drop, never dropped by Update schema.
+  summary.orphans = check.orphans || [];
   for (const table of check.tables || []) {
     const counts = { safe: 0, incompatible: 0, notOutput: 0 };
     for (const column of table.columns) {
@@ -51,6 +54,8 @@ export function summarizeSchema(check) {
     summary.level = "error";
   } else if (summary.incompatible) {
     summary.level = "recreate";
+  } else if (summary.orphans.length) {
+    summary.level = "orphaned";
   } else if (summary.safe) {
     summary.level = "update";
   }
@@ -67,6 +72,12 @@ export function rowsText(table, exact) {
     return "row count unknown (no statistics)";
   }
   return `≈ ${formatNumber(table.rows)} rows (statistics of ${toDateString(table.rows_analyzed)})`;
+}
+
+// The line of an orphaned table in a confirmation: what dropping it deletes.
+export function describeOrphan(orphan, exact) {
+  const oldest = orphan.oldest ? `, results since ${toDateString(orphan.oldest)}` : "";
+  return `${orphan.table.toUpperCase()}: ${rowsText(orphan, exact)}${oldest} will be dropped`;
 }
 
 // The line of a table in a confirmation: what Update schema changes, or what Recreate schema deletes.
