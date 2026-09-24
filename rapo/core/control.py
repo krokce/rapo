@@ -2697,7 +2697,7 @@ class Executor:
         clause = sa.text(self.control.error_sql or '')
         select = select.where(clause)
         select = db.compile(select)
-        ctas = sa.text(f'CREATE TABLE {table_name} AS\n{select}')
+        ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
         text = db.formatter.document(ctas)
         logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
         db.execute(ctas)
@@ -3372,7 +3372,7 @@ class Executor:
 
         table_name = f'rapo_temp_md_{self.control.process_id}'
         select = db.compile(select)
-        ctas = sa.text(f'CREATE TABLE {table_name} AS\n{select}')
+        ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
         text = db.formatter.document(ctas)
         logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
         db.execute(ctas)
@@ -3442,7 +3442,7 @@ class Executor:
 
         table_name = f'rapo_temp_nmd_{self.control.process_id}'
         select = db.compile(select)
-        ctas = sa.text(f'CREATE TABLE {table_name} AS\n{select}')
+        ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
         text = db.formatter.document(ctas)
         logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
         db.execute(ctas)
@@ -4241,7 +4241,7 @@ class Executor:
             hint = f'parallel({parallelism})'
             select = select.with_hint(sa.text(table_name), hint)
         select = db.compile(select)
-        ctas = sa.text(f'CREATE TABLE {table_name} AS\n{select}')
+        ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
         text = db.formatter.document(ctas)
         logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
         db.execute(ctas)

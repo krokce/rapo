@@ -1,4 +1,6 @@
-create table rapo_temp_t03_dup_b_{process_id} as
+create table rapo_temp_t03_dup_b_{process_id}
+nologging
+as
 select {parallelism} b.*, x.cluster_id,
        row_number() over (partition by {keys_b}, x.cluster_id order by o.numeric_value, {key_field_b}) as cluster_position_number
   from rapo_temp_source_b_{process_id} b

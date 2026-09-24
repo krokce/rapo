@@ -146,3 +146,8 @@ The upgrade steps are in the [migration instructions](README.md).
     checks that the Oracle Instant Client can be loaded, warning when a start from cron would not find it. An
     existing environment is updated in place; `--force` recreates it, and is refused while Rapo runs from it. See
     the README's Installation.
+17. **NOLOGGING for every temporary table.** A run created only some of its `RAPO_TEMP_` tables with `NOLOGGING`
+    (four reconciliation stages and the PL engine's tables). Now every one of them is: the fetched sources, the
+    analysis and comparison working tables and all reconciliation stages. This cuts redo only on a database that is
+    not in `FORCE LOGGING` mode (e.g. with Data Guard, Oracle logs them anyway). The result tables (`RAPO_REST_`/
+    `RAPO_RESA_`/`RAPO_RESB_`) keep `LOGGING`, as they must be recoverable. Results are unchanged.
