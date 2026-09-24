@@ -22,12 +22,13 @@ process, per-run log files shown in the UI, a documented web API, an optional Or
 for reconciliation controls, results sent per email, and a KPI catalogue editor. The releases are described in
 [migrations/v0.7.0](migrations/v0.7.0/README.md),
 [migrations/v0.8.0](migrations/v0.8.0/CHANGELOG.md),
-[migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md) and
-[migrations/v0.8.2](migrations/v0.8.2/CHANGELOG.md).
+[migrations/v0.8.1](migrations/v0.8.1/CHANGELOG.md),
+[migrations/v0.8.2](migrations/v0.8.2/CHANGELOG.md) and
+[migrations/v0.8.3](migrations/v0.8.3/CHANGELOG.md), and summarized in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
 
-Releases of the fork carry a local version segment - `0.8.2+fork` - because the original project keeps its own
+Releases of the fork carry a local version segment - `0.8.3+fork` - because the original project keeps its own
 numbering and is at v0.6.15; the two version lines say nothing about each other.
 
 ## Prologue

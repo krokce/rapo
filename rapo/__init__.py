@@ -10,7 +10,7 @@ __copyright__ = 'Copyright 2026, The Rapo project'
 __credits__ = ['Timur Faradzhov', 'Kostadin Taneski']
 
 __license__ = 'MIT'
-__version__ = '0.8.2+fork'
+__version__ = '0.8.3+fork'
 __maintainer__ = 'Kostadin Taneski'
 __email__ = 'kosta@taneski.com'
 __status__ = 'Development'
