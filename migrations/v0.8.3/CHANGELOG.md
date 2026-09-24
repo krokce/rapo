@@ -124,3 +124,25 @@ The upgrade steps are in the [migration instructions](README.md).
 12. **Server errors are logged.** An unexpected error in a web API call used to leave no trace: the server answered
     500 and its traceback was discarded with the web server's own output. The traceback is now written to the
     server log (`rapo-server_YYYYMMDD.log`), and the answer carries the error type and message.
+13. **Nested CASE in the Case definition.** Every number after `THEN` or `ELSE` was taken for a case ID, so a
+    CASE nested in a condition, e.g. `when days < case when x is null then 5 else 10 end then 1`, failed the run
+    with `KeyError: 5`. Only the results of the definition itself are case IDs now: the outer CASE's branches and
+    those of a CASE that is a whole branch of it. A CASE inside a `WHEN` condition or a function call keeps its
+    values, and numbers in comments and quoted text are ignored. A case ID missing from the Case config fails the
+    run with a message naming it, and *Check* counts case IDs the same way.
+    A case added in the editor's Case config now starts with the value `Case <ID>` (e.g. `Case 4`) instead of an
+    empty one.
+14. **`rapoctl.sh`.** The control script `rapo-ctl.sh` is renamed `rapoctl.sh`, so the shell completes it after
+    `./rapo` without stopping at `rapo-`. Its log is `rapoctl.log`. A crontab `@reboot` entry needs the new name
+    (see the [migration instructions](README.md)).
+15. **Oracle driver `python-oracledb`.** Rapo uses `oracledb`, the successor of `cx_Oracle`, instead of
+    `cx_Oracle`. `cx_Oracle` has no ready-made package for Python 3.11 or newer, so installing it compiled it and
+    needed `gcc` and the Python development headers (`python3.12-devel`); `oracledb` installs without either. It runs in
+    the same (thick) mode as before, so the Oracle Instant Client is still needed, found as before through `[DATABASE]
+    client_path` or the library path. Results are unchanged.
+16. **`install.sh`.** One command installs Rapo, or updates it after checking out a new version: it creates the
+    virtual environment with a Python 3.10+ of your choice (offered from the ones installed, or `--python
+    python3.12`), installs the requirements and Rapo, creates `rapo.ini` from the example when there is none, and
+    checks that the Oracle Instant Client can be loaded, warning when a start from cron would not find it. An
+    existing environment is updated in place; `--force` recreates it, and is refused while Rapo runs from it. See
+    the README's Installation.

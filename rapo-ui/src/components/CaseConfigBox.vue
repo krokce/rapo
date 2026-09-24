@@ -53,7 +53,7 @@ export default {
     addCaseConfig() {
       // Next free id, so ids stay unique after rows are removed.
       const id = Math.max(0, ...this.caseConfigObject.map((item) => Number(item.case_id) || 0)) + 1;
-      this.caseConfigObject.push({ case_id: id, case_value: null, case_type: "Error", case_description: null });
+      this.caseConfigObject.push({ case_id: id, case_value: `Case #${id}`, case_type: "Error", case_description: null });
     },
     removeCaseConfig(index) {
       this.caseConfigObject.splice(index, 1);

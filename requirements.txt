@@ -5,7 +5,7 @@ sqlparse==0.4.4
 fastapi==0.141.1
 uvicorn==0.53.0
 SQLAlchemy==1.4.46
-cx-Oracle==8.3.0
+oracledb==26.0.1
 python-socketio==5.17.0
 websockets==17.1
 XlsxWriter==3.2.9

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rapo-ctl.sh - start, stop, restart and inspect the rapo web server.
+# rapoctl.sh - start, stop, restart and inspect the rapo web server.
 #
 # The server is uvicorn running rapo.web.api.app:app (API + UI + scheduler),
 # started through the venv's rapo-server console script, which also keeps the
@@ -9,13 +9,13 @@
 # port to answer, and a log of what it did.
 #
 # Usage:
-#   ./rapo-ctl.sh start [dev] [--wait SECONDS]
-#   ./rapo-ctl.sh stop [--timeout SECONDS]
-#   ./rapo-ctl.sh restart [--wait SECONDS] [--timeout SECONDS]
-#   ./rapo-ctl.sh status
+#   ./rapoctl.sh start [dev] [--wait SECONDS]
+#   ./rapoctl.sh stop [--timeout SECONDS]
+#   ./rapoctl.sh restart [--wait SECONDS] [--timeout SECONDS]
+#   ./rapoctl.sh status
 #
 # Crontab (start on reboot, giving the database up to 10 minutes to appear):
-#   @reboot /home/kosta/applications/rapo_dev/rapo-ctl.sh start --wait 600
+#   @reboot /home/kosta/applications/rapo_dev/rapoctl.sh start --wait 600
 #
 # Environment overrides: RAPO_HOME, RAPO_VENV, RAPO_CONFIG, RAPO_CTL_LOG.
 
@@ -36,7 +36,7 @@ READY=60        # how long to wait for the port to answer after a start
 
 log() {
     local line
-    line="$(date '+%Y-%m-%d %H:%M:%S') rapo-ctl: $*"
+    line="$(date '+%Y-%m-%d %H:%M:%S') rapoctl: $*"
     echo "$line"
     if [[ -n ${LOG_FILE:-} ]]; then
         echo "$line" >>"$LOG_FILE" 2>/dev/null
@@ -232,7 +232,7 @@ PROBE_HOST=$HOST
 
 LOG_DIR=$(ini_get LOGGING directory "$RAPO_HOME/logs")
 [[ $LOG_DIR != /* ]] && LOG_DIR=$RAPO_HOME/$LOG_DIR
-LOG_FILE=${RAPO_CTL_LOG:-$LOG_DIR/rapo-ctl.log}
+LOG_FILE=${RAPO_CTL_LOG:-$LOG_DIR/rapoctl.log}
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
 
 case $ACTION in

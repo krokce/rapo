@@ -27,7 +27,7 @@ from .fields import (
 )
 from .case import (
     NORMAL, INFO, ERROR, WARNING, INCIDENT, DISCREPANCY,
-    SUCCESS, LOSS, DUPLICATE
+    SUCCESS, LOSS, DUPLICATE, find_case_ids
 )
 
 
@@ -2436,30 +2436,25 @@ class Parser:
         if self.control.is_analysis and custom_statement:
             columns = []
             case_config = self.parse_case_config()
+            spans = find_case_ids(custom_statement)
+            unknown = sorted({i for _, _, i in spans} - set(case_config))
+            if unknown:
+                raise ValueError('Case definition returns case ID '
+                                 f'{", ".join(map(str, unknown))}, which is '
+                                 'not in Case config')
 
-            replaces = []
-            pattern = r'THEN\s+\d+|ELSE\s+\d+'
-            matches = re.findall(pattern, custom_statement, re.IGNORECASE)
-            for match in matches:
-                keyword, result = re.split(r'\s+', match)
-                case_id = int(result)
-                case_value = case_config[case_id]['case_value']
-                case_type = case_config[case_id]['case_type']
-
-                replace = [match, {}]
-                replace[1]['key'] = f'{keyword} {case_id}'
-                replace[1]['value'] = f'{keyword} \'{case_value}\''
-                replace[1]['type'] = f'{keyword} \'{case_type}\''
-                replaces.append(replace)
-
-            columns = []
             for field in ['key', 'value', 'type']:
                 field_name = f'rapo_result_{field}'
-                final_statement = custom_statement
-                for replace in replaces:
-                    old = replace[0]+r'\s'
-                    new = replace[1][field]+r'\n'
-                    final_statement = re.sub(old, new, final_statement)
+                final_statement, last = '', 0
+                for start, end, case_id in spans:
+                    if field == 'key':
+                        new = str(case_id)
+                    else:
+                        text = str(case_config[case_id][f'case_{field}'])
+                        new = "'" + text.replace("'", "''") + "'"
+                    final_statement += custom_statement[last:start] + new
+                    last = end
+                final_statement += custom_statement[last:]
                 final_statement = db.formatter(final_statement)
                 column = sa.literal_column(final_statement).label(field_name)
                 columns.append(column)
