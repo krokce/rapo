@@ -6,5 +6,6 @@ export default {
   getEnvVersion: (state) => state.envVersion,
   getEnvInfo: (state) => state.envInfo,
   getEnvParameters: (state) => state.envParameters,
+  getEnvConfigChanges: (state) => state.envConfigChanges,
   controlCatalogueById: (state) => (controlId) => state.controlCatalogue.find((item) => item.control_id === Number(controlId)),
 };

@@ -77,12 +77,12 @@
                       <q-icon
                         name="fas fa-tag"
                         size="sm"
-                        @click="showVersionChanges"
+                        @click="$refs.versionsDialog.open()"
                         @click.stop.prevent
                         class="cursor-pointer"
                         :class="{ 'text-deep-orange-4': versionChanges.length }">
                         <q-badge rounded size="xs" v-if="versionChanges.length" color="green" floating>{{ versionChanges.length }}</q-badge>
-                        <q-tooltip v-if="versionChanges.length" anchor="top left" self="bottom left" :offset="[0, 5]"> Show changes </q-tooltip>
+                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Manage versions</q-tooltip>
                       </q-icon>
                     </template>
                     <template v-slot:no-option>
@@ -953,9 +953,16 @@
               {{ schemaNotice.label }}
               <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">{{ schemaNotice.tooltip }}</q-tooltip>
             </div>
-            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap">
+            <div
+              v-if="dirty"
+              class="text-orange-9 text-weight-medium row items-center no-wrap"
+              :class="{ 'cursor-pointer': savedControlJson !== null }"
+              @click="savedControlJson !== null && $refs.controlDiffDialog.open()">
               <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
               Unsaved changes
+              <q-tooltip v-if="savedControlJson !== null" anchor="top middle" self="bottom middle" :offset="[0, 5]">
+                Show what Apply will change
+              </q-tooltip>
             </div>
             <template v-if="schemaEnabled && !schemaCheck?.rebuilt_each_run">
               <q-btn v-if="schemaSummary.safe" label="Update schema" color="primary" outline :disable="saving || schemaBusy" @click="applySchema('update')">
@@ -990,6 +997,14 @@
       @drop="dropOrphan"
       @update="applySchema('update')"
       @recreate="applySchema('recreate')" />
+    <control-diff-dialog ref="controlDiffDialog" :diff="unsavedChanges" :busy="saving" @apply="persist('stay')" />
+    <control-versions-dialog
+      ref="versionsDialog"
+      :current="savedVersionRow"
+      :versions="pastVersions"
+      :loaded-id="controlVersion && controlVersion.version_id"
+      @load="loadVersion"
+      @changed="refreshVersions" />
   </q-page>
 </template>
 
@@ -997,12 +1012,14 @@
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun, showText } from "../runActions";
+import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SchemaDiffDialog from "./SchemaDiffDialog.vue";
+import ControlDiffDialog from "./ControlDiffDialog.vue";
+import ControlVersionsDialog from "./ControlVersionsDialog.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
@@ -1015,6 +1032,7 @@ import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
+import { diffControl, diffKpis } from "../utils/controlDiff";
 import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
@@ -1028,6 +1046,11 @@ import {
   isEmailAddress,
 } from "../utils/email";
 
+// The label of a version in the Version select and the Manage versions dialog.
+function versionLabel(version) {
+  return "v." + toDateTimeString(version.updated_date ? version.updated_date : version.created_date);
+}
+
 export default {
   components: {
     CodeBox,
@@ -1035,6 +1058,8 @@ export default {
     RunLogDialog,
     RunControlDialog,
     SchemaDiffDialog,
+    ControlDiffDialog,
+    ControlVersionsDialog,
     ScheduleEditBox,
     ReconciliationDiscrepancyCheckboxes,
     ReconciliationMatchCriteriaBox,
@@ -1133,6 +1158,14 @@ export default {
       return scheduleType(this.scheduleObject);
     },
     ...mapState(["controlCatalogue"]),
+    pastVersions() {
+      return this.controlVersions.slice(1);
+    },
+    // The saved row for the Manage versions dialog, from the catalogue rather than the form.
+    savedVersionRow() {
+      const row = this.control.control_id && this.controlCatalogueById(this.control.control_id);
+      return row ? { ...row, label: versionLabel(row) } : null;
+    },
     // Whether the form differs from the saved control, so Apply has something to write.
     dirty() {
       if (!this.ready) {
@@ -1286,14 +1319,6 @@ export default {
     revokeRun,
     dropTemporaryTables,
     copyResultsSql,
-    showVersionChanges() {
-      if (this.versionChanges.length) {
-        showText(this.control.control_name + " | " + this.controlVersion.label, this.formattedJSON(this.versionChanges));
-      }
-    },
-    formattedJSON(control) {
-      return JSON.stringify(control, null, 2).replace(/\\"/g, "'");
-    },
     filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();
@@ -1426,15 +1451,35 @@ export default {
     },
     async getControlVersions(controlId) {
       try {
-        const versions = await api("get-control-versions", { params: { control_id: controlId } });
-        const label = (version) => "v." + toDateTimeString(version.updated_date ? version.updated_date : version.created_date);
-        versions.forEach((version) => (version.label = label(version)));
-        this.control.label = label(this.control);
-        this.controlVersions = [this.control, ...versions];
-        this.controlVersion = this.control;
+        const versions = await this.fetchVersions(controlId);
+        this.control.label = versionLabel(this.control);
+        // A copy: the form is edited in place, and the saved entry must not follow it.
+        this.controlVersions = [JSON.parse(JSON.stringify(this.control)), ...versions];
+        this.controlVersion = this.controlVersions[0];
       } catch (error) {
         notifyError("Failed to load control versions.", error);
       }
+    },
+    async fetchVersions(controlId) {
+      const versions = await api("get-control-versions", { params: { control_id: controlId } });
+      versions.forEach((version) => (version.label = versionLabel(version)));
+      return versions;
+    },
+    // After versions were deleted: the list follows, the form stays as it is.
+    async refreshVersions() {
+      try {
+        const versions = await this.fetchVersions(this.control.control_id);
+        const loadedId = this.controlVersion && this.controlVersion.version_id;
+        this.controlVersions = [this.controlVersions[0], ...versions];
+        this.controlVersion = versions.find((version) => version.version_id === loadedId) || this.controlVersions[0];
+      } catch (error) {
+        notifyError("Failed to load control versions.", error);
+      }
+    },
+    // From the Manage versions dialog, the same as picking it in the Version select.
+    loadVersion(version) {
+      this.controlVersion = version;
+      this.controlVersionChanged();
     },
     async getControlLogs(controlName, numberDays) {
       try {
@@ -1563,21 +1608,26 @@ export default {
         console.log(err);
       }
     },
+    // A past version takes the saved row's ID and stamps and leaves its audit columns, so that the form holds only
+    // its configuration: one equal to the saved control is not dirty, and Apply writes no old stamps back.
     controlVersionChanged() {
-      const oldVersion = this.controlVersions[0];
-      const newVersion = this.controlVersion;
-      // iterate through oldVersion and newVersion and locate differences and create an array of changes
-      this.versionChanges = [];
-      for (const key in oldVersion) {
-        if (oldVersion[key] !== newVersion[key] && key !== "label" && key !== "audit_date" && key !== "updated_date" && key !== "updated_by") {
-          this.versionChanges.push({
-            field: key,
-            oldValue: oldVersion[key],
-            newValue: newVersion[key],
-          });
-        }
+      const saved = this.controlVersions[0];
+      const version = this.controlVersion;
+      if (version === saved) {
+        this.versionChanges = [];
+        this.loadControl(saved);
+        return;
       }
-      this.loadControl(newVersion);
+      const data = { ...version };
+      for (const key of ["audit_action", "audit_user", "audit_date", "version_id"]) {
+        delete data[key];
+      }
+      for (const key of ["control_id", "created_by", "created_date", "updated_by", "updated_date"]) {
+        data[key] = saved[key];
+      }
+      // Against the raw saved row: the form carries keys of its own (e.g. output_table_columns).
+      this.versionChanges = diffControl(JSON.stringify(this.savedVersionRow || saved), version);
+      this.loadControl(data);
     },
     // Edit a copy: the catalogue and version rows must not see unsaved edits.
     async loadControl(data, kpiControlName = null) {
@@ -1609,6 +1659,11 @@ export default {
     },
     // The rapo_config row as it would be saved, built from the form without touching it, so that it can also be
     // compared with the saved state (dirty). kpi_config is kept apart, since the KPIs load separately.
+    // What Apply would change against the saved state (ControlDiffDialog). Saved controls only: a new control or
+    // a clone has no saved state to compare with.
+    unsavedChanges() {
+      return [...diffControl(this.savedControlJson, this.buildControlPayload()), ...diffKpis(this.savedKpiJson, this.kpiConfigObject)];
+    },
     buildControlPayload() {
       const control = { ...this.control };
       // Set by getControlVersions for the version selector only.

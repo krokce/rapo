@@ -18,9 +18,7 @@ from ..logger import logger
 from ..reader import reader
 from ..utils import utils
 
-from ..config import (
-    FUZZY_OPTIMIZATION, NORMALIZATION_TYPE, DISCREPANCY_MATCHING
-)
+from ..config import get_algorithm_setting
 
 from . import mailer
 from .fields import (
@@ -2166,19 +2164,19 @@ class Parser:
         fuzzy_optimization = input_config.get('fuzzy_optimization')
         fuzzy_optimization = utils.coalesce(
             fuzzy_optimization,
-            FUZZY_OPTIMIZATION,
+            get_algorithm_setting('fuzzy_optimization'),
             True)
 
         normalization_type = input_config.get('normalization_type')
         normalization_type = utils.coalesce(
             normalization_type,
-            NORMALIZATION_TYPE,
+            get_algorithm_setting('normalization_type'),
             'default')
 
         discrepancy_matching = input_config.get('discrepancy_matching')
         discrepancy_matching = utils.coalesce(
             discrepancy_matching,
-            DISCREPANCY_MATCHING,
+            get_algorithm_setting('discrepancy_matching'),
             False)
 
         correlation_config = []

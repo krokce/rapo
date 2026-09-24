@@ -170,7 +170,16 @@ Every row of `rapo_config`, most recently updated first. This is the whole contr
 `save-control` takes back.
 
 #### `GET /api/get-control-versions`
-Past configurations of a control (`control_id`) from `rapo_config_bak`, newest first.
+Past configurations of a control (`control_id`) from `rapo_config_bak`, newest first. `rapo_config_bak` has no key
+(two saves within a second share their `audit_date`), so each version carries its ROWID as `version_id`.
+
+#### `DELETE /api/delete-control-versions`
+Deletes past versions of one control (`control_id`) from `rapo_config_bak`, either the listed ones (`version_id`,
+repeated: `?control_id=28&version_id=AAA...&version_id=AAB...`), or all older than `older_than_days` (by the
+database clock, which stamps `audit_date`) apart from the newest `keep` (default 0). A `version_id` of another
+control deletes nothing. Answers `{"status": 200, "count": N}`. With `dry_run=true` nothing is deleted, and the answer
+also lists the `version_ids` that would be (`count` is their number). `422` without `version_id` or
+`older_than_days`, `400` for a malformed `version_id`. The UI sends at most 100 `version_id`s per request.
 
 #### `GET /api/get-datasources`
 Names of the tables and views visible to the Rapo database user.
@@ -488,6 +497,19 @@ What this instance is: `instance_name`, `schema_name`, `database_server`, `datab
 The loaded `rapo.ini` as it is written, one object per section. Options whose name contains `password`, `token` or
 `secret` are left out, and options that are not in the file are simply absent - defaults applied in code are not
 shown here.
+
+#### `GET /api/get-config-changes`
+The differences between the loaded `rapo.ini` and the file on disk: `{"changes": [...]}`, one object per option with
+`section`, `option`, `change` (`added`, `removed` or `changed`), `restart` (the change applies only after a restart:
+`[DATABASE]`, `[API]`, `[LOGGING] directory`, `[SCHEDULER] enabled`, and a removed pepperoni `[LOGGING]` option),
+`secret`, and the `loaded` and `file` values, both `null` for a secret. `400` when the file is missing or can not be
+parsed.
+
+#### `POST /api/reload-config`
+Applies the changes of `rapo.ini` that need no restart to this server:
+`{"status": 200, "applied": [...], "restart_required": [...]}`, as `get-config-changes` describes them. Options that
+need a restart keep their loaded value and stay listed by `get-config-changes`. `400` when the file is missing or can
+not be parsed, and then nothing is applied. It only affects the server that answers; runs read the file anew anyway.
 
 #### `GET /api/status`
 The `rapo_scheduler` record: `server`, `username`, `pid`, `start_date`, `stop_date`, `status`. `404` before a
