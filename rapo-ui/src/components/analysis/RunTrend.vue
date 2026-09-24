@@ -10,7 +10,7 @@
     </q-card-section>
     <q-card-section class="q-pt-none">
       <q-skeleton v-if="!trend" type="rect" height="200px" />
-      <div v-else-if="trend.runs.length < 2" class="text-grey-7 q-pa-md">This is the only finished run of the control.</div>
+      <div v-else-if="trend.runs.length < 2" class="text-grey-7 q-pa-md">The control has no finished run for another day.</div>
       <e-chart v-else :option="option" :height="220" @select="select" />
     </q-card-section>
   </q-card>
@@ -21,8 +21,8 @@ import EChart from "./EChart.vue";
 import { api, notifyError } from "../../api";
 import { formatNumber, toDateTimeString } from "../../utils/format";
 
-// The counts of the dataset's side over the control's latest finished runs, from the run log only. A click on a
-// run opens the same dataset of that run.
+// The counts of the dataset's side over the control's latest days, one point per day (per window) by its last
+// finished run, from the run log only. A click on a run opens the same dataset of that run.
 export default {
   name: "RunTrend",
   components: { EChart },
@@ -36,14 +36,14 @@ export default {
   },
   computed: {
     limitOptions() {
-      return [10, 30, 90].map((value) => ({ label: `${value} runs`, value }));
+      return [10, 30, 90].map((value) => ({ label: `${value} days`, value }));
     },
     caption() {
       if (!this.trend) {
         return "";
       }
       const side = this.trend.side ? ` of side ${this.trend.side}` : "";
-      return `Fetched and discrepancy counts${side} of the last ${this.trend.runs.length} finished runs. Click a run to analyse it.`;
+      return `Fetched and discrepancy counts${side} of the last ${this.trend.runs.length} days, each by its last finished run. Click a run to analyse it.`;
     },
     option() {
       const runs = this.trend.runs;

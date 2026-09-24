@@ -190,8 +190,9 @@ The upgrade steps are in the [migration instructions](README.md).
     group shows its rows. *Profile these rows* describes only the rows the filters leave, e.g. the losses alone.
     The *Correlations* tab measures Pearson and Spearman correlation between numeric columns and Cramér's V
     between columns with few distinct values, and names the strongest pairs. A result dataset opens with the split
-    of its rows by result type, case value and discrepancy description, and every dataset shows the trend of its
-    fetched and discrepancy counts over the control's last runs, where a click opens that run. Filters can also be
+    of its rows by result type, case value and discrepancy description, and every dataset opens with the trend of
+    its fetched and discrepancy counts over the control's last days (one point per day, by its last finished run,
+    as a day is often run more than once), where a click opens that run. Filters can also be
     applied by the database (*Load from database*, or a *SQL filter* of your own, checked by Oracle before use):
     the sample is then drawn from the matching records only, instead of from the first rows. The page's address
     holds the view (tab, filters, grouping, database filter, comparison), so a copied link opens the same view.

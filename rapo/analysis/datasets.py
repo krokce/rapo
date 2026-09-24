@@ -199,11 +199,18 @@ def _changed_since(control, run):
 def trend(process_id, dataset, limit=30):
     """Get the fetched and discrepancy counts of a dataset's side over runs.
 
+    A period (the days of the run's date_from and date_to) is often run more
+    than once, e.g. by manual runs whose windows start at other times of the
+    day, so it is counted once, by its last done run (the highest process
+    ID). The period of the run itself is shown by that run, even when it was
+    run again later.
+
     Returns
     -------
     trend : dict
         {side, process_id, runs: [{process_id, date_from, date_to,
-        start_date, fetched, discrepancies, error_level}]}, oldest first.
+        start_date, fetched, discrepancies, error_level}]}, the latest
+        `limit` periods in the order of their dates.
     """
     if dataset not in DATASETS:
         raise DatasetError(f'Unknown dataset {dataset}')
@@ -225,16 +232,26 @@ def trend(process_id, dataset, limit=30):
     columns = [log.c.process_id, log.c.date_from, log.c.date_to,
                log.c.start_date, log.c.status] + \
         [log.c[field] for field in fields]
-    select = (sa.select(*columns)
-              .where(log.c.control_id == run['control_id'],
-                     sa.or_(log.c.status == 'D',
-                            log.c.process_id == process_id))
-              .order_by(log.c.process_id.desc())
-              .limit(limit))
-    rows = db.execute(select, as_table=True)
-    if not any(row['process_id'] == process_id for row in rows):
-        rows = rows[:-1] + [dict(run)]
-    rows.sort(key=lambda row: row['process_id'])
+    day_from = sa.func.trunc(log.c.date_from)
+    day_to = sa.func.trunc(log.c.date_to)
+    same_period = sa.and_(day_from == sa.func.trunc(sa.literal(run['date_from'])),
+                          day_to == sa.func.trunc(sa.literal(run['date_to'])))
+    last = sa.func.row_number().over(
+        partition_by=(day_from, day_to),
+        order_by=log.c.process_id.desc()).label('last')
+    periods = (
+        sa.select(*columns, last)
+        .where(log.c.control_id == run['control_id'], log.c.status == 'D',
+               sa.not_(same_period))
+        .subquery())
+    select = (sa.select(*[periods.c[column.name] for column in columns])
+              .where(periods.c.last == 1)
+              .order_by(periods.c.date_from.desc(), periods.c.date_to.desc())
+              .limit(max(limit - 1, 1)))
+    rows = db.execute(select, as_table=True) + [dict(run)]
+    rows.sort(key=lambda row: (row['date_from'] or dt.datetime.min,
+                               row['date_to'] or dt.datetime.min))
+    rows = rows[-limit:]
     return {'side': side.upper() if control_type in ('REC', 'CMP') else None,
             'process_id': process_id,
             'runs': [{'process_id': row['process_id'],

@@ -151,9 +151,9 @@
       </div>
       <q-tab-panels v-model="tab" class="col analysis-panels" keep-alive>
         <q-tab-panel name="overview" class="scroll-panel">
+          <run-trend class="q-mb-lg" :process-id="Number($route.params.processId)" :dataset="$route.params.dataset" :report-only="meta.control_type === 'REP'" />
           <result-breakdown v-if="hasBreakdown" class="q-mb-lg" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
           <analysis-overview :overview="sectionData('overview')" @show-rows="showRows" @show-column="showColumn" />
-          <run-trend class="q-mt-lg" :process-id="Number($route.params.processId)" :dataset="$route.params.dataset" :report-only="meta.control_type === 'REP'" />
         </q-tab-panel>
         <q-tab-panel name="columns" class="scroll-panel">
           <analysis-columns ref="columns" :columns="sectionData('columns')" :types="state.columns || []" @show-rows="showRows" />
