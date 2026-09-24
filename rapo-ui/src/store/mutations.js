@@ -16,6 +16,9 @@ export default {
   updateEnvParameters(state, payload) {
     state.envParameters = payload;
   },
+  updateEnvConfigChanges(state, payload) {
+    state.envConfigChanges = payload;
+  },
   updateControlCatalogue(state, payload) {
     state.controlCatalogue = freezeRows(payload);
   },

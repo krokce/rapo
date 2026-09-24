@@ -1,6 +1,7 @@
 """Contains web API application and routes."""
 
 import asyncio
+import configparser
 import contextlib
 import datetime as dt
 import os
@@ -13,7 +14,8 @@ import sqlalchemy as sa
 from . import events
 from .auth import verify_token
 
-from ...config import config, path as CONFIG_PATH
+from ...config import config, is_secret, path as CONFIG_PATH
+from ...config import PEPPERONI_OPTIONS
 from ...database import db
 from ...kpi import kpi
 from ...logger import logger, LOG_DIR
@@ -37,9 +39,6 @@ UI_DIR = os.path.realpath(
 # would describe the whole API to anyone able to reach the port. They are
 # served only when [API] docs is switched on.
 DOCS_ENABLED = bool(config.check('API') and config['API'].get('docs'))
-
-# Options of rapo.ini never sent to the browser, matched by name fragment.
-SECRET_OPTIONS = ('password', 'token', 'secret')
 
 
 def find_control(process_id):
@@ -155,9 +154,48 @@ def parameters():
     for section_name, section in config.items():
         output_dict[section_name] = {
             name: value for name, value in section.items()
-            if not any(secret in name for secret in SECRET_OPTIONS)
+            if not is_secret(name)
         }
     return output_dict
+
+
+@api.get('/get-config-changes')
+def get_config_changes():
+    """Get the differences between the loaded rapo.ini and the file."""
+    try:
+        return {'changes': config.changes()}
+    except configparser.Error as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'rapo.ini can not be read: {error}')
+
+
+@api.post('/reload-config')
+def reload_config():
+    """Apply the changes of rapo.ini that do not need a restart."""
+    try:
+        applied = config.reload()
+    except configparser.Error as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'rapo.ini can not be read: {error}')
+    logging_options = {item['option'] for item in applied
+                       if item['section'].upper() == 'LOGGING'
+                       and item['option'] in PEPPERONI_OPTIONS}
+    if logging_options:
+        logger.configure(**{name: config['LOGGING'][name]
+                            for name in logging_options})
+    # A higher control_parallelism lets queued runs start at once.
+    with runner.condition:
+        runner.condition.notify_all()
+    pending = [item for item in config.changes() if item['restart']]
+    names = ', '.join(f"{item['section']}.{item['option']}"
+                      for item in applied) or 'nothing'
+    logger.info(f'rapo.ini reloaded, applied: {names}')
+    if pending:
+        names = ', '.join(f"{item['section']}.{item['option']}"
+                          for item in pending)
+        logger.info(f'rapo.ini changes waiting for a restart: {names}')
+    events.poke_scheduler()
+    return {'status': 200, 'applied': applied, 'restart_required': pending}
 
 
 @api.post('/run-control')
@@ -424,6 +462,37 @@ def get_control_versions(control_id: str | None = None):
     if control_id is None:
         return []
     return reader.read_control_config_versions(control_id)
+
+
+@api.delete('/delete-control-versions')
+def delete_control_versions(
+        control_id: int,
+        version_id: list[str] | None = fastapi.Query(None),
+        older_than_days: int | None = fastapi.Query(None, ge=0),
+        keep: int = fastapi.Query(0, ge=0),
+        dry_run: bool = False):
+    """Delete past versions of a control from rapo_config_bak.
+
+    Either the listed versions (`version_id`, repeated), or all versions older
+    than `older_than_days` apart from the newest `keep`. With `dry_run`
+    nothing is deleted, and the answer lists the version_ids that would be.
+    """
+    if not version_id and older_than_days is None:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail='Give version_id or older_than_days')
+    try:
+        result = reader.delete_control_config_versions(
+            control_id, version_ids=version_id,
+            older_than_days=None if version_id else older_than_days,
+            keep=keep, dry_run=dry_run)
+    except sa.exc.DatabaseError as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=str(error.orig).strip())
+    if dry_run:
+        return {'status': 200, 'count': len(result), 'version_ids': result}
+    logger.info(f'{result} versions of control {control_id} deleted')
+    return {'status': 200, 'count': result}
 
 
 @api.get('/get-control-runs')

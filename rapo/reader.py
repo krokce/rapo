@@ -249,11 +249,59 @@ class Reader:
         return answerset
 
     def read_control_config_versions(self, control_id):
-        """Get an array  with all past control configurations from DB."""
+        """Get an array  with all past control configurations from DB.
+
+        rapo_config_bak has no key, and two saves in one second share their
+        audit_date, so each version carries its ROWID as `version_id`.
+        """
         table = db.tables.config_bak
-        select = table.select().where(table.c.control_id == control_id).order_by(table.c.audit_date.desc())
+        version_id = sa.literal_column('rowidtochar(rowid)').label('version_id')
+        select = (sa.select(table, version_id)
+                    .where(table.c.control_id == control_id)
+                    .order_by(table.c.audit_date.desc()))
         answerset = db.execute(select, as_table=True)
         return answerset
+
+    def delete_control_config_versions(self, control_id, version_ids=None,
+                                       older_than_days=None, keep=0,
+                                       dry_run=False):
+        """Delete past versions of one control from rapo_config_bak.
+
+        Either the versions given by their `version_id` (ROWID), or those
+        older than `older_than_days` by the database clock (audit_date is
+        stamped with it), apart from the newest `keep` versions.
+
+        Returns
+        -------
+        result : int or list of str
+            Number of versions deleted, or with `dry_run` the version_ids
+            that would be.
+        """
+        if version_ids:
+            where = 'rowid in :ids'
+            params = [sa.bindparam('ids', [str(item) for item in version_ids],
+                                   expanding=True)]
+        elif older_than_days is not None:
+            where = """audit_date < sysdate - :days
+                   and rowid not in (
+                     select rid from (
+                       select rowid rid from rapo_config_bak
+                        where control_id = :control_id
+                        order by audit_date desc)
+                      where rownum <= :keep)"""
+            params = [sa.bindparam('days', older_than_days),
+                      sa.bindparam('keep', keep)]
+        else:
+            return [] if dry_run else 0
+        verb = 'select rowidtochar(rowid)' if dry_run else 'delete'
+        statement = sa.text(f"""{verb} from rapo_config_bak
+                                 where control_id = :control_id
+                                   and {where}""")
+        statement = statement.bindparams(
+            sa.bindparam('control_id', control_id), *params)
+        if dry_run:
+            return [row[0] for row in db.execute(statement, as_records=True)]
+        return db.execute(statement).rowcount
 
     def read_control_results_for_day(self, day):
         """Get list of all control runs started on the passed day."""

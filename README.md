@@ -27,7 +27,7 @@ for reconciliation controls, results sent per email, and a KPI catalogue editor.
 
 Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
 
-Releases of the fork carry a local version segment - `0.8.2+krokce.1` - because the original project keeps its own
+Releases of the fork carry a local version segment - `0.8.2+fork` - because the original project keeps its own
 numbering and is at v0.6.15; the two version lines say nothing about each other.
 
 ## Prologue

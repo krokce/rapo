@@ -26,11 +26,18 @@ export default {
     return data;
   },
   // Instance details shown in the header and the "Instance details" dialog.
+  // An unreadable rapo.ini is kept as the error of the changes, so the rest of the details still show.
   async updateEnvironment(context) {
-    const [version, info, parameters] = await Promise.all([api("version"), api("info"), api("parameters")]);
+    const [version, info, parameters, changes] = await Promise.all([
+      api("version"),
+      api("info"),
+      api("parameters"),
+      api("get-config-changes").catch((error) => ({ changes: [], error: error.message })),
+    ]);
     context.commit("updateEnvVersion", version);
     context.commit("updateEnvInfo", info);
     context.commit("updateEnvParameters", parameters);
+    context.commit("updateEnvConfigChanges", changes);
   },
   // Scheduler and run manager state shown on the Scheduler page and in the "Instance details" dialog.
   async updateSchedulerStatus(context) {

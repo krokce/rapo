@@ -48,6 +48,6 @@ and missed-fire handling, the run manager that gives every run its own process,
 and per-run log files surfaced in the UI. The releases are described in
 migrations/v0.7.0/README.md and migrations/v0.8.0/CHANGELOG.md.
 
-Version numbers of this fork carry a local segment (for example 0.8.0+krokce.1)
+Version numbers of this fork carry a local segment (for example 0.8.2+fork)
 so that they cannot be mistaken for releases of the original project, whose own
 numbering continues independently.

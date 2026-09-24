@@ -92,3 +92,25 @@ The upgrade steps are in the [migration instructions](README.md).
      same color, and a type without a unit is grey. They appear in the KPI types list, the KPI type editor's
      title, and the control editor's KPIs tab (the rows, the *Add KPI* menu and the statement tabs).
    - The type chips in the Results table are the same size as the status chips.
+9. **What Apply will change.** In the control editor, clicking *Unsaved changes* in the footer lists every value
+   that Apply would write, compared with the saved control, each marked added, removed or changed. Values inside the JSON configurations are shown by
+   their path (e.g. `rule_config.email.to`, `schedule_config.hour`), SQL and other multi-line texts as a line
+   diff, and KPIs as added, removed or changed statements. *Apply* in the list saves them. A new or cloned control,
+   which has nothing saved to compare with, has no list. After picking a past version, the list shows only its
+   configuration: the version's audit columns and stamps (`updated_by`, `created_date`, ...) are neither listed nor
+   saved back, and a version equal to the saved control makes no unsaved change.
+10. **rapo.ini reload.** *Instance details* shows the options of `rapo.ini` changed on disk since the server read
+    it: the old and the new value, added options in green and removed ones struck through (secrets only as
+    changed, never their values). *Reload* applies them without a restart. `[DATABASE]`, `[API]`,
+    `[LOGGING] directory` and `[SCHEDULER] enabled` are read only at startup, so they stay marked *restart
+    required* until the next restart. Runs already read `rapo.ini` afresh, since each runs in its own process.
+    The dialog is wider, and the browser tab names the instance (`RAPO - AUT Dev`).
+11. **Manage versions.** The tag icon of the editor's *Version* box opens the control's past versions (who changed
+    them and when). Tick one to compare it with the saved control, or two to compare them, shown like *Unsaved
+    changes*; a version loaded in the editor starts ticked, and the header checkbox selects them all. *Load* puts a
+    version into the editor, as the Version box does. Versions can be deleted one by one, as a selection, all older
+    than a number of days while keeping the newest few (30 days and 5 by default), or as *duplicates*: a version
+    equal to the one just before it, so that only the oldest of each run of equal versions stays and a return to an
+    earlier configuration is kept. The versions a removal would delete are marked in red (for the age boxes as soon
+    as they are changed), and every removal is confirmed with its count. Canceling it leaves those versions ticked,
+    to be looked at or deleted as a selection. Only that control's versions are touched.

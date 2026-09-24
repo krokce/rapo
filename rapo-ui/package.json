@@ -12,6 +12,7 @@
     "@quasar/extras": "^1.0.0",
     "codemirror": "^6.0.1",
     "core-js": "^3.8.3",
+    "diff": "^9.0.0",
     "quasar": "^2.0.0",
     "socket.io-client": "^4.8.3",
     "vue": "^3.2.13",

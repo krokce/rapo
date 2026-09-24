@@ -19,6 +19,8 @@ const store = createStore({
       envVersion: null,
       envInfo: null,
       envParameters: null,
+      // Differences between the loaded rapo.ini and the file (get-config-changes), or { error } when unreadable.
+      envConfigChanges: null,
       schedulerStatus: null,
       kpiTypes: [],
     };

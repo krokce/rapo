@@ -14,12 +14,9 @@ import os
 import pepperoni
 
 from . import config as configurator
-from .config import config
+from .config import config, PEPPERONI_OPTIONS
 
 
-# [LOGGING] options passed as they are to pepperoni.
-PEPPERONI_OPTIONS = ['console', 'file', 'info', 'debug', 'warning', 'error',
-                     'critical', 'format', 'maxsize', 'maxlevel', 'maxerrors']
 SERVER_LOG_NAME = 'rapo-server_{root.logger.start_date:%Y%m%d}'
 
 
