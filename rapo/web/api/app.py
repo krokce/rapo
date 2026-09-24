@@ -8,11 +8,13 @@ import os
 import fastapi
 import fastapi.responses
 import socketio
+import sqlalchemy as sa
 
 from . import events
 from .auth import verify_token
 
 from ...config import config, path as CONFIG_PATH
+from ...database import db
 from ...kpi import kpi
 from ...logger import logger, LOG_DIR
 from ...reader import reader
@@ -236,6 +238,125 @@ def delete_control_output_tables(name: str):
     return {'status': 200}
 
 
+def _schema_control(data):
+    """Build a Control from a stored control with an editor's changes."""
+    control_id = data.get('control_id')
+    saved = reader.read_control_config_by_id(control_id) if control_id else {}
+    if not saved:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='The control is not saved yet.')
+    config = dict(saved)
+    config.update({key: value for key, value in data.items()
+                   if key in saved and key not in ('control_id',
+                                                   'created_date',
+                                                   'updated_date')})
+    name = config['control_name'] or saved['control_name']
+    return Control(name, config=config), saved
+
+
+def _active_run(control_id):
+    log = db.tables.log
+    select = (sa.select(sa.func.count())
+                .where(log.c.control_id == control_id)
+                .where(log.c.status.in_(['I', 'W', 'S', 'P', 'F'])))
+    return bool(db.execute(select, as_scalar=True))
+
+
+@api.post('/check-control-schema')
+def check_control_schema(data: dict = fastapi.Body(...)):
+    """Compare the result tables of a control with the schema its (unsaved)
+    configuration would create."""
+    control, saved = _schema_control(data)
+    config = control.config
+    saved_name = saved['control_name']
+    sides = {'source_name': 'source', 'source_name_a': 'A',
+             'source_name_b': 'B'}
+    source_changed = [label for key, label in sides.items()
+                      if (config.get(key) or '').lower()
+                      != (saved.get(key) or '').lower()]
+    answer = {'control_name': control.name,
+              'renamed_from': (saved_name if saved_name.lower()
+                               != control.name.lower() else None),
+              'source_changed': source_changed,
+              'rebuilt_each_run': control.with_drop,
+              'active_run': _active_run(saved['control_id']),
+              'tables': []}
+    if control.with_drop:
+        return answer
+    try:
+        control.executor._reflect_sources()
+    except sa.exc.NoSuchTableError as error:
+        answer['error'] = f'Datasource {str(error).upper()} does not exist.'
+        return answer
+    except Exception as error:
+        answer['error'] = f'Datasource cannot be read: {error}'
+        return answer
+    for table_name in control.output_names:
+        current_name = table_name
+        if answer['renamed_from']:
+            old_name = (table_name[:len('rapo_resx_')]
+                        + saved_name.lower())
+            if db.exists(old_name) and not db.exists(table_name):
+                current_name = old_name
+        try:
+            diff = control.executor.diff_output_table(table_name,
+                                                      current_name)
+        except Exception as error:
+            diff = {'table': current_name, 'exists': db.exists(current_name),
+                    'columns': [], 'error': f'{type(error).__name__}: {error}'}
+        diff['target'] = table_name
+        answer['tables'].append(diff)
+    return answer
+
+
+@api.get('/count-control-table-rows')
+def count_control_table_rows(name: str, table: str):
+    """Count the rows of a result table of a control exactly.
+
+    A full scan, so only on request: check-control-schema gives the
+    statistics estimate.
+    """
+    control = Control(name)
+    try:
+        rows = control.executor.count_output_rows(table.lower())
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'table': table.upper(), 'rows': rows,
+            'counted': dt.datetime.now().replace(microsecond=0)}
+
+
+@api.post('/update-control-schema')
+def update_control_schema(name: str):
+    """Apply the safe schema changes (add, widen, nullable) to the result
+    tables of a saved control."""
+    control = Control(name)
+    try:
+        control.executor._reflect_sources()
+        diffs = control.executor.sync_output_tables()
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    incompatible = [f"{diff['table']}.{column['name']}"
+                    for diff in diffs for column in diff['columns']
+                    if column['status'] == 'incompatible']
+    events.poke()
+    return {'status': 200, 'incompatible': incompatible}
+
+
+@api.post('/recreate-control-schema')
+def recreate_control_schema(name: str):
+    """Drop the result tables of a saved control and create them anew."""
+    control = Control(name)
+    try:
+        control.executor._reflect_sources()
+        control.executor.recreate_output_tables()
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    events.poke()
+    return {'status': 200}
+
+
 @api.delete('/delete-control-temporary-tables')
 def delete_control_temporary_tables(id: int):
     """Delete temporary tables of particular control run."""
@@ -379,6 +500,15 @@ def save_control(data: dict = fastapi.Body(...)):
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    # The result tables are named after the control, so they follow a rename.
+    rename_error = None
+    control_name = data.get('control_name')
+    if previous_name and control_name and previous_name != control_name:
+        try:
+            Control(control_name).executor.rename_output_tables(previous_name)
+        except Exception as error:
+            logger.error()
+            rename_error = error
     try:
         if kpi_config is not None:
             control_name = data.get('control_name') or previous_name
@@ -395,6 +525,11 @@ def save_control(data: dict = fastapi.Body(...)):
                    f'{error}')
     scheduler.refresh()
     events.poke()
+    if rename_error:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Control was saved, but its result tables were not '
+                   f'renamed: {rename_error}')
     return {'status': 200, **saved_stamp(data)}
 
 

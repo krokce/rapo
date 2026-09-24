@@ -405,10 +405,10 @@ export default {
     },
     async recreateSchema(control_name) {
       try {
-        await api("delete-control-output-tables", { method: "DELETE", params: { name: control_name } });
-        this.$q.notify({ type: "positive", message: "Schema for " + control_name + " was deleted. It will be recreated on the next run." });
+        await api("recreate-control-schema", { method: "POST", params: { name: control_name } });
+        this.$q.notify({ type: "positive", message: "Result tables of " + control_name + " were recreated." });
       } catch (error) {
-        notifyError("Schema deletion for " + control_name + " failed.", error);
+        notifyError("Recreating the result tables of " + control_name + " failed.", error);
       }
     },
     addAttributeFilter(attr) {
