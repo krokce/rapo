@@ -1,12 +1,19 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <h2 class="row q-gutter-lg q-mb-lg">
+    <h2 class="row items-end q-gutter-lg q-mb-lg">
       <div v-if="showSkeleton">Controls</div>
       <div v-else>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
       <div v-if="refreshing && !showSkeleton">
         <q-avatar size="lg" color="grey-5">
           <q-icon name="fas fa-sync fa-spin" />
         </q-avatar>
+      </div>
+      <q-space />
+      <div v-if="unownedTables.length">
+        <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
+          {{ unownedTables.length }} orphaned result table{{ unownedTables.length > 1 ? "s" : "" }}
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Result tables of no control: review and drop them</q-tooltip>
+        </q-chip>
       </div>
     </h2>
 
@@ -155,7 +162,7 @@
                 clickable
                 v-if="driftOf(control)"
                 size="sm"
-                :color="driftOf(control).level === 'update' ? 'amber-8' : 'red-4'"
+                :color="driftColor(driftOf(control))"
                 text-color="white"
                 icon="fas fa-table"
                 :title="driftTitle(driftOf(control))"
@@ -338,6 +345,7 @@
         </confirm-dialog>
       </q-list>
     </q-menu>
+    <orphan-tables-dialog ref="orphanDialog" :tables="unownedTables" @changed="refreshSchemaDrift" />
   </q-page>
 </template>
 
@@ -347,6 +355,7 @@ import SchedulePresentBox from "./SchedulePresentBox.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import OrphanTablesDialog from "./OrphanTablesDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
@@ -359,6 +368,7 @@ import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 export default {
   name: "ControlCatalogue",
   components: {
+    OrphanTablesDialog,
     RunControlDialog,
     ConfirmDialog,
     SchedulePresentBox,
@@ -433,17 +443,25 @@ export default {
     },
     // The drift of a control's result tables when there is something to fix, else null.
     driftOf(control) {
-      const drift = this.schemaDrift[control.control_id];
-      return drift && ["update", "recreate", "error"].includes(drift.level) ? drift : null;
+      const drift = (this.schemaDrift.controls || {})[control.control_id];
+      return drift && (["update", "recreate", "error"].includes(drift.level) || drift.orphans.length) ? drift : null;
+    },
+    // Amber when Update schema fixes it all, red when it takes Recreate schema, a configuration fix or a drop.
+    driftColor(drift) {
+      return drift.level === "update" && !drift.orphans.length ? "amber-8" : "red-4";
     },
     driftTitle(drift) {
+      const orphans = drift.orphans.length ? ` Orphaned, no longer written: ${drift.orphans.join(", ")}.` : "";
       if (drift.level === "error") {
-        return `Schema check failed: ${drift.reason}. Open the control to fix it.`;
+        return `Schema check failed: ${drift.reason}.${orphans} Open the control to fix it.`;
+      }
+      if (!["update", "recreate"].includes(drift.level)) {
+        return `${orphans.trim()} Open the control to drop them.`;
       }
       const parts = [];
       if (drift.changes) parts.push(`${drift.changes} column change(s) for Update schema`);
       if (drift.incompatible) parts.push(`${drift.incompatible} incompatible column(s) needing Recreate schema`);
-      return `${drift.tables.join(", ")}: ${parts.join(", ")}. Open the control to fix it.`;
+      return `${drift.tables.join(", ")}: ${parts.join(", ")}.${orphans} Open the control to fix it.`;
     },
     async refreshSchemaDrift() {
       try {
@@ -509,6 +527,10 @@ export default {
     },
   },
   computed: {
+    // Result tables of no control (get-schema-drift), reviewed in OrphanTablesDialog.
+    unownedTables() {
+      return this.schemaDrift.unowned || [];
+    },
     ...mapState(["controlCatalogue", "schemaDrift"]),
     ...mapGetters(["getSearch", "getEnvInfo"]),
     attributeOptions() {

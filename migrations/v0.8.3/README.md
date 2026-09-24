@@ -33,7 +33,9 @@ incompatible column, e.g. a datasource column changed from text to number, fails
 recreated from the editor or the Controls list. To see a control's state without running it, open it in the
 editor: the bottom bar shows *Schema changes* or *Schema needs recreate* when its tables differ. To see all
 controls at once, filter the Controls list by *Schema drift* (Control attributes): amber chips can be fixed with
-*Update schema*, red ones need *Recreate schema* or a configuration fix.
+*Update schema*, red ones need *Recreate schema*, a configuration fix, or dropping an orphaned table. The header
+of the Controls list shows how many result tables belong to no control at all; after the upgrade, review them
+there before dropping any, since test or retired controls often leave such tables behind.
 
 ## Email: Free SQL sheet and file name
 

@@ -582,6 +582,18 @@ class Control:
         return self.parser.parse_output_names()
 
     @property
+    def written_output_names(self):
+        """Get the result tables a run of this configuration writes."""
+        return self.parser.parse_written_output_names()
+
+    @property
+    def orphan_output_names(self):
+        """Get existing result tables of this control that runs no longer write."""
+        written = self.written_output_names
+        return [name for name in output_table_names(self.name)
+                if name not in written and db.exists(name)]
+
+    @property
     def output_tables(self):
         """Get output tables."""
         return self.parser.parse_output_tables()
@@ -1868,6 +1880,23 @@ class Parser:
             for s in ['a', 'b']:
                 name = f'rapo_res{s}_{self.control.name}'.lower()
                 names.append(name)
+        return names
+
+    def parse_written_output_names(self):
+        """Get the result tables a run writes.
+
+        A reconciliation saves side A only with need_a and side B only with
+        need_b (Control._save), so only those tables are created and kept in
+        line with the configuration.
+        """
+        if self.control.type in ['ANL', 'CMP', 'REP']:
+            return [f'rapo_rest_{self.control.name}'.lower()]
+        names = []
+        if self.control.type == 'REC':
+            if self.control.need_a:
+                names.append(f'rapo_resa_{self.control.name}'.lower())
+            if self.control.need_b:
+                names.append(f'rapo_resb_{self.control.name}'.lower())
         return names
 
     def parse_output_tables(self):
@@ -3845,7 +3874,7 @@ class Executor:
 
     def count_output_rows(self, table_name):
         """Count the rows of a result table exactly: a full scan."""
-        if table_name not in self.control.output_names:
+        if table_name not in output_table_names(self.control.name):
             raise ValueError(f'{table_name.upper()} is not a result table '
                              f'of {self.control.name}')
         if not db.exists(table_name):
@@ -3890,24 +3919,34 @@ class Executor:
         return diff
 
     def sync_output_tables(self):
-        """Apply the safe schema changes to all existing result tables."""
+        """Apply the safe schema changes to the existing tables runs write."""
         diffs = []
-        for table_name in self.control.output_names:
+        for table_name in self.control.written_output_names:
             if db.exists(table_name):
                 diffs.append(self.sync_output_table(table_name))
         return diffs
 
     def recreate_output_tables(self):
-        """Drop the result tables and create them with the current schema."""
-        for table_name in self.control.output_names:
+        """Drop all result tables of the control, orphaned ones included, and
+        create those runs write with the current schema."""
+        for table_name in output_table_names(self.control.name):
             self._delete_output_table(table_name)
+        for table_name in self.control.written_output_names:
             self._create_output_table(table_name)
+
+    def drop_orphan_table(self, table_name):
+        """Drop a result table of the control that runs no longer write."""
+        if table_name not in self.control.orphan_output_names:
+            raise ValueError(f'{table_name.upper()} is not an orphaned result '
+                             f'table of {self.control.name}')
+        db.drop(table_name)
+        logger.info(f'{self.c} Orphaned {table_name.upper()} dropped')
 
     def rename_output_tables(self, old_name):
         """Rename the result tables of the control formerly named old_name."""
         old_control_name = old_name.lower()
         renames = []
-        for table_name in self.control.output_names:
+        for table_name in output_table_names(self.control.name):
             prefix = table_name[:len('rapo_resx_')]
             old_table_name = f'{prefix}{old_control_name}'
             if old_table_name == table_name or not db.exists(old_table_name):
@@ -4219,6 +4258,14 @@ class Executor:
         db.execute(create_index)
         db.execute(rebuild_index)
         logger.debug(f'{self.c} Index for {table_name} created')
+
+
+RESULT_PREFIXES = ('rapo_rest_', 'rapo_resa_', 'rapo_resb_')
+
+
+def output_table_names(control_name):
+    """Get every result table name a control of this name may own."""
+    return [f'{prefix}{control_name}'.lower() for prefix in RESULT_PREFIXES]
 
 
 def diff_column(current, expected):

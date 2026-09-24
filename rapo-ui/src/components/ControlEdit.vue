@@ -987,6 +987,7 @@
       :exact-rows="schemaExactRows"
       :counting-rows="schemaCountingRows"
       @count="countSchemaRows"
+      @drop="dropOrphan"
       @update="applySchema('update')"
       @recreate="applySchema('recreate')" />
   </q-page>
@@ -1015,7 +1016,7 @@ import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
-import { describeTable, summarizeSchema } from "../utils/schema";
+import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import {
   DEFAULT_SQL_SHEET_NAME,
@@ -1197,7 +1198,7 @@ export default {
         return null;
       }
       const payload = this.buildControlPayload();
-      const fields = ["control_name", "control_type", "with_drop", "source_name", "source_date_field", "output_table"];
+      const fields = ["control_name", "control_type", "with_drop", "need_a", "need_b", "source_name", "source_date_field", "output_table"];
       const sides = ["source_name", "source_date_field", "source_key_field", "output_table"];
       const keys = [...fields, ...sides.flatMap((field) => [field + "_a", field + "_b"])];
       return JSON.stringify([...keys.map((key) => payload[key] ?? null), payload.control_type === "REC" ? payload.rule_config : null]);
@@ -1216,7 +1217,12 @@ export default {
       if (!this.schemaEnabled || !check) {
         return null;
       }
+      const orphans = summary.orphans.map((orphan) => orphan.table.toUpperCase()).join(", ");
+      const orphaned = { label: "Orphaned tables", icon: "fas fa-trash-alt", class: "text-negative", tooltip: `No run writes ${orphans} any more. Click to review and drop.` };
       if (check.rebuilt_each_run) {
+        if (summary.orphans.length) {
+          return orphaned;
+        }
         return { label: "Rebuilt on every run", icon: "fas fa-sync-alt", class: "text-grey-7", tooltip: "The result tables are dropped on each run, so their schema always follows the configuration." };
       }
       if (summary.level === "error") {
@@ -1224,6 +1230,9 @@ export default {
       }
       if (summary.level === "recreate") {
         return { label: "Schema needs recreate", icon: "fas fa-exclamation-circle", class: "text-negative", tooltip: `${summary.incompatible} column(s) cannot be converted in place. Click for details.` };
+      }
+      if (summary.level === "orphaned") {
+        return orphaned;
       }
       if (summary.level === "update") {
         const source = check.source_changed.length ? "Datasource changed: " : "";
@@ -2018,6 +2027,42 @@ export default {
         this.schemaCountingRows = { ...this.schemaCountingRows, [table]: false };
       }
     },
+    // Drops a result table runs no longer write. The server checks it against the saved configuration, so unsaved
+    // changes (e.g. the unticked output that orphaned it) are saved first.
+    dropOrphan(table) {
+      const orphan = this.schemaSummary.orphans.find((item) => item.table === table);
+      const lines = [];
+      if (this.dirty) {
+        lines.push("Your unsaved changes are saved first.");
+      }
+      lines.push(describeOrphan(orphan, this.schemaExactRows[table]));
+      this.$q
+        .dialog({
+          title: "Drop orphaned table?",
+          message: lines.map((line) => `<div class="q-mb-xs">${escapeHtml(line)}</div>`).join("") + '<div class="text-negative q-mt-md">Its past results will be deleted!</div>',
+          html: true,
+          ok: { label: "Drop", color: "negative" },
+          cancel: { label: "Cancel", flat: true },
+          persistent: true,
+        })
+        .onOk(async () => {
+          if (this.dirty) {
+            if (!this.validate() || !(await this.submit("stay", true))) {
+              return;
+            }
+          }
+          this.schemaBusy = true;
+          try {
+            await api("drop-orphaned-table", { method: "POST", params: { table } });
+            this.$q.notify({ type: "positive", message: table.toUpperCase() + " was dropped." });
+          } catch (error) {
+            notifyError("Dropping " + table.toUpperCase() + " failed.", error);
+          } finally {
+            this.schemaBusy = false;
+            this.checkSchema();
+          }
+        });
+    },
     // Update schema (add, widen, make nullable) or Recreate schema (drop and create now). A run reads the saved
     // configuration, so unsaved changes are saved first, and the tables never get ahead of the saved row.
     applySchema(action) {
@@ -2029,6 +2074,11 @@ export default {
       }
       for (const table of summary.tables) {
         lines.push(describeTable(table, action, this.schemaExactRows[table.table]));
+      }
+      if (action === "recreate") {
+        for (const orphan of summary.orphans) {
+          lines.push(describeOrphan(orphan, this.schemaExactRows[orphan.table]));
+        }
       }
       if (action === "update" && summary.incompatible) {
         lines.push("Incompatible columns stay as they are, runs fail until the schema is recreated.");

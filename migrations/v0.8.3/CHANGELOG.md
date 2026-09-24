@@ -72,4 +72,23 @@ The upgrade steps are in the [migration instructions](README.md).
      controls are saved and run. Comparison output columns that combine A and B, datasource names with
      variables, and remote datasources are checked only in the editor.
 
-   Controls that drop their tables on every run (*Keep past results: No, drop on each run*) are not checked.
+   - A reconciliation writes the A and B tables only for the sides whose output is ticked under *Discrepancies*,
+     so only those are checked, updated and (re)created. A result table no run writes any more is shown as
+     *Orphaned*: the table of a side whose output was unticked, or of the control's former type. The editor
+     marks it in the bottom bar and offers *Drop table* per orphan, with its rows; *Update schema* never drops
+     anything, and *Recreate schema* drops orphans too. The Controls list shows them in the *Schema drift* chip,
+     and a header chip lists the result tables of **no** control (deleted, or renamed outside the application)
+     with their rows, to review and drop.
+
+   Controls that drop their tables on every run (*Keep past results: No, drop on each run*) are not checked for
+   drift; their orphaned tables are still shown.
+
+8. **Controls without KPIs and KPI chips.**
+   - The Controls list shows a red *No KPI* chip on each control with no KPI configured. The Control attributes
+     filter gains *No KPI* and *Post-run hook*, the counterpart of *No Post-run hook*. KPIs are calculated only
+     when the post-run hook is on. On an instance without the KPI tables, neither the chip nor the filter
+     appears.
+   - KPI codes show as chips with a calculator icon, colored by the KPI type's unit: the same unit always has the
+     same color, and a type without a unit is grey. They appear in the KPI types list, the KPI type editor's
+     title, and the control editor's KPIs tab (the rows, the *Add KPI* menu and the statement tabs).
+   - The type chips in the Results table are the same size as the status chips.

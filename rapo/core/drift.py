@@ -10,6 +10,11 @@ Executor._prepare_output_columns and compares with the same diff_column rules.
 What only a CTAS can type is reported as not checked: CMP output columns that
 coalesce A and B, datasource names with {variables}, and datasources over a
 database link.
+
+It also finds orphaned result tables, which no run writes any more: those of a
+control whose configuration stopped writing them (a reconciliation side whose
+output was unticked, a changed control type), and those of no control at all
+(a deleted control, or one renamed outside the application).
 """
 
 import json
@@ -18,7 +23,7 @@ import sqlalchemy as sa
 
 from ..database import db
 from ..reader import reader
-from .control import diff_column
+from .control import Control, RESULT_PREFIXES, diff_column, output_table_names
 from .fields import (
     PROCESS_ID, RESULT_KEY, RESULT_VALUE, RESULT_TYPE, DISCREPANCY_ID,
     DISCREPANCY_DESCRIPTION
@@ -34,32 +39,37 @@ class NotChecked(Exception):
 
 
 def schema_drift():
-    """Get the schema drift of every control's result tables.
+    """Get the schema drift and orphaned tables of all controls.
 
     Returns
     -------
     drift : dict
-        {control_id: {level, changes, incompatible, tables, reason}}. level
-        is ok, update (safe changes), recreate (incompatible columns), error
-        (the configuration names a column the datasource lacks), missing (no
-        result table yet) or not_checked. Controls dropping their tables on
-        every run are left out.
+        controls: {control_id: {level, changes, incompatible, tables,
+        orphans, reason}}. level is ok, update (safe changes), recreate
+        (incompatible columns), error (the configuration names a column the
+        datasource lacks), missing (no result table yet), not_checked, or
+        rebuilt (the control drops its tables on every run). orphans are its
+        existing tables runs no longer write.
+        unowned: [{table, rows, rows_analyzed, oldest}], the result tables of
+        no control.
     """
     config = db.tables.config
     select = sa.select(
         config.c.control_id, config.c.control_name, config.c.control_type,
-        config.c.with_drop, config.c.source_name, config.c.source_name_a,
+        config.c.with_drop, config.c.need_a, config.c.need_b,
+        config.c.source_name, config.c.source_name_a,
         config.c.source_name_b, config.c.source_date_field,
         config.c.source_date_field_a, config.c.source_date_field_b,
         config.c.source_key_field_a, config.c.source_key_field_b,
         config.c.output_table, config.c.output_table_a,
         config.c.output_table_b)
-    controls = [control for control in db.execute(select, as_table=True)
-                if control['with_drop'] != 'Y'
-                and control['control_type'] in ('ANL', 'REP', 'REC', 'CMP')]
+    controls = db.execute(select, as_table=True)
+    existing = _existing_result_tables()
 
     wanted = set()
     for control in controls:
+        if control['with_drop'] == 'Y':
+            continue
         for table in _result_tables(control):
             wanted.add((None, table.upper()))
         for side in ('', '_a', '_b'):
@@ -68,27 +78,104 @@ def schema_drift():
                 wanted.add(key)
     columns = reader.read_schema_columns(wanted) if wanted else {}
 
-    drift = {}
+    answer = {'controls': {}, 'unowned': []}
+    owned = set()
     for control in controls:
-        try:
-            drift[control['control_id']] = _control_drift(control, columns)
-        except NotChecked as error:
-            drift[control['control_id']] = {
-                'level': 'not_checked', 'changes': 0, 'incompatible': 0,
+        names = output_table_names(control['control_name'])
+        owned.update(names)
+        written = _result_tables(control)
+        orphans = [name.upper() for name in names
+                   if name not in written and name in existing]
+        if control['with_drop'] == 'Y':
+            drift = {'level': 'rebuilt', 'changes': 0, 'incompatible': 0,
+                     'tables': [], 'reason': None}
+        else:
+            drift = _checked_drift(control, columns)
+        drift['orphans'] = orphans
+        answer['controls'][str(control['control_id'])] = drift
+    for name, stats in sorted(existing.items()):
+        if name not in owned:
+            answer['unowned'].append({'table': name.upper(), **stats,
+                                      'oldest': _oldest_run(name)})
+    return answer
+
+
+def _checked_drift(control, columns):
+    try:
+        return _control_drift(control, columns)
+    except NotChecked as error:
+        return {'level': 'not_checked', 'changes': 0, 'incompatible': 0,
                 'tables': [], 'reason': str(error)}
-        except KeyError as error:
-            drift[control['control_id']] = {
-                'level': 'error', 'changes': 0, 'incompatible': 0,
+    except KeyError as error:
+        return {'level': 'error', 'changes': 0, 'incompatible': 0,
                 'tables': [],
                 'reason': f'column {str(error).strip(chr(39)).upper()} '
                           f'is not in the datasource'}
-    return drift
+
+
+def _existing_result_tables():
+    """Get the result tables of the schema with their statistics."""
+    query = ("select lower(table_name) name, num_rows, last_analyzed "
+             "from user_tables "
+             "where regexp_like(table_name, '^RAPO_RES[TAB]_')")
+    return {row['name']: {'rows': row['num_rows'],
+                          'rows_analyzed': row['last_analyzed']}
+            for row in db.execute(query, as_table=True)}
+
+
+def _oldest_run(table_name):
+    # min() reads the ends of the rapo_process_id index only.
+    pid = db.execute(f'select min(rapo_process_id) from {table_name}',
+                     as_scalar=True)
+    if pid is None:
+        return None
+    log = db.tables.log
+    select = sa.select(log.c.added).where(log.c.process_id == pid)
+    return db.execute(select, as_scalar=True)
+
+
+def _owner(table_name):
+    """Get the name of the control a result table belongs to, or None."""
+    if not table_name.startswith(RESULT_PREFIXES):
+        raise ValueError(f'{table_name.upper()} is not a result table')
+    control_name = table_name[len('rapo_resx_'):]
+    config = db.tables.config
+    select = (sa.select(config.c.control_name)
+                .where(sa.func.lower(config.c.control_name) == control_name))
+    return db.execute(select, as_scalar=True)
+
+
+def drop_orphaned_table(table_name):
+    """Drop a result table that no run writes any more.
+
+    A table of a control must be one its saved configuration no longer
+    writes; a table of no control is dropped as it is.
+    """
+    owner = _owner(table_name)
+    if owner:
+        Control(owner).executor.drop_orphan_table(table_name)
+    elif db.exists(table_name):
+        db.drop(table_name)
+    else:
+        raise ValueError(f'{table_name.upper()} does not exist')
+
+
+def count_unowned_rows(table_name):
+    """Count the rows of a result table of no control exactly."""
+    owner = _owner(table_name)
+    if owner:
+        raise ValueError(f'{table_name.upper()} belongs to {owner}')
+    if not db.exists(table_name):
+        return None
+    return db.execute(f'select count(*) from {table_name}', as_scalar=True)
 
 
 def _result_tables(control):
+    """Get the result tables runs write, as Parser.parse_written_output_names."""
     name = control['control_name'].lower()
     if control['control_type'] == 'REC':
-        return [f'rapo_resa_{name}', f'rapo_resb_{name}']
+        return ([f'rapo_resa_{name}'] if control['need_a'] == 'Y' else []) \
+            + ([f'rapo_resb_{name}'] if control['need_b'] == 'Y' else [])
     return [f'rapo_rest_{name}']
 
 

@@ -19,6 +19,27 @@
           <div v-if="summary.renamed" class="text-blue-grey-8">The result tables will be renamed to the new control name when it is saved.</div>
           <div v-if="check.active_run" class="text-orange-9">A run of this control is in progress: changing its tables now may make it fail.</div>
 
+          <div v-for="orphan in summary.orphans" :key="orphan.table">
+            <div class="row items-baseline q-gutter-x-md q-mb-xs">
+              <div class="text-subtitle1 text-weight-medium">{{ orphan.table.toUpperCase() }}</div>
+              <q-badge color="negative" title="No run of this configuration writes this table any more">Orphaned</q-badge>
+              <div class="text-grey-7">
+                {{ rowsText(orphan, exactRows[orphan.table]) }}<template v-if="orphan.oldest">, results since {{ toDateString(orphan.oldest) }}</template>
+              </div>
+              <q-btn
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                :label="exactRows[orphan.table] ? 'Count again' : 'Get exact count'"
+                :loading="Boolean(countingRows[orphan.table])"
+                @click="$emit('count', orphan.table)" />
+              <q-btn flat dense no-caps size="sm" color="negative" label="Drop table" :disable="busy" @click="drop(orphan.table)" />
+            </div>
+            <div class="text-grey-7">{{ orphanReason(orphan) }}</div>
+          </div>
+
           <div v-for="table in summary.tables" :key="table.target">
             <div class="row items-baseline q-gutter-x-md q-mb-xs">
               <div class="text-subtitle1 text-weight-medium">{{ table.table.toUpperCase() }}</div>
@@ -91,7 +112,7 @@ export default {
     exactRows: { type: Object, default: () => ({}) },
     countingRows: { type: Object, default: () => ({}) },
   },
-  emits: ["update", "recreate", "count"],
+  emits: ["update", "recreate", "count", "drop"],
   data() {
     return { visible: false, showAll: false };
   },
@@ -127,6 +148,18 @@ export default {
     },
     rowsOf(table) {
       return this.showAll ? table.columns : table.columns.filter((column) => column.status !== "ok");
+    },
+    // Why nothing writes the table: a reconciliation side whose output is off, or a table of another control type.
+    orphanReason(orphan) {
+      const side = { rapo_resa_: "A", rapo_resb_: "B" }[orphan.target.slice(0, 10)];
+      if (side && this.check.control_type === "REC") {
+        return `No discrepancies of side ${side} are written (Data and logic), so runs no longer fill this table. Drop it, or tick its output again to keep using it.`;
+      }
+      return "It belongs to another control type than this control has now, so runs no longer fill it.";
+    },
+    drop(table) {
+      this.visible = false;
+      this.$emit("drop", table);
     },
     act(action) {
       this.visible = false;
