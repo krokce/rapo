@@ -5,6 +5,7 @@ import configparser
 import contextlib
 import datetime as dt
 import os
+import traceback
 
 import fastapi
 import fastapi.responses
@@ -72,6 +73,22 @@ fastapi_app = fastapi.FastAPI(
 api = fastapi.APIRouter(prefix='/api',
                         dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
+
+
+@fastapi_app.exception_handler(Exception)
+def log_unhandled_error(request: fastapi.Request, error: Exception):
+    """Write a route's unhandled error to the rapo log and answer 500.
+
+    Without it the traceback only reaches uvicorn's own output, which
+    rapo-server start discards, so a failing route left no trace at all.
+    HTTPExceptions (the 4xx answers) are handled before and never get here.
+    """
+    trace = ''.join(traceback.format_exception(type(error), error,
+                                               error.__traceback__))
+    logger.error(f'{request.method} {request.url.path} failed:\n{trace}')
+    detail = f'{type(error).__name__}: {error}'
+    return fastapi.responses.JSONResponse(status_code=500,
+                                          content={'detail': detail})
 
 
 @api.get('/help', response_class=fastapi.responses.HTMLResponse)

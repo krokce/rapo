@@ -3859,9 +3859,14 @@ class Executor:
                         'where table_name = :table_name')
         query = query.bindparams(table_name=table_name.upper())
         stats = db.execute(query, as_dict=True) or {}
-        oldest = None
-        pid = db.execute(f'select min(rapo_process_id) from {table_name}',
-                         as_scalar=True)
+        oldest = pid = None
+        try:
+            pid = db.execute(f'select min(rapo_process_id) from {table_name}',
+                             as_scalar=True)
+        except Exception as error:
+            # E.g. a table without rapo_process_id: shown without the date.
+            logger.warning(f'{self.c} Oldest run of {table_name.upper()} '
+                           f'cannot be read: {type(error).__name__}: {error}')
         if pid is not None:
             log = db.tables.log
             select = sa.select(log.c.added).where(log.c.process_id == pid)
