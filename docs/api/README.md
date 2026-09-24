@@ -50,6 +50,7 @@ section and answer 404 otherwise. Redoc is disabled.
   | 404  | No such run, control, record or log file.                                           |
   | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, or a `save-control` refused because the control changed since `expected_updated_date`. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
+  | 500  | An unexpected error in the route. `detail` is `<ErrorType>: <message>`, and the traceback is written to the server log (`rapo-server_YYYYMMDD.log`). |
   | 503  | The run manager is not running, so no run can be accepted.                          |
 
 * **Datetimes are naive ISO wall-clock strings** in the server's local time, e.g. `2026-09-19T10:05:07`. There is

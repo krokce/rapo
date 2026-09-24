@@ -9,6 +9,14 @@
         </q-avatar>
       </div>
       <q-space />
+      <div v-if="schemaDriftError">
+        <q-chip color="orange-8" text-color="white" icon="fas fa-exclamation-triangle">
+          Schema check failed
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]" max-width="500px">
+            Schema drift and orphaned tables cannot be shown: {{ schemaDriftError }}. The server log has the details.
+          </q-tooltip>
+        </q-chip>
+      </div>
       <div v-if="unownedTables.length">
         <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
           {{ unownedTables.length }} orphaned result table{{ unownedTables.length > 1 ? "s" : "" }}
@@ -376,6 +384,8 @@ export default {
   },
   data() {
     return {
+      // The message of a failed get-schema-drift, shown in the header, or null.
+      schemaDriftError: null,
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
       kpiIcon: KPI_ICON,
       // The ids of the controls with at least one KPI (racs_kpi_config), or null when that is not known, e.g.
@@ -466,9 +476,11 @@ export default {
     async refreshSchemaDrift() {
       try {
         await this.updateSchemaDrift();
+        this.schemaDriftError = null;
       } catch (error) {
-        // The chips are informative only; the editor's own check still works.
-        console.error("Schema drift check failed:", error);
+        // Shown in the header rather than as a notification: the check refreshes itself on every change, and the
+        // editor's own check still works.
+        this.schemaDriftError = error.message;
       }
     },
     lacksKpi(control) {

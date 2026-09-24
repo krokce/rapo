@@ -22,6 +22,7 @@ import json
 import sqlalchemy as sa
 
 from ..database import db
+from ..logger import logger
 from ..reader import reader
 from .control import Control, RESULT_PREFIXES, diff_column, output_table_names
 from .fields import (
@@ -101,16 +102,21 @@ def schema_drift():
 
 
 def _checked_drift(control, columns):
+    # A control that cannot be checked is reported on its own row, so it never
+    # blanks out the answer for the whole catalogue.
+    failed = {'level': 'error', 'changes': 0, 'incompatible': 0, 'tables': []}
     try:
         return _control_drift(control, columns)
     except NotChecked as error:
         return {'level': 'not_checked', 'changes': 0, 'incompatible': 0,
                 'tables': [], 'reason': str(error)}
     except KeyError as error:
-        return {'level': 'error', 'changes': 0, 'incompatible': 0,
-                'tables': [],
-                'reason': f'column {str(error).strip(chr(39)).upper()} '
-                          f'is not in the datasource'}
+        return dict(failed, reason=f'column {str(error).strip(chr(39)).upper()}'
+                                   f' is not in the datasource')
+    except Exception as error:
+        logger.warning(f'Schema drift of {control["control_name"]} cannot be '
+                       f'checked: {type(error).__name__}: {error}')
+        return dict(failed, reason=f'{type(error).__name__}: {error}')
 
 
 def _existing_result_tables():
@@ -124,9 +130,19 @@ def _existing_result_tables():
 
 
 def _oldest_run(table_name):
-    # min() reads the ends of the rapo_process_id index only.
-    pid = db.execute(f'select min(rapo_process_id) from {table_name}',
-                     as_scalar=True)
+    """Get when the oldest run in a result table was added, or None.
+
+    None as well for a table that cannot be read that way, e.g. a copy made by
+    hand without rapo_process_id: it is still listed, just without the date.
+    """
+    try:
+        # min() reads the ends of the rapo_process_id index only.
+        pid = db.execute(f'select min(rapo_process_id) from {table_name}',
+                         as_scalar=True)
+    except Exception as error:
+        logger.warning(f'Oldest run of {table_name.upper()} cannot be read: '
+                       f'{type(error).__name__}: {error}')
+        return None
     if pid is None:
         return None
     log = db.tables.log

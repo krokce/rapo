@@ -69,8 +69,11 @@ The upgrade steps are in the [migration instructions](README.md).
    - The Controls list shows a *Schema drift* chip on each control whose result tables need an update (amber) or a
      recreate (red), with the tables and the number of columns in its tooltip, and *Schema drift* in the
      attribute filter. It is a light check of the whole catalogue from the Oracle dictionary, refreshed as
-     controls are saved and run. Comparison output columns that combine A and B, datasource names with
-     variables, and remote datasources are checked only in the editor.
+     controls are saved and run. A control that cannot be checked (e.g. invalid output columns) gets a red chip
+     with the reason, a result table without `RAPO_PROCESS_ID` (e.g. a copy made by hand) is listed without its
+     oldest run, and if the check fails as a whole the header says *Schema check failed*, with the reason.
+     Comparison output columns that combine A and B, datasource names with variables, and remote datasources are
+     checked only in the editor.
 
    - A reconciliation writes the A and B tables only for the sides whose output is ticked under *Discrepancies*,
      so only those are checked, updated and (re)created. A result table no run writes any more is shown as
@@ -114,3 +117,6 @@ The upgrade steps are in the [migration instructions](README.md).
     earlier configuration is kept. The versions a removal would delete are marked in red (for the age boxes as soon
     as they are changed), and every removal is confirmed with its count. Canceling it leaves those versions ticked,
     to be looked at or deleted as a selection. Only that control's versions are touched.
+12. **Server errors are logged.** An unexpected error in a web API call used to leave no trace: the server answered
+    500 and its traceback was discarded with the web server's own output. The traceback is now written to the
+    server log (`rapo-server_YYYYMMDD.log`), and the answer carries the error type and message.
