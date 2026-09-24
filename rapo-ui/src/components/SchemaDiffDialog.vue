@@ -60,6 +60,9 @@
                 @click="$emit('count', table.table)">
                 <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Counts every row: a full scan, which takes a while on a big table</q-tooltip>
               </q-btn>
+              <q-btn v-if="!table.error" flat dense no-caps size="sm" color="negative" label="Recreate table" :disable="busy" @click="recreate([table.target])">
+                <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Drop only this table and create it anew: its past results are deleted</q-tooltip>
+              </q-btn>
             </div>
             <q-markup-table v-if="table.exists && rowsOf(table).length" dense flat bordered separator="horizontal">
               <thead>
@@ -90,7 +93,9 @@
       <q-card-actions align="right">
         <div v-if="dirty" class="text-grey-7 q-mr-md">Unsaved changes are saved first.</div>
         <q-btn v-if="summary.safe" label="Update schema" color="primary" :disable="busy" @click="act('update')" />
-        <q-btn label="Recreate schema" color="negative" :flat="!emphasizeRecreate" :disable="busy" @click="act('recreate')" />
+        <q-btn v-if="recreateTables.length" label="Recreate schema" color="negative" :flat="!emphasizeRecreate" :disable="busy" @click="recreate(recreateTables)">
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Recreates {{ recreateTables.join(", ").toUpperCase() }}</q-tooltip>
+        </q-btn>
         <q-btn label="Close" flat color="primary" v-close-popup />
       </q-card-actions>
     </q-card>
@@ -98,7 +103,7 @@
 </template>
 
 <script>
-import { SCHEMA_STATUSES, rowsText, summarizeSchema } from "../utils/schema";
+import { SCHEMA_STATUSES, recreateTargets, rowsText, summarizeSchema } from "../utils/schema";
 import { toDateString } from "../utils/format";
 
 // Open with this.$refs.<ref>.open(). It follows the parent's check live, and hands Update/Recreate back to it.
@@ -133,6 +138,10 @@ export default {
       const empty = this.summary.notOutput ? `, with ${this.summary.notOutput} old column(s) left empty from now on` : "";
       return `${which} changed. Recreate schema starts the result tables anew for it. Update schema keeps them and their history${empty}.`;
     },
+    // The drifted tables, or all when none drifted (recreateTargets).
+    recreateTables() {
+      return recreateTargets(this.check);
+    },
     emphasizeRecreate() {
       return this.summary.incompatible > 0 || Boolean(this.check && this.check.source_changed.length);
     },
@@ -160,6 +169,10 @@ export default {
     drop(table) {
       this.visible = false;
       this.$emit("drop", table);
+    },
+    recreate(tables) {
+      this.visible = false;
+      this.$emit("recreate", tables);
     },
     act(action) {
       this.visible = false;

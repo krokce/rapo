@@ -430,12 +430,15 @@ def update_control_schema(name: str):
 
 
 @api.post('/recreate-control-schema')
-def recreate_control_schema(name: str):
-    """Drop the result tables of a saved control and create them anew."""
+def recreate_control_schema(name: str, tables: str | None = None):
+    """Drop result tables of a saved control and create them anew: those
+    named in tables (comma-separated), by default all it writes."""
     control = Control(name)
     try:
         control.executor._reflect_sources()
-        control.executor.recreate_output_tables()
+        names = [table.strip() for table in (tables or '').split(',')
+                 if table.strip()]
+        control.executor.recreate_output_tables(names or None)
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))

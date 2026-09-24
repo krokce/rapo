@@ -996,7 +996,7 @@
       @count="countSchemaRows"
       @drop="dropOrphan"
       @update="applySchema('update')"
-      @recreate="applySchema('recreate')" />
+      @recreate="(tables) => applySchema('recreate', tables)" />
     <control-diff-dialog ref="controlDiffDialog" :diff="unsavedChanges" :busy="saving" @apply="persist('stay')" />
     <control-versions-dialog
       ref="versionsDialog"
@@ -2120,20 +2120,17 @@ export default {
     },
     // Update schema (add, widen, make nullable) or Recreate schema (drop and create now). A run reads the saved
     // configuration, so unsaved changes are saved first, and the tables never get ahead of the saved row.
-    applySchema(action) {
+    // Recreate takes the tables to recreate (target names, i.e. after a pending rename), from SchemaDiffDialog.
+    applySchema(action, tables = null) {
       const check = this.schemaCheck;
       const summary = this.schemaSummary;
       const lines = [];
       if (this.dirty) {
         lines.push("Your unsaved changes are saved first.");
       }
-      for (const table of summary.tables) {
+      const affected = action === "recreate" ? summary.tables.filter((table) => tables.includes(table.target)) : summary.tables;
+      for (const table of affected) {
         lines.push(describeTable(table, action, this.schemaExactRows[table.table]));
-      }
-      if (action === "recreate") {
-        for (const orphan of summary.orphans) {
-          lines.push(describeOrphan(orphan, this.schemaExactRows[orphan.table]));
-        }
       }
       if (action === "update" && summary.incompatible) {
         lines.push("Incompatible columns stay as they are, runs fail until the schema is recreated.");
@@ -2160,9 +2157,10 @@ export default {
           const name = this.control.control_name;
           this.schemaBusy = true;
           try {
-            const result = await api(recreate ? "recreate-control-schema" : "update-control-schema", { method: "POST", params: { name } });
+            const params = recreate ? { name, tables: tables.join(",") } : { name };
+            const result = await api(recreate ? "recreate-control-schema" : "update-control-schema", { method: "POST", params });
             if (recreate) {
-              this.$q.notify({ type: "positive", message: "Result tables of " + name + " were recreated." });
+              this.$q.notify({ type: "positive", message: tables.join(", ").toUpperCase() + " recreated." });
             } else if (result.incompatible && result.incompatible.length) {
               this.$q.notify({ type: "warning", message: "Result tables of " + name + " were updated, except: " + result.incompatible.join(", ").toUpperCase() + ". Recreate the schema to fix them." });
             } else {

@@ -78,10 +78,14 @@ The upgrade steps are in the [migration instructions](README.md).
    - A reconciliation writes the A and B tables only for the sides whose output is ticked under *Discrepancies*,
      so only those are checked, updated and (re)created. A result table no run writes any more is shown as
      *Orphaned*: the table of a side whose output was unticked, or of the control's former type. The editor
-     marks it in the bottom bar and offers *Drop table* per orphan, with its rows; *Update schema* never drops
-     anything, and *Recreate schema* drops orphans too. The Controls list shows them in the *Schema drift* chip,
-     and a header chip lists the result tables of **no** control (deleted, or renamed outside the application)
-     with their rows, to review and drop.
+     marks it in the bottom bar and offers *Drop table* per orphan, with its rows; neither *Update schema* nor
+     *Recreate schema* ever drops one. The Controls list shows them in the *Schema drift* chip, and a header chip
+     counts **every** orphaned table: those of a control (with a link to it and the reason) and those of no
+     control (deleted, or renamed outside the application), with their rows, to review and drop.
+   - *Recreate schema* recreates only the tables that drifted, e.g. side B of a reconciliation whose B datasource
+     changed, keeping side A and its results; when none drifted, it recreates all the control writes. Each table
+     in the schema details also has its own *Recreate table*. The *Recreate schema* of the Controls list still
+     recreates all of them.
 
    Controls that drop their tables on every run (*Keep past results: No, drop on each run*) are not checked for
    drift; their orphaned tables are still shown.
