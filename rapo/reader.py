@@ -309,6 +309,50 @@ class Reader:
         answerset = db.execute(select, as_table=True)
         return answerset
 
+    def read_schema_columns(self, tables, chunk=300):
+        """Get the columns of many tables and views from the dictionary.
+
+        Parameters
+        ----------
+        tables : iterable of tuple
+            (owner, table_name) pairs, uppercase. owner None means the
+            current schema.
+
+        Returns
+        -------
+        columns : dict
+            {(owner, table_name): [column, ...]} in column order, each column
+            a dict like Executor._read_table_schema returns, plus the object
+            type (TABLE or VIEW) under 'object_type'. A table that does not
+            exist is absent.
+        """
+        schema = db.execute("select sys_context('userenv', 'current_schema') "
+                            "from dual", as_scalar=True)
+        keys = sorted({(owner or schema, name) for owner, name in tables})
+        found = {}
+        for i in range(0, len(keys), chunk):
+            part = keys[i:i + chunk]
+            pairs = ', '.join(f'(:o{j}, :t{j})' for j in range(len(part)))
+            params = {}
+            for j, (owner, name) in enumerate(part):
+                params[f'o{j}'], params[f't{j}'] = owner, name
+            query = sa.text(
+                'select c.owner, c.table_name, lower(c.column_name) name, '
+                'c.data_type, c.data_length, c.char_length, c.char_used, '
+                'c.data_precision, c.data_scale, c.nullable, '
+                "nvl2(t.table_name, 'TABLE', 'VIEW') object_type "
+                'from all_tab_columns c '
+                'left join all_tables t '
+                'on t.owner = c.owner and t.table_name = c.table_name '
+                f'where (c.owner, c.table_name) in ({pairs}) '
+                'order by c.owner, c.table_name, c.column_id'
+            ).bindparams(**params)
+            for row in db.execute(query, as_table=True):
+                key = (row.pop('owner'), row.pop('table_name'))
+                found.setdefault(key, []).append(row)
+        return {(None if owner == schema else owner, name): columns
+                for (owner, name), columns in found.items()}
+
     def save_control(self, data):
         """Create or update control object in the config table with passed control data."""
         config = db.tables.config

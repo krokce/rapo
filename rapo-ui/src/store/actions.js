@@ -9,6 +9,13 @@ export default {
     context.commit("updateControlCatalogue", data);
     return data;
   },
+  // A dictionary-only check of every control's result tables: cheap, but not free, so it has no loading bar and
+  // is refreshed on demand rather than with every catalogue fetch.
+  async updateSchemaDrift(context) {
+    const data = await api("get-schema-drift", { loadingBar: false });
+    context.commit("updateSchemaDrift", data);
+    return data;
+  },
   // Runs started on one day (YYYY-MM-DD, default: the server's today).
   async updateControlResults(context, day = null) {
     const request = ++controlResultsRequest;

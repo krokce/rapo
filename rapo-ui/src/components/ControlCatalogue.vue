@@ -59,7 +59,7 @@
         map-options
         multiple
         use-chips
-        :options="['Preparation SQL', 'Prerequisite SQL', 'Completion SQL', 'Iterations', 'Case definition', 'Pre-run hook', 'No Post-run hook', 'Email']"
+        :options="['Preparation SQL', 'Prerequisite SQL', 'Completion SQL', 'Iterations', 'Case definition', 'Pre-run hook', 'No Post-run hook', 'Email', 'Schema drift']"
         label="Control attributes">
       </q-select>
 
@@ -145,6 +145,18 @@
                 icon="fas fa-bolt"
                 @click="addAttributeFilter('No Post-run hook')">
                 No Post-run hook
+              </q-chip>
+
+              <q-chip
+                clickable
+                v-if="driftOf(control)"
+                size="sm"
+                :color="driftOf(control).level === 'update' ? 'amber-8' : 'red-4'"
+                text-color="white"
+                icon="fas fa-table"
+                :title="driftTitle(driftOf(control))"
+                @click="addAttributeFilter('Schema drift')">
+                Schema drift
               </q-chip>
 
               <q-chip
@@ -371,7 +383,7 @@ export default {
     };
   },
   methods: {
-    ...mapActions(["updateControlCatalogue"]),
+    ...mapActions(["updateControlCatalogue", "updateSchemaDrift"]),
     controlType,
     toDateTimeString,
     sortIcon,
@@ -409,6 +421,28 @@ export default {
         this.$q.notify({ type: "positive", message: "Result tables of " + control_name + " were recreated." });
       } catch (error) {
         notifyError("Recreating the result tables of " + control_name + " failed.", error);
+      }
+    },
+    // The drift of a control's result tables when there is something to fix, else null.
+    driftOf(control) {
+      const drift = this.schemaDrift[control.control_id];
+      return drift && ["update", "recreate", "error"].includes(drift.level) ? drift : null;
+    },
+    driftTitle(drift) {
+      if (drift.level === "error") {
+        return `Schema check failed: ${drift.reason}. Open the control to fix it.`;
+      }
+      const parts = [];
+      if (drift.changes) parts.push(`${drift.changes} column change(s) for Update schema`);
+      if (drift.incompatible) parts.push(`${drift.incompatible} incompatible column(s) needing Recreate schema`);
+      return `${drift.tables.join(", ")}: ${parts.join(", ")}. Open the control to fix it.`;
+    },
+    async refreshSchemaDrift() {
+      try {
+        await this.updateSchemaDrift();
+      } catch (error) {
+        // The chips are informative only; the editor's own check still works.
+        console.error("Schema drift check failed:", error);
       }
     },
     addAttributeFilter(attr) {
@@ -452,7 +486,7 @@ export default {
     },
   },
   computed: {
-    ...mapState(["controlCatalogue"]),
+    ...mapState(["controlCatalogue", "schemaDrift"]),
     ...mapGetters(["getSearch"]),
     // Skeleton rows only while nothing is known yet; a catalogue already in the store is shown at once.
     showSkeleton() {
@@ -502,7 +536,8 @@ export default {
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||
             (attr === "No Post-run hook" && item.need_postrun_hook !== "Y") ||
-            (attr === "Email" && sendsEmail(item))
+            (attr === "Email" && sendsEmail(item)) ||
+            (attr === "Schema drift" && this.driftOf(item))
           );
             })
           : true;
@@ -519,8 +554,17 @@ export default {
   },
   // Also runs after the first mount.
   activated() {
-    this.stopLiveUpdates = liveRefetch("controls:changed", this.updateControlCatalogue);
+    const stopCatalogue = liveRefetch("controls:changed", this.updateControlCatalogue);
+    // A save or a schema update fixes drift, and so does a run (it updates its tables before saving).
+    const stopDriftConfig = liveRefetch("controls:changed", this.refreshSchemaDrift);
+    const stopDriftRuns = liveRefetch("runs:changed", this.refreshSchemaDrift, { interval: 30000 });
+    this.stopLiveUpdates = () => {
+      stopCatalogue();
+      stopDriftConfig();
+      stopDriftRuns();
+    };
     this.refreshControlCatalogue();
+    this.refreshSchemaDrift();
   },
   deactivated() {
     this.stopLiveUpdates();

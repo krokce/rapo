@@ -19,6 +19,9 @@ export default {
   updateControlCatalogue(state, payload) {
     state.controlCatalogue = freezeRows(payload);
   },
+  updateSchemaDrift(state, payload) {
+    state.schemaDrift = Object.freeze(payload);
+  },
   updateControlResults(state, payload) {
     state.controlResults = freezeRows(payload.runs);
     state.controlResultsDay = payload.date;

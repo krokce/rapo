@@ -66,4 +66,10 @@ The upgrade steps are in the [migration instructions](README.md).
      did, instead of by position. A comparison without output columns names its result columns `A_<column>` and
      `B_<column>` in the working tables too; before, it failed when both datasources had a column of the same
      name.
+   - The Controls list shows a *Schema drift* chip on each control whose result tables need an update (amber) or a
+     recreate (red), with the tables and the number of columns in its tooltip, and *Schema drift* in the
+     attribute filter. It is a light check of the whole catalogue from the Oracle dictionary, refreshed as
+     controls are saved and run. Comparison output columns that combine A and B, datasource names with
+     variables, and remote datasources are checked only in the editor.
+
    Controls that drop their tables on every run (*Keep past results: No, drop on each run*) are not checked.

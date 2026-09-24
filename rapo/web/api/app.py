@@ -25,6 +25,7 @@ from ...core import mailer
 from ...core import schedule
 from ...core import sqlcheck
 from ...core.control import Control
+from ...core.drift import schema_drift
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming
 
@@ -375,6 +376,17 @@ def get_running_controls():
 def get_all_controls():
     """Get list of all controls in JSON."""
     return reader.read_control_config_all()
+
+
+@api.get('/get-schema-drift')
+def get_schema_drift():
+    """Get the schema drift of the result tables of all controls.
+
+    Built from the dictionary in one pass, so it is cheap enough for the
+    controls list; check-control-schema is the exact check of one control.
+    """
+    return {str(control_id): drift
+            for control_id, drift in schema_drift().items()}
 
 
 @api.get('/get-control-versions')

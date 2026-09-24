@@ -3810,17 +3810,16 @@ class Executor:
         expected = {column['name']: column
                     for column in self.expected_output_schema(table_name)}
         if not diff['exists']:
-            diff['columns'] = [self._diff_column(None, column)
+            diff['columns'] = [diff_column(None, column)
                                for column in expected.values()]
             return diff
         current = {column['name']: column
                    for column in self._read_table_schema(current_name)}
         for name, column in expected.items():
-            diff['columns'].append(self._diff_column(current.get(name),
-                                                     column))
+            diff['columns'].append(diff_column(current.get(name), column))
         for name, column in current.items():
             if name not in expected:
-                diff['columns'].append(self._diff_column(column, None))
+                diff['columns'].append(diff_column(column, None))
         if stats:
             diff.update(self._output_table_stats(current_name))
         return diff
@@ -3853,33 +3852,6 @@ class Executor:
             return None
         return db.execute(f'select count(*) from {table_name}',
                           as_scalar=True)
-
-    def _diff_column(self, current, expected):
-        name = (expected or current)['name']
-        item = {'name': name,
-                'current': _column_type(current) if current else None,
-                'expected': _column_type(expected) if expected else None,
-                'status': 'ok', 'ddl': None}
-        if current is None:
-            item['status'] = 'added'
-            item['ddl'] = f'ADD ({name} {item["expected"]})'
-        elif expected is None:
-            item['status'] = 'not_output'
-            if current['nullable'] == 'N':
-                item['ddl'] = f'MODIFY ({name} NULL)'
-        else:
-            fits = _column_fits(current, expected)
-            if fits is None:
-                item['status'] = 'incompatible'
-            elif fits is False:
-                item['status'] = 'widened'
-                widened = _column_widened(current, expected)
-                item['expected'] = widened
-                item['ddl'] = f'MODIFY ({name} {widened})'
-            elif current['nullable'] == 'N' and expected['nullable'] == 'Y':
-                item['status'] = 'nullable'
-                item['ddl'] = f'MODIFY ({name} NULL)'
-        return item
 
     def sync_output_table(self, table_name, heal=False):
         """Apply the safe schema changes to an existing result table.
@@ -4247,6 +4219,39 @@ class Executor:
         db.execute(create_index)
         db.execute(rebuild_index)
         logger.debug(f'{self.c} Index for {table_name} created')
+
+
+def diff_column(current, expected):
+    """Compare a result table column with the one the configuration expects.
+
+    Either may be None (missing on that side); both are user_tab_columns
+    rows. Returns the column's status and the ALTER TABLE clause fixing it.
+    """
+    name = (expected or current)['name']
+    item = {'name': name,
+            'current': _column_type(current) if current else None,
+            'expected': _column_type(expected) if expected else None,
+            'status': 'ok', 'ddl': None}
+    if current is None:
+        item['status'] = 'added'
+        item['ddl'] = f'ADD ({name} {item["expected"]})'
+    elif expected is None:
+        item['status'] = 'not_output'
+        if current['nullable'] == 'N':
+            item['ddl'] = f'MODIFY ({name} NULL)'
+    else:
+        fits = _column_fits(current, expected)
+        if fits is None:
+            item['status'] = 'incompatible'
+        elif fits is False:
+            item['status'] = 'widened'
+            widened = _column_widened(current, expected)
+            item['expected'] = widened
+            item['ddl'] = f'MODIFY ({name} {widened})'
+        elif current['nullable'] == 'N' and expected['nullable'] == 'Y':
+            item['status'] = 'nullable'
+            item['ddl'] = f'MODIFY ({name} NULL)'
+    return item
 
 
 _TEXT_TYPES = ('VARCHAR2', 'NVARCHAR2', 'CHAR', 'NCHAR', 'RAW')

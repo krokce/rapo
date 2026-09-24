@@ -8,6 +8,8 @@ const store = createStore({
     return {
       search: "",
       controlCatalogue: [],
+      // Schema drift of the result tables by control_id (get-schema-drift), for the Controls list.
+      schemaDrift: {},
       controlResults: [],
       controlResultsDay: null,
       serverToday: null,
