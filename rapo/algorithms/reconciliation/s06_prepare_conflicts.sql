@@ -1,4 +1,6 @@
-create materialized view rapo_temp_t05_mac_{process_id} refresh on demand as
+create materialized view rapo_temp_t05_mac_{process_id}
+nologging
+refresh on demand as
 select {parallelism} a_id, b_id
 from (
   select m.a_id, m.b_id,

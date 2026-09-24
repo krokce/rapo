@@ -1,4 +1,6 @@
-create table rapo_temp_stage_b_{process_id} as
+create table rapo_temp_stage_b_{process_id}
+nologging
+as
 select {parallelism} b.*,
        'Match' as rapo_result_type,
        cast(null as varchar2(4000)) as rapo_discrepancy_id,

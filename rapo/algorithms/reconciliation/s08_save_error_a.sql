@@ -1,4 +1,6 @@
-create table rapo_temp_error_a_{process_id} as
+create table rapo_temp_error_a_{process_id}
+nologging
+as
 select {parallelism} *
   from (
          select {parallelism} a.*,
