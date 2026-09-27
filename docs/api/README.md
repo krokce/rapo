@@ -433,7 +433,9 @@ The datasources of the PDI Core (Pentaho) file-loading framework: `pdi_core_ds_c
 it loads and their partition retention, and `pdi_core_file_log`, one row per loaded file. They belong to that
 framework, not to Rapo, and are found in Rapo's own schema or through a private or public synonym. Where they can
 not be read every route answers `404`, and `GET /api/info` reports `datasources_available: false`; where the user
-may not change them, the writing routes answer `403` (`datasources_writable`, `datasources_deletable`).
+may not change them, the writing routes answer `403` (`datasources_writable`, `datasources_deletable`). What the user
+may do is checked with statements that change nothing; a failed check is repeated after a minute, the others every ten
+minutes, so a synonym or grant added later is found without a restart.
 
 The input directories are read from **this server's** file system. A mask is matched against the whole file name
 (`re.fullmatch`, like Java's `matches()` in PDI Core); subdirectories are read only with `input_scan_subdirs = 1`;
@@ -536,7 +538,8 @@ any status but `DELETE`; PDI Core does the rest (DELETE also deletes the archive
 
 #### `GET /api/get-pdi-state`
 The lane locks of `PDI_CORE_STATE`: `lanes` (`{lane: since}` of the `LOAD_<lane>` rows), `lock` (since when the `LOCK`
-row stops every lane, or `null`), `other` rows, `database_time`, `lock_stale_minutes`, and `available`.
+row stops every lane, or `null`), `other` rows, `database_time`, `lock_stale_minutes`, and `available`; when it is
+`false`, `error` says why (e.g. `ORA-00942` for a synonym without the grant behind it).
 
 #### `POST /api/remove-lane-lock`
 Delete the `LOAD_<lane>` row (`lane`) when its `DATETIME` still is `since`, as the caller saw it; `409` when it was

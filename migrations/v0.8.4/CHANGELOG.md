@@ -74,7 +74,9 @@ The upgrade steps are in the [migration instructions](README.md).
    - **Lanes:** a chip per lane shows whether a core_load run holds it (`PDI_CORE_STATE`, `LOAD_<lane>`), *Active since*
      in its tooltip, red when older than `[DATASOURCES] lock_stale_minutes` (30). Clicking it removes the lock after a
      confirmation, which warns when the lock is recent. *Lock all lanes* inserts the `LOCK` record (no core_load run
-     starts while it exists, a banner says since when); *Unlock all lanes* removes it.
+     starts while it exists, a banner says since when); *Unlock all lanes* removes it. `PDI_CORE_STATE` is read in
+     Rapo's schema or through a synonym; when it cannot be read, the page says why (e.g. the grant behind a synonym is
+     missing), and a synonym or grant added later is found within a minute, without a restart.
    - **A datasource's files** (`/files-log/<id>`), laid out like Results: title and day, the day's totals and status
      and duplicate chips, the same hourly heatmap (a row per status), the file name, status and duplicate filters,
      and the files, dates styled like the Start of Results. Files can be selected (one by one or all shown); then

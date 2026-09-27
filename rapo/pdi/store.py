@@ -14,6 +14,7 @@ is logged in the server log.
 import datetime as dt
 import json
 import re
+import time
 
 import sqlalchemy as sa
 
@@ -101,8 +102,16 @@ def mask_error(mask):
 class Store:
     """Represents the datasources of PDI Core."""
 
+    # Seconds a probe is trusted: a failed one is tried again soon, so that a
+    # synonym or grant added later (or a passing database error) is found
+    # without a restart.
+    PROBE_TTL = 600
+    PROBE_RETRY = 60
+
     def __init__(self):
         self._probe = None
+        self._probe_time = 0
+        self.probe_errors = {}
 
     def reset(self):
         """Forget what the probe found, e.g. after the schema changed."""
@@ -110,14 +119,23 @@ class Store:
 
     @property
     def probe(self):
-        """What rapo may do with the PDI tables, found out once.
+        """What rapo may do with the PDI tables.
 
         The statements change nothing (`where 1 = 0`), yet Oracle checks the
-        privileges of each, granted directly or through a role.
+        privileges of each, granted directly or through a role, and resolves
+        the names through a private or public synonym. Why a probe failed is
+        kept in `probe_errors`.
         """
-        if self._probe is None:
-            self._probe = {name: self._try(statement)
-                           for name, statement in self._probes()}
+        age = time.monotonic() - self._probe_time
+        if (self._probe is None or age > self.PROBE_TTL
+                or (not all(self._probe.values())
+                    and age > self.PROBE_RETRY)):
+            errors = {}
+            probe = {}
+            for name, statement in self._probes():
+                probe[name], errors[name] = self._try(statement)
+            self._probe, self.probe_errors = probe, errors
+            self._probe_time = time.monotonic()
         return self._probe
 
     def _probes(self):
@@ -140,9 +158,9 @@ class Store:
     def _try(self, statement):
         try:
             db.execute(sa.text(statement), auto_commit=False)
-        except Exception:
-            return False
-        return True
+        except Exception as error:
+            return False, self._message(error)
+        return True, None
 
     @property
     def available(self):
@@ -641,7 +659,8 @@ class Store:
         self.check()
         if not self.state_available:
             return {'available': False, 'lanes': {}, 'lock': None,
-                    'other': [], 'database_time': None}
+                    'other': [], 'database_time': None,
+                    'error': self.probe_errors.get('state')}
         rows = db.execute(sa.text(f'select job, datetime, status '
                                   f'from {STATE_TABLE} order by job'),
                           as_table=True)

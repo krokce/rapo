@@ -75,6 +75,16 @@
         <q-tooltip>Remove the LOCK record of PDI_CORE_STATE, so the lanes run again</q-tooltip>
       </q-btn>
     </div>
+    <!-- Said rather than hidden: a synonym without the grant behind it, or a table not deployed, is worth knowing. -->
+    <div v-else-if="pdiState && !pdiState.available" class="row items-center q-gutter-x-sm q-mb-sm text-grey-7">
+      <span class="text-blue-grey-8 q-mr-xs">Lanes</span>
+      <q-icon name="fas fa-exclamation-triangle" color="orange-8" size="14px" />
+      <span>unavailable: PDI_CORE_STATE cannot be read by rapo's database user{{ pdiState.error ? ` (${pdiState.error})` : "" }}.</span>
+      <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 6]" max-width="480px">
+        Rapo reads PDI_CORE_STATE in its own schema, or through a private or public synonym to the owner's table, which needs a SELECT grant
+        (INSERT and DELETE to lock and unlock). It checks again every minute.
+      </q-tooltip>
+    </div>
     <q-banner v-if="globalLock" dense rounded class="bg-red-1 text-red-10 q-mb-sm">
       <template #avatar><q-icon name="fas fa-lock" size="18px" /></template>
       All lanes are locked since {{ toDateTimeString(globalLock) }} (the LOCK record of PDI_CORE_STATE): PDI Core loads no file.
