@@ -118,7 +118,7 @@
       class="list-table file-log-table"
       :class="{ 'file-log-table--selectable': selectable }"
       :style="{ maxHeight }"
-      :items="shownFiles"
+      :items="sortedFiles"
       :virtual-scroll-item-size="41"
       :virtual-scroll-sticky-size-start="33"
       :table-colspan="selectable ? 11 : 10">
@@ -130,16 +130,10 @@
                 <q-tooltip>Select or unselect every file shown ({{ formatNumber(shownFiles.length) }})</q-tooltip>
               </q-checkbox>
             </th>
-            <th class="text-left">Status</th>
-            <th class="text-left">File</th>
-            <th class="text-right">Size</th>
-            <th class="text-left">File date</th>
-            <th class="text-left">Load start</th>
-            <th class="text-right">Runtime</th>
-            <th class="text-right">Read</th>
-            <th class="text-right">Written</th>
-            <th class="text-right">Rejected</th>
-            <th class="text-center">Duplicate</th>
+            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)">
+              {{ column.label }}
+              <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
+            </th>
           </tr>
         </thead>
       </template>
@@ -236,19 +230,34 @@ import { compactNumber } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
 import { copyText, escapeHtml, formatNumber, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { formatBytes } from "../utils/datasources";
+import { sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // The files one datasource loaded on one day (get-ds-file-log, the database's day), newest first. A row opens the log
 // text PDI Core wrote for it. With `selectable` (the Files page), files can be picked and asked to be recycled, reloaded
 // or deleted (set-file-status), and PDI Core does the work. The search and the status and duplicate filters are kept for
 // the browser session, like the filters of the list pages, and stay while the day changes.
+// The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
+const COLUMNS = [
+  { key: "status", label: "Status", align: "left" },
+  { key: "inputfilename", label: "File", align: "left" },
+  { key: "filesize", label: "Size", align: "right" },
+  { key: "filedate", label: "File date", align: "left" },
+  { key: "startloaddate", label: "Load start", align: "left" },
+  { key: "runtime", label: "Runtime", align: "right" },
+  { key: "recordsread", label: "Read", align: "right" },
+  { key: "recordswrite", label: "Written", align: "right" },
+  { key: "recordsreject", label: "Rejected", align: "right" },
+  { key: "duplicate", label: "Duplicate", align: "center" },
+];
+
 function emptyHours() {
   return Array.from({ length: 24 }, () => ({ files: 0, errors: 0 }));
 }
 
 export default {
   name: "FileLogTable",
-  mixins: [persistFilters("file_log", ["search", "statuses", "duplicate"])],
+  mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
   components: { FileHeatmap, FilterBadge, FilterChips },
   props: {
     datasourceId: { type: Number, required: true },
@@ -274,6 +283,9 @@ export default {
       search: "",
       statuses: [],
       duplicate: null,
+      columns: COLUMNS,
+      // No key: the order of the file log, newest load first.
+      sort: { key: null, dir: "asc" },
       // The hour of the day picked in the heatmap (load start, the database's clock), or null.
       hour: null,
       selected: new Set(),
@@ -362,6 +374,14 @@ export default {
       }
       return this.filesButHour.filter((file) => Number(String(file.startloaddate || "").slice(11, 13)) === this.hour);
     },
+    sortedFiles() {
+      const key = this.sort.key;
+      if (!key) {
+        return this.shownFiles;
+      }
+      const valueOf = key === "status" ? (file) => fileStatus(file.filestatus).label : (file) => file[key];
+      return sortRows(this.shownFiles, valueOf, this.sort.dir);
+    },
     allShownSelected() {
       if (!this.selected.size) {
         return false;
@@ -390,6 +410,8 @@ export default {
   methods: {
     compactNumber,
     fileStatus,
+    sortIcon,
+    toggleSort,
     addStatus(status) {
       if (!this.statuses.includes(status)) {
         this.statuses = [...this.statuses, status];
@@ -434,7 +456,7 @@ export default {
       if (!this.highlightId) {
         return;
       }
-      const index = this.shownFiles.findIndex((file) => file.id === this.highlightId);
+      const index = this.sortedFiles.findIndex((file) => file.id === this.highlightId);
       if (index >= 0) {
         this.$nextTick(() => this.$refs.scroll && this.$refs.scroll.scrollTo(index, "center"));
       }
@@ -567,6 +589,10 @@ export default {
 <style scoped>
 .clickable-row {
   cursor: pointer;
+}
+.sortable {
+  cursor: pointer;
+  user-select: none;
 }
 .clickable-row:hover {
   background: rgba(0, 0, 0, 0.03);

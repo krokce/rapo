@@ -79,12 +79,13 @@ The upgrade steps are in the [migration instructions](README.md).
      missing), and a synonym or grant added later is found within a minute, without a restart.
    - **A datasource's files** (`/files-log/<id>`), laid out like Results: title and day, the day's totals and status
      and duplicate chips, the same hourly heatmap (a row per status), the file name, status and duplicate filters,
-     and the files, dates styled like the Start of Results. Files can be selected (one by one or all shown); then
-     **Recycle**, **Reload** and **Delete** appear. Rapo only sets the status; PDI Core does the work: RECYCLE deletes
-     the records and loads the archived file again, RELOAD loads it again keeping the records, DELETE deletes the
-     records **and the archived file** (a warning says so). RECYCLE takes SUCCESS and ERROR files, RELOAD SUCCESS files,
-     both only when the archived file is kept (`OUTFILEDELETED = 0`); DELETE takes files of any status; other files
-     are left alone and counted in the notice.
+     and the files, dates styled like the Start of Results, sortable by every column (the sort kept with the
+     filters). Files can be selected (one by one or all shown); then **Recycle**, **Reload** and **Delete** appear.
+     Rapo only sets the status; PDI Core does the work: RECYCLE deletes the records and loads the archived file
+     again, RELOAD loads it again keeping the records, DELETE deletes the records **and the archived file** (a
+     warning says so). RECYCLE takes SUCCESS and ERROR files, RELOAD SUCCESS files, both only when the archived file
+     is kept (`OUTFILEDELETED = 0`); DELETE takes files of any status; other files are left alone and counted in the
+     notice.
    - The File log of the datasource editor is the same table, more compact: status chips like Results, records in a
      monospace font, a *Duplicate* filter; the server moved to the file's details. Its search and filters are kept
      for the browser session and across days.
