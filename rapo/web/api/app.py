@@ -783,6 +783,77 @@ def get_ds_file_log_text(file_id: int):
         return {'log': pdi.read_file_log_text(file_id)}
 
 
+@api.get('/get-files-day')
+def get_files_day(date: str | None = None):
+    """Get the loads of every datasource on one day (the database's).
+
+    Aggregates by datasource, hour and status, with the throughput of the
+    SUCCESS files and the files of the same weekday a week earlier.
+    """
+    with datasource_errors():
+        day = parse_day(date)
+        return pdi.read_files_day(day)
+
+
+@api.get('/search-files')
+def search_files(text: str, date: str | None = None):
+    """Find the files of one day whose name contains a text."""
+    with datasource_errors():
+        return pdi.search_files(parse_day(date), text)
+
+
+@api.post('/set-file-status')
+def set_file_status(data: dict = fastapi.Body(...)):
+    """Recycle, reload or delete loaded files.
+
+    The body is {ids, status}, status RECYCLE, RELOAD or DELETE. RECYCLE and
+    RELOAD change only SUCCESS files whose archived file is kept, DELETE files
+    of any status; PDI Core then does the work.
+    """
+    with datasource_errors():
+        result = pdi.set_file_status(data.get('ids'), data.get('status'))
+    events.poke()
+    return {'status': 200, **result}
+
+
+@api.get('/get-pdi-state')
+def get_pdi_state():
+    """Get the lane locks of PDI Core (PDI_CORE_STATE)."""
+    with datasource_errors():
+        state = pdi.read_state()
+    # A lock older than this is shown as probably stale.
+    state['lock_stale_minutes'] = ds_files.number_option('lock_stale_minutes')
+    return state
+
+
+@api.post('/remove-lane-lock')
+def remove_lane_lock(lane: int, since: str):
+    """Remove the lock of one lane (JOB LOAD_<lane>), if still the one seen."""
+    with datasource_errors():
+        pdi.remove_lane_lock(lane, since)
+    events.poke()
+    return {'status': 200}
+
+
+@api.post('/set-global-lock')
+def set_global_lock(on: bool):
+    """Stop every lane of PDI Core (JOB LOCK), or let them run again."""
+    with datasource_errors():
+        pdi.set_global_lock(on)
+    events.poke()
+    return {'status': 200}
+
+
+def parse_day(date):
+    """Get a YYYY-MM-DD day, the database's today by default."""
+    if not date:
+        return pdi.read_database_time().date()
+    try:
+        return dt.date.fromisoformat(date)
+    except ValueError:
+        raise DatasourceError('date must be YYYY-MM-DD', 422)
+
+
 @api.post('/validate-kpi-sql')
 def validate_kpi_sql(data: dict = fastapi.Body(...)):
     """Parse KPI or alarm statement without executing it."""

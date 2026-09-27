@@ -13,7 +13,8 @@
       </h2>
       <q-space />
 
-      <!-- Lane and waiting-file totals, laid out like the day totals of Results. -->
+      <!-- Lane and incoming-file totals, laid out like the day totals of Results. Incoming: files in the input directories, not
+           yet in the file log (whose WAITING status is another thing). -->
       <div v-if="!showSkeleton" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
         <div>
           <q-chip v-for="entry in laneCounts" :key="entry.lane.value" clickable @click="filter.lanes = [entry.lane.value]">
@@ -25,7 +26,7 @@
         <div>
           <q-chip v-if="waitingTotal !== null" clickable @click="filter.waiting = 'Y'">
             <q-avatar icon="fas fa-inbox" color="blue-grey-6" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">Waiting</span>({{ formatNumber(waitingTotal) }})
+            <span class="text-weight-bold q-mr-xs">Incoming</span>({{ formatNumber(waitingTotal) }})
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]" max-width="400px">{{ scanTitle }}</q-tooltip>
           </q-chip>
           <q-chip v-else>
@@ -71,10 +72,10 @@
         emit-value
         map-options
         :options="[
-          { label: 'Files waiting', value: 'Y' },
-          { label: 'No files waiting', value: 'N' },
+          { label: 'Files incoming', value: 'Y' },
+          { label: 'No incoming files', value: 'N' },
         ]"
-        label="Waiting files">
+        label="Incoming files">
       </q-select>
 
       <q-select
@@ -155,7 +156,7 @@
               </div>
               <div v-if="statusOf(row).waiting" class="text-caption text-grey-7">
                 {{ formatBytes(statusOf(row).bytes) }} · {{ formatAge(ageOf(row)) }}
-                <q-tooltip>Oldest waiting file modified {{ toDateTimeString(statusOf(row).oldest_at) }}</q-tooltip>
+                <q-tooltip>Oldest incoming file modified {{ toDateTimeString(statusOf(row).oldest_at) }}</q-tooltip>
               </div>
             </template>
             <q-skeleton v-else type="text" width="40px" class="float-right" />
@@ -317,7 +318,7 @@ const COLUMNS = [
   { key: "sourcename", label: "Name", align: "left", sort: true },
   { key: "input_directory", label: "Input directory", align: "left", sort: true },
   { key: "files_mask", label: "Files mask", align: "left", sort: true },
-  { key: "waiting", label: "Waiting", align: "right", sort: true },
+  { key: "waiting", label: "Incoming", align: "right", sort: true },
   { key: "last_load", label: "Last 24h", align: "left", sort: true },
   { key: "files_retention_days", label: "Ret. days", align: "right", sort: true },
   { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true },
@@ -406,7 +407,7 @@ export default {
     scanTitle() {
       const status = this.datasourceStatus;
       return status && status.scanned_at
-        ? `Counted at ${toDateTimeString(status.scanned_at)} in ${status.duration} s, every ${status.interval} s while this page is open. Show the datasources with files waiting.`
+        ? `Counted at ${toDateTimeString(status.scanned_at)} in ${status.duration} s, every ${status.interval} s while this page is open. Show the datasources with incoming files.`
         : "";
     },
     activeFilters() {
@@ -415,7 +416,7 @@ export default {
       return [
         ...valueFilter("text", "Text", filter.text, () => (filter.text = null), { text: true }),
         ...listFilter("lane", "Lane", filter.lanes, (value) => (filter.lanes = filter.lanes.filter((item) => item !== value)), (value) => datasourceLane(value).label),
-        ...valueFilter("waiting", "Waiting", filter.waiting, () => (filter.waiting = null), { label: filter.waiting === "Y" ? "Files waiting" : "No files waiting" }),
+        ...valueFilter("waiting", "Incoming", filter.waiting, () => (filter.waiting = null), { label: filter.waiting === "Y" ? "Files incoming" : "No incoming files" }),
         ...listFilter("issue", "Issue", filter.issues, (value) => (filter.issues = filter.issues.filter((item) => item !== value)), issueLabel),
         ...searchFilter(this.$store),
       ];

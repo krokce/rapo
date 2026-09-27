@@ -4,6 +4,8 @@ import ControlEdit from "./components/ControlEdit.vue";
 import ControlResults from "./components/ControlResults.vue";
 import DatasourceCatalogue from "./components/DatasourceCatalogue.vue";
 import EditDatasource from "./components/EditDatasource.vue";
+import FileLogPage from "./components/FileLogPage.vue";
+import FileResults from "./components/FileResults.vue";
 import EditKpiType from "./components/EditKpiType.vue";
 import KpiTypes from "./components/KpiTypes.vue";
 import SchedulerPage from "./components/SchedulerPage.vue";
@@ -82,6 +84,19 @@ const router = createRouter({
           next();
         }
       },
+    },
+    {
+      name: "files",
+      path: "/files",
+      meta: { searchPlaceholder: "Search datasource" },
+      component: FileResults,
+    },
+    {
+      name: "files-log",
+      path: "/files-log/:id",
+      meta: { hideSearch: true },
+      component: FileLogPage,
+      props: true,
     },
     {
       name: "datasources",

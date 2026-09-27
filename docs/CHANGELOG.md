@@ -11,11 +11,16 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 No change to Rapo's own schema, and none to the `PL` engine.
 
 - **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`, own schema or synonyms): list
-  with the files waiting in the input directories and the loads of 24 hours, a lane (`ISACTIVE`) switch with undo,
+  with the files incoming in the input directories and the loads of 24 hours, a lane (`ISACTIVE`) switch with undo,
   issue badges (no tables/retention, missing directory, invalid mask, stalled, errors); editor with tabs for input
   files (file lists, live mask test, *Create* directory), processing, archive, retention (linked tables with
   partition facts and warnings) and the file log; clone, delete (disabled only), 409 on concurrent changes.
   Directories are read from the server's file system; new `[DATASOURCES]` options.
+- **Files page** for the PDI Core file log of one day: by datasource with a column per file status, duplicates,
+  incoming files, records, runtime, last success, throughput and the change against a week earlier (Silent / Drop /
+  Errors / name-mismatch badges); an hourly heatmap by lane; a file search; lane locks (`PDI_CORE_STATE`) shown and
+  removable, *Lock all lanes*; per datasource the files to select and Recycle / Reload (SUCCESS only) or Delete (any
+  status). Editor File log statuses as chips.
 - **Results and Controls lists:** Results day totals read **ANL** (26) (bold label, count in brackets); Controls
   names link to the editor.
 - **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the

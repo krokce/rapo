@@ -2,6 +2,8 @@ import { api } from "../api";
 
 // Sequence of get-control-runs requests, so a slow response for a previous day can't overwrite a newer one.
 let controlResultsRequest = 0;
+// The same for get-files-day.
+let fileDayRequest = 0;
 
 export default {
   async updateControlCatalogue(context) {
@@ -65,6 +67,20 @@ export default {
   async updateDatasourceStatus(context) {
     const data = await api("get-ds-status", { loadingBar: false });
     context.commit("updateDatasourceStatus", data);
+    return data;
+  },
+  // The file log of one day (YYYY-MM-DD, default: the database's today) as aggregates.
+  async updateFileDay(context, day = null) {
+    const request = ++fileDayRequest;
+    const data = await api("get-files-day", { params: { date: day } });
+    if (request === fileDayRequest) {
+      context.commit("updateFileDay", data);
+    }
+    return data;
+  },
+  async updatePdiState(context) {
+    const data = await api("get-pdi-state", { loadingBar: false });
+    context.commit("updatePdiState", data);
     return data;
   },
   updateSearch(context, payload) {

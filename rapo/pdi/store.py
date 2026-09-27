@@ -24,6 +24,7 @@ from ..logger import logger
 CONFIG_TABLE = 'pdi_core_ds_config'
 TABLES_TABLE = 'pdi_core_ds_tables'
 LOG_TABLE = 'pdi_core_file_log'
+STATE_TABLE = 'pdi_core_state'
 
 DUP_HANDLING = ('PREVENT', 'PREVENTX', 'REPLACE', 'LOAD')
 
@@ -62,6 +63,12 @@ FILE_LOG_NAMES = ('id', 'inputfilename', 'inputfullfilename',
                   'filestatus', 'errorcount', 'md5', 'duplicate',
                   'outfiledeleted', 'server')
 FILE_LOG_LIMIT = 20000
+SEARCH_LIMIT = 200
+STATUS_BATCH = 1000
+STATUS_MAX_FILES = 5000
+
+# What a user may ask of a loaded file: PDI Core picks the status up.
+FILE_ACTIONS = ('RECYCLE', 'RELOAD', 'DELETE')
 
 # SOURCENAME is also PDI_CORE_FILE_LOG.SOURCENAME, which holds 50 characters.
 NAME_PATTERN = re.compile(r'^[A-Z0-9_]+$')
@@ -123,6 +130,12 @@ class Store:
         yield 'delete', (f'delete from {TABLES_TABLE} where 1 = 0')
         yield 'delete_config', (f'delete from {CONFIG_TABLE} where 1 = 0')
         yield 'log', f'select 1 from {LOG_TABLE} where 1 = 0'
+        yield 'log_update', (f'update {LOG_TABLE} set filestatus = filestatus '
+                             'where 1 = 0')
+        yield 'state', f'select 1 from {STATE_TABLE} where 1 = 0'
+        yield 'state_insert', (f'insert into {STATE_TABLE} '
+                               f'select * from {STATE_TABLE} where 1 = 0')
+        yield 'state_delete', f'delete from {STATE_TABLE} where 1 = 0'
 
     def _try(self, statement):
         try:
@@ -156,12 +169,28 @@ class Store:
         """Check whether the file log can be read."""
         return self.available and self.probe['log']
 
+    @property
+    def file_actions_available(self):
+        """Check whether files can be recycled, reloaded or deleted."""
+        return self.log_available and self.probe['log_update']
+
+    @property
+    def state_available(self):
+        """Check whether the lane locks of PDI_CORE_STATE can be read."""
+        return self.available and self.probe['state']
+
     def capabilities(self):
         """Get what the web UI may offer, for /info."""
         return {'datasources_available': self.available,
                 'datasources_writable': self.writable,
                 'datasources_deletable': self.deletable,
-                'datasources_log': self.log_available}
+                'datasources_log': self.log_available,
+                'datasources_file_actions': self.file_actions_available,
+                'datasources_state': self.state_available,
+                'datasources_state_write': (self.state_available
+                                            and self.probe['state_insert']),
+                'datasources_state_delete': (self.state_available
+                                             and self.probe['state_delete'])}
 
     def check(self, write=False, delete=False):
         """Raise when the datasources can not be read, or changed."""
@@ -426,6 +455,281 @@ class Store:
             id = self._value(row.pop('sourceid'))
             stats[id] = {key: self._value(value) for key, value in row.items()}
         return stats
+
+    def read_files_day(self, day):
+        """Get the loads of every datasource on one day, as aggregates.
+
+        Returns
+        -------
+        result : dict
+            `cells`, one row per datasource, hour (0-23) and status with
+            `files`, `read`, `written`, `rejected`, `duplicates` and
+            `runtime` (seconds, summed); `last_success` and
+            `perf` by datasource id, `perf` the quantiles of the k records
+            written per second of its SUCCESS files; `week_before`, the files
+            of every datasource on the same weekday a week earlier (for
+            today, up to the same time of day). Every
+            query is bounded to the day, so only its partitions are read.
+        """
+        self.check()
+        if not self.log_available:
+            raise DatasourceError('The file log is not available.', 404)
+        start = dt.datetime.combine(day, dt.time())
+        bounds = {'day_from': start,
+                  'day_to': start + dt.timedelta(days=1)}
+        window = 'startloaddate >= :day_from and startloaddate < :day_to'
+        cells = db.execute(sa.text(
+            'select sourceid, to_number(to_char(startloaddate, \'HH24\')) hour, '
+            'filestatus status, count(*) files, sum(recordsread) read, '
+            'sum(recordswrite) written, sum(recordsreject) rejected, '
+            'sum(case when duplicate = 1 then 1 else 0 end) duplicates, '
+            'sum(runtime) runtime '
+            f'from {LOG_TABLE} where {window} '
+            'group by sourceid, to_char(startloaddate, \'HH24\'), filestatus'
+        ).bindparams(**bounds), as_table=True)
+        perf = {}
+        statement = sa.text(
+            'select sourceid, count(*) n, min(rate) min, '
+            'percentile_cont(0.25) within group (order by rate) p25, '
+            'percentile_cont(0.5) within group (order by rate) median, '
+            'percentile_cont(0.75) within group (order by rate) p75, '
+            'max(rate) max, max(last_load) last_success from ('
+            'select sourceid, startloaddate last_load, case when runtime > 0 '
+            'then recordswrite / runtime / 1000 end rate '
+            f'from {LOG_TABLE} where {window} and filestatus = \'SUCCESS\') '
+            'group by sourceid').bindparams(**bounds)
+        for row in db.execute(statement, as_table=True):
+            id = self._value(row.pop('sourceid'))
+            last = row.pop('last_success')
+            perf[id] = {key: (float(value) if value is not None else None)
+                        for key, value in row.items()}
+            perf[id]['n'] = int(row['n'])
+            perf[id]['last_success'] = last
+        now = self.read_database_time()
+        # For today, a week earlier up to the same time of day, so that a day
+        # still going compares with as much of the other.
+        week = {'day_from': start - dt.timedelta(days=7),
+                'day_to': min(start - dt.timedelta(days=6),
+                              now - dt.timedelta(days=7))}
+        # The name each datasource had in the file log, for one whose
+        # configuration is gone.
+        names = {
+            self._value(row['sourceid']): row['sourcename']
+            for row in db.execute(sa.text(
+                f'select sourceid, max(sourcename) sourcename from {LOG_TABLE} '
+                f'where {window} group by sourceid').bindparams(**bounds),
+                as_table=True)}
+        week_before = {
+            self._value(row['sourceid']): int(row['files'])
+            for row in db.execute(sa.text(
+                f'select sourceid, count(*) files from {LOG_TABLE} '
+                f'where {window} group by sourceid').bindparams(**week),
+                as_table=True)}
+        return {'date': day, 'today': now.date(), 'database_time': now,
+                'cells': [{key: self._value(value)
+                           for key, value in row.items()} for row in cells],
+                'perf': perf, 'week_before': week_before, 'names': names}
+
+    def search_files(self, day, text):
+        """Find the files of one day whose name contains a text."""
+        self.check()
+        if not self.log_available:
+            return []
+        text = (text or '').strip()
+        if len(text) < 3:
+            raise DatasourceError('Search for 3 characters or more.')
+        pattern = '%' + re.sub(r'([\\%_])', r'\\\1', text.upper()) + '%'
+        start = dt.datetime.combine(day, dt.time())
+        statement = sa.text(
+            'select id, sourceid, sourcename, inputfilename, filestatus, '
+            f'startloaddate from {LOG_TABLE} where startloaddate >= :day_from '
+            'and startloaddate < :day_to and upper(inputfilename) like '
+            ':pattern escape \'\\\' order by startloaddate desc '
+            f'fetch first {SEARCH_LIMIT} rows only').bindparams(
+                day_from=start, day_to=start + dt.timedelta(days=1),
+                pattern=pattern)
+        return [{key: self._value(value) for key, value in row.items()}
+                for row in db.execute(statement, as_table=True)]
+
+    def set_file_status(self, ids, status):
+        """Ask PDI Core to recycle, reload or delete loaded files.
+
+        RECYCLE and RELOAD change only a SUCCESS file whose archived file is
+        kept (OUTFILEDELETED = 0); DELETE changes a file of any status but
+        DELETE. PDI Core then does the work.
+
+        Returns
+        -------
+        result : dict
+            `requested`, `changed` and `skipped`, `[{id, status, reason}]`.
+        """
+        self.check()
+        if not self.file_actions_available:
+            raise DatasourceError('This database user may not change the '
+                                  'file log.', 403)
+        status = str(status or '').upper()
+        if status not in FILE_ACTIONS:
+            raise DatasourceError(f'status must be one of '
+                                  f'{", ".join(FILE_ACTIONS)}.')
+        try:
+            ids = sorted({int(id) for id in ids or []})
+        except (TypeError, ValueError):
+            raise DatasourceError('ids must be file IDs.')
+        if not ids:
+            raise DatasourceError('No files given.')
+        if len(ids) > STATUS_MAX_FILES:
+            raise DatasourceError(f'At most {STATUS_MAX_FILES} files at once.')
+        needs_file = status in ('RECYCLE', 'RELOAD')
+        changed = 0
+        skipped = []
+        connection = db.connect()
+        try:
+            with connection.begin():
+                for start in range(0, len(ids), STATUS_BATCH):
+                    batch = ids[start:start + STATUS_BATCH]
+                    binds = {f'id{index}': id for index, id in enumerate(batch)}
+                    in_list = ', '.join(f':{bind}' for bind in binds)
+                    rows = connection.execute(sa.text(
+                        f'select id, filestatus, outfiledeleted from {LOG_TABLE} '
+                        f'where id in ({in_list}) for update').bindparams(
+                            **binds)).fetchall()
+                    found = {int(row[0]): row for row in rows}
+                    eligible = []
+                    for id in batch:
+                        row = found.get(id)
+                        if row is None:
+                            skipped.append({'id': id, 'status': None,
+                                            'reason': 'not in the file log'})
+                        elif row[1] == status:
+                            skipped.append({'id': id, 'status': row[1],
+                                            'reason': f'already {status}'})
+                        elif needs_file and row[1] != 'SUCCESS':
+                            skipped.append({'id': id, 'status': row[1],
+                                            'reason': f'status is {row[1]}'})
+                        elif needs_file and row[2]:
+                            skipped.append({'id': id, 'status': row[1],
+                                            'reason': 'archived file deleted'})
+                        else:
+                            eligible.append(id)
+                    if eligible:
+                        binds = {f'id{index}': id
+                                 for index, id in enumerate(eligible)}
+                        in_list = ', '.join(f':{bind}' for bind in binds)
+                        result = connection.execute(sa.text(
+                            f'update {LOG_TABLE} set filestatus = :status '
+                            f'where id in ({in_list})').bindparams(
+                                status=status, **binds))
+                        changed += result.rowcount
+        except sa.exc.DatabaseError as error:
+            raise DatasourceError(self._message(error)) from error
+        finally:
+            connection.close()
+        logger.info(f'Files set to {status}: {changed} of {len(ids)} '
+                    f'(IDs {ids[0]}..{ids[-1]})')
+        return {'requested': len(ids), 'changed': changed, 'skipped': skipped}
+
+    def read_state(self):
+        """Get the lane locks of PDI_CORE_STATE.
+
+        Returns
+        -------
+        state : dict
+            `lanes`, the running lanes as `{lane: since}` (JOB LOAD_<lane>),
+            `lock`, since when JOB LOCK stops every lane (or None), `other`,
+            the rows of any other job, and `database_time`.
+        """
+        self.check()
+        if not self.state_available:
+            return {'available': False, 'lanes': {}, 'lock': None,
+                    'other': [], 'database_time': None}
+        rows = db.execute(sa.text(f'select job, datetime, status '
+                                  f'from {STATE_TABLE} order by job'),
+                          as_table=True)
+        lanes, lock, other = {}, None, []
+        for row in rows:
+            match = re.fullmatch(r'LOAD_(\d+)', str(row['job']))
+            if match:
+                lanes[int(match.group(1))] = row['datetime']
+            elif row['job'] == 'LOCK':
+                lock = row['datetime']
+            else:
+                other.append(row)
+        return {'available': True, 'lanes': lanes, 'lock': lock,
+                'other': other, 'database_time': self.read_database_time()}
+
+    def remove_lane_lock(self, lane, since):
+        """Remove the LOAD_<lane> row, when it still is the one seen.
+
+        `since` is its DATETIME as the caller saw it: a lock taken anew
+        meanwhile is not removed (409).
+        """
+        self._check_state('state_delete', 'remove lane locks')
+        job = f'LOAD_{int(lane)}'
+        try:
+            since = dt.datetime.fromisoformat(str(since))
+        except ValueError:
+            raise DatasourceError('since must be a datetime.')
+        result = db.execute(sa.text(
+            f'delete from {STATE_TABLE} where job = :job '
+            'and datetime = :since').bindparams(job=job, since=since))
+        if not result.rowcount:
+            current = db.execute(sa.text(
+                f'select datetime from {STATE_TABLE} where job = :job'
+            ).bindparams(job=job), as_scalar=True)
+            if current is None:
+                raise DatasourceError(f'{job} is not locked any more.', 409)
+            raise DatasourceError(f'{job} was locked anew at '
+                                  f'{current:%d.%m.%Y %H:%M:%S}.', 409)
+        logger.info(f'Lane lock {job} (since {since}) removed')
+
+    def set_global_lock(self, on):
+        """Stop every lane (JOB LOCK) or let them run again."""
+        if on:
+            self._check_state('state_insert', 'lock the lanes')
+            try:
+                db.execute(sa.text(
+                    f'insert into {STATE_TABLE} (job, datetime, status) '
+                    'select \'LOCK\', sysdate, \'RUNNING\' from dual where not '
+                    f'exists (select 1 from {STATE_TABLE} where job = '
+                    '\'LOCK\')'))
+            except sa.exc.DatabaseError as error:
+                raise DatasourceError(self._message(error)) from error
+            logger.info('All PDI Core lanes locked (LOCK)')
+        else:
+            self._check_state('state_delete', 'unlock the lanes')
+            db.execute(sa.text(f'delete from {STATE_TABLE} '
+                               'where job = \'LOCK\''))
+            logger.info('PDI Core lanes unlocked (LOCK removed)')
+
+    def _check_state(self, probe, what):
+        self.check()
+        if not self.state_available or not self.probe[probe]:
+            raise DatasourceError(f'This database user may not {what} '
+                                  '(PDI_CORE_STATE).', 403)
+
+    def state_signature(self):
+        """Get a value that changes with every lane lock."""
+        if not self.state_available:
+            return None
+        return db.execute(sa.text(
+            'select count(*) || \':\' || listagg(job || \'=\' || '
+            'to_char(datetime, \'YYYYMMDDHH24MISS\'), \',\') '
+            f'within group (order by job) from {STATE_TABLE}'),
+            as_scalar=True)
+
+    def files_signature(self):
+        """Get a value that changes with the files loaded today.
+
+        New files and finished loads change it; a status set by rapo pokes
+        the clients itself.
+        """
+        if not self.log_available:
+            return None
+        return db.execute(sa.text(
+            'select count(*) || \':\' || max(id) || \':\' || '
+            'to_char(max(endloaddate), \'YYYYMMDDHH24MISS\') '
+            f'from {LOG_TABLE} where startloaddate >= trunc(sysdate)'),
+            as_scalar=True)
 
     def read_database_time(self):
         """Get the database clock, which stamps the file log."""

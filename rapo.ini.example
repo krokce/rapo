@@ -142,3 +142,6 @@ dir_mode=2775
 # An active datasource whose oldest waiting file is older than this is
 # flagged Stalled.
 stalled_minutes=60
+# A lane lock (LOAD_<lane> of PDI_CORE_STATE) older than this is shown on the
+# Files page as probably stale.
+lock_stale_minutes=30

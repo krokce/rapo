@@ -253,7 +253,7 @@
 
             <q-tab-panel v-if="saved && logAvailable" name="log">
               <div class="q-ma-lg">
-                <file-log-table :datasource-id="saved.id" />
+                <file-log-table :datasource-id="saved.id" embedded />
               </div>
             </q-tab-panel>
           </q-tab-panels>

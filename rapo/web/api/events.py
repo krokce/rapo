@@ -77,9 +77,8 @@ class Watcher:
         """Emit events for tables changed since the previous check."""
         changed, self.scheduler_changed = self.scheduler_changed, False
         runs, controls, events = await asyncio.to_thread(self.read)
-        datasources = await asyncio.to_thread(self.read_datasources)
-        if datasources:
-            await sio.emit('datasources:changed', {'kind': 'config'})
+        for kind in await asyncio.to_thread(self.read_datasources):
+            await sio.emit('datasources:changed', {'kind': kind})
         if runs:
             await sio.emit('runs:changed', runs)
         if controls:
@@ -115,15 +114,21 @@ class Watcher:
         return runs, controls, events
 
     def read_datasources(self):
-        """Check whether the PDI Core datasources changed, by anyone."""
+        """Get what of PDI Core changed, by anyone: the kinds of change.
+
+        `config` the datasources, `state` the lane locks, `files` the files
+        loaded today.
+        """
         from ...pdi import pdi
         if not pdi.available:
-            return False
-        signature = pdi.signature()
-        changed = (self.datasources is not None
-                   and signature != self.datasources)
-        self.datasources = signature
-        return changed
+            return []
+        signatures = {'config': pdi.signature(),
+                      'state': pdi.state_signature(),
+                      'files': pdi.files_signature()}
+        previous = self.datasources or {}
+        self.datasources = signatures
+        return [kind for kind, value in signatures.items()
+                if kind in previous and previous[kind] != value]
 
     def diff(self, table, id_column, updated_column):
         """Get IDs of rows changed since the previous call.

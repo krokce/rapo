@@ -50,6 +50,12 @@ export default {
   updateDatasourceStatus(state, payload) {
     state.datasourceStatus = Object.freeze(payload);
   },
+  updateFileDay(state, payload) {
+    state.fileDay = Object.freeze(payload);
+  },
+  updatePdiState(state, payload) {
+    state.pdiState = Object.freeze(payload);
+  },
   updateSocketConnected(state, payload) {
     state.socketConnected = payload;
   },

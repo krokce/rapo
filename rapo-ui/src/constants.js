@@ -161,15 +161,53 @@ export const DUP_HANDLING_OPTIONS = [
   { value: "LOAD", label: "LOAD", description: "Load the new file over the older one's records, which are kept. Archived in the archive directory." },
 ];
 
-// File statuses of the PDI Core file log (pdi_core_file_log.filestatus).
+// File statuses of the PDI Core file log (pdi_core_file_log.filestatus). RECYCLE, RELOAD and DELETE are asked for from
+// the Files page and wait for PDI Core, which then marks them done.
 export const FILE_STATUSES = {
-  SUCCESS: { label: "Success", icon: "fas fa-check-circle", color: "green" },
   WAITING: { label: "Waiting", icon: "fas fa-pause-circle", color: "amber-7" },
   PROCESSING: { label: "Processing", icon: "fas fa-sync fa-spin", color: "blue" },
+  STARTED: { label: "Started", icon: "fas fa-play-circle", color: "blue" },
+  SUCCESS: { label: "Success", icon: "fas fa-check-circle", color: "green" },
   ERROR: { label: "Error", icon: "fas fa-exclamation-circle", color: "deep-orange" },
   DUPLICATE: { label: "Duplicate", icon: "fas fa-clone", color: "purple-3" },
+  RECYCLE: { label: "Recycle", icon: "fas fa-recycle", color: "indigo" },
+  RELOAD: { label: "Reload", icon: "fas fa-redo", color: "indigo-4" },
+  DELETE: { label: "Delete", icon: "fas fa-trash-alt", color: "red" },
+  RECYCLED: { label: "Recycled", icon: "fas fa-recycle", color: "grey-6" },
+  RELOADED: { label: "Reloaded", icon: "fas fa-redo", color: "grey-6" },
+  DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "grey-6" },
+};
+
+// What can be asked of a file (set-file-status). PDI Core does the work. `needsFile`: only a SUCCESS file whose archived
+// file still exists (OUTFILEDELETED = 0); DELETE takes a file of any status.
+export const FILE_ACTIONS = {
+  RECYCLE: {
+    label: "Recycle",
+    icon: "fas fa-recycle",
+    color: "indigo",
+    needsFile: true,
+    text: "PDI Core deletes the records of the file (by FILE_ID) from the tables of the datasource, then loads the archived file again as a new file.",
+  },
+  RELOAD: {
+    label: "Reload",
+    icon: "fas fa-redo",
+    color: "indigo-4",
+    needsFile: true,
+    text: "PDI Core loads the archived file again as a new file. The records it loaded before are kept, so they may then exist twice.",
+  },
+  DELETE: {
+    label: "Delete",
+    icon: "fas fa-trash-alt",
+    color: "negative",
+    needsFile: false,
+    text: "PDI Core deletes the records of the file (by FILE_ID) from the tables of the datasource.",
+    warning: "The archived file is deleted too: it cannot be recycled or reloaded afterwards.",
+  },
 };
 
 export function fileStatus(status) {
   return FILE_STATUSES[status] || { label: status || "Unknown", icon: "fas fa-question-circle", color: "grey" };
 }
+
+// The icon of the Files page and its menu item.
+export const FILES_ICON = "fas fa-file-alt";

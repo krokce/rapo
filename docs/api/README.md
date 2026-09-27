@@ -515,6 +515,37 @@ at most 20,000: `{date, today, files, truncated}`, each file with the columns of
 #### `GET /api/get-ds-file-log-text`
 `{"log": "..."}`, the log text PDI Core wrote for one file (`file_id`).
 
+#### `GET /api/get-files-day`
+The file log of one day (`date`, `YYYY-MM-DD`, default the database's today) as aggregates, every query bounded to
+the day's partitions: `cells` (`{sourceid, hour, status, files, read, written, rejected, duplicates, runtime}`,
+runtime in seconds summed, one per datasource, hour
+0-23 and status), `perf` by datasource id (`n`, `min`, `p25`, `median`, `p75`, `max` of the k records written per
+second of its SUCCESS files with a runtime, and `last_success`), `week_before` (files by datasource id on the same
+weekday a week earlier, for today up to the same time of day), `names` (the SOURCENAME the log gives each id),
+`date`, `today`, `database_time`.
+
+#### `GET /api/search-files`
+The files of one day (`date`) whose name contains `text` (3 characters or more, case-insensitive), newest first, at
+most 200: `id`, `sourceid`, `sourcename`, `inputfilename`, `filestatus`, `startloaddate`.
+
+#### `POST /api/set-file-status`
+Ask PDI Core to recycle, reload or delete loaded files. The body is `{"ids": [...], "status": "RECYCLE"|"RELOAD"|
+"DELETE"}`, at most 5000 ids. `RECYCLE`/`RELOAD` change only a `SUCCESS` file with `OUTFILEDELETED = 0`, `DELETE` a file of
+any status but `DELETE`; PDI Core does the rest (DELETE also deletes the archived file). Answers `{"status": 200, "requested", "changed",
+"skipped": [{id, status, reason}]}`. `403` without `UPDATE` on the file log.
+
+#### `GET /api/get-pdi-state`
+The lane locks of `PDI_CORE_STATE`: `lanes` (`{lane: since}` of the `LOAD_<lane>` rows), `lock` (since when the `LOCK`
+row stops every lane, or `null`), `other` rows, `database_time`, `lock_stale_minutes`, and `available`.
+
+#### `POST /api/remove-lane-lock`
+Delete the `LOAD_<lane>` row (`lane`) when its `DATETIME` still is `since`, as the caller saw it; `409` when it was
+taken anew or is gone.
+
+#### `POST /api/set-global-lock`
+`on=true` inserts the `LOCK` row (`sysdate`, `RUNNING`) unless it exists, `on=false` deletes it. `403` without the
+grants on `PDI_CORE_STATE`.
+
 ### Email
 
 A control of type `ANL`, `REP` or `REC` can mail its results when a run finishes. The configuration is the
@@ -746,7 +777,8 @@ Answers a list of datetimes, `[]` for a schedule that never fires. `422` when th
 What this instance is: `instance_name`, `schema_name`, `database_server`, `database_name`, and the computed paths
 `config_path` (the `rapo.ini` actually loaded) and `log_directory`. Also what the UI may offer: `kpi_available`,
 and for the PDI Core datasources `datasources_available`, `datasources_writable`, `datasources_deletable`,
-and `datasources_log` (the file log is readable).
+`datasources_log` (the file log is readable), `datasources_file_actions` (files can be recycled, reloaded, deleted),
+`datasources_state`, `datasources_state_write` and `datasources_state_delete` (the lane locks of `PDI_CORE_STATE`).
 
 #### `GET /api/parameters`
 The loaded `rapo.ini` as it is written, one object per section. Options whose name contains `password`, `token` or
@@ -796,7 +828,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `controls:changed`  | `{resync, control_ids}`                           |
 | `scheduler:changed` | `{event_ids}`                                     |
 | `analysis:progress` | `{session_id, state}` - see Data analysis         |
-| `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before |
+| `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*

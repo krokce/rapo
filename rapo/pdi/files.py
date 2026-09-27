@@ -37,6 +37,7 @@ OPTIONS = {
     'clean_max_bytes': 1024,
     'dir_mode': '2775',
     'stalled_minutes': 60,
+    'lock_stale_minutes': 30,
 }
 
 OTHER_DIRECTORIES = ('archive_directory', 'error_directory',

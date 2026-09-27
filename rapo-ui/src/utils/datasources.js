@@ -101,7 +101,7 @@ export function issuesOf(row, status, stalledMinutes = 60) {
     add("invalid_mask", [status.mask_error && `FILES_MASK: ${status.mask_error}`, status.clean_mask_error && `INPUT_CLEAN_FILES_MASK: ${status.clean_mask_error}`].filter(Boolean).join("; "));
   }
   if (status.stalled) {
-    add("stalled", `Active, and its oldest waiting file has waited longer than ${stalledMinutes} minutes`);
+    add("stalled", `Active, and its oldest incoming file has waited longer than ${stalledMinutes} minutes`);
   }
   if (status.log && status.log.errors) {
     add("errors", `${status.log.errors} file(s) ended in ERROR in the last 24 hours`);

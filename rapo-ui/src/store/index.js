@@ -35,6 +35,9 @@ const store = createStore({
       // PDI Core datasources (get-ds-list), and the files waiting for them as last counted (get-ds-status).
       datasourceCatalogue: [],
       datasourceStatus: null,
+      // The file log of one day as aggregates (get-files-day), and the lane locks of PDI Core (get-pdi-state).
+      fileDay: null,
+      pdiState: null,
     };
   },
   mutations: rootMutations,

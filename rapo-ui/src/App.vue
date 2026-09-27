@@ -92,7 +92,7 @@
         <div class="q-ma-lg">
           <!-- The list pages are kept alive, so going back to them shows their rows, filters and scroll at once. -->
           <router-view v-slot="{ Component }">
-            <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DataAnalysis', 'DatasourceCatalogue']">
+            <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DataAnalysis', 'DatasourceCatalogue', 'FileResults']">
               <component :is="Component" />
             </keep-alive>
           </router-view>
@@ -167,7 +167,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError, signOut } from "./api";
-import { DATASOURCE_ICON, schedulerState } from "./constants";
+import { DATASOURCE_ICON, FILES_ICON, schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
 
 // The drawer collapsed to its icons (the burger button), remembered by the browser across sessions.
@@ -325,7 +325,8 @@ export default {
       }
       // PDI Core datasources, where their tables are readable; spaced from the lists of rapo's own objects.
       if (this.getEnvInfo && this.getEnvInfo.datasources_available) {
-        links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"], gap: true });
+        links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log"], gap: true });
+        links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
       links.push({ icon: "fas fa-clock", text: "Scheduler", route: "/scheduler", routes: ["scheduler"], gap: true });
       return links;
