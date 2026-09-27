@@ -130,3 +130,46 @@ export const SCHEDULER_STATES = {
 export function schedulerState(state) {
   return SCHEDULER_STATES[state] || { label: state || "Unknown", color: "grey", description: "" };
 }
+
+// PDI Core datasources (pdi_core_ds_config). ISACTIVE is the scheduler lane: the SCHEDULER_ID of the core_load job
+// that processes the datasource, 1-9; 0 disables it. Each lane has a color of its own, the same everywhere.
+export const DATASOURCE_ICON = "fas fa-file-import";
+
+const DATASOURCE_LANE_COLORS = ["grey-6", "teal-7", "indigo-6", "deep-orange-7", "purple-6", "blue-7", "green-7", "brown-6", "pink-6", "cyan-8"];
+
+export const DATASOURCE_LANES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+export function datasourceLane(value) {
+  const lane = Number(value);
+  if (lane === 0) {
+    return { value: 0, label: "Disabled", short: "0", icon: "fas fa-pause", color: DATASOURCE_LANE_COLORS[0] };
+  }
+  return {
+    value: lane,
+    label: `Scheduler ${lane}`,
+    short: String(lane),
+    icon: DATASOURCE_ICON,
+    color: DATASOURCE_LANE_COLORS[lane] || "blue-grey-6",
+  };
+}
+
+// Duplicate handling of a datasource (pdi_core_ds_config.files_dup_handling), as the PDI Core documentation says.
+export const DUP_HANDLING_OPTIONS = [
+  { value: "PREVENT", label: "PREVENT", description: "Skip the load and archive the file in the duplicate directory. A duplicate has the same MD5 hash." },
+  { value: "PREVENTX", label: "PREVENTX", description: "Like PREVENT, but a duplicate needs both the same MD5 hash and the same file name." },
+  { value: "REPLACE", label: "REPLACE", description: "Delete the records of the older file and load the new one, archived in the archive directory." },
+  { value: "LOAD", label: "LOAD", description: "Load the new file over the older one's records, which are kept. Archived in the archive directory." },
+];
+
+// File statuses of the PDI Core file log (pdi_core_file_log.filestatus).
+export const FILE_STATUSES = {
+  SUCCESS: { label: "Success", icon: "fas fa-check-circle", color: "green" },
+  WAITING: { label: "Waiting", icon: "fas fa-pause-circle", color: "amber-7" },
+  PROCESSING: { label: "Processing", icon: "fas fa-sync fa-spin", color: "blue" },
+  ERROR: { label: "Error", icon: "fas fa-exclamation-circle", color: "deep-orange" },
+  DUPLICATE: { label: "Duplicate", icon: "fas fa-clone", color: "purple-3" },
+};
+
+export function fileStatus(status) {
+  return FILE_STATUSES[status] || { label: status || "Unknown", icon: "fas fa-question-circle", color: "grey" };
+}

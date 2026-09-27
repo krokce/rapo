@@ -127,9 +127,9 @@
             </q-chip>
           </td>
           <td class="text-left">
-            <div class="text-weight-bold text-grey-9 control-name">
+            <router-link :to="{ name: 'edit-control', params: { controlId: control.control_id } }" class="text-weight-bold text-grey-9 control-name">
               {{ control.control_name }}
-            </div>
+            </router-link>
             <router-link
               :to="{
                 name: 'edit-control',
@@ -745,8 +745,13 @@ export default {
 .catalogue-table th:nth-child(5) { width: 62px; }
 .catalogue-table td:nth-child(4) { white-space: normal; }
 .control-name {
+  display: block;
   font-size: 16px;
   white-space: normal;
   overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.control-name:hover {
+  text-decoration: underline;
 }
 </style>

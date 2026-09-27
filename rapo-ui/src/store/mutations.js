@@ -44,6 +44,12 @@ export default {
   updateKpiTypes(state, payload) {
     state.kpiTypes = payload;
   },
+  updateDatasourceCatalogue(state, payload) {
+    state.datasourceCatalogue = freezeRows(payload);
+  },
+  updateDatasourceStatus(state, payload) {
+    state.datasourceStatus = Object.freeze(payload);
+  },
   updateSocketConnected(state, payload) {
     state.socketConnected = payload;
   },

@@ -38,6 +38,8 @@ from ...analysis import compare
 from ...analysis import datasets
 from ...analysis.sessions import sessions, SessionError
 from ...analysis.worker import EXCEL_MAX_ROWS
+from ...pdi import pdi, scanner, DatasourceError
+from ...pdi import files as ds_files
 
 
 UI_DIR = os.path.realpath(
@@ -64,11 +66,17 @@ async def lifespan(app):
     runner.listeners.append(events.poke_scheduler)
     scheduler.listeners.append(events.poke_scheduler)
     sessions.listeners.append(events.emit_analysis)
+    # The waiting files are counted only while someone looks at them.
+    scanner.active = lambda: events.watcher.clients > 0
+    scanner.listeners.append(events.emit_datasources)
+    events.watcher.connect_listeners.append(scanner.poke)
     logs.cleaner.start()
     await asyncio.to_thread(runner.start)
     scheduler.start()
     sessions.start()
+    scanner.start()
     yield
+    await asyncio.to_thread(scanner.stop)
     await asyncio.to_thread(sessions.stop)
     await asyncio.to_thread(scheduler.stop)
     await asyncio.to_thread(runner.stop)
@@ -170,9 +178,19 @@ def info():
         ),
         'config_path': CONFIG_PATH,
         'log_directory': LOG_DIR,
-        'kpi_available': kpi.available
+        'kpi_available': kpi.available,
+        **datasource_capabilities()
     }
     return output_dict
+
+
+def datasource_capabilities():
+    """What the UI may offer for the PDI Core datasources."""
+    try:
+        return pdi.capabilities()
+    except Exception:
+        logger.error()
+        return {'datasources_available': False}
 
 
 @api.get('/parameters')
@@ -211,6 +229,9 @@ def reload_config():
     if logging_options:
         logger.configure(**{name: config['LOGGING'][name]
                             for name in logging_options})
+    # Grants on the PDI Core tables changed meanwhile are found.
+    pdi.reset()
+    scanner.poke()
     # A higher control_parallelism lets queued runs start at once.
     with runner.condition:
         runner.condition.notify_all()
@@ -602,6 +623,164 @@ def delete_kpi_type(kpi_type: str):
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     return {'status': 200}
+
+
+@contextlib.contextmanager
+def datasource_errors():
+    """Answer a DatasourceError with its HTTP code."""
+    try:
+        yield
+    except DatasourceError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+
+
+def find_datasource(id):
+    """Get a saved datasource, or answer 404."""
+    with datasource_errors():
+        row = pdi.read_datasource(id)
+    if row is None:
+        raise fastapi.HTTPException(status_code=404,
+                                    detail=f'Datasource {id} does not exist.')
+    return row
+
+
+@api.get('/get-ds-list')
+def get_ds_list():
+    """Get every PDI Core datasource, with the names of its tables."""
+    with datasource_errors():
+        return pdi.read_datasources()
+
+
+@api.get('/get-ds-status')
+def get_ds_status():
+    """Get the files waiting for every datasource, as last counted.
+
+    Counted in the background every [DATASOURCES] scan_interval seconds
+    while UI clients are connected. Before the first count it answers
+    `pending` and starts one.
+    """
+    with datasource_errors():
+        pdi.check()
+    status = scanner.status()
+    if status is None:
+        scanner.poke()
+        return {'pending': True, 'datasources': {}}
+    return status
+
+
+@api.get('/get-ds-config')
+def get_ds_config(id: int):
+    """Get one datasource, its tables and whether its directories exist."""
+    row = find_datasource(id)
+    row['directories'] = ds_files.check_directories(row)
+    return row
+
+
+@api.post('/save-ds-config')
+def save_ds_config(data: dict = fastapi.Body(...)):
+    """Create or update one datasource and replace its tables.
+
+    The body is {datasource, expected}: the datasource with its `links`, and
+    how the editor loaded it. A datasource changed since is not overwritten
+    (409).
+    """
+    datasource = data.get('datasource')
+    if not isinstance(datasource, dict):
+        raise fastapi.HTTPException(status_code=422,
+                                    detail='datasource is required')
+    with datasource_errors():
+        row = pdi.save(datasource, expected=data.get('expected'))
+    events.poke()
+    scanner.poke()
+    row['directories'] = ds_files.check_directories(row)
+    return {'status': 200, 'datasource': row}
+
+
+@api.post('/set-ds-active')
+def set_ds_active(id: int, value: int, expected: int | None = None):
+    """Move a datasource to another scheduler lane (ISACTIVE), 0 disables it.
+
+    With `expected`, the lane the caller saw, a datasource moved by someone
+    else meanwhile is not moved (409).
+    """
+    with datasource_errors():
+        row = pdi.set_active(id, value, expected=expected)
+    events.poke()
+    scanner.poke()
+    return {'status': 200, 'datasource': row}
+
+
+@api.delete('/delete-ds-config')
+def delete_ds_config(id: int):
+    """Delete a disabled datasource and its tables.
+
+    Its file log and the tables it loads are kept. An active datasource
+    (ISACTIVE other than 0) is refused.
+    """
+    with datasource_errors():
+        pdi.delete(id)
+    events.poke()
+    scanner.poke()
+    return {'status': 200}
+
+
+@api.get('/count-ds-file-log')
+def count_ds_file_log(id: int):
+    """Count the file log rows of a datasource."""
+    with datasource_errors():
+        return {'rows': pdi.count_file_log(id)}
+
+
+@api.get('/get-ds-files')
+def get_ds_files(id: int, kind: str = 'match', files_mask: str | None = None,
+                 clean_mask: str | None = None, subdirs: bool | None = None):
+    """List the files in the input directories of a saved datasource.
+
+    `kind` is `match` (FILES_MASK), `clean` (INPUT_CLEAN_FILES_MASK, small
+    files only) or `all`. The masks and `subdirs` override the saved ones,
+    to try the editor's values.
+    """
+    row = find_datasource(id)
+    with datasource_errors():
+        return ds_files.list_files(row, kind, files_mask=files_mask,
+                                   clean_mask=clean_mask, subdirs=subdirs)
+
+
+@api.post('/create-ds-directory')
+def create_ds_directory(id: int, path: str):
+    """Create a missing directory of a saved datasource."""
+    row = find_datasource(id)
+    with datasource_errors():
+        created = ds_files.create_directory(row, path)
+    return {'status': 200, 'created': created}
+
+
+@api.get('/get-ds-table-facts')
+def get_ds_table_facts(tables: list[str] = fastapi.Query([])):
+    """Get the partitioning of tables and the datasources retaining them."""
+    with datasource_errors():
+        return pdi.read_table_facts(tables)
+
+
+@api.get('/get-ds-file-log')
+def get_ds_file_log(id: int, date: str | None = None):
+    """Get the files of a datasource loaded on one day (the database's)."""
+    with datasource_errors():
+        today = pdi.read_database_time().date()
+        try:
+            day = dt.date.fromisoformat(date) if date else today
+        except ValueError:
+            raise fastapi.HTTPException(status_code=422,
+                                        detail='date must be YYYY-MM-DD')
+        return {'date': day, 'today': today, **pdi.read_file_log(id, day)}
+
+
+@api.get('/get-ds-file-log-text')
+def get_ds_file_log_text(file_id: int):
+    """Get the log text PDI Core wrote for one loaded file."""
+    with datasource_errors():
+        return {'log': pdi.read_file_log_text(file_id)}
 
 
 @api.post('/validate-kpi-sql')

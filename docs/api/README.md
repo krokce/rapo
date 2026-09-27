@@ -426,6 +426,95 @@ expressions. The `warning` says when that reading goes wrong (a level outside 1-
 comparison on `:v_kpi_value`). The shape it understands is
 `case when <condition> then 1..3 ... else 0 end from dual`.
 
+### Datasources
+
+The datasources of the PDI Core (Pentaho) file-loading framework: `pdi_core_ds_config`, one row per datasource
+(input directories, file mask, scheduler lane `isactive`, archive directories, ...), `pdi_core_ds_tables`, the tables
+it loads and their partition retention, and `pdi_core_file_log`, one row per loaded file. They belong to that
+framework, not to Rapo, and are found in Rapo's own schema or through a private or public synonym. Where they can
+not be read every route answers `404`, and `GET /api/info` reports `datasources_available: false`; where the user
+may not change them, the writing routes answer `403` (`datasources_writable`, `datasources_deletable`).
+
+The input directories are read from **this server's** file system. A mask is matched against the whole file name
+(`re.fullmatch`, like Java's `matches()` in PDI Core); subdirectories are read only with `input_scan_subdirs = 1`;
+`input_directory` may list several paths separated by `|`.
+
+#### `GET /api/get-ds-list`
+Every datasource: its `pdi_core_ds_config` columns, plus `tables` (the linked table names), `table_count` and
+`retention_count` (tables with a partition key).
+
+#### `GET /api/get-ds-status`
+The files waiting for every datasource as last counted, by `id` (as text) under `datasources`: `waiting`, `bytes`,
+`oldest` (epoch seconds) and `oldest_at`, `young` (modified in the last 60 s, which PDI Core skips), `clean` and
+`pdi_clean` (clean-up files under `[DATASOURCES] clean_max_bytes` / under 10 bytes), `missing` and `unreadable`
+input directories, `missing_other` (archive, error, duplicate directory), `mask_error`, `clean_mask_error`,
+`capped` (a directory had more than `scan_max_entries` files), `stale` (not counted in the last scan, its budget
+ran out), `stalled` (active, and the oldest waiting file is older than `stalled_minutes`) and `log`, the loads of the
+last 24 hours (`last_load`, `files`, `records`, `rejected`, `errors`, `duplicates`) or `null`. Also `scanned_at`,
+`scanned_epoch`, `database_time`, `duration`, `interval`, `stalled_minutes`.
+
+The count runs in the background every `[DATASOURCES] scan_interval` seconds, only while UI clients are connected.
+Before the first one the answer is `{"pending": true, "datasources": {}}` and a count starts.
+
+#### `GET /api/get-ds-config`
+One datasource (`id`) with `links`, its tables (`table_name`, `partition_key`, `partition_days_to_retain`,
+`partition_days_in_advance`), and `directories`: `{field, path, exists, writable}` for every input path and the
+archive, error and duplicate directory. `404` when there is none.
+
+#### `POST /api/save-ds-config`
+Create or update a datasource and replace its tables. The body is `{"datasource": {...}, "expected": {...}}`: the
+datasource with its `links` (no `id` creates one; the ID comes from `PDI_CORE_DS_CONFIG_SEQ`), and the datasource as
+the caller loaded it. When `expected` is passed and the row or its tables differ from it now, nothing is written:
+`409`. Answers `{"status": 200, "datasource": {...}}`, read back like `get-ds-config`.
+
+`400` with the reason when a value is not valid: `sourcename` letters, digits and underscores, at most 50 characters
+(it is also `pdi_core_file_log.sourcename`) and unique; directories absolute, without `..`; masks valid regular
+expressions; numbers whole and within their column; `isactive` 0-9; flags 0 or 1; `files_dup_handling` one of
+`PREVENT`, `PREVENTX`, `REPLACE`, `LOAD`; a table listed once, and days to retain (1 or more) exactly when it has a
+partition key. A table need not exist.
+
+Every write is logged in the server log.
+
+#### `POST /api/set-ds-active`
+Move a datasource (`id`) to another scheduler lane: `value` is the new `isactive`, 0 disables it. With `expected`,
+the lane the caller saw, a datasource moved by someone else meanwhile is not moved: `409`.
+
+#### `DELETE /api/delete-ds-config`
+Delete a datasource (`id`) and its `pdi_core_ds_tables` rows. Its file log and the tables it loads stay. `400` while
+it is active (`isactive` other than 0).
+
+#### `GET /api/count-ds-file-log`
+`{"rows": n}`, the `pdi_core_file_log` rows of a datasource (`id`); `null` without the file log.
+
+#### `GET /api/get-ds-files`
+The files in the saved input directories of a datasource (`id`). `kind` is `match` (the files `files_mask` picks
+up, the default), `clean` (matching `input_clean_files_mask` and smaller than `[DATASOURCES] clean_max_bytes`) or
+`all` (every file, subdirectories included, with the `reason` it is or is not picked up). `files_mask`,
+`clean_mask` and `subdirs` replace the saved values, to try the editor's.
+
+Answers `files` (oldest first, at most `list_max_files`: `name`, `directory`, `subdir`, `path`, `size`, `modified`,
+`age`, `owner`, `group`, `mode`, `matches`, `clean`, `pdi_deletes`, `young`, `reason`), `directories`
+(`{path, exists, readable, capped, error}`), `total`, `matched`, `clean`, `truncated`, `mask_error`,
+`clean_mask_error`, `subdirs` and the limits used.
+
+#### `POST /api/create-ds-directory`
+Create a missing directory (`path`) of a saved datasource (`id`), with its missing parents, each with the mode of
+`[DATASOURCES] dir_mode` (umask ignored). Only a directory the saved datasource names: `400` otherwise, or when it
+exists or can not be created. Answers `{"status": 200, "created": [...]}`.
+
+#### `GET /api/get-ds-table-facts`
+What the dictionary says about tables (`tables`, repeated) of Rapo's schema, by name: `exists`, `num_rows`,
+`partitioned`, `partitioning_type`, `interval`, `partition_keys`, `partition_count`, `first_partition` and
+`last_partition` (their high values), and `partitioned_by`, the datasources (`{id, sourcename}`) configuring a
+partition key for the table.
+
+#### `GET /api/get-ds-file-log`
+The files a datasource (`id`) loaded on one day (`date`, `YYYY-MM-DD`, default the database's today), newest first,
+at most 20,000: `{date, today, files, truncated}`, each file with the columns of `pdi_core_file_log` but `log`.
+
+#### `GET /api/get-ds-file-log-text`
+`{"log": "..."}`, the log text PDI Core wrote for one file (`file_id`).
+
 ### Email
 
 A control of type `ANL`, `REP` or `REC` can mail its results when a run finishes. The configuration is the
@@ -655,7 +744,9 @@ Answers a list of datetimes, `[]` for a schedule that never fires. `422` when th
 
 #### `GET /api/info`
 What this instance is: `instance_name`, `schema_name`, `database_server`, `database_name`, and the computed paths
-`config_path` (the `rapo.ini` actually loaded) and `log_directory`.
+`config_path` (the `rapo.ini` actually loaded) and `log_directory`. Also what the UI may offer: `kpi_available`,
+and for the PDI Core datasources `datasources_available`, `datasources_writable`, `datasources_deletable`,
+and `datasources_log` (the file log is readable).
 
 #### `GET /api/parameters`
 The loaded `rapo.ini` as it is written, one object per section. Options whose name contains `password`, `token` or
@@ -705,6 +796,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `controls:changed`  | `{resync, control_ids}`                           |
 | `scheduler:changed` | `{event_ids}`                                     |
 | `analysis:progress` | `{session_id, state}` - see Data analysis         |
+| `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*

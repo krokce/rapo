@@ -56,6 +56,17 @@ export default {
     context.commit("updateKpiTypes", data);
     return data;
   },
+  async updateDatasourceCatalogue(context) {
+    const data = await api("get-ds-list");
+    context.commit("updateDatasourceCatalogue", data);
+    return data;
+  },
+  // Counted by the server in the background (pending before its first count), so it has no loading bar.
+  async updateDatasourceStatus(context) {
+    const data = await api("get-ds-status", { loadingBar: false });
+    context.commit("updateDatasourceStatus", data);
+    return data;
+  },
   updateSearch(context, payload) {
     context.commit("updateSearch", payload);
   },

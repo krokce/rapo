@@ -118,3 +118,27 @@ max_sessions=4
 idle_minutes=15
 # A sample stops growing when its process uses more memory than this.
 max_memory_mb=2048
+
+[DATASOURCES]
+# The Datasources page edits the PDI Core datasources (PDI_CORE_DS_CONFIG and
+# PDI_CORE_DS_TABLES), shown where the database user can read them, in its own
+# schema or through synonyms. The input directories are read from this
+# server's file system, so they must be local or mounted as PDI Core sees them.
+# Seconds between counts of the waiting files, done only while the web UI is
+# open, each directory read once however many datasources share it.
+scan_interval=60
+# Files read per directory at most, and seconds one count may take; what is
+# left out is counted first next time.
+scan_max_entries=200000
+scan_budget_seconds=20
+# Files listed at most by the file dialogs.
+list_max_files=10000
+# The clean-up list shows files matching INPUT_CLEAN_FILES_MASK below this
+# size; PDI Core itself deletes only those below 10 bytes.
+clean_max_bytes=1024
+# Mode (octal) of the directories created from the UI; 2775 lets the group,
+# e.g. the Pentaho server's user, write in them.
+dir_mode=2775
+# An active datasource whose oldest waiting file is older than this is
+# flagged Stalled.
+stalled_minutes=60

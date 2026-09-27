@@ -34,6 +34,9 @@ class Watcher:
         self.wake = None
         self.states = {}
         self.scheduler_changed = False
+        self.datasources = None
+        # Called when a client connects, e.g. to refresh what it will ask for.
+        self.connect_listeners = []
 
     def start(self):
         """Start watching if not already started."""
@@ -67,12 +70,16 @@ class Watcher:
             self.wake.clear()
         self.task = None
         self.states = {}
+        self.datasources = None
         logger.debug('Live events watcher stopped')
 
     async def check(self):
         """Emit events for tables changed since the previous check."""
         changed, self.scheduler_changed = self.scheduler_changed, False
         runs, controls, events = await asyncio.to_thread(self.read)
+        datasources = await asyncio.to_thread(self.read_datasources)
+        if datasources:
+            await sio.emit('datasources:changed', {'kind': 'config'})
         if runs:
             await sio.emit('runs:changed', runs)
         if controls:
@@ -106,6 +113,17 @@ class Watcher:
         event = db.tables.scheduler_event
         events = self.diff(event, event.c.event_id, event.c.updated)
         return runs, controls, events
+
+    def read_datasources(self):
+        """Check whether the PDI Core datasources changed, by anyone."""
+        from ...pdi import pdi
+        if not pdi.available:
+            return False
+        signature = pdi.signature()
+        changed = (self.datasources is not None
+                   and signature != self.datasources)
+        self.datasources = signature
+        return changed
 
     def diff(self, table, id_column, updated_column):
         """Get IDs of rows changed since the previous call.
@@ -173,6 +191,8 @@ async def connect(sid, environ, auth):
         raise socketio.exceptions.ConnectionRefusedError('Unauthorized Access')
     watcher.clients += 1
     watcher.start()
+    for listener in watcher.connect_listeners:
+        listener()
 
 
 @sio.event
@@ -208,5 +228,21 @@ def emit_analysis(payload):
     try:
         asyncio.run_coroutine_threadsafe(
             sio.emit('analysis:progress', payload), loop)
+    except RuntimeError:
+        pass
+
+
+def emit_datasources(kind='status'):
+    """Tell the clients that the datasources changed, from any thread.
+
+    `kind` is `status` for the files waiting (the scanner), `config` for the
+    configuration.
+    """
+    loop = main_loop
+    if loop is None or watcher.clients <= 0:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            sio.emit('datasources:changed', {'kind': kind}), loop)
     except RuntimeError:
         pass

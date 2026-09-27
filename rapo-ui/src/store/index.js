@@ -32,6 +32,9 @@ const store = createStore({
       envConfigChanges: null,
       schedulerStatus: null,
       kpiTypes: [],
+      // PDI Core datasources (get-ds-list), and the files waiting for them as last counted (get-ds-status).
+      datasourceCatalogue: [],
+      datasourceStatus: null,
     };
   },
   mutations: rootMutations,

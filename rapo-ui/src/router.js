@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from "vue-router";
 import ControlCatalogue from "./components/ControlCatalogue.vue";
 import ControlEdit from "./components/ControlEdit.vue";
 import ControlResults from "./components/ControlResults.vue";
+import DatasourceCatalogue from "./components/DatasourceCatalogue.vue";
+import EditDatasource from "./components/EditDatasource.vue";
 import EditKpiType from "./components/EditKpiType.vue";
 import KpiTypes from "./components/KpiTypes.vue";
 import SchedulerPage from "./components/SchedulerPage.vue";
@@ -76,6 +78,26 @@ const router = createRouter({
       beforeEnter: (to, from, next) => {
         if (!to.params.kpiCode) {
           next({ path: "/kpi-types" }); // Redirect to the catalogue if kpiCode is undefined
+        } else {
+          next();
+        }
+      },
+    },
+    {
+      name: "datasources",
+      path: "/datasources",
+      meta: { searchPlaceholder: "Search datasource, directory or mask" },
+      component: DatasourceCatalogue,
+    },
+    {
+      name: "edit-datasource",
+      path: "/edit-datasource/:id?",
+      meta: { hideSearch: true },
+      component: EditDatasource,
+      props: true,
+      beforeEnter: (to, from, next) => {
+        if (!to.params.id) {
+          next({ path: "/datasources" }); // Redirect to the list if id is undefined
         } else {
           next();
         }

@@ -17,20 +17,20 @@
 
       <div v-if="hasDay" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
         <div>
-          <strong>{{ summary.controls }}</strong> {{ summary.controls === 1 ? "control" : "controls" }} &middot; <strong>{{ summary.runs }}</strong>
+          {{ summary.controls }} {{ summary.controls === 1 ? "control" : "controls" }} &middot; {{ summary.runs }}
           {{ summary.runs === 1 ? "run" : "runs" }}
         </div>
         <div v-if="summary.types.length">
           <q-chip v-for="item in summary.types" :key="item.key" clickable @click="filter.type = item.key">
             <q-avatar :icon="controlType(item.key).icon" :color="controlType(item.key).color" text-color="white" />
-            {{ item.key }} {{ item.count }}
+            <span class="text-weight-bold q-mr-xs">{{ item.key }}</span>({{ item.count }})
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ controlType(item.key).label }}</q-tooltip>
           </q-chip>
         </div>
         <div v-if="summary.statuses.length">
           <q-chip v-for="item in summary.statuses" :key="String(item.key)" clickable @click="addStatusFilter(item.key)">
             <q-avatar :icon="runStatus(item.key).icon" :color="runStatus(item.key).color" text-color="white" />
-            {{ runStatus(item.key).label }} {{ item.count }}
+            <span class="text-weight-bold q-mr-xs">{{ runStatus(item.key).label }}</span>({{ item.count }})
           </q-chip>
         </div>
       </div>
