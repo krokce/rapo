@@ -124,15 +124,19 @@ max_memory_mb=2048
 # PDI_CORE_DS_TABLES), shown where the database user can read them, in its own
 # schema or through synonyms. The input directories are read from this
 # server's file system, so they must be local or mounted as PDI Core sees them.
-# Seconds between counts of the waiting files, done only while the web UI is
-# open, each directory read once however many datasources share it.
+# Seconds between counts of the incoming files of the active datasources,
+# done only while the web UI is open, by a small child process of the server
+# (so a slow network file system never holds up the web API), each directory
+# read once however many datasources share it.
 scan_interval=60
 # Files read per directory at most, and seconds one count may take; what is
 # left out is counted first next time.
 scan_max_entries=200000
 scan_budget_seconds=20
-# Files listed at most by the file dialogs.
+# Files listed at most by the file dialogs, and seconds a listing may read
+# before it is shown cut.
 list_max_files=10000
+list_budget_seconds=10
 # The clean-up list shows files matching INPUT_CLEAN_FILES_MASK below this
 # size; PDI Core itself deletes only those below 10 bytes.
 clean_max_bytes=1024

@@ -407,6 +407,9 @@ export default {
     },
   },
   watch: {
+    tab() {
+      this.maskCheckIfShown();
+    },
     // Another datasource in the same editor (a link): loaded anew. A first save only moves to its id.
     id(value) {
       if (!this.saved || String(this.saved.id) !== String(value)) {
@@ -452,7 +455,7 @@ export default {
         this.takeSaved(row);
       }
       this.ready = true;
-      this.checkMasks();
+      this.maskCheckIfShown();
     },
     // A clone starts disabled, so it never picks up the files of the original, and without partition settings, which
     // only one datasource of a table should have.
@@ -471,12 +474,35 @@ export default {
     },
     takeSaved(row) {
       const copy = JSON.parse(JSON.stringify(row));
+      // The directories as the background scan read them; null when it did not read them all, checked then in the
+      // background, so that opening a datasource never waits on the file system.
       this.directoryStates = copy.directories || [];
+      if (!copy.directories && copy.id) {
+        this.checkDirectories(copy.id);
+      }
       delete copy.directories;
       this.saved = Object.freeze(JSON.parse(JSON.stringify(copy)));
       this.datasource = { ...emptyDatasource(), ...copy };
       this.savedJson = JSON.stringify(datasourcePayload(this.datasource));
       this.cloneNotice = null;
+    },
+    // Whether the directories exist, checked now by the server (each within 5 s, else unknown).
+    async checkDirectories(id) {
+      try {
+        const states = await api("check-ds-directories", { params: { id }, loadingBar: false });
+        if (this.saved && this.saved.id === id) {
+          this.directoryStates = states;
+        }
+      } catch (error) {
+        // The icons stay unknown.
+      }
+    },
+    // The masks are tried on the directories only while the Input files tab is shown: reading the directories may take
+    // seconds on a network file system, which opening a datasource should not wait for.
+    maskCheckIfShown() {
+      if (this.tab === "files" && !this.maskCheck) {
+        this.checkMasks();
+      }
     },
     // The masks as edited, tried on the saved directories (debounced); an answer overtaken by a later one is dropped.
     scheduleMaskCheck() {
@@ -521,8 +547,7 @@ export default {
       try {
         await api("create-ds-directory", { method: "POST", params: { id: this.saved.id, path } });
         this.$q.notify({ type: "positive", message: `${path} was created.` });
-        const row = await api("get-ds-config", { params: { id: this.saved.id }, loadingBar: false });
-        this.directoryStates = row.directories || [];
+        await this.checkDirectories(this.saved.id);
         this.checkMasks();
       } catch (error) {
         notifyError(`${path} was not created.`, error);
@@ -640,7 +665,8 @@ export default {
         return;
       }
       this.$q.notify({ type: "positive", message: `Datasource ${result.datasource.sourcename} was saved.` });
-      this.checkMasks();
+      this.maskCheck = null;
+      this.maskCheckIfShown();
       if (firstSave) {
         await this.$router.replace({ name: "edit-datasource", params: { id: String(result.datasource.id) } });
       }

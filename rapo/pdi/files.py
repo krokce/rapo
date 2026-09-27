@@ -7,6 +7,7 @@ subdirectories of an input directory are walked only when INPUT_SCAN_SUBDIRS
 is set.
 """
 
+import concurrent.futures
 import datetime as dt
 import functools
 import grp
@@ -14,7 +15,10 @@ import json
 import os
 import pwd
 import re
+import select
 import stat
+import subprocess
+import sys
 import threading
 import time
 
@@ -22,18 +26,23 @@ from ..config import config
 from ..logger import logger
 
 from .store import pdi, DatasourceError, split_directories
+from .scan_worker import PDI_CLEAN_BYTES, YOUNG_SECONDS, walk
 
-
-# PDI Core skips a file modified less than this many seconds ago (it may still
-# be uploading), and its clean-up deletes only files smaller than this.
-YOUNG_SECONDS = 60
-PDI_CLEAN_BYTES = 10
+WORKER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           'scan_worker.py')
+# Seconds a directory check of the editor may take before it says unknown,
+# and the threads doing them (a check hung on the network file system keeps
+# its thread, not the request).
+CHECK_SECONDS = 5
+check_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix='rapo-ds-check')
 
 OPTIONS = {
     'scan_interval': 60,
     'scan_max_entries': 200000,
     'scan_budget_seconds': 20,
     'list_max_files': 10000,
+    'list_budget_seconds': 10,
     'clean_max_bytes': 1024,
     'dir_mode': '2775',
     'stalled_minutes': 60,
@@ -94,61 +103,6 @@ def group_name(gid):
         return str(gid)
 
 
-def walk(root, recursive, cap, deadline=None):
-    """Read the files of one directory, and of its subdirectories.
-
-    Returns
-    -------
-    files : list of tuple
-        (name, subdir, os.stat_result), subdir '' for the directory itself.
-    state : dict
-        `path`, `exists`, `readable`, `capped` (stopped at `cap` files or at
-        the deadline) and `error`.
-    """
-    state = {'path': root, 'exists': True, 'readable': True, 'capped': False,
-             'error': None}
-    files = []
-    stack = [(root, '')]
-    while stack:
-        path, subdir = stack.pop()
-        try:
-            with os.scandir(path) as entries:
-                for entry in entries:
-                    if len(files) >= cap or (deadline is not None
-                                             and time.monotonic() > deadline):
-                        state['capped'] = True
-                        return files, state
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            if recursive:
-                                stack.append((entry.path, os.path.join(
-                                    subdir, entry.name)))
-                        elif entry.is_file():
-                            files.append((entry.name, subdir, entry.stat()))
-                    except OSError:
-                        continue
-        except FileNotFoundError:
-            if not subdir:
-                state['exists'] = False
-                return files, state
-        except NotADirectoryError:
-            if not subdir:
-                state['exists'] = False
-                state['error'] = 'Not a directory'
-                return files, state
-        except PermissionError as error:
-            if not subdir:
-                state['readable'] = False
-                state['error'] = error.strerror
-                return files, state
-        except OSError as error:
-            if not subdir:
-                state['readable'] = False
-                state['error'] = error.strerror or str(error)
-                return files, state
-    return files, state
-
-
 def list_files(row, kind='match', files_mask=None, clean_mask=None,
                subdirs=None):
     """Get the files of a datasource's input directories.
@@ -175,6 +129,9 @@ def list_files(row, kind='match', files_mask=None, clean_mask=None,
     clean_max = number_option('clean_max_bytes')
     limit = number_option('list_max_files')
     cap = number_option('scan_max_entries')
+    # A listing asked for from the page stops reading at the budget, cut like
+    # a capped one, rather than keep a request waiting on a slow directory.
+    deadline = time.monotonic() + max(number_option('list_budget_seconds'), 1)
     now = time.time()
     result = {'files': [], 'directories': [], 'truncated': False,
               'total': 0, 'matched': 0, 'clean': 0,
@@ -184,7 +141,7 @@ def list_files(row, kind='match', files_mask=None, clean_mask=None,
               'server_time': dt.datetime.now().replace(microsecond=0)}
     for root in split_directories(row['input_directory']):
         entries, state = walk(root, recursive=subdirs or kind == 'all',
-                              cap=cap)
+                              cap=cap, deadline=deadline)
         result['directories'].append(state)
         result['truncated'] = result['truncated'] or state['capped']
         for name, subdir, info in entries:
@@ -235,14 +192,33 @@ def list_files(row, kind='match', files_mask=None, clean_mask=None,
     return result
 
 
+def directories_of(row):
+    """Get the directories of a datasource: [(field, path)]."""
+    paths = [('input_directory', root)
+             for root in split_directories(row['input_directory'])]
+    paths += [(name, row[name]) for name in OTHER_DIRECTORIES if row.get(name)]
+    return paths
+
+
 def check_directories(row):
-    """Get whether each directory of a datasource exists."""
+    """Get whether each directory of a datasource exists, now.
+
+    Each check may take CHECK_SECONDS, after which its state is unknown
+    (`exists` None), so that a hung network file system delays the answer by
+    seconds at most.
+    """
+    paths = directories_of(row)
+    futures = [check_pool.submit(directory_state, field, path)
+               for field, path in paths]
+    deadline = time.monotonic() + CHECK_SECONDS
     states = []
-    for root in split_directories(row['input_directory']):
-        states.append(directory_state('input_directory', root))
-    for name in OTHER_DIRECTORIES:
-        if row.get(name):
-            states.append(directory_state(name, row[name]))
+    for (field, path), future in zip(paths, futures):
+        try:
+            states.append(future.result(
+                timeout=max(deadline - time.monotonic(), 0.01)))
+        except concurrent.futures.TimeoutError:
+            states.append({'field': field, 'path': path, 'exists': None,
+                           'writable': None})
     return states
 
 
@@ -283,19 +259,33 @@ def create_directory(row, path):
                               f'{error.strerror or error}.') from error
     logger.info(f'Directory {path} of datasource {row["sourcename"]} created '
                 f'with mode {oct(mode)[2:]}')
+    with scanner.lock:
+        for created in missing:
+            scanner.paths[created] = {'exists': True, 'writable': os.access(
+                created, os.W_OK | os.X_OK)}
     scanner.poke()
     return list(reversed(missing))
 
 
 class Scanner:
-    """Counts the files waiting for every datasource, in the background.
+    """Counts the files waiting for every active datasource, in the background.
 
-    Runs in the web server while UI clients are connected, every
-    [DATASOURCES] scan_interval seconds. Each input directory is read once
-    per scan, however many datasources share it, and a scan stops reading at
+    Runs while UI clients are connected, every [DATASOURCES] scan_interval
+    seconds; disabled datasources (ISACTIVE 0) are not read. The directories
+    are read by a child process (scan_worker.py, standard library only), so
+    that a slow or hung network file system never holds up the web API: the
+    thread here only reads the datasources and the file log, sends the child
+    the directories and masks, and waits for its counts.
+
+    Each input directory is read once per scan, and each file name tested once
+    per distinct mask of the directory. A scan stops reading at
     scan_budget_seconds: the directories left out are read first next time,
     and their datasources keep their previous counts meanwhile, marked stale.
+    A child not answering within the budget and 30 seconds is killed and
+    started anew; one that died is started anew at the next scan.
     """
+
+    GRACE_SECONDS = 30
 
     def __init__(self):
         self.thread = None
@@ -305,6 +295,9 @@ class Scanner:
         self.snapshot = None
         self.digest = None
         self.scanned = {}
+        # {path: {exists, writable}} of the directories last read or checked.
+        self.paths = {}
+        self.process = None
         self.listeners = []
         self.active = lambda: True
 
@@ -318,12 +311,13 @@ class Scanner:
         self.thread.start()
 
     def stop(self):
-        """Stop scanning."""
+        """Stop scanning and the child process."""
         self.stopping.set()
         self.wake.set()
         if self.thread is not None:
             self.thread.join(timeout=10)
         self.thread = None
+        self.stop_process()
 
     def poke(self):
         """Scan now, e.g. when a client connects or a datasource is saved."""
@@ -344,33 +338,140 @@ class Scanner:
         with self.lock:
             return self.snapshot
 
+    def directory_states(self, row):
+        """Get whether the directories of a datasource exist, as last read.
+
+        None when one of them was not read (a disabled datasource, a path just
+        saved), for the caller to check them itself.
+        """
+        with self.lock:
+            paths = dict(self.paths)
+        states = []
+        for field, path in directories_of(row):
+            known = paths.get(path)
+            if known is None:
+                return None
+            states.append({'field': field, 'path': path, **known})
+        return states
+
+    def start_process(self):
+        """Start the child reading the directories, if it is not running."""
+        if self.process is not None and self.process.poll() is None:
+            return self.process
+        if self.process is not None:
+            logger.warning(f'Directory scanner process ended with code '
+                           f'{self.process.returncode}, starting it anew')
+        self.process = subprocess.Popen(
+            [sys.executable, '-u', WORKER_PATH], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            bufsize=1, close_fds=True)
+        logger.debug(f'Directory scanner process started as PID '
+                     f'{self.process.pid}')
+        return self.process
+
+    def stop_process(self, kill=False):
+        """End the child: close its input, or kill it."""
+        process, self.process = self.process, None
+        if process is None:
+            return
+        try:
+            if kill:
+                process.kill()
+            else:
+                process.stdin.close()
+            process.wait(timeout=3)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+    def ask(self, request, timeout):
+        """Send the child one request and wait for its answer.
+
+        Raises TimeoutError when none comes in time; the child is then killed
+        (a read hung on the file system can not be interrupted otherwise).
+        """
+        process = self.start_process()
+        try:
+            process.stdin.write(json.dumps(request) + '\n')
+            process.stdin.flush()
+            ready, _, _ = select.select([process.stdout], [], [], timeout)
+            line = process.stdout.readline() if ready else None
+        except (BrokenPipeError, OSError, ValueError) as error:
+            self.stop_process(kill=True)
+            raise RuntimeError(f'Directory scanner process failed: '
+                               f'{error}') from error
+        if line is None:
+            self.stop_process(kill=True)
+            raise TimeoutError(f'Directory scanner process did not answer '
+                               f'in {timeout:.0f} s')
+        if not line:
+            self.stop_process(kill=True)
+            raise RuntimeError('Directory scanner process ended')
+        answer = json.loads(line)
+        if not answer.get('ok'):
+            raise RuntimeError(answer.get('error'))
+        return answer['result']
+
     def scan(self):
-        """Count the waiting files of every datasource once."""
+        """Count the waiting files of every active datasource once."""
         if not pdi.available:
             return
         started = time.monotonic()
-        rows = pdi.read_datasources()
+        rows = [row for row in pdi.read_datasources() if row['isactive']]
         previous = (self.snapshot or {}).get('datasources', {})
-        roots = {}
-        for row in rows:
-            for root in split_directories(row['input_directory']):
-                roots[root] = roots.get(root, False) or bool(
-                    row['input_scan_subdirs'])
-        # The directories scanned longest ago first, so that a scan cut short
-        # by its budget moves on to the others next time.
-        order = sorted(roots, key=lambda root: self.scanned.get(root, 0))
-        deadline = started + number_option('scan_budget_seconds')
-        cap = number_option('scan_max_entries')
-        walked = {}
-        for root in order:
-            if time.monotonic() > deadline:
-                break
-            walked[root] = walk(root, roots[root], cap, deadline)
-            self.scanned[root] = time.monotonic()
-        now = time.time()
-        others = {}
-        stalled_seconds = number_option('stalled_minutes') * 60
         clean_max = number_option('clean_max_bytes')
+        # The directories to read, and the distinct masks of each: one spec
+        # per (kind, mask, subdirs), shared by the datasources using it.
+        roots, specs, spec_index, plans = {}, {}, {}, {}
+        others = set()
+        for row in rows:
+            plan = {'roots': [], 'errors': {}}
+            subdirs = bool(row['input_scan_subdirs'])
+            for kind, mask in (('match', row['files_mask']),
+                               ('clean', row['input_clean_files_mask'])):
+                _, error = compile_mask(mask)
+                plan['errors'][kind] = error
+            for root in split_directories(row['input_directory']):
+                roots[root] = roots.get(root, False) or subdirs
+                indexes = {}
+                for kind, mask in (('match', row['files_mask']),
+                                   ('clean', row['input_clean_files_mask'])):
+                    if not mask or plan['errors'][kind]:
+                        continue
+                    key = (root, kind, mask, subdirs)
+                    if key not in spec_index:
+                        spec_index[key] = len(specs.setdefault(root, []))
+                        specs[root].append({'kind': kind, 'mask': mask,
+                                            'subdirs': subdirs})
+                    indexes[kind] = spec_index[key]
+                plan['roots'].append((root, indexes))
+            others.update(row[name] for name in OTHER_DIRECTORIES
+                          if row.get(name))
+            plans[row['id']] = plan
+        # The directories read longest ago first, so that a scan cut short by
+        # its budget moves on to the others next time.
+        order = sorted(roots, key=lambda root: self.scanned.get(root, 0))
+        budget = max(number_option('scan_budget_seconds'), 1)
+        request = {'roots': [[root, roots[root]] for root in order],
+                   'specs': specs, 'others': sorted(others), 'budget': budget,
+                   'cap': number_option('scan_max_entries'),
+                   'clean_max': clean_max}
+        try:
+            answer = self.ask(request, budget + self.GRACE_SECONDS)
+        except (TimeoutError, RuntimeError) as error:
+            logger.warning(f'{error}; the counts of {len(rows)} datasource(s) '
+                           'are kept from the previous scan, marked stale')
+            answer = {'roots': {}, 'paths': {}}
+        read = answer['roots']
+        now = time.time()
+        for root in read:
+            self.scanned[root] = time.monotonic()
+        with self.lock:
+            self.paths.update(answer['paths'])
+            paths = dict(self.paths)
+        stalled_seconds = number_option('stalled_minutes') * 60
         try:
             stats = pdi.read_file_log_stats()
         except Exception:
@@ -379,23 +480,20 @@ class Scanner:
         datasources = {}
         for row in rows:
             id = row['id']
-            key = str(id)
-            state = self.count(row, walked, now, clean_max)
-            if state is None:
-                state = dict(previous.get(key) or {}, stale=True)
-            for name in OTHER_DIRECTORIES:
-                path = row.get(name)
-                if path and path not in others:
-                    others[path] = os.path.isdir(path)
-            state['missing_other'] = [name for name in OTHER_DIRECTORIES
-                                      if row.get(name)
-                                      and not others[row[name]]]
+            plan = plans[id]
+            if all(root in read for root, _ in plan['roots']):
+                state = self.count(plan, read)
+            else:
+                state = dict(previous.get(str(id)) or {}, stale=True)
+            state['missing_other'] = [
+                name for name in OTHER_DIRECTORIES if row.get(name)
+                and (paths.get(row[name]) or {}).get('exists') is False]
             oldest = state.get('oldest')
             state['stalled'] = bool(
-                row['isactive'] and state.get('waiting')
-                and oldest is not None and now - oldest > stalled_seconds)
+                state.get('waiting') and oldest is not None
+                and now - oldest > stalled_seconds)
             state['log'] = stats.get(id)
-            datasources[key] = state
+            datasources[str(id)] = state
         digest = json.dumps(datasources, sort_keys=True, default=str)
         snapshot = {
             'scanned_at': dt.datetime.now().replace(microsecond=0),
@@ -414,41 +512,33 @@ class Scanner:
             for listener in self.listeners:
                 listener()
 
-    def count(self, row, walked, now, clean_max):
-        """Count the waiting files of one datasource, None when not read."""
-        roots = split_directories(row['input_directory'])
-        if any(root not in walked for root in roots):
-            return None
-        match, match_error = compile_mask(row['files_mask'])
-        clean, clean_error = compile_mask(row['input_clean_files_mask'])
-        subdirs = bool(row['input_scan_subdirs'])
+    def count(self, plan, read):
+        """Sum the counts of one datasource over its input directories."""
         state = {'waiting': 0, 'bytes': 0, 'young': 0, 'clean': 0,
                  'pdi_clean': 0, 'oldest': None, 'capped': False,
                  'stale': False, 'missing': [], 'unreadable': [],
-                 'mask_error': match_error, 'clean_mask_error': clean_error}
-        for root in roots:
-            entries, directory = walked[root]
+                 'mask_error': plan['errors']['match'],
+                 'clean_mask_error': plan['errors']['clean']}
+        for root, indexes in plan['roots']:
+            directory = read[root]['state']
+            counts = read[root]['counts']
             if not directory['exists']:
                 state['missing'].append(root)
             elif not directory['readable']:
                 state['unreadable'].append(root)
             state['capped'] = state['capped'] or directory['capped']
-            for name, subdir, info in entries:
-                if subdir and not subdirs:
-                    continue
-                if match and match.fullmatch(name):
-                    state['waiting'] += 1
-                    state['bytes'] += info.st_size
-                    if now - info.st_mtime < YOUNG_SECONDS:
-                        state['young'] += 1
-                    if state['oldest'] is None or info.st_mtime < state[
-                            'oldest']:
-                        state['oldest'] = int(info.st_mtime)
-                if (clean and info.st_size < clean_max
-                        and clean.fullmatch(name)):
-                    state['clean'] += 1
-                    if info.st_size < PDI_CLEAN_BYTES:
-                        state['pdi_clean'] += 1
+            if 'match' in indexes:
+                count = counts[indexes['match']]
+                for key in ('waiting', 'bytes', 'young'):
+                    state[key] += count[key]
+                if count['oldest'] is not None and (
+                        state['oldest'] is None
+                        or count['oldest'] < state['oldest']):
+                    state['oldest'] = count['oldest']
+            if 'clean' in indexes:
+                count = counts[indexes['clean']]
+                state['clean'] += count['clean']
+                state['pdi_clean'] += count['pdi_clean']
         if state['oldest'] is not None:
             state['oldest_at'] = dt.datetime.fromtimestamp(state['oldest'])
         return state

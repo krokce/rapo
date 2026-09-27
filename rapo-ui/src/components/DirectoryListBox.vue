@@ -118,7 +118,10 @@ export default {
       }
       const state = this.states.find((item) => item.field === this.field && item.path === path);
       if (!state) {
-        return { icon: "fas fa-folder", color: "grey-5", text: "Not saved yet: whether it exists is checked after a save" };
+        return { icon: "fas fa-folder", color: "grey-5", text: "Not saved yet, or not checked yet: whether it exists is checked after a save" };
+      }
+      if (state.exists === null) {
+        return { icon: "fas fa-question-circle", color: "grey-6", text: "Unknown: checking it took longer than 5 s (a slow or hung network file system?)" };
       }
       if (!state.exists) {
         return { icon: "fas fa-folder-minus", color: "red-5", text: "Does not exist on this server", creatable: true };

@@ -45,12 +45,17 @@ The upgrade steps are in the [migration instructions](README.md).
      them (also by SQL), with *Reload* or *Overwrite*. The page follows changes by others live.
    - Every save, lane change and deletion through Rapo is written to the server log; no version history is kept.
    - **Incoming files are read from this server's file system**, so the input directories must be local or mounted
-     as PDI Core sees them. They are counted in the background only while the UI is open, every `scan_interval`
-     seconds, each directory once. A mask must match the whole file name (as in PDI Core); Java-only regular
+     as PDI Core sees them. They are counted for the active datasources in the background, only while the UI is
+     open, every `scan_interval` seconds, each directory once and each file name once per distinct mask, by a small
+     child process of the server, so that a slow or hung network file system never holds up the web UI (a child not
+     answering in time is killed and started anew). Opening a datasource does not touch the file system: whether its
+     directories exist comes from the last count (checked in the background, 5 s at most each, when not counted), and
+     the masks are tried on the directories only when the *Input files* tab is opened. A file listing reads for
+     `list_budget_seconds` (10) at most. A mask must match the whole file name (as in PDI Core); Java-only regular
      expression syntax is reported as an invalid mask.
    - New `rapo.ini` section `[DATASOURCES]`, all optional: `scan_interval` (60), `scan_max_entries` (200000),
-     `scan_budget_seconds` (20), `list_max_files` (10000), `clean_max_bytes` (1024), `dir_mode` (2775, octal, the
-     mode of created directories), `stalled_minutes` (60).
+     `scan_budget_seconds` (20), `list_max_files` (10000), `list_budget_seconds` (10), `clean_max_bytes` (1024),
+     `dir_mode` (2775, octal, the mode of created directories), `stalled_minutes` (60).
    - API: `get-ds-list`, `get-ds-status`, `get-ds-config`, `save-ds-config`, `set-ds-active`, `delete-ds-config`,
      `count-ds-file-log`, `get-ds-files`, `create-ds-directory`, `get-ds-table-facts`,
      `get-ds-file-log`, `get-ds-file-log-text`; `info` reports `datasources_*`; live event `datasources:changed`.

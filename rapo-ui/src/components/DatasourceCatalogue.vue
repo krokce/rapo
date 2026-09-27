@@ -159,6 +159,9 @@
                 <q-tooltip>Oldest incoming file modified {{ toDateTimeString(statusOf(row).oldest_at) }}</q-tooltip>
               </div>
             </template>
+            <span v-else-if="row.isactive === 0 && datasourceStatus && !datasourceStatus.pending" class="text-grey-5" title="Not counted: the datasource is disabled">
+              &ndash;
+            </span>
             <q-skeleton v-else type="text" width="40px" class="float-right" />
           </td>
           <td class="text-left">

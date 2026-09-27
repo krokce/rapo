@@ -671,10 +671,25 @@ def get_ds_status():
 
 @api.get('/get-ds-config')
 def get_ds_config(id: int):
-    """Get one datasource, its tables and whether its directories exist."""
+    """Get one datasource, its tables and whether its directories exist.
+
+    The directories are as the background scan last read them, without
+    touching the file system; `null` when one of them was not read (a
+    disabled datasource, a path just saved): check-ds-directories then.
+    """
     row = find_datasource(id)
-    row['directories'] = ds_files.check_directories(row)
+    row['directories'] = scanner.directory_states(row)
     return row
+
+
+@api.get('/check-ds-directories')
+def check_ds_directories(id: int):
+    """Check now whether the directories of a datasource exist.
+
+    Each check may take 5 seconds, after which `exists` is `null`.
+    """
+    row = find_datasource(id)
+    return ds_files.check_directories(row)
 
 
 @api.post('/save-ds-config')
@@ -693,7 +708,7 @@ def save_ds_config(data: dict = fastapi.Body(...)):
         row = pdi.save(datasource, expected=data.get('expected'))
     events.poke()
     scanner.poke()
-    row['directories'] = ds_files.check_directories(row)
+    row['directories'] = scanner.directory_states(row)
     return {'status': 200, 'datasource': row}
 
 

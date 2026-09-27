@@ -446,7 +446,8 @@ Every datasource: its `pdi_core_ds_config` columns, plus `tables` (the linked ta
 `retention_count` (tables with a partition key).
 
 #### `GET /api/get-ds-status`
-The files waiting for every datasource as last counted, by `id` (as text) under `datasources`: `waiting`, `bytes`,
+The files waiting for every active datasource (`isactive` other than 0) as last counted, by `id` (as text) under
+`datasources`: `waiting`, `bytes`,
 `oldest` (epoch seconds) and `oldest_at`, `young` (modified in the last 60 s, which PDI Core skips), `clean` and
 `pdi_clean` (clean-up files under `[DATASOURCES] clean_max_bytes` / under 10 bytes), `missing` and `unreadable`
 input directories, `missing_other` (archive, error, duplicate directory), `mask_error`, `clean_mask_error`,
@@ -455,13 +456,20 @@ ran out), `stalled` (active, and the oldest waiting file is older than `stalled_
 last 24 hours (`last_load`, `files`, `records`, `rejected`, `errors`, `duplicates`) or `null`. Also `scanned_at`,
 `scanned_epoch`, `database_time`, `duration`, `interval`, `stalled_minutes`.
 
-The count runs in the background every `[DATASOURCES] scan_interval` seconds, only while UI clients are connected.
+The count runs in the background every `[DATASOURCES] scan_interval` seconds, only while UI clients are connected,
+in a child process of the server that reads the directories; one not answering within the budget and 30 seconds is
+killed and started anew, and the datasources it did not read keep their counts, marked `stale`.
 Before the first one the answer is `{"pending": true, "datasources": {}}` and a count starts.
 
 #### `GET /api/get-ds-config`
 One datasource (`id`) with `links`, its tables (`table_name`, `partition_key`, `partition_days_to_retain`,
 `partition_days_in_advance`), and `directories`: `{field, path, exists, writable}` for every input path and the
-archive, error and duplicate directory. `404` when there is none.
+archive, error and duplicate directory, as the background count last read them, without touching the file system;
+`null` when one of them was not read (a disabled datasource, a path just saved). `404` when there is none.
+
+#### `GET /api/check-ds-directories`
+The `directories` of a datasource (`id`), checked now on the file system, each within 5 seconds, after which its
+`exists` and `writable` are `null`.
 
 #### `POST /api/save-ds-config`
 Create or update a datasource and replace its tables. The body is `{"datasource": {...}, "expected": {...}}`: the
@@ -497,7 +505,8 @@ up, the default), `clean` (matching `input_clean_files_mask` and smaller than `[
 Answers `files` (oldest first, at most `list_max_files`: `name`, `directory`, `subdir`, `path`, `size`, `modified`,
 `age`, `owner`, `group`, `mode`, `matches`, `clean`, `pdi_deletes`, `young`, `reason`), `directories`
 (`{path, exists, readable, capped, error}`), `total`, `matched`, `clean`, `truncated`, `mask_error`,
-`clean_mask_error`, `subdirs` and the limits used.
+`clean_mask_error`, `subdirs` and the limits used. A listing reads for `[DATASOURCES] list_budget_seconds` at most;
+what it did not read makes it `truncated`.
 
 #### `POST /api/create-ds-directory`
 Create a missing directory (`path`) of a saved datasource (`id`), with its missing parents, each with the mode of
