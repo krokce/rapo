@@ -19,8 +19,8 @@ No change to Rapo's own schema, and none to the `PL` engine.
 - **Files page** for the PDI Core file log of one day: by datasource with a column per file status, duplicates,
   incoming files, records, runtime, last success, throughput and the change against a week earlier (Silent / Drop /
   Errors / name-mismatch badges); an hourly heatmap by lane; a file search; lane locks (`PDI_CORE_STATE`) shown and
-  removable, *Lock all lanes*; per datasource the files to select and Recycle / Reload (SUCCESS only) or Delete (any
-  status). Editor File log statuses as chips.
+  removable, *Lock all lanes*; per datasource the files to select and Recycle (SUCCESS, ERROR) / Reload (SUCCESS)
+  or Delete (any status). Editor File log statuses as chips.
 - **Results and Controls lists:** Results day totals read **ANL** (26) (bold label, count in brackets); Controls
   names link to the editor.
 - **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the

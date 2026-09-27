@@ -107,7 +107,7 @@
           :label="`${action.label} (${formatNumber(eligible(status).length)})`"
           :disable="!eligible(status).length"
           @click="confirmAction(status)">
-          <q-tooltip max-width="360px">{{ action.text }} {{ action.needsFile ? "Only SUCCESS files whose archived file is kept." : "Files of any status." }}</q-tooltip>
+          <q-tooltip max-width="360px">{{ action.text }} {{ actionScope(action) }}</q-tooltip>
         </q-btn>
       </template>
     </div>
@@ -463,17 +463,24 @@ export default {
       }
       this.selected = selected;
     },
-    // The selected files an action would change: for RECYCLE/RELOAD the SUCCESS ones with their archived file, for DELETE
-    // any not in DELETE already.
+    // Which files an action takes, for its tooltip.
+    actionScope(action) {
+      if (!action.from) {
+        return "Files of any status.";
+      }
+      return `Only ${action.from.join(" or ")} files${action.needsFile ? " whose archived file is kept" : ""}.`;
+    },
+    // The selected files an action would change: those of its `from` statuses (RECYCLE: SUCCESS or ERROR, RELOAD: SUCCESS)
+    // with their archived file, for DELETE any not in DELETE already.
     eligible(status) {
-      const needsFile = FILE_ACTIONS[status].needsFile;
+      const { from, needsFile } = FILE_ACTIONS[status];
       const files = [];
       this.selected.forEach((id) => {
         const file = this.filesById.get(id);
         if (!file || file.filestatus === status) {
           return;
         }
-        if (!needsFile || (file.filestatus === "SUCCESS" && !file.outfiledeleted)) {
+        if ((!from || from.includes(file.filestatus)) && !(needsFile && file.outfiledeleted)) {
           files.push(file);
         }
       });
@@ -488,7 +495,9 @@ export default {
         `${escapeHtml(action.text)}`,
         `<br><br>Tables: ${tables}.`,
         skipped
-          ? `<br><br>${skipped} of the selected files are left alone: ${action.needsFile ? "not SUCCESS, or their archived file is deleted" : `already ${status}`}.`
+          ? `<br><br>${skipped} of the selected files are left alone: ${
+              action.from ? `not ${action.from.join(" or ")}, or their archived file is deleted` : `already ${status}`
+            }.`
           : "",
         action.warning ? `<br><br><b class="text-negative">${escapeHtml(action.warning)}</b>` : "",
       ];

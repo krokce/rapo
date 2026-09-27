@@ -532,8 +532,8 @@ most 200: `id`, `sourceid`, `sourcename`, `inputfilename`, `filestatus`, `startl
 
 #### `POST /api/set-file-status`
 Ask PDI Core to recycle, reload or delete loaded files. The body is `{"ids": [...], "status": "RECYCLE"|"RELOAD"|
-"DELETE"}`, at most 5000 ids. `RECYCLE`/`RELOAD` change only a `SUCCESS` file with `OUTFILEDELETED = 0`, `DELETE` a file of
-any status but `DELETE`; PDI Core does the rest (DELETE also deletes the archived file). Answers `{"status": 200, "requested", "changed",
+"DELETE"}`, at most 5000 ids. `RECYCLE` changes a `SUCCESS` or `ERROR` file, `RELOAD` a `SUCCESS` file, both only with
+`OUTFILEDELETED = 0`; `DELETE` a file of any status but `DELETE`; PDI Core does the rest (DELETE also deletes the archived file). Answers `{"status": 200, "requested", "changed",
 "skipped": [{id, status, reason}]}`. `403` without `UPDATE` on the file log.
 
 #### `GET /api/get-pdi-state`

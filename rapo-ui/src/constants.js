@@ -178,13 +178,14 @@ export const FILE_STATUSES = {
   DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "grey-6" },
 };
 
-// What can be asked of a file (set-file-status). PDI Core does the work. `needsFile`: only a SUCCESS file whose archived
-// file still exists (OUTFILEDELETED = 0); DELETE takes a file of any status.
+// What can be asked of a file (set-file-status). PDI Core does the work. `from`: the statuses a file may have (null: any);
+// `needsFile`: its archived file must still exist (OUTFILEDELETED = 0). The server checks the same (ACTION_FROM).
 export const FILE_ACTIONS = {
   RECYCLE: {
     label: "Recycle",
     icon: "fas fa-recycle",
     color: "indigo",
+    from: ["SUCCESS", "ERROR"],
     needsFile: true,
     text: "PDI Core deletes the records of the file (by FILE_ID) from the tables of the datasource, then loads the archived file again as a new file.",
   },
@@ -192,6 +193,7 @@ export const FILE_ACTIONS = {
     label: "Reload",
     icon: "fas fa-redo",
     color: "indigo-4",
+    from: ["SUCCESS"],
     needsFile: true,
     text: "PDI Core loads the archived file again as a new file. The records it loaded before are kept, so they may then exist twice.",
   },
@@ -199,6 +201,7 @@ export const FILE_ACTIONS = {
     label: "Delete",
     icon: "fas fa-trash-alt",
     color: "negative",
+    from: null,
     needsFile: false,
     text: "PDI Core deletes the records of the file (by FILE_ID) from the tables of the datasource.",
     warning: "The archived file is deleted too: it cannot be recycled or reloaded afterwards.",

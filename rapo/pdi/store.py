@@ -70,6 +70,11 @@ STATUS_MAX_FILES = 5000
 
 # What a user may ask of a loaded file: PDI Core picks the status up.
 FILE_ACTIONS = ('RECYCLE', 'RELOAD', 'DELETE')
+# The statuses a file may have for each action (None: any). RECYCLE and RELOAD
+# also need the archived file (OUTFILEDELETED = 0); an ERROR file can be
+# recycled (loaded again after its records are deleted), not reloaded.
+ACTION_FROM = {'RECYCLE': ('SUCCESS', 'ERROR'), 'RELOAD': ('SUCCESS',),
+               'DELETE': None}
 
 # SOURCENAME is also PDI_CORE_FILE_LOG.SOURCENAME, which holds 50 characters.
 NAME_PATTERN = re.compile(r'^[A-Z0-9_]+$')
@@ -572,9 +577,10 @@ class Store:
     def set_file_status(self, ids, status):
         """Ask PDI Core to recycle, reload or delete loaded files.
 
-        RECYCLE and RELOAD change only a SUCCESS file whose archived file is
-        kept (OUTFILEDELETED = 0); DELETE changes a file of any status but
-        DELETE. PDI Core then does the work.
+        RECYCLE changes a SUCCESS or ERROR file, RELOAD a SUCCESS file, both
+        only when the archived file is kept (OUTFILEDELETED = 0); DELETE
+        changes a file of any status but DELETE. PDI Core then does the
+        work.
 
         Returns
         -------
@@ -598,6 +604,7 @@ class Store:
         if len(ids) > STATUS_MAX_FILES:
             raise DatasourceError(f'At most {STATUS_MAX_FILES} files at once.')
         needs_file = status in ('RECYCLE', 'RELOAD')
+        allowed = ACTION_FROM[status]
         changed = 0
         skipped = []
         connection = db.connect()
@@ -621,7 +628,7 @@ class Store:
                         elif row[1] == status:
                             skipped.append({'id': id, 'status': row[1],
                                             'reason': f'already {status}'})
-                        elif needs_file and row[1] != 'SUCCESS':
+                        elif allowed is not None and row[1] not in allowed:
                             skipped.append({'id': id, 'status': row[1],
                                             'reason': f'status is {row[1]}'})
                         elif needs_file and row[2]:

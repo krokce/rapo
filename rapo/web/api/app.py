@@ -806,9 +806,10 @@ def search_files(text: str, date: str | None = None):
 def set_file_status(data: dict = fastapi.Body(...)):
     """Recycle, reload or delete loaded files.
 
-    The body is {ids, status}, status RECYCLE, RELOAD or DELETE. RECYCLE and
-    RELOAD change only SUCCESS files whose archived file is kept, DELETE files
-    of any status; PDI Core then does the work.
+    The body is {ids, status}, status RECYCLE, RELOAD or DELETE. RECYCLE
+    changes SUCCESS and ERROR files, RELOAD SUCCESS files, both only those
+    whose archived file is kept; DELETE files of any status. PDI Core then
+    does the work.
     """
     with datasource_errors():
         result = pdi.set_file_status(data.get('ids'), data.get('status'))
