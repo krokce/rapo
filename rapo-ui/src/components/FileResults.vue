@@ -306,9 +306,9 @@ const LEADING_COLUMNS = [
 ];
 
 const TRAILING_COLUMNS = [
-  { key: "duplicates", label: "Duplicates", align: "right", width: 96, number: true, duplicates: true, icon: "fas fa-clone", iconColor: "purple-3", title: "Files PDI Core flagged as duplicates" },
   // Incoming: files in the input directories now, not yet picked up into the file log (unlike its WAITING status).
-  { key: "waiting", label: "Incoming", align: "right", width: 80, number: true, today: true, title: "Files matching the mask in the input directories now, not yet in the file log" },
+  { key: "waiting", label: "Incoming", align: "right", width: 96, number: true, today: true, icon: "fas fa-inbox", iconColor: "blue-grey-6", title: "Files matching the mask in the input directories now, not yet in the file log" },
+  { key: "duplicates", label: "Duplicates", align: "right", width: 96, number: true, duplicates: true, icon: "fas fa-clone", iconColor: "purple-3", title: "Files PDI Core flagged as duplicates" },
   { key: "read", label: "Read", align: "right", width: 130, number: true },
   { key: "written", label: "Written", align: "right", width: 130, number: true },
   { key: "rejected", label: "Rejected", align: "right", width: 90, number: true },
