@@ -5,26 +5,40 @@
         <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
       </q-input>
       <q-btn outline dense color="blue-grey-7" icon="fas fa-columns" no-caps :label="columnsLabel" class="q-px-sm">
-        <q-menu anchor="bottom left" self="top left" class="columns-menu">
+        <q-menu anchor="bottom left" self="top left" class="columns-menu" @hide="columnFind = ''">
           <q-list dense style="min-width: 260px">
             <q-item>
               <q-item-section>
+                <q-input v-model="columnFind" dense outlined clearable autofocus placeholder="Find a column" class="q-mb-xs">
+                  <template #prepend><q-icon name="fas fa-search" size="12px" /></template>
+                </q-input>
                 <div class="row q-gutter-xs">
-                  <q-btn flat dense size="sm" color="primary" no-caps label="Show all" @click="showAllColumns" />
+                  <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Show found' : 'Show all'" @click="setColumnsHidden(false)" />
+                  <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Hide found' : 'Hide all'" @click="setColumnsHidden(true)" />
                   <q-btn flat dense size="sm" color="primary" no-caps label="Reset order" @click="resetColumns" />
                 </div>
               </q-item-section>
             </q-item>
             <q-separator />
-            <q-item v-for="(column, position) in orderedColumns" :key="column.name" dense>
+            <q-item v-if="!pickerColumns.length" dense>
+              <q-item-section class="text-grey-7">No column matches</q-item-section>
+            </q-item>
+            <q-item v-for="{ column, position } in pickerColumns" :key="column.name" dense>
               <q-item-section side>
                 <q-checkbox dense size="sm" :model-value="!hidden.includes(column.name)" @update:model-value="toggleColumn(column.name)" />
               </q-item-section>
               <q-item-section class="text-no-wrap">{{ column.name.toUpperCase() }}</q-item-section>
               <q-item-section side>
                 <div class="row no-wrap">
-                  <q-btn flat dense round size="xs" icon="fas fa-arrow-up" :disable="position === 0" @click="moveColumn(position, -1)" />
-                  <q-btn flat dense round size="xs" icon="fas fa-arrow-down" :disable="position === orderedColumns.length - 1" @click="moveColumn(position, 1)" />
+                  <q-btn flat dense round size="xs" icon="fas fa-arrow-up" :disable="Boolean(columnFind) || position === 0" @click="moveColumn(position, -1)" />
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="xs"
+                    icon="fas fa-arrow-down"
+                    :disable="Boolean(columnFind) || position === orderedColumns.length - 1"
+                    @click="moveColumn(position, 1)" />
                 </div>
               </q-item-section>
             </q-item>
@@ -41,7 +55,7 @@
         icon="fas fa-layer-group"
         label="Group by"
         @click="toggleGroup" />
-      <q-btn-dropdown v-if="!view.group" outline dense color="blue-grey-7" icon="fas fa-file-export" no-caps label="Export" class="q-px-sm" :loading="exporting" :disable="!total">
+      <q-btn-dropdown v-if="!view.group" outline dense color="blue-grey-7" icon="fas fa-file-export" no-caps label="Export" class="q-px-sm" :loading="exporting" :disable="!total || !shownColumns.length">
         <q-list dense>
           <q-item v-close-popup clickable @click="exportRows('xlsx')">
             <q-item-section avatar><q-icon name="fas fa-file-excel" color="green-8" /></q-item-section>
@@ -82,6 +96,9 @@
       </div>
     </div>
 
+    <div v-if="!view.group && columns.length && !shownColumns.length" class="text-grey-7 q-pa-sm">
+      <q-icon name="fas fa-eye-slash" class="q-mr-xs" /> No columns shown. Pick some in Columns.
+    </div>
     <group-by-panel v-if="view.group" class="col" :session-id="sessionId" :columns="columns" :version="version" :view="view" :group="view.group" @drill="drill" />
     <q-virtual-scroll
       v-show="!view.group"
@@ -254,6 +271,8 @@ export default {
       widths: {},
       order: [],
       hidden: [],
+      // The Columns menu's search: it narrows the list, and Show/Hide act on the found columns only.
+      columnFind: "",
       filterTarget: false,
       filterColumn: null,
       draft: { op: null, value: "", min: null, max: null, values: [] },
@@ -303,6 +322,11 @@ export default {
           width: this.widths[name] || this.defaultWidth(column),
         };
       });
+    },
+    // The Columns menu's rows, each with its position in the full order (the move buttons act on that).
+    pickerColumns() {
+      const find = (this.columnFind || "").toLowerCase();
+      return this.orderedColumns.map((column, position) => ({ column, position })).filter(({ column }) => !find || column.name.toLowerCase().includes(find));
     },
     shownColumns() {
       return this.orderedColumns.filter((column) => !this.hidden.includes(column.name));
@@ -580,8 +604,11 @@ export default {
       this.order = names;
       this.savePreferences();
     },
-    showAllColumns() {
-      this.hidden = [];
+    // Shows or hides every column, or only the found ones while the menu's search is set.
+    setColumnsHidden(hide) {
+      const names = this.pickerColumns.map(({ column }) => column.name);
+      const others = this.hidden.filter((name) => !names.includes(name));
+      this.hidden = hide ? others.concat(names) : others;
       this.savePreferences();
     },
     resetColumns() {

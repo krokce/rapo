@@ -1,9 +1,11 @@
 <template>
   <q-page>
-    <h2 class="row q-gutter-lg q-mb-lg">
+    <h2 class="row items-end q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <div v-if="!loaded">KPI types</div>
-      <div v-else>{{ filteredKpiTypesLen }} KPI type<span v-if="filteredKpiTypesLen != 1">s</span></div>
+      <div v-else>{{ countTitle }}</div>
+      <div v-if="loaded && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
     </h2>
+    <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -43,9 +45,6 @@
         label="Usage">
       </q-select>
 
-      <q-btn flat round color="grey" class="q-mb-md q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
-        <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
-      </q-btn>
     </div>
 
     <div>
@@ -158,14 +157,21 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import FilterBadge from "./FilterBadge.vue";
+import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { KPI_ICON, kpiUnitColor } from "../constants";
+import { searchFilter, valueFilter } from "../utils/filters";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import persistFilters from "../mixins/persistFilters";
 
 export default {
+  mixins: [persistFilters("kpi_types", ["filter", "sort"])],
   components: {
     ConfirmDialog,
+    FilterBadge,
+    FilterChips,
     SkeletonRows,
   },
   data() {
@@ -194,12 +200,12 @@ export default {
     usageOf(kpiType) {
       return this.usage.filter((item) => item.kpi_type === kpiType);
     },
+    // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.text = null;
       this.filter.unit = null;
       this.filter.used = null;
-      this.sort.key = null;
-      this.sort.dir = "asc";
+      this.$store.commit("updateSearch", "");
     },
     async load() {
       // Force, because the catalogue is edited here and the store caches it for the whole session.
@@ -222,6 +228,22 @@ export default {
   computed: {
     ...mapState(["kpiTypes"]),
     ...mapGetters(["getSearch"]),
+    // "12 KPI types", or "3 of 25 KPI types" while filtered.
+    countTitle() {
+      const total = this.kpiTypes.length;
+      const shown = this.filteredKpiTypesLen;
+      const count = this.activeFilters.length ? `${shown} of ${total}` : String(shown);
+      return `${count} KPI type${(this.activeFilters.length ? total : shown) === 1 ? "" : "s"}`;
+    },
+    activeFilters() {
+      const filter = this.filter;
+      return [
+        ...valueFilter("text", "Code or description", filter.text, () => (filter.text = null), { text: true }),
+        ...valueFilter("unit", "Unit", filter.unit, () => (filter.unit = null)),
+        ...valueFilter("used", "Usage", filter.used, () => (filter.used = null), { label: filter.used === "Y" ? "Used by controls" : "Not used" }),
+        ...searchFilter(this.$store),
+      ];
+    },
     unitOptions() {
       return [...new Set(this.kpiTypes.map((item) => item.kpi_value_unit).filter(Boolean))].sort();
     },

@@ -83,8 +83,32 @@ def resolve(process_id, dataset):
         'total': total,
         'total_exact': exact,
         'stale': kind == 'fetched' and _changed_since(control, run),
+        'datasets': _datasets(control),
     }
     return sql, meta
+
+
+def _datasets(control):
+    """Get the datasets of a run the page can switch between, with the
+    counts the run logged; none for a report, whose only one is its result.
+    """
+    if control.is_report:
+        return []
+    if control.is_reconciliation:
+        counts = {'fetched_a': control.fetched_number_a,
+                  'fetched_b': control.fetched_number_b,
+                  'result_a': control.error_number_a,
+                  'result_b': control.error_number_b}
+    elif control.is_comparison:
+        counts = {'fetched_a': control.fetched_number_a,
+                  'fetched_b': control.fetched_number_b,
+                  'result_a': control.error_number}
+    else:
+        counts = {'fetched_a': control.fetched_number,
+                  'result_a': control.error_number}
+    return [{'dataset': name, 'kind': name.split('_')[0],
+             'side': name.split('_')[1].upper(), 'count': count}
+            for name, count in counts.items()]
 
 
 def sql_text(process_id, dataset):
@@ -393,7 +417,8 @@ def counterpart(meta, columns, row, limit=100):
     condition = ' and '.join(conditions)
     result = {'side': own.upper(), 'other_side': other.upper(),
               'keys': [{'expression': expression, 'value': value}
-                       for expression, value in zip(expressions_own, values)]}
+                       for expression, value in zip(expressions_own, values)],
+              'pair': _pair(control, meta, other, columns, row, limit)}
     table = (control.output_name_a if other == 'a'
              else control.output_name_b)
     if db.exists(table):
@@ -414,6 +439,53 @@ def counterpart(meta, columns, row, limit=100):
         result['source'] = {'columns': [], 'rows': [], 'more': False,
                             'error': _oracle_message(error)}
     return result
+
+
+def _pair(control, meta, other, columns, row, limit):
+    """Get the record a discrepancy was matched with, or None.
+
+    s08 saves the key field of the matched record of the other side as the
+    row's `rapo_discrepancy_id`, cast to text, so it is looked up by the same
+    cast. A row without one (a Loss, a fetched record) has no pair.
+    """
+    names = [column['name'].lower() for column in columns]
+    if 'rapo_discrepancy_id' not in names:
+        return None
+    value = row[names.index('rapo_discrepancy_id')]
+    if value is None or value == '':
+        return None
+    key_field = getattr(control, f'source_key_field_{other}')
+    pair = {'key_field': key_field.upper() if key_field else None,
+            'value': value}
+    if not key_field:
+        pair['error'] = f'Side {other.upper()} has no key field'
+        return pair
+    condition = (f'cast({other}."{key_field.upper()}" as varchar2(4000)) = '
+                 f'{_text_literal(str(value))}')
+    table = (control.output_name_a if other == 'a'
+             else control.output_name_b)
+    if db.exists(table):
+        sql = (f'select * from {table.upper()} {other} '
+               f'where {other}.rapo_process_id = {int(meta["process_id"])} '
+               f'and {condition}')
+        try:
+            pair['results'] = _lookup(sql, limit)
+        except Exception as error:
+            pair['results'] = {'columns': [], 'rows': [], 'more': False,
+                               'error': _oracle_message(error)}
+        pair['results']['table'] = table.upper()
+    else:
+        pair['results'] = {'table': table.upper(), 'columns': [],
+                           'rows': [], 'more': False,
+                           'error': 'The result table does not exist'}
+    try:
+        base, _ = resolve(meta['process_id'], f'fetched_{other}')
+        pair['source'] = _lookup(
+            f'select * from ({base}) {other} where {condition}', limit)
+    except Exception as error:
+        pair['source'] = {'columns': [], 'rows': [], 'more': False,
+                          'error': _oracle_message(error)}
+    return pair
 
 
 def _lookup(sql, limit):

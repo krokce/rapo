@@ -2,10 +2,18 @@
 // skips making thousands of rows deeply reactive.
 const freezeRows = (rows) => Object.freeze(rows.map(Object.freeze));
 
+// The session key of the header search, read back when the store is created (index.js).
+export const SEARCH_KEY = "rapo_filters_search";
+
 export default {
   // have to be synchronous
   updateSearch(state, payload) {
     state.search = payload;
+    try {
+      sessionStorage.setItem(SEARCH_KEY, payload || "");
+    } catch (error) {
+      // Not remembered, which is all a failure costs.
+    }
   },
   updateEnvVersion(state, payload) {
     state.envVersion = payload;

@@ -31,6 +31,8 @@ from . import profile
 
 
 FETCH_BATCH = 5000
+# Ends the statement of a random sample (see SessionManager.create).
+RANDOM_ORDER = 'order by dbms_random.value'
 STATE_INTERVAL = 0.5
 MB = 1024 * 1024
 EXCEL_MAX_ROWS = 1048575
@@ -410,7 +412,9 @@ class Worker:
         from ..database import db
 
         oracledb.defaults.fetch_lobs = False
-        self._publish(status='fetching', step='Opening the dataset')
+        random = self.sql.endswith(RANDOM_ORDER)
+        self._publish(status='fetching', step='Shuffling the dataset'
+                      if random else 'Opening the dataset')
         self.connection = db.engine.raw_connection()
         self.cursor = self.connection.cursor()
         self.cursor.arraysize = FETCH_BATCH

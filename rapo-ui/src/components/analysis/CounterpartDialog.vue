@@ -5,8 +5,8 @@
         <div>
           <div class="text-h6">Counterpart on side {{ result ? result.other_side : otherSide }}</div>
           <div class="text-caption text-grey-7">
-            The records of the other side with this row's correlation key: those the run saved, and those in the other datasource for the
-            run's window (time shift included).
+            The record of the other side a discrepancy was matched with, and the records with this row's correlation key: those the run
+            saved, and those in the other datasource for the run's window (time shift included).
           </div>
         </div>
         <q-space />
@@ -33,36 +33,54 @@
         <q-skeleton v-if="loading" type="rect" height="160px" />
         <q-banner v-else-if="error" class="bg-red-1 text-red-9" rounded>{{ error }}</q-banner>
         <template v-else-if="result">
-          <div class="row items-center q-gutter-sm q-mb-md">
-            <span class="text-grey-8">Correlation key</span>
-            <q-chip v-for="(key, index) in result.keys" :key="index" dense color="blue-grey-1" text-color="blue-grey-10">
-              <code class="q-mr-xs">{{ key.expression }}</code> = <strong class="q-ml-xs">{{ key.value === null ? "null" : key.value }}</strong>
-            </q-chip>
-          </div>
-          <div v-for="part in parts" :key="part.key" class="q-mb-md">
-            <div class="text-subtitle2 text-blue-grey-9">
-              {{ part.title }}
-              <q-badge :color="part.data.rows.length ? 'primary' : 'grey-5'" class="q-ml-xs">{{ part.data.rows.length }}{{ part.data.more ? "+" : "" }}</q-badge>
+          <template v-for="group in groups" :key="group.key">
+            <template v-if="group.key === 'pair'">
+              <div class="row items-center q-gutter-sm q-mb-sm">
+                <span class="text-subtitle1 text-blue-grey-9">Matched record</span>
+                <q-chip dense color="orange-1" text-color="brown-10">
+                  <code class="q-mr-xs">{{ result.pair.key_field || "?" }}</code> = <strong class="q-ml-xs">{{ result.pair.value }}</strong>
+                </q-chip>
+                <span class="text-caption text-grey-7">the record of side {{ result.other_side }} this row was matched with (RAPO_DISCREPANCY_ID)</span>
+              </div>
+              <div v-if="result.pair.error" class="text-red-8 text-caption q-mb-md">{{ result.pair.error }}</div>
+            </template>
+            <template v-else>
+              <template v-if="result.pair">
+                <q-separator class="q-mb-md" />
+                <div class="text-subtitle1 text-blue-grey-9 q-mb-sm">Same correlation key</div>
+              </template>
+              <div class="row items-center q-gutter-sm q-mb-md">
+                <span class="text-grey-8">Correlation key</span>
+                <q-chip v-for="(key, index) in result.keys" :key="index" dense color="blue-grey-1" text-color="blue-grey-10">
+                  <code class="q-mr-xs">{{ key.expression }}</code> = <strong class="q-ml-xs">{{ key.value === null ? "null" : key.value }}</strong>
+                </q-chip>
+              </div>
+            </template>
+            <div v-for="part in group.parts" :key="part.key" class="q-mb-md">
+              <div class="text-subtitle2 text-blue-grey-9">
+                {{ part.title }}
+                <q-badge :color="part.data.rows.length ? 'primary' : 'grey-5'" class="q-ml-xs">{{ part.data.rows.length }}{{ part.data.more ? "+" : "" }}</q-badge>
+              </div>
+              <div v-if="part.data.error" class="text-red-8 text-caption">{{ part.data.error }}</div>
+              <div v-else-if="!part.data.rows.length" class="text-grey-7 text-caption q-py-xs">{{ part.empty }}</div>
+              <div v-else class="row-scroll">
+                <table class="cp-table">
+                  <thead>
+                    <tr>
+                      <th v-for="name in part.data.columns" :key="name">{{ name.toUpperCase() }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(values, index) in part.data.rows" :key="index">
+                      <td v-for="(value, position) in values" :key="position" :class="cellClass(part.data.columns[position], value)">
+                        {{ value === null ? "∅" : formatValue(value, isDate(value) ? "datetime" : "text") }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div v-if="part.data.error" class="text-red-8 text-caption">{{ part.data.error }}</div>
-            <div v-else-if="!part.data.rows.length" class="text-grey-7 text-caption q-py-xs">{{ part.empty }}</div>
-            <div v-else class="row-scroll">
-              <table class="cp-table">
-                <thead>
-                  <tr>
-                    <th v-for="name in part.data.columns" :key="name">{{ name.toUpperCase() }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(values, index) in part.data.rows" :key="index">
-                    <td v-for="(value, position) in values" :key="position" :class="cellClass(part.data.columns[position], value)">
-                      {{ value === null ? "∅" : formatValue(value, isDate(value) ? "datetime" : "text") }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+          </template>
         </template>
       </q-card-section>
     </q-card>
@@ -75,7 +93,9 @@ import { formatValue } from "../../utils/analysis";
 
 const TYPE_CLASSES = { Loss: "text-red-8 text-weight-bold", Discrepancy: "text-orange-9 text-weight-bold", Duplicate: "text-purple-8 text-weight-bold", Match: "text-green-8 text-weight-bold" };
 
-// The other side of a reconciliation row: looked up by the server with the control's correlation expressions.
+// The other side of a reconciliation row: the record a discrepancy was matched with (its RAPO_DISCREPANCY_ID holds
+// that record's key field), then every record with the row's correlation key, evaluated by the server with the
+// control's own expressions.
 export default {
   name: "CounterpartDialog",
   props: {
@@ -90,24 +110,32 @@ export default {
     otherSide() {
       return this.side === "A" ? "B" : "A";
     },
-    parts() {
+    // The record a discrepancy was matched with, by its RAPO_DISCREPANCY_ID (a Loss or a fetched row has none), then
+    // every record with the row's correlation key.
+    groups() {
       if (!this.result) {
         return [];
       }
-      return [
-        {
-          key: "results",
-          title: `Saved by the run in ${this.result.results.table}`,
-          data: this.result.results,
-          empty: "The run saved no record with this key on the other side (a matched record is saved only with Save reconciled).",
-        },
+      const other = this.result.other_side;
+      const lookups = (found, emptyResults) => [
+        { key: "results", title: `Saved by the run in ${found.results.table}`, data: found.results, empty: emptyResults },
         {
           key: "source",
-          title: `In datasource ${this.result.other_side} for the run's window`,
-          data: this.result.source,
+          title: `In datasource ${other} for the run's window`,
+          data: found.source,
           empty: "No record of the other datasource has this key in the run's window.",
         },
       ];
+      const groups = [];
+      const pair = this.result.pair;
+      if (pair) {
+        groups.push({ key: "pair", parts: pair.error ? [] : lookups(pair, "The run saved no record of the other side with this key.") });
+      }
+      groups.push({
+        key: "correlation",
+        parts: lookups(this.result, "The run saved no record with this key on the other side (a matched record is saved only with Save reconciled)."),
+      });
+      return groups;
     },
   },
   methods: {

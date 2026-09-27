@@ -105,8 +105,12 @@
         inline-label
         narrow-indicator
         no-caps>
-        <q-tab name="upcoming" icon="fas fa-calendar-alt" label="Upcoming" />
-        <q-tab name="history" icon="fas fa-history" label="History" />
+        <q-tab name="upcoming" icon="fas fa-calendar-alt" label="Upcoming">
+          <q-badge v-if="upcomingFilters.length" color="orange-10" rounded floating title="Filtered" />
+        </q-tab>
+        <q-tab name="history" icon="fas fa-history" label="History">
+          <q-badge v-if="historyFilters.length" color="orange-10" rounded floating title="Filtered" />
+        </q-tab>
       </q-tabs>
 
       <q-separator />
@@ -129,7 +133,14 @@
               <div class="col q-pa-sm text-grey-7" v-if="status && status.disabled">
                 <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
               </div>
+              <q-space v-else />
+              <filter-badge
+                class="q-mx-sm"
+                :filters="upcomingFilters"
+                :shown="`${filteredUpcoming.length} of ${upcoming.length}`"
+                @clear="upcomingFilter = null" />
             </div>
+            <filter-chips :filters="upcomingFilters" class="q-px-sm" />
             <q-virtual-scroll
               type="table"
               dense
@@ -217,12 +228,11 @@
                 map-options
                 :options="triggerTypeOptions"
                 label="Trigger" />
-              <q-btn flat round color="grey" class="q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
-                <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
-              </q-btn>
               <q-space />
+              <filter-badge class="q-mx-sm" :filters="historyFilters" :shown="`${filteredEvents.length} of ${events.length}`" @clear="clearFilters" />
               <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
             </div>
+            <filter-chips :filters="historyFilters" class="q-px-sm" />
             <q-virtual-scroll
               type="table"
               dense
@@ -329,6 +339,8 @@
 import { Dialog, Notify } from "quasar";
 import { mapActions, mapState } from "vuex";
 import DateTimeText from "./DateTimeText.vue";
+import FilterBadge from "./FilterBadge.vue";
+import FilterChips from "./FilterChips.vue";
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
@@ -336,7 +348,9 @@ import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, cont
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { valueFilter } from "../utils/filters";
 import { fillViewport, textWidth } from "../utils/layout";
+import persistFilters from "../mixins/persistFilters";
 
 // Naive server datetime string as milliseconds, read as local time like the server wrote it.
 function toMillis(value) {
@@ -344,8 +358,11 @@ function toMillis(value) {
 }
 
 export default {
+  mixins: [persistFilters("scheduler", ["filter", "upcomingFilter"])],
   components: {
     DateTimeText,
+    FilterBadge,
+    FilterChips,
     SchedulerToggleButton,
     SkeletonRows,
   },
@@ -394,6 +411,19 @@ export default {
     },
     activeJobs() {
       return [...this.runner.running.map((job) => ({ ...job, state: "running" })), ...this.runner.queued.map((job) => ({ ...job, state: "queued" }))];
+    },
+    upcomingFilters() {
+      return valueFilter("name", "Name", this.upcomingFilter, () => (this.upcomingFilter = null), { text: true });
+    },
+    historyFilters() {
+      const filter = this.filter;
+      return [
+        ...valueFilter("name", "Name", filter.control_name, () => (filter.control_name = null), { text: true }),
+        ...valueFilter("event", "Event", filter.event_type, () => (filter.event_type = null), { label: schedulerEventType(filter.event_type).label }),
+        ...valueFilter("trigger", "Trigger", filter.trigger_type, () => (filter.trigger_type = null), {
+          label: TRIGGER_TYPES[filter.trigger_type] ? TRIGGER_TYPES[filter.trigger_type].label : filter.trigger_type,
+        }),
+      ];
     },
     filteredUpcoming() {
       const name = this.upcomingFilter ? this.upcomingFilter.toUpperCase() : null;

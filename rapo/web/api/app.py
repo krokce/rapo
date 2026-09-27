@@ -705,8 +705,13 @@ def saved_stamp(data):
 
 
 @api.delete('/delete-control')
-def delete_control(control_id: int):
-    """Delete control from configuration table."""
+def delete_control(control_id: int, drop_tables: bool = True):
+    """Delete control from configuration table.
+
+    With `drop_tables` (the default) its result tables are dropped first,
+    every RAPO_REST_/RESA_/RESB_ table of its name, so none is left behind
+    as an orphan. A failed drop keeps the control.
+    """
     name = reader.read_control_name_by_id(control_id)
     dependents = [dependent['row']['control_name']
                   for dependent in chain.dependents(name)] if name else []
@@ -715,10 +720,35 @@ def delete_control(control_id: int):
             status_code=400,
             detail=f'Control {name} can not be deleted: '
                    f'{", ".join(dependents)} read its results.')
+    if name and _active_run(control_id):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Control {name} can not be deleted while it has a run '
+                   f'in progress.')
+    dropped = []
+    if name and drop_tables:
+        for table in output_table_names(name):
+            if not db.exists(table):
+                continue
+            try:
+                db.drop(table)
+            except Exception as error:
+                logger.error()
+                done = (f' {", ".join(dropped)} were dropped.'
+                        if dropped else '')
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=f'Control {name} was not deleted: table '
+                           f'{table.upper()} could not be dropped: '
+                           f'{error}.{done}')
+            dropped.append(table.upper())
+        if dropped:
+            logger.info(f'Result tables of deleted control {name} dropped: '
+                        f'{", ".join(dropped)}')
     reader.delete_control(control_id)
     scheduler.refresh()
     events.poke()
-    return {'status': 200}
+    return {'status': 200, 'dropped': dropped}
 
 
 @api.get('/get-control-run-log')
@@ -940,15 +970,16 @@ def get_run_dataset_sql(process_id: int, dataset: str):
 
 
 @api.post('/analysis-start')
-def analysis_start(process_id: int, dataset: str,
+def analysis_start(process_id: int, dataset: str, random: bool = True,
                    pushdown: dict | None = fastapi.Body(None)):
     """Start an analysis session on the records behind a number of a run.
 
     The optional JSON body {filters, search, where} is applied by the
-    database, so the sample holds only the matching records.
+    database, so the sample holds only the matching records. The sample is
+    drawn at random unless `random` is false (the first records then).
     """
     try:
-        session = sessions.create(process_id, dataset, pushdown)
+        session = sessions.create(process_id, dataset, pushdown, random)
     except SessionError as error:
         raise fastapi.HTTPException(status_code=error.status,
                                     detail=str(error))

@@ -3,8 +3,23 @@
     <div class="row items-end q-mb-md">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-md q-mb-none">
         <div>Data analysis</div>
-        <div class="text-grey-6 analysis-subtitle">{{ datasetLabel(meta) || datasetTitle }}</div>
+        <div v-if="!datasetOptions.length" class="text-grey-6 analysis-subtitle">{{ datasetLabel(meta) || datasetTitle }}</div>
       </h2>
+      <q-btn-toggle
+        v-if="datasetOptions.length"
+        :model-value="$route.params.dataset"
+        class="q-ml-lg dataset-switch"
+        no-caps
+        unelevated
+        toggle-color="blue-grey-7"
+        color="grey-3"
+        text-color="grey-8"
+        :options="datasetOptions"
+        @update:model-value="switchDataset">
+        <template v-for="option in datasetOptions" :key="option.value" #[option.slot]>
+          {{ option.text }}<span v-if="option.count" class="dataset-count">({{ option.count }})</span>
+        </template>
+      </q-btn-toggle>
       <q-space />
       <div v-if="meta" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
         <q-chip>
@@ -66,10 +81,24 @@
               of <strong>{{ formatNumber(totalRows) }}</strong>
               <span v-if="!meta.total_exact && !state.exhausted" class="text-grey-7"> (at run time)</span>
             </template>
-            <span class="text-grey-7"> · first rows</span>
           </template>
           <template v-else>Loading the sample…</template>
         </div>
+        <q-btn-toggle
+          :model-value="random"
+          dense
+          no-caps
+          unelevated
+          toggle-color="blue-grey-7"
+          color="grey-3"
+          text-color="grey-8"
+          :disable="starting"
+          title="Random: the database shuffles the whole dataset before the first rows arrive. First rows: as the database returns them, faster."
+          :options="[
+            { label: 'Random', value: true },
+            { label: 'First rows', value: false },
+          ]"
+          @update:model-value="setRandom" />
         <q-chip
           v-if="pushdown"
           dense
@@ -124,7 +153,7 @@
       </q-card-section>
     </q-card>
     <counterpart-dialog v-if="session" ref="counterpart" :session-id="session.session_id" :columns="state.columns || []" :side="meta.side || 'A'" />
-    <sql-filter-dialog ref="sqlFilter" :process-id="$route.params.processId" :dataset="$route.params.dataset" :columns="state.columns || []" @apply="applyWhere" />
+    <sql-filter-dialog v-if="meta" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
 
     <template v-if="session">
       <q-tabs v-model="tab" dense align="left" class="text-blue-grey-8" active-color="primary" indicator-color="primary" no-caps>
@@ -151,7 +180,7 @@
       </div>
       <q-tab-panels v-model="tab" class="col analysis-panels" keep-alive>
         <q-tab-panel name="overview" class="scroll-panel">
-          <run-trend class="q-mb-lg" :process-id="Number($route.params.processId)" :dataset="$route.params.dataset" :report-only="meta.control_type === 'REP'" />
+          <run-trend class="q-mb-lg" :process-id="meta.process_id" :dataset="meta.dataset" :report-only="meta.control_type === 'REP'" />
           <result-breakdown v-if="hasBreakdown" class="q-mb-lg" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
           <analysis-overview :overview="sectionData('overview')" @show-rows="showRows" @show-column="showColumn" />
         </q-tab-panel>
@@ -286,6 +315,8 @@ export default {
       scope: null,
       // {filters, search, where} applied by the database, or null.
       pushdown: null,
+      // A random sample, or the first rows as the database returns them.
+      random: true,
       // The sample compared with (B): {target: {key, label, process_id, dataset}, session, state, error}.
       compare: { target: null, session: null, state: {}, error: null },
       compareRequest: 0,
@@ -295,8 +326,21 @@ export default {
     routeKey() {
       return `${this.$route.params.processId}/${this.$route.params.dataset}`;
     },
+    // The route and the parts of the query that need a new sample: the database filter and the sampling.
     fullKey() {
-      return `${this.routeKey}|${this.$route.query.pd || ""}`;
+      return `${this.routeKey}|${this.$route.query.pd || ""}|${this.$route.query.rnd || ""}`;
+    },
+    // The datasets of the run the page can switch to, with the run's counts; an empty one is disabled. Each button
+    // is drawn by its slot, so the count can be in normal weight.
+    datasetOptions() {
+      if (!this.meta || !this.meta.datasets) {
+        return [];
+      }
+      return this.meta.datasets.map((item) => {
+        const label = datasetLabel({ control_type: this.meta.control_type, kind: item.kind, side: item.side }).replace("Fetched", "Source");
+        const count = item.count === null || item.count === undefined ? "" : formatNumber(item.count);
+        return { text: label, count, slot: `dataset-${item.dataset}`, value: item.dataset, disable: !item.count && item.dataset !== this.meta.dataset };
+      });
     },
     meta() {
       return this.session ? this.session.meta : null;
@@ -411,6 +455,7 @@ export default {
       if (this.view.group) query.g = JSON.stringify(this.view.group);
       if (this.scope) query.sc = JSON.stringify(this.scope);
       if (this.pushdown) query.pd = JSON.stringify(this.pushdown);
+      if (!this.random) query.rnd = "0";
       if (this.compare.target) query.cmp = JSON.stringify(this.compare.target);
       return query;
     },
@@ -436,7 +481,7 @@ export default {
       clearTimeout(this.queryTimer);
       this.queryTimer = setTimeout(() => {
         if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
-          this.sessionKey = `${this.routeKey}|${query.pd || ""}`;
+          this.sessionKey = `${this.routeKey}|${query.pd || ""}|${query.rnd || ""}`;
           this.$router.replace({ query });
         }
       }, 300);
@@ -500,11 +545,32 @@ export default {
       };
       this.scope = parseQuery(query.sc, null);
       this.pushdown = parseQuery(query.pd, null);
+      this.random = query.rnd !== "0";
       const target = parseQuery(query.cmp, null);
       await this.open();
       if (target && this.session) {
         this.startCompare(target);
       }
+    },
+    // Starts a new sample drawn at random or from the first rows, keeping the rest of the view.
+    async setRandom(random) {
+      if (random !== this.random) {
+        this.random = random;
+        await this.open();
+      }
+    },
+    // Opens another dataset of the run. Back returns to this one. The tab, the sampling, the search and the viewer's
+    // filters, sort and group-by go along; those on a column the other dataset lacks are dropped once it is loaded.
+    // A database filter, a profile scope and a comparison belong to this dataset.
+    switchDataset(dataset) {
+      if (!this.meta || dataset === this.meta.dataset) {
+        return;
+      }
+      const query = { ...this.viewQuery };
+      delete query.pd;
+      delete query.sc;
+      delete query.cmp;
+      this.$router.push({ name: "data-analysis", params: { processId: this.meta.process_id, dataset }, query });
     },
     // Starts a new sample with another database filter, keeping the rest of the view.
     async startWith(pushdown) {
@@ -515,7 +581,7 @@ export default {
       // The tabs are unmounted with the old session before it is closed, so nothing asks it any more.
       const previous = this.session;
       const { processId, dataset } = this.$route.params;
-      const key = `${this.routeKey}|${this.pushdown ? JSON.stringify(this.pushdown) : ""}`;
+      const key = `${this.routeKey}|${this.pushdown ? JSON.stringify(this.pushdown) : ""}|${this.random ? "" : "0"}`;
       this.session = null;
       if (previous) {
         closeSession(previous.session_id);
@@ -532,7 +598,7 @@ export default {
       try {
         const session = await api("analysis-start", {
           method: "POST",
-          params: { process_id: processId, dataset },
+          params: { process_id: processId, dataset, random: this.random },
           body: this.pushdown || undefined,
         });
         if (this.sessionKey !== key) {
@@ -554,7 +620,10 @@ export default {
       const request = ++this.compareRequest;
       this.compare = { target, session: null, state: { status: "starting" }, error: null };
       try {
-        const session = await api("analysis-start", { method: "POST", params: { process_id: target.process_id, dataset: target.dataset } });
+        const session = await api("analysis-start", {
+          method: "POST",
+          params: { process_id: target.process_id, dataset: target.dataset, random: this.random },
+        });
         if (request !== this.compareRequest) {
           closeSession(session.session_id);
           return;
@@ -585,7 +654,34 @@ export default {
     },
     applyState(state) {
       this.state = state || {};
+      this.pruneView();
       this.syncSections();
+    },
+    // Drops the viewer's filters, sort and group-by on columns the dataset does not have, e.g. carried over from
+    // the other side.
+    pruneView() {
+      const columns = this.state.columns;
+      if (!columns || !columns.length) {
+        return;
+      }
+      const names = new Set(columns.map((column) => column.name));
+      const known = (item) => !item.column || names.has(item.column);
+      const filters = this.view.filters.filter(known);
+      const sort = this.view.sort.filter(known);
+      let group = this.view.group;
+      if (group) {
+        const by = (group.by || []).filter(known);
+        group = by.length ? { ...group, by, aggregates: (group.aggregates || []).filter(known) } : null;
+      }
+      if (filters.length !== this.view.filters.length) {
+        this.view.filters = filters;
+      }
+      if (sort.length !== this.view.sort.length) {
+        this.view.sort = sort;
+      }
+      if (JSON.stringify(group) !== JSON.stringify(this.view.group)) {
+        this.view.group = group;
+      }
     },
     async refreshState() {
       if (!this.session) {
@@ -732,6 +828,15 @@ export default {
 <style scoped>
 .analysis-subtitle {
   font-size: 0.6em;
+}
+
+.dataset-switch {
+  margin-bottom: 6px;
+}
+
+.dataset-count {
+  font-weight: 400;
+  margin-left: 4px;
 }
 
 .control-link {

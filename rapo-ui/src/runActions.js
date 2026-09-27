@@ -153,15 +153,6 @@ export function showErrorLog(run) {
   showText(run.control_name + " - Error log", run.text_error || "No error log available");
 }
 
-export async function copySql(statement, description) {
-  try {
-    await copyText(statement);
-    Notify.create({ type: "positive", message: `${description} SQL statement copied to clipboard: ${statement}` });
-  } catch (error) {
-    notifyError("Failed to copy SQL to clipboard.", error);
-  }
-}
-
 // The SQL of the records behind a number of a run (fetched_a|b, result_a|b), built by the server: a fetched dataset
 // is the engine's select for the run's window, which only the engine can build.
 export async function copyDatasetSql(run, dataset, label) {
@@ -172,11 +163,4 @@ export async function copyDatasetSql(run, dataset, label) {
   } catch (error) {
     notifyError("Failed to copy SQL to clipboard.", error);
   }
-}
-
-// Results are in RAPO_REST_<name>, or RAPO_RESA_/RAPO_RESB_<name> per side for reconciliations.
-export function copyResultsSql(run, side) {
-  const suffix = run.control_type === "REC" ? side : "T";
-  const statement = `select * from RAPO_RES${suffix}_${run.control_name} where RAPO_PROCESS_ID = ${run.process_id};`;
-  return copySql(statement, `Discrepancies ${suffix === "T" ? "A" : side}-side`);
 }

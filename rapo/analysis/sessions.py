@@ -19,7 +19,7 @@ from ..config import config
 from ..logger import logger
 
 from . import datasets
-from .worker import serve
+from .worker import RANDOM_ORDER, serve
 
 
 DEFAULTS = {
@@ -192,11 +192,14 @@ class SessionManager:
         for session in sessions:
             session.close()
 
-    def create(self, process_id, dataset, pushdown=None):
+    def create(self, process_id, dataset, pushdown=None, random=True):
         """Resolve the dataset and start a session on it.
 
         `pushdown` ({filters, search, where}) is applied by the database, so
-        the sample is drawn from the matching records only.
+        the sample is drawn from the matching records only. A `random`
+        sample reads the records in random order, so it is uniform at any
+        size, Extend included; Oracle sorts the whole dataset first. Otherwise
+        the sample is the first records as the database returns them.
         """
         if not self.active:
             raise SessionError('Analysis is not available', 503)
@@ -221,6 +224,9 @@ class SessionManager:
                 meta['total_exact'] = exact
             meta['pushdown'] = pushdown or None
             meta['sql'] = shown
+            meta['random'] = bool(random)
+            if random:
+                sql = f'select * from ({sql}) {RANDOM_ORDER}'
         except datasets.DatasetError as error:
             raise SessionError(str(error), 404)
         except Exception as error:
@@ -230,6 +236,7 @@ class SessionManager:
             self.sessions[session.id] = session
         logger.info(f"Analysis session {session.id[:8]} started on "
                     f"{meta['control_name']} PID {process_id} {dataset} "
+                    f"({'random' if random else 'first rows'}) "
                     f'(worker PID {session.process.pid})')
         return session
 

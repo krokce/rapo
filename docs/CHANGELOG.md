@@ -6,6 +6,28 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
+## v0.8.4 — unreleased
+
+No change to Rapo's own schema, and none to the `PL` engine.
+
+- **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the
+  confirmation offers to keep them. API callers: `delete-control` now drops by default, pass `drop_tables=false` to
+  keep them. A control with a run in progress cannot be deleted.
+- **Active-filter badge** on Controls, Results, KPI types and Scheduler: a *Filter* badge that clears every
+  filter and the header search (not the sort), with the active filters listed below it, each removable. Filters,
+  sort and the header search are kept for the browser session (per tab, reloads included).
+- **Random analysis samples.** A sample is drawn at random by default (`order by dbms_random.value`, uniform at any
+  size, Extend included) instead of the first records the database returns, which could all be from one load. A
+  *Random / First rows* switch keeps the old, faster mode; `analysis-start` takes `random` (default true).
+- **Counterpart by `RAPO_DISCREPANCY_ID`.** A REC discrepancy's counterpart now shows first the exact record it was
+  matched with (its key field is the row's `RAPO_DISCREPANCY_ID`), then the records of the same correlation key.
+- **Dataset switch on the analysis page.** Source A/B and Discrepancies A/B of the same run, with their counts.
+  The tab, sampling, search and the filters that fit go along, and Back returns.
+- **Run log menu in the editor.** Its numbers open *Copy SQL* and *Data analysis*, as on Results. The SQL is the
+  server's, no longer the editor's own, which missed chain sides and `{variables}`.
+- **Hide all columns** and a column search in the Data tab's *Columns* menu.
+- **Fix:** leaving the analysis page no longer reports "The run trend could not be loaded. 422".
+
 ## v0.8.3 — 2026-09-24
 
 No change to Rapo's own schema. Redeploy `schema/rapo_usage_rule.sql` if you use the `PL` engine.

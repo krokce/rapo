@@ -1,9 +1,12 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end q-mb-lg">
+    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
         <div class="text-grey-6 results-day">{{ dayTitle }}</div>
+        <div v-if="hasDay && activeFilters.length" class="row items-center">
+          <filter-badge :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" @clear="clearFilters" />
+        </div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -32,6 +35,8 @@
         </div>
       </div>
     </div>
+
+    <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
       <q-btn class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
@@ -68,9 +73,6 @@
         label="Run status">
       </q-select>
 
-      <q-btn flat round color="grey" class="q-mb-md q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
-        <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
-      </q-btn>
 
       <q-space />
       <q-btn v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
@@ -272,19 +274,7 @@
         </tbody>
       </template>
     </q-virtual-scroll>
-    <q-menu ref="numberMenu" :target="numberTarget" no-parent-event>
-      <q-list v-if="numberRow" dense class="text-no-wrap">
-        <q-item-label header class="q-py-xs text-caption">{{ numberLabel }}</q-item-label>
-        <q-item dense clickable v-close-popup @click="copyDatasetSql(numberRow, numberDataset, numberLabel)">
-          <q-item-section avatar class="menu-icon"><q-icon name="fas fa-copy" size="14px" color="blue-grey-7" /></q-item-section>
-          <q-item-section> Copy SQL to clipboard </q-item-section>
-        </q-item>
-        <q-item dense clickable v-close-popup :to="{ name: 'data-analysis', params: { processId: numberRow.process_id, dataset: numberDataset } }">
-          <q-item-section avatar class="menu-icon"><q-icon name="fas fa-chart-bar" size="14px" color="primary" /></q-item-section>
-          <q-item-section> Data analysis </q-item-section>
-        </q-item>
-      </q-list>
-    </q-menu>
+    <run-dataset-menu ref="numberMenu" />
     <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
         <q-list v-if="menuRow" dense class="text-no-wrap">
         <q-item dense clickable @click="reRun(menuRow, refreshControlResults)" v-close-popup>
@@ -332,24 +322,32 @@
 <script>
 import { date } from "quasar";
 import { mapActions, mapGetters, mapState } from "vuex";
+import FilterBadge from "./FilterBadge.vue";
+import FilterChips from "./FilterChips.vue";
 import RunControlDialog from "./RunControlDialog.vue";
+import RunDatasetMenu from "./RunDatasetMenu.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, copyDatasetSql, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
-import { datasetLabel } from "../utils/analysis";
+import { cancelRun, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
+import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import persistFilters from "../mixins/persistFilters";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
 export default {
   name: "ControlResults",
+  mixins: [persistFilters("results", ["filter", "sort"])],
   components: {
+    FilterBadge,
+    FilterChips,
     RunControlDialog,
+    RunDatasetMenu,
     RunLogDialog,
     SkeletonRows,
   },
@@ -366,9 +364,6 @@ export default {
       menuTarget: false,
       menuProcessId: null,
       // The one menu of the fetched and discrepancy numbers, opened at the number it acts on.
-      numberTarget: false,
-      numberProcessId: null,
-      numberDataset: null,
       filter: {
         control_name: null,
         type: null,
@@ -395,7 +390,6 @@ export default {
     dropTemporaryTables,
     showErrorLog,
     sendEmail,
-    copyDatasetSql,
     sortIcon,
     toggleSort,
     fillViewportToBottom,
@@ -412,10 +406,7 @@ export default {
       }
     },
     openNumberMenu(event, row, dataset) {
-      this.numberTarget = event.currentTarget;
-      this.numberProcessId = row.process_id;
-      this.numberDataset = dataset;
-      this.$nextTick(() => this.$refs.numberMenu.show());
+      this.$refs.numberMenu.open(event, row, dataset);
     },
     openRowMenu(event, row) {
       this.menuTarget = event.currentTarget;
@@ -442,12 +433,12 @@ export default {
       const match = String(val).match(/-?\d+(?:\.\d+)?/);
       return match ? Number(match[0]) : null;
     },
+    // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.control_name = null;
       this.filter.type = null;
       this.filter.status = [];
-      this.sort.key = "start_date";
-      this.sort.dir = "desc";
+      this.$store.commit("updateSearch", "");
     },
     getSortValue(item) {
       const val = item[this.sort.key];
@@ -491,17 +482,6 @@ export default {
     menuRow() {
       return this.controlResults.find((row) => row.process_id === this.menuProcessId) || null;
     },
-    numberRow() {
-      return this.controlResults.find((row) => row.process_id === this.numberProcessId) || null;
-    },
-    // "Fetched A", "Discrepancies B", "Report rows", as the analysis page names the dataset.
-    numberLabel() {
-      if (!this.numberRow) {
-        return "";
-      }
-      const [kind, side] = this.numberDataset.split("_");
-      return datasetLabel({ control_type: this.numberRow.control_type, kind, side: side.toUpperCase() });
-    },
     // The email configuration is in the catalogue. Until it is loaded, every type that can send one is offered.
     menuRowSendsEmail() {
       const control = this.menuRow && this.controlCatalogueById(this.menuRow.control_id);
@@ -523,6 +503,21 @@ export default {
       };
     },
     ...mapGetters(["getSearch", "controlCatalogueById"]),
+    activeFilters() {
+      const filter = this.filter;
+      return [
+        ...valueFilter("type", "Type", filter.type, () => (filter.type = null)),
+        ...valueFilter("name", "Name", filter.control_name, () => (filter.control_name = null), { text: true }),
+        ...listFilter(
+          "status",
+          "Status",
+          filter.status,
+          (value) => (filter.status = filter.status.filter((item) => item !== value)),
+          (value) => runStatus(value).label,
+        ),
+        ...searchFilter(this.$store),
+      ];
+    },
     sortedControlResults() {
       return sortRows(this.filteredControlResults, this.getSortValue, this.sort.dir);
     },
@@ -601,10 +596,6 @@ a:visited {
 .number-link:hover {
   color: #009688;
   text-decoration: underline;
-}
-
-.menu-icon {
-  min-width: 28px;
 }
 
 /* Fixed columns, so rows swapped in while scrolling don't resize them. Processname takes the rest, but at least

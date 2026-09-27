@@ -1,12 +1,21 @@
 import { createStore } from "vuex";
-import rootMutations from "./mutations.js";
+import rootMutations, { SEARCH_KEY } from "./mutations.js";
 import rootActions from "./actions.js";
 import rootGetters from "./getters.js";
+
+// The header search is kept for the browser session, like the list pages' filters (mixins/persistFilters.js).
+function savedSearch() {
+  try {
+    return sessionStorage.getItem(SEARCH_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
 
 const store = createStore({
   state() {
     return {
-      search: "",
+      search: savedSearch(),
       controlCatalogue: [],
       // Schema drift of the result tables by control_id (get-schema-drift), for the Controls list.
       schemaDrift: {},

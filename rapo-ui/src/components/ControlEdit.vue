@@ -863,33 +863,50 @@
                       <td class="text-left">{{ toDateString(log.date_from) }}</td>
                       <td class="text-left">{{ toDateString(log.date_to) }}</td>
                       <td class="text-right">
-                        <span v-if="logSum(log, 'fetched_number') > 0 && control.control_type === 'REP'" class="cursor-pointer text-red" @click="copyResultsSql(logRun(log), 'A')">
-                          {{ formatNumber(logSum(log, "fetched_number")) }}
-                        </span>
-                        <span v-else class="cursor-pointer" @click="copyFetchSql(log, singleSource ? 'T' : 'A')">
+                        <span
+                          :class="{ 'cursor-pointer': logSum(log, 'fetched_number') > 0, 'text-red': control.control_type === 'REP' && logSum(log, 'fetched_number') > 0 }"
+                          @click="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))">
                           {{ formatNumber(logSum(log, "fetched_number")) }}
                         </span>
                       </td>
                       <td class="text-right">
-                        <span class="cursor-pointer" @click="copyFetchSql(log, singleSource ? 'T' : 'B')">{{ formatNumber(log.fetched_number_b) }}</span>
+                        <span
+                          :class="{ 'cursor-pointer': log.fetched_number_b > 0 }"
+                          @click="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)">
+                          {{ formatNumber(log.fetched_number_b) }}
+                        </span>
                       </td>
                       <td class="text-right">
-                        <span :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }" @click="logSum(log, 'error_number') > 0 && copyResultsSql(logRun(log), 'A')">
+                        <span
+                          :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }"
+                          @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))">
                           {{ formatNumber(logSum(log, "error_number")) }}
                         </span>
                       </td>
                       <td class="text-right">
-                        <span :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }" @click="log.error_number_b > 0 && copyResultsSql(logRun(log), 'B')">
+                        <span
+                          :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }"
+                          @click="openDatasetMenu($event, log, 'result_b', log.error_number_b)"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_number_b)">
                           {{ formatNumber(log.error_number_b) }}
                         </span>
                       </td>
                       <td class="text-right">
-                        <span :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }" @click="logSum(log, 'error_level') > 0 && copyResultsSql(logRun(log), 'A')">
+                        <span
+                          :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }"
+                          @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))">
                           {{ formatNumber(logSum(log, "error_level"), 2) }}%
                         </span>
                       </td>
                       <td class="text-right">
-                        <span :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }" @click="log.error_level_b > 0 && copyResultsSql(logRun(log), 'B')">
+                        <span
+                          :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }"
+                          @click="openDatasetMenu($event, log, 'result_b', log.error_level_b)"
+                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_level_b)">
                           {{ formatNumber(log.error_level_b, 2) }}%
                         </span>
                       </td>
@@ -990,6 +1007,7 @@
     </div>
 
     <run-log-dialog ref="runLogDialog" />
+    <run-dataset-menu ref="datasetMenu" />
     <schema-diff-dialog
       ref="schemaDialog"
       :check="schemaCheck"
@@ -1016,10 +1034,11 @@
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, copyResultsSql, copySql, dropTemporaryTables, reRun, revokeRun } from "../runActions";
+import { cancelRun, dropTemporaryTables, reRun, revokeRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
+import RunDatasetMenu from "./RunDatasetMenu.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SchemaDiffDialog from "./SchemaDiffDialog.vue";
 import ControlDiffDialog from "./ControlDiffDialog.vue";
@@ -1060,6 +1079,7 @@ export default {
   components: {
     CodeBox,
     EditorSkeleton,
+    RunDatasetMenu,
     RunLogDialog,
     RunControlDialog,
     SchemaDiffDialog,
@@ -1336,7 +1356,6 @@ export default {
     cancelRun,
     revokeRun,
     dropTemporaryTables,
-    copyResultsSql,
     filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();
@@ -2198,18 +2217,11 @@ export default {
         });
     },
     // SQL selecting the source records a run fetched: side "T" for single-source controls, "A"/"B" otherwise.
-    copyFetchSql(log, side) {
-      if (this.control.control_type === "REP" && side === "B") {
-        this.$q.notify({ type: "negative", message: "Source B SQL generation is not possible for Reports." });
-        return;
+    // A number of the run log opens the menu of its dataset (SQL, data analysis), as on Results.
+    openDatasetMenu(event, log, dataset, value) {
+      if (Number(value) > 0) {
+        this.$refs.datasetMenu.open(event, this.logRun(log), dataset);
       }
-      const suffix = side === "T" ? "" : "_" + side.toLowerCase();
-      const table = this.control["source_name" + suffix];
-      const dateField = this.control["source_date_field" + suffix];
-      const filter = this.control["source_filter" + suffix] || "1=1";
-      const toDate = (value) => `to_date('${toDateTimeString(value)}' , 'YYYY-MM-DD HH24:MI:SS')`;
-      const period = dateField ? `${dateField} between ${toDate(log.date_from)}\n\tand ${toDate(log.date_to)}\n\tand ` : "";
-      copySql(`select * from ${table}\nwhere ${period}${filter};`, `Fetched records ${side === "T" ? "A" : side}-side`);
     },
     startLiveUpdates() {
       const stopLogs = liveRefetch("runs:changed", this.onRunsChanged, {

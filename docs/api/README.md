@@ -334,8 +334,12 @@ control, is not a result table (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_`), or does
 datasource.
 
 #### `DELETE /api/delete-control`
-Delete a control (`control_id`) from `rapo_config`. Its result tables and logs are not touched. `400` naming them
-while other controls read its results (chain-rules, see `save-control`).
+Delete a control (`control_id`) from `rapo_config`. With `drop_tables` (default **true**) its result tables are
+dropped first: every `RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<name>` that exists, orphans included. Answers
+`{status, dropped}`, the dropped table names. Pass `drop_tables=false` to keep them, as before v0.8.4. Its run log,
+run log files and KPI rows are not touched. `400` naming them while other controls read its results (chain-rules,
+see `save-control`), `400` while the control has a run in progress, and `400` when a table cannot be dropped: the
+control is then kept, and the message names the tables already dropped.
 
 #### `POST /api/validate-sql`
 Parse one statement of the control editor with Oracle without executing it, the way the engine will run it. The
@@ -482,17 +486,21 @@ list of `{column, desc}`, and `search` a case-insensitive text looked for in eve
 #### `GET /api/get-run-dataset-sql`
 `process_id`, `dataset`. Answers `{sql, meta}`: the dataset's SQL, formatted, and its description (control, run
 window and status, `table_name`, `total` rows - exact for a result dataset, the run's count for a fetched one -
-and `stale`, true when the control was saved after the run started). 404 when the run, the dataset or the result
+`stale`, true when the control was saved after the run started, and `datasets`, the run's other datasets
+`[{dataset, kind, side, count}]` with the counts of its run log; empty for a report). 404 when the run, the dataset or the result
 table does not exist.
 
 #### `POST /api/analysis-start`
-`process_id`, `dataset`, and an optional JSON body `{filters, search, where}` applied by the database: the filters
+`process_id`, `dataset`, `random` (default true), and an optional JSON body `{filters, search, where}` applied by the database: the filters
 and the search become literal predicates over the dataset's select, and `where` is a condition of your own over its
 columns. The statement is parsed by Oracle first, so a wrong filter answers 404 with Oracle's message. Starts a
 session and answers `{session_id, meta, state, options}`, `options` being the `[ANALYSIS]` limits in effect. `meta`
 also holds `sql`, the statement the sample is drawn with (formatted), and `pushdown`; with a database filter, a
-fetched dataset's `total` is null, as counting it could scan the whole source. The first `initial_rows` are fetched
-at once, then the columns and the overview are profiled. 409 when all sessions are in use, 404 for an unknown
+fetched dataset's `total` is null, as counting it could scan the whole source. With `random` the records are read
+in random order (`order by dbms_random.value` around the statement, so Oracle sorts the whole dataset before the
+first row), and the sample is uniform at any size, extensions included; `random=false` reads the first records as
+the database returns them. `meta.random` says which; `meta.sql` never has the random order. The first
+`initial_rows` are fetched at once, then the columns and the overview are profiled. 409 when all sessions are in use, 404 for an unknown
 dataset or a filter that does not parse, 503 while the server starts or stops.
 
 #### `GET /api/analysis-status`
@@ -561,8 +569,12 @@ other; each lift is `{index, label, missing, other, count_a, count_b, share_a, s
 #### `POST /api/analysis-counterpart`
 `session_id` of a REC dataset, JSON body `{row}` (the row's values in the order of `state.columns`). Evaluates the
 row's correlation key with the control's own expressions and answers `{side, other_side, keys: [{expression,
-value}], results, source}`: the other side's rows of the run's result table and of its datasource for the run's
-window, each `{columns, rows, more, error}` (at most 100 rows, `more` when there are others). 400 for other types.
+value}], pair, results, source}`: the other side's rows of the run's result table and of its datasource for the run's
+window, each `{columns, rows, more, error}` (at most 100 rows, `more` when there are others). `pair` is the record
+the row was matched with, when the row has a `RAPO_DISCREPANCY_ID` (which holds that record's key field):
+`{key_field, value, results, source}`, looked up by `cast(<key_field> as varchar2(4000)) = value`, or with an `error`
+when the other side has no key field. It is null for a row without one (a Loss, a fetched record). 400 for other
+types.
 
 #### `GET /api/get-control-trend`
 `process_id`, `dataset`, `limit` (30, 2 to 200). Answers `{side, process_id, runs}`: the latest `limit` periods of

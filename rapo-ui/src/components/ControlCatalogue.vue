@@ -1,8 +1,9 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <h2 class="row items-end q-gutter-lg q-mb-lg">
+    <h2 class="row items-end q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <div v-if="showSkeleton">Controls</div>
-      <div v-else>{{ filteredControlCatalogueLen }} Control<span v-if="filteredControlCatalogueLen != 1">s</span></div>
+      <div v-else>{{ countTitle }}</div>
+      <div v-if="!showSkeleton && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
       <div v-if="refreshing && !showSkeleton">
         <q-avatar size="lg" color="grey-5">
           <q-icon name="fas fa-sync fa-spin" />
@@ -26,6 +27,7 @@
         </q-chip>
       </div>
     </h2>
+    <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -80,9 +82,6 @@
         label="Control attributes">
       </q-select>
 
-      <q-btn flat round color="grey" class="q-mb-md q-pa-sm" icon="fas fa-times-circle" @click="clearFilters">
-        <q-tooltip anchor="top left" self="bottom left" :offset="[15, 10]"> Clear filters </q-tooltip>
-      </q-btn>
     </div>
 
     <q-virtual-scroll
@@ -356,15 +355,9 @@
             <q-item-section> Recreate schema </q-item-section>
           </q-item>
         </confirm-dialog>
-        <confirm-dialog
-          icon="fas fa-trash-alt"
-          text="Do you really want to delete this control?"
-          :action="deleteControl"
-          :argument="menuRow.control_id">
-          <q-item dense clickable>
-            <q-item-section> Delete control </q-item-section>
-          </q-item>
-        </confirm-dialog>
+        <q-item dense clickable v-close-popup @click="deleteControl(menuRow)">
+          <q-item-section> Delete control </q-item-section>
+        </q-item>
       </q-list>
     </q-menu>
     <orphan-tables-dialog ref="orphanDialog" :tables="orphanTables" @changed="refreshSchemaDrift" />
@@ -377,6 +370,9 @@ import SchedulePresentBox from "./SchedulePresentBox.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import FilterBadge from "./FilterBadge.vue";
+import FilterChips from "./FilterChips.vue";
+import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import OrphanTablesDialog from "./OrphanTablesDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
@@ -386,14 +382,18 @@ import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import persistFilters from "../mixins/persistFilters";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
 export default {
   name: "ControlCatalogue",
+  mixins: [persistFilters("controls", ["filter", "sort"])],
   components: {
     OrphanTablesDialog,
     RunControlDialog,
     ConfirmDialog,
+    FilterBadge,
+    FilterChips,
     SchedulePresentBox,
     SkeletonRows,
   },
@@ -450,13 +450,39 @@ export default {
       this.menuControlId = row.control_id;
       this.$nextTick(() => this.$refs.rowMenu.show());
     },
-    async deleteControl(control_id) {
-      try {
-        await api("delete-control", { method: "DELETE", params: { control_id } });
-        await this.updateControlCatalogue();
-      } catch (error) {
-        notifyError("Control was not deleted.", error);
+    // The result tables its type writes and its orphans (get-schema-drift); none when the check found no table.
+    resultTablesOf(control) {
+      const drift = (this.schemaDrift.controls || {})[control.control_id];
+      const orphans = drift ? drift.orphans.map((orphan) => orphan.table) : [];
+      if (drift && drift.level === "missing" && !orphans.length) {
+        return [];
       }
+      const name = control.control_name.toUpperCase();
+      const written = control.control_type === "REC" ? [`RAPO_RESA_${name}`, `RAPO_RESB_${name}`] : [`RAPO_REST_${name}`];
+      return [...new Set([...written, ...orphans])];
+    },
+    // Asks first, offering to drop the result tables too (ticked), so none is left behind as an orphan.
+    deleteControl(control) {
+      const tables = this.resultTablesOf(control);
+      const options = tables.length
+        ? { type: "checkbox", model: ["drop"], items: [{ label: `Also drop the result tables ${tables.join(", ")}, with all results`, value: "drop" }] }
+        : undefined;
+      this.$q
+        .dialog({ title: `Delete ${control.control_name}?`, message: "The control and its schedule are deleted.", options, cancel: true, persistent: true })
+        .onOk(async (selected) => {
+          const dropTables = (selected || []).includes("drop");
+          try {
+            const result = await api("delete-control", { method: "DELETE", params: { control_id: control.control_id, drop_tables: dropTables } });
+            const dropped = result.dropped || [];
+            this.$q.notify({
+              type: "positive",
+              message: `Control ${control.control_name} was deleted${dropped.length ? `, and its tables ${dropped.join(", ")} dropped` : ""}.`,
+            });
+          } catch (error) {
+            notifyError("Control was not deleted.", error);
+          }
+          await Promise.all([this.updateControlCatalogue(), this.refreshSchemaDrift()]);
+        });
     },
     async recreateSchema(control_name) {
       try {
@@ -537,14 +563,14 @@ export default {
       }
     },
     sendsEmail,
+    // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.control_name = null;
       this.filter.type = null;
       this.filter.status = null;
       this.filter.other_attributes = [];
       this.filter.system = null;
-      this.sort.key = null;
-      this.sort.dir = "asc";
+      this.$store.commit("updateSearch", "");
     },
     // Periods back in days, and the scheduled time of day in seconds (first value of lists/steps like "8,15").
     scheduleSortValue(item, key) {
@@ -581,6 +607,24 @@ export default {
     // Controls reading the results of other controls, or read by them (chain-rules), by control name.
     chains() {
       return chainIndex(this.controlCatalogue);
+    },
+    // "12 Controls", or "12 of 340 Controls" while filtered.
+    countTitle() {
+      const total = this.controlCatalogue.length;
+      const shown = this.filteredControlCatalogueLen;
+      const count = this.activeFilters.length ? `${shown} of ${total}` : String(shown);
+      return `${count} Control${(this.activeFilters.length ? total : shown) === 1 ? "" : "s"}`;
+    },
+    activeFilters() {
+      const filter = this.filter;
+      return [
+        ...valueFilter("type", "Type", filter.type, () => (filter.type = null)),
+        ...valueFilter("name", "Name", filter.control_name, () => (filter.control_name = null), { text: true }),
+        ...valueFilter("system", "System", filter.system, () => (filter.system = null), { text: true }),
+        ...valueFilter("status", "Scheduler", filter.status, () => (filter.status = null), { label: filter.status === "Y" ? "Active" : "Inactive" }),
+        ...listFilter("attribute", "Attribute", filter.other_attributes, (value) => (filter.other_attributes = filter.other_attributes.filter((item) => item !== value))),
+        ...searchFilter(this.$store),
+      ];
     },
     attributeOptions() {
       const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
