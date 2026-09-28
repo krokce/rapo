@@ -149,3 +149,10 @@ stalled_minutes=60
 # A lane lock (LOAD_<lane> of PDI_CORE_STATE) older than this is shown on the
 # Files page as probably stale.
 lock_stale_minutes=30
+# Downloads of loaded files from the file log (SUCCESS and ERROR files whose
+# archived file is kept). They are read from this server's file system, and
+# only within the archive, error or duplicate directory of their datasource.
+# Several files are sent as one ZIP; a download is held in the browser's memory
+# before it is saved, so it may have at most max_download_mb in all.
+file_download=True
+max_download_mb=500

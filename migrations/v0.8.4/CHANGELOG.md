@@ -5,7 +5,7 @@ This release corrects and completes the data analysis of v0.8.3: samples are dra
 discrepancy shows the record it was matched with, the page switches between a run's datasets, and the editor's run
 log opens the same SQL and analysis menu as Results. Deleting a control now drops its result tables, and the list
 pages show which filters are active. New Datasources and Files pages edit the PDI Core file loader's datasources and
-show, recycle, reload or delete the files it loaded. There is no change to Rapo's own schema.
+show, recycle, reload, delete or download the files it loaded. There is no change to Rapo's own schema.
 The upgrade steps are in the [migration instructions](README.md).
 
 1. **Datasources page (PDI Core).** A new *Datasources* menu item lists and edits the datasources of the PDI Core
@@ -28,7 +28,8 @@ The upgrade steps are in the [migration instructions](README.md).
      system; listings stop after `list_budget_seconds`. A mask must match the whole file name, as in PDI Core.
    - New optional `rapo.ini` section `[DATASOURCES]`: `scan_interval` (60), `scan_max_entries` (200000),
      `scan_budget_seconds` (20), `list_max_files` (10000), `list_budget_seconds` (10), `clean_max_bytes` (1024),
-     `dir_mode` (2775), `stalled_minutes` (60), `lock_stale_minutes` (30).
+     `dir_mode` (2775), `stalled_minutes` (60), `lock_stale_minutes` (30), `file_download` (True),
+     `max_download_mb` (500).
    - API: `get-ds-list`, `get-ds-status`, `get-ds-config`, `check-ds-directories`, `save-ds-config`, `set-ds-active`,
      `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `create-ds-directory`, `get-ds-table-facts`,
      `get-ds-file-log`, `get-ds-file-log-text`; `info` reports `datasources_*`; live event `datasources:changed`.
@@ -44,9 +45,24 @@ The upgrade steps are in the [migration instructions](README.md).
    - **A datasource's files** (`/files-log/<id>`), laid out like Results, with the heatmap, filters and sorting by any
      column. Selected files can be **Recycled** (SUCCESS or ERROR), **Reloaded** (SUCCESS) or **Deleted** (any
      status): Rapo sets the status and PDI Core does the work. Recycle and Reload need the archived file; Delete also
-     deletes it, which the confirmation warns about. The editor's File log is the same table.
-   - API: `get-files-day`, `search-files`, `set-file-status`, `get-pdi-state`, `remove-lane-lock`, `set-global-lock`;
-     `info` reports `datasources_file_actions` and `datasources_state*`; `datasources:changed` kinds `state`, `files`.
+     deletes it, which the confirmation warns about. The editor's File log is the same table, with the same selection
+     and actions.
+   - **Download** of selected files (SUCCESS or ERROR whose archived file is kept): the file PDI Core kept
+     (`OUTPUTFULLFILENAME`), one file as it is, several as one ZIP `<SOURCENAME>_<YYYYMMDD>.zip` with a `MISSING.txt`
+     naming the files left out and why. Files are read from this server's file system and only within the archive,
+     error or duplicate directory of their datasource; at most 500 files and `max_download_mb` at once. Each download
+     is written to the server log. New `[DATASOURCES]` options `file_download` (True; False hides the button) and
+     `max_download_mb` (500; the download is held in the browser's memory before it is saved).
+   - **The counts open the files behind them.** On the Files page, a datasource's *Files*, status and *Duplicates*
+     numbers (and its name) open its file log filtered to exactly those files: the status clicked, or the page's
+     status filter, its hour and, for Duplicates, only duplicates (`/files-log/<id>?status=&hour=&dup=`). Such a link
+     replaces the file log's kept filters; the file log's filters are written back into its URL, so a reload or Back
+     keeps them. *Incoming* opens the datasource's *Input files* tab with the matching files listed
+     (`/edit-datasource/<id>?tab=files&list=match`). **Behavior change:** clicking a status count no longer filters
+     the Files page; the status chips of the header still do.
+   - API: `get-files-day`, `search-files`, `set-file-status`, `download-ds-files`, `get-pdi-state`, `remove-lane-lock`,
+     `set-global-lock`; `info` reports `datasources_file_actions`, `datasources_file_download` and
+     `datasources_state*`; `datasources:changed` kinds `state`, `files`.
 3. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
    count in brackets; the "25 controls · 190 runs" counts are no longer bold. On Controls, the control name is a link
    to its editor, like the datasource names (the version link under it stays).

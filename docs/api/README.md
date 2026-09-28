@@ -38,8 +38,8 @@ section and answer 404 otherwise. Redoc is disabled.
 ## Conventions
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
-  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `validate-sql` and `validate-analysis-where`, which
-  take a JSON body, and `analysis-start`, which takes an optional one.
+  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `validate-sql`, `validate-analysis-where` and
+  `download-ds-files`, which take a JSON body, and `analysis-start`, which takes an optional one.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -720,6 +720,26 @@ the run itself is shown by that run.
 the order wanted). Downloads the matching rows. Excel is cut at 1,048,575 rows, and the header `X-Rapo-Cut` then
 holds that limit.
 
+### PDI Core files
+
+#### `POST /api/download-ds-files`
+JSON body `{ids}`: at most 500 file IDs of `PDI_CORE_FILE_LOG`. Downloads the files from where PDI Core kept them
+(`OUTPUTFULLFILENAME`), read from **this server's** file system. A file is sent only when its status is `SUCCESS` or
+`ERROR`, its archived file is kept (`OUTFILEDELETED = 0`), and its real path (symlinks resolved) lies within the
+`ARCHIVE_DIRECTORY`, `ERROR_DIRECTORY` or `DUPLICATE_DIRECTORY` of its datasource. One file is sent as it is
+(`application/octet-stream`); several as one ZIP `<SOURCENAME>_<YYYYMMDD>.zip`, written while it is sent, with a
+`MISSING.txt` naming the files left out and why. The header `X-Rapo-Skipped` counts the files left out. Each download
+is written to the server log.
+
+`400` when no file can be sent (the reasons are named), or the files are more than `[DATASOURCES]
+max_download_mb` (500 MB by default) together; `403` with `[DATASOURCES] file_download=False`; `404` without a
+readable file log.
+
+```bash
+curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: application/json" \
+  -d '{"ids": [101, 102]}' -o files.zip http://rapo-host:7005/api/download-ds-files
+```
+
 ### Scheduler
 
 #### `GET /api/scheduler-status`
@@ -790,6 +810,7 @@ What this instance is: `instance_name`, `schema_name`, `database_server`, `datab
 `config_path` (the `rapo.ini` actually loaded) and `log_directory`. Also what the UI may offer: `kpi_available`,
 and for the PDI Core datasources `datasources_available`, `datasources_writable`, `datasources_deletable`,
 `datasources_log` (the file log is readable), `datasources_file_actions` (files can be recycled, reloaded, deleted),
+`datasources_file_download` (files can be downloaded: the file log is readable and `[DATASOURCES] file_download` on),
 `datasources_state`, `datasources_state_write` and `datasources_state_delete` (the lane locks of `PDI_CORE_STATE`).
 
 #### `GET /api/parameters`

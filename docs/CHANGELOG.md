@@ -16,7 +16,10 @@ No change to Rapo's own schema, and none to the `PL` engine.
   read by a child process of the server; new `[DATASOURCES]` options.
 - **Files page**: the PDI Core file log of one day by datasource (status columns, records, runtime, throughput, a
   week's change, badges), an hourly heatmap, a file search and lane locks (`PDI_CORE_STATE`); per datasource the files
-  to Recycle (SUCCESS, ERROR), Reload (SUCCESS) or Delete (any status).
+  to Recycle (SUCCESS, ERROR), Reload (SUCCESS), Delete (any status) or **Download** (SUCCESS, ERROR: the archived
+  file, several as one ZIP; `[DATASOURCES] file_download`, `max_download_mb`), also in the editor's File log tab. Its
+  counts (Files, statuses, Duplicates) open exactly those files with the page's status/hour filters; Incoming opens
+  the waiting files in the editor. The counts no longer filter the Files page (its status chips still do).
 - **Results and Controls lists:** Results day totals read **ANL** (26); Controls names link to the editor.
 - **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the
   confirmation offers to keep them. API callers: `delete-control` now drops by default, pass `drop_tables=false` to

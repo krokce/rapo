@@ -208,6 +208,17 @@ export const FILE_ACTIONS = {
   },
 };
 
+// Download of files from where PDI Core kept them (download-ds-files): only SUCCESS and ERROR files whose archived file
+// is kept. The server checks the same (DOWNLOAD_FROM), and that the file lies in a directory of its datasource.
+export const FILE_DOWNLOAD = {
+  label: "Download",
+  icon: "fas fa-download",
+  color: "primary",
+  from: ["SUCCESS", "ERROR"],
+  needsFile: true,
+  text: "Download the archived file, several as one ZIP.",
+};
+
 export function fileStatus(status) {
   return FILE_STATUSES[status] || { label: status || "Unknown", icon: "fas fa-question-circle", color: "grey" };
 }

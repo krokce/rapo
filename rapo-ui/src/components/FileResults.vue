@@ -217,7 +217,7 @@
             </template>
             <span v-else-if="column.key === 'id'" class="text-grey-8">{{ row.id }}</span>
             <template v-else-if="column.key === 'sourcename'">
-              <router-link :to="{ name: 'files-log', params: { id: row.id }, query: dayQuery }" class="text-weight-bold text-grey-9 datasource-name">
+              <router-link :to="logLink(row)" class="text-weight-bold text-grey-9 datasource-name">
                 {{ row.sourcename }}
               </router-link>
               <div v-if="row.issues.length" class="row items-center">
@@ -235,18 +235,41 @@
                 </q-chip>
               </div>
             </template>
-            <span v-else-if="column.status" class="cursor-pointer status-count" :class="statusClass(column.status, row.statuses[column.status])" @click="addStatusFilter(column.status)">
-              {{ row.statuses[column.status] ? formatNumber(row.statuses[column.status]) : "" }}
-            </span>
-            <span v-else-if="column.key === 'files'">{{ row.files ? formatNumber(row.files) : "" }}</span>
-            <span
-              v-else-if="column.key === 'duplicates'"
-              :class="{ 'text-purple-6 text-weight-bold cursor-pointer status-count': row.duplicates }"
-              @click="row.duplicates && (filter.duplicates = true)">
-              {{ row.duplicates ? formatNumber(row.duplicates) : "" }}
-            </span>
+            <!-- A count opens the files behind it (/files-log), with the status, hour and duplicate filters of this page. -->
+            <template v-else-if="column.status">
+              <router-link
+                v-if="row.statuses[column.status]"
+                :to="logLink(row, { status: column.status })"
+                class="status-count"
+                :class="statusClass(column.status, row.statuses[column.status])"
+                :title="`Show the ${formatNumber(row.statuses[column.status])} ${fileStatus(column.status).label} file(s)`">
+                {{ formatNumber(row.statuses[column.status]) }}
+              </router-link>
+            </template>
+            <template v-else-if="column.key === 'files'">
+              <router-link v-if="row.files" :to="logLink(row)" class="status-count" :title="`Show the ${formatNumber(row.files)} file(s)`">
+                {{ formatNumber(row.files) }}
+              </router-link>
+            </template>
+            <template v-else-if="column.key === 'duplicates'">
+              <router-link
+                v-if="row.duplicates"
+                :to="logLink(row, { duplicate: 'Y' })"
+                class="status-count text-purple-6 text-weight-bold"
+                :title="`Show the ${formatNumber(row.duplicates)} duplicate file(s)`">
+                {{ formatNumber(row.duplicates) }}
+              </router-link>
+            </template>
+            <!-- Incoming files are not in the file log yet: they are listed by the datasource's Input files tab. -->
             <template v-else-if="column.key === 'waiting'">
-              <span v-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-6'">{{ formatNumber(waitingOf(row)) }}</span>
+              <router-link
+                v-if="waitingOf(row) && datasources.has(row.id)"
+                :to="{ name: 'edit-datasource', params: { id: row.id }, query: { tab: 'files', list: 'match' } }"
+                class="status-count text-weight-bold"
+                title="Show the files waiting in the input directories">
+                {{ formatNumber(waitingOf(row)) }}
+              </router-link>
+              <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-6'">{{ formatNumber(waitingOf(row)) }}</span>
             </template>
             <span v-else-if="column.key === 'read'">{{ row.files ? formatNumber(row.read) : "" }}</span>
             <span v-else-if="column.key === 'written'">{{ row.files ? formatNumber(row.written) : "" }}</span>
@@ -564,6 +587,19 @@ export default {
     changeClass(change) {
       return change <= -0.5 ? "text-red-6 text-weight-bold" : change < 0 ? "text-orange-9" : "text-grey-8";
     },
+    // The file log of a datasource on this day, filtered as this page is: the statuses (or the one of the count clicked),
+    // the hour and, for the duplicates, only them. `status` is always in the query, so that the filters kept for the
+    // file log do not apply and the list adds up to the count.
+    logLink(row, { status = null, duplicate = null } = {}) {
+      const query = { ...this.dayQuery, status: (status ? [status] : this.filter.statuses || []).join(",") };
+      if (this.filter.hour !== null) {
+        query.hour = String(this.filter.hour);
+      }
+      if (duplicate) {
+        query.dup = duplicate;
+      }
+      return { name: "files-log", params: { id: row.id }, query };
+    },
     addStatusFilter(status) {
       if (!this.filter.statuses.includes(status)) {
         this.filter.statuses.push(status);
@@ -739,6 +775,10 @@ export default {
 }
 .files-table td {
   white-space: nowrap;
+}
+.status-count {
+  color: inherit;
+  text-decoration: none;
 }
 .status-count:hover {
   text-decoration: underline;

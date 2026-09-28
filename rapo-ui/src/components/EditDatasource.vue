@@ -253,7 +253,7 @@
 
             <q-tab-panel v-if="saved && logAvailable" name="log">
               <div class="q-ma-lg">
-                <file-log-table :datasource-id="saved.id" embedded />
+                <file-log-table :datasource-id="saved.id" :tables="saved.links.map((link) => link.table_name)" selectable embedded />
               </div>
             </q-tab-panel>
           </q-tab-panels>
@@ -310,6 +310,8 @@ import { DATASOURCE_LANES, DUP_HANDLING_OPTIONS, datasourceLane } from "../const
 import { diffControl } from "../utils/controlDiff";
 import { datasourcePayload, diffShape, emptyDatasource } from "../utils/datasources";
 import { escapeHtml, formatNumber } from "../utils/format";
+
+const TABS = ["main", "files", "processing", "archive", "retention", "log"];
 
 const ARCHIVE_FIELDS = [
   { name: "archive_directory", label: "ARCHIVE_DIRECTORY" },
@@ -432,6 +434,7 @@ export default {
   async mounted() {
     try {
       await this.load();
+      this.openRouteTab();
     } catch (error) {
       notifyError("Failed to load the datasource.", error);
     }
@@ -536,6 +539,22 @@ export default {
         clean_mask: this.datasource.input_clean_files_mask || "",
         subdirs: Boolean(this.datasource.input_scan_subdirs),
       };
+    },
+    // A link may open a tab (?tab=files) and, on Input files, the matching files (&list=match, the Incoming count of the
+    // Files page). The list is opened once: it is dropped from the URL.
+    // A dialog closes on a route change, so the list opens once the URL is replaced.
+    async openRouteTab() {
+      const { tab, list, ...rest } = this.$route.query;
+      if (TABS.includes(tab) && (tab !== "log" || (this.saved && this.logAvailable))) {
+        this.tab = tab;
+      }
+      if (!list) {
+        return;
+      }
+      await this.$router.replace({ query: tab ? { ...rest, tab } : rest });
+      if (this.saved && this.tab === "files") {
+        this.openFiles(list === "all" ? "all" : "match");
+      }
     },
     openFiles(kind) {
       this.$refs.fileDialog.open(this.saved, kind, this.maskOverrides());

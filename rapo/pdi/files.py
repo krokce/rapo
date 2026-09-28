@@ -47,6 +47,8 @@ OPTIONS = {
     'dir_mode': '2775',
     'stalled_minutes': 60,
     'lock_stale_minutes': 30,
+    'file_download': True,
+    'max_download_mb': 500,
 }
 
 OTHER_DIRECTORIES = ('archive_directory', 'error_directory',

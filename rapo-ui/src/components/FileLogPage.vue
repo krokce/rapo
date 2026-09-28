@@ -5,9 +5,11 @@
       :initial-day="$route.query.date || null"
       :highlight-id="$route.query.file ? Number($route.query.file) : null"
       :tables="datasource ? datasource.tables : []"
+      :initial-filters="queryFilters"
       selectable
       max-height="calc(100vh - 330px)"
       @day="dayChanged"
+      @filters="filtersChanged"
       @loaded="(files) => (loggedName = files.length ? files[0].sourcename : loggedName)">
       <template #title>
         <div class="row items-center no-wrap">
@@ -53,7 +55,10 @@ import FileLogTable from "./FileLogTable.vue";
 import { DATASOURCE_ICON, datasourceLane } from "../constants";
 
 // The files of one datasource on one day (/files-log/<id>?date=YYYY-MM-DD&file=<id>), opened from the Files page: the
-// File log of the datasource editor, with files to pick and recycle, reload or delete.
+// File log of the datasource editor, with files to pick and recycle, reload, delete or download. The filters are in the
+// URL too (status=A,B&hour=H&dup=Y|N), so that a count of the Files page opens exactly its files; they replace the
+// filters kept for the session, and a change of them is written back.
+const FILTER_KEYS = ["status", "hour", "dup"];
 export default {
   name: "FileLogPage",
   components: { FileLogTable },
@@ -70,6 +75,22 @@ export default {
     dayQuery() {
       return this.$route.query.date ? { date: this.$route.query.date } : {};
     },
+    // The filters of the URL, null without any.
+    queryFilters() {
+      const query = this.$route.query;
+      if (this.$route.name !== "files-log" || !FILTER_KEYS.some((key) => query[key] !== undefined)) {
+        return null;
+      }
+      const hour = Number.parseInt(query.hour, 10);
+      return {
+        statuses: String(query.status || "")
+          .split(",")
+          .map((status) => status.trim().toUpperCase())
+          .filter(Boolean),
+        hour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : null,
+        duplicate: ["Y", "N"].includes(query.dup) ? query.dup : null,
+      };
+    },
   },
   methods: {
     ...mapActions(["updateDatasourceCatalogue"]),
@@ -79,8 +100,34 @@ export default {
       if ((day || null) === (this.$route.query.date || null)) {
         return;
       }
-      const query = day ? { date: day } : {};
+      const query = { ...this.filterQuery(this.$route.query) };
+      if (day) {
+        query.date = day;
+      }
       this.$router.replace({ name: "files-log", params: { id: this.id }, query });
+    },
+    filterQuery(source) {
+      return Object.fromEntries(FILTER_KEYS.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+    },
+    // The table's filters go into the URL, keeping the day and the highlighted file.
+    filtersChanged(filters) {
+      if (this.$route.name !== "files-log") {
+        return;
+      }
+      const query = { ...this.$route.query };
+      FILTER_KEYS.forEach((key) => delete query[key]);
+      if (filters.statuses.length) {
+        query.status = filters.statuses.join(",");
+      }
+      if (filters.hour !== null) {
+        query.hour = String(filters.hour);
+      }
+      if (filters.duplicate) {
+        query.dup = filters.duplicate;
+      }
+      if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
+        this.$router.replace({ name: "files-log", params: { id: this.id }, query });
+      }
     },
   },
   mounted() {

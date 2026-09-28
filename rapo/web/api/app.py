@@ -40,6 +40,7 @@ from ...analysis.sessions import sessions, SessionError
 from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
 from ...pdi import files as ds_files
+from ...pdi import download as ds_download
 
 
 UI_DIR = os.path.realpath(
@@ -187,7 +188,10 @@ def info():
 def datasource_capabilities():
     """What the UI may offer for the PDI Core datasources."""
     try:
-        return pdi.capabilities()
+        capabilities = pdi.capabilities()
+        capabilities['datasources_file_download'] = (
+            capabilities['datasources_log'] and ds_download.enabled())
+        return capabilities
     except Exception:
         logger.error()
         return {'datasources_available': False}
@@ -830,6 +834,32 @@ def set_file_status(data: dict = fastapi.Body(...)):
         result = pdi.set_file_status(data.get('ids'), data.get('status'))
     events.poke()
     return {'status': 200, **result}
+
+
+@api.post('/download-ds-files')
+def download_ds_files(data: dict = fastapi.Body(...)):
+    """Download loaded files from where PDI Core kept them.
+
+    The body is {ids}, at most 500 file IDs. Only SUCCESS and ERROR files
+    whose archived file is kept, found on this server within the archive,
+    error or duplicate directory of their datasource, are sent: one file as
+    it is, several as a ZIP naming the files left out in MISSING.txt. The
+    header X-Rapo-Skipped counts the files left out.
+    """
+    with datasource_errors():
+        download = ds_download.prepare(data.get('ids'))
+    ds_download.log(download)
+    headers = {'X-Rapo-Skipped': str(len(download['skipped']))}
+    if len(download['files']) == 1:
+        file = download['files'][0]
+        return fastapi.responses.FileResponse(
+            file['path'], media_type='application/octet-stream',
+            filename=file['name'], headers=headers)
+    name = ds_download.zip_name(download)
+    headers['Content-Disposition'] = f'attachment; filename="{name}"'
+    return fastapi.responses.StreamingResponse(
+        ds_download.stream_zip(download), media_type='application/zip',
+        headers=headers)
 
 
 @api.get('/get-pdi-state')

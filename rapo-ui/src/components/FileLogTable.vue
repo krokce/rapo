@@ -95,6 +95,18 @@
       <span class="text-weight-medium">{{ formatNumber(selected.size) }} selected</span>
       <q-btn flat dense no-caps color="primary" label="Clear" @click="selected = new Set()" />
       <q-space />
+      <q-btn
+        v-if="canDownload"
+        outline
+        no-caps
+        :color="downloadAction.color"
+        :icon="downloadAction.icon"
+        :loading="downloading"
+        :label="`${downloadAction.label} (${formatNumber(eligibleDownload.length)})`"
+        :disable="!eligibleDownload.length"
+        @click="download">
+        <q-tooltip max-width="360px">{{ downloadAction.text }} {{ actionScope(downloadAction) }}</q-tooltip>
+      </q-btn>
       <template v-if="canAct">
         <q-btn
           v-for="(action, status) in actions"
@@ -223,7 +235,7 @@ import FileHeatmap from "./FileHeatmap.vue";
 import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { api, notifyError } from "../api";
-import { FILE_ACTIONS, fileStatus } from "../constants";
+import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
 import { date as quasarDate } from "quasar";
 import { liveRefetch } from "../socket";
 import { compactNumber } from "../utils/files";
@@ -235,8 +247,9 @@ import persistFilters from "../mixins/persistFilters";
 
 // The files one datasource loaded on one day (get-ds-file-log, the database's day), newest first. A row opens the log
 // text PDI Core wrote for it. With `selectable` (the Files page), files can be picked and asked to be recycled, reloaded
-// or deleted (set-file-status), and PDI Core does the work. The search and the status and duplicate filters are kept for
-// the browser session, like the filters of the list pages, and stay while the day changes.
+// or deleted (set-file-status), and PDI Core does the work, or downloaded (download-ds-files). The search and the status
+// and duplicate filters are kept for the browser session, like the filters of the list pages, and stay while the day
+// changes; `initialFilters` (a link from the Files page) replaces them, and every change is emitted as `filters`.
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
   { key: "status", label: "Status", align: "left" },
@@ -271,8 +284,10 @@ export default {
     maxHeight: { type: String, default: "60vh" },
     // Inside another page (the datasource editor): a smaller title.
     embedded: { type: Boolean, default: false },
+    // Filters to start with instead of the kept ones, {statuses, hour, duplicate}; the file name search is cleared.
+    initialFilters: { type: Object, default: null },
   },
-  emits: ["day", "loaded"],
+  emits: ["day", "loaded", "filters"],
   data() {
     return {
       loading: false,
@@ -290,6 +305,8 @@ export default {
       hour: null,
       selected: new Set(),
       actions: FILE_ACTIONS,
+      downloadAction: FILE_DOWNLOAD,
+      downloading: false,
       logVisible: false,
       logFile: null,
       logText: null,
@@ -396,8 +413,34 @@ export default {
     filesById() {
       return new Map(this.files.map((file) => [file.id, file]));
     },
+    canDownload() {
+      const info = this.$store.getters.getEnvInfo;
+      return Boolean(info && info.datasources_file_download);
+    },
+    eligibleDownload() {
+      return this.eligibleFor(FILE_DOWNLOAD, null);
+    },
+    // The filters a link to this view carries (the Files page mirrors them into its URL).
+    linkFilters() {
+      return { statuses: [...(this.statuses || [])], hour: this.hour, duplicate: this.duplicate || null };
+    },
   },
   watch: {
+    // Another link's filters (Back, or another count of the Files page); the ones this table emitted come back equal.
+    initialFilters(value) {
+      if (!value) {
+        return;
+      }
+      const wanted = { statuses: [...(value.statuses || [])], hour: value.hour ?? null, duplicate: value.duplicate || null };
+      if (JSON.stringify(wanted) !== JSON.stringify(this.linkFilters)) {
+        this.applyInitialFilters();
+      }
+    },
+    linkFilters(value, previous) {
+      if (JSON.stringify(value) !== JSON.stringify(previous)) {
+        this.$emit("filters", value);
+      }
+    },
     datasourceId() {
       this.load(null);
     },
@@ -417,6 +460,17 @@ export default {
         this.statuses = [...this.statuses, status];
       }
     },
+    applyInitialFilters() {
+      const filters = this.initialFilters;
+      if (!filters) {
+        return;
+      }
+      this.search = null;
+      this.statuses = [...(filters.statuses || [])];
+      this.duplicate = filters.duplicate || null;
+      this.hour = filters.hour ?? null;
+      this.keepHour = this.hour !== null;
+    },
     clearFilters() {
       this.search = null;
       this.statuses = [];
@@ -432,10 +486,12 @@ export default {
       this.loading = !quiet;
       try {
         const result = await api("get-ds-file-log", { params: { id: this.datasourceId, date: day }, loadingBar: false });
-        // An hour picked on one day means nothing on another.
-        if (result.date !== this.day) {
+        // An hour picked on one day means nothing on another; one of the initial filters is for the first day loaded.
+        const keepHour = this.keepHour && (day || null) === (this.initialDay || null);
+        if (result.date !== this.day && !keepHour) {
           this.hour = null;
         }
+        this.keepHour = false;
         this.day = result.date;
         this.today = result.today;
         this.files = Object.freeze(result.files.map(Object.freeze));
@@ -495,11 +551,14 @@ export default {
     // The selected files an action would change: those of its `from` statuses (RECYCLE: SUCCESS or ERROR, RELOAD: SUCCESS)
     // with their archived file, for DELETE any not in DELETE already.
     eligible(status) {
-      const { from, needsFile } = FILE_ACTIONS[status];
+      return this.eligibleFor(FILE_ACTIONS[status], status);
+    },
+    // The selected files of an action's `from` statuses and, with `needsFile`, an archived file; none already in `status`.
+    eligibleFor({ from, needsFile }, status) {
       const files = [];
       this.selected.forEach((id) => {
         const file = this.filesById.get(id);
-        if (!file || file.filestatus === status) {
+        if (!file || (status && file.filestatus === status)) {
           return;
         }
         if ((!from || from.includes(file.filestatus)) && !(needsFile && file.outfiledeleted)) {
@@ -547,6 +606,36 @@ export default {
       }
       await this.load(this.day === this.today ? null : this.day);
     },
+    // The files arrive as one Blob (one file as it is, several as a ZIP), saved under the name the server gives.
+    async download() {
+      const files = this.eligibleDownload;
+      this.downloading = true;
+      try {
+        const response = await api("download-ds-files", { method: "POST", body: { ids: files.map((file) => file.id) }, raw: true });
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+        const name = match ? decodeURIComponent(match[1] || match[2]) : files.length === 1 ? files[0].inputfilename : "files.zip";
+        const skipped = Number(response.headers.get("X-Rapo-Skipped") || 0);
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        if (skipped) {
+          this.$q.notify({
+            type: "warning",
+            message: `${formatNumber(skipped)} of ${formatNumber(files.length)} file(s) were left out${files.length - skipped > 1 ? " (named in MISSING.txt of the ZIP)" : ""}.`,
+          });
+        }
+      } catch (error) {
+        notifyError("The files were not downloaded.", error);
+      } finally {
+        this.downloading = false;
+      }
+    },
     async openLog(file) {
       this.logFile = file;
       this.logText = null;
@@ -569,6 +658,10 @@ export default {
         notifyError("The log was not copied.", error);
       }
     },
+  },
+  // After persistFilters restored the kept filters, which a link's filters replace.
+  created() {
+    this.applyInitialFilters();
   },
   mounted() {
     this.load(this.initialDay);

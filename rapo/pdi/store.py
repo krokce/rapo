@@ -75,6 +75,10 @@ FILE_ACTIONS = ('RECYCLE', 'RELOAD', 'DELETE')
 # recycled (loaded again after its records are deleted), not reloaded.
 ACTION_FROM = {'RECYCLE': ('SUCCESS', 'ERROR'), 'RELOAD': ('SUCCESS',),
                'DELETE': None}
+# The statuses of the files that can be downloaded, from where PDI Core kept
+# them (OUTPUTFULLFILENAME), and how many at once.
+DOWNLOAD_FROM = ('SUCCESS', 'ERROR')
+DOWNLOAD_MAX_FILES = 500
 
 # SOURCENAME is also PDI_CORE_FILE_LOG.SOURCENAME, which holds 50 characters.
 NAME_PATTERN = re.compile(r'^[A-Z0-9_]+$')
@@ -595,14 +599,7 @@ class Store:
         if status not in FILE_ACTIONS:
             raise DatasourceError(f'status must be one of '
                                   f'{", ".join(FILE_ACTIONS)}.')
-        try:
-            ids = sorted({int(id) for id in ids or []})
-        except (TypeError, ValueError):
-            raise DatasourceError('ids must be file IDs.')
-        if not ids:
-            raise DatasourceError('No files given.')
-        if len(ids) > STATUS_MAX_FILES:
-            raise DatasourceError(f'At most {STATUS_MAX_FILES} files at once.')
+        ids = self._file_ids(ids, STATUS_MAX_FILES)
         needs_file = status in ('RECYCLE', 'RELOAD')
         allowed = ACTION_FROM[status]
         changed = 0
@@ -652,6 +649,47 @@ class Store:
         logger.info(f'Files set to {status}: {changed} of {len(ids)} '
                     f'(IDs {ids[0]}..{ids[-1]})')
         return {'requested': len(ids), 'changed': changed, 'skipped': skipped}
+
+    def read_download_files(self, ids):
+        """Get the file log rows of files asked to be downloaded.
+
+        Returns
+        -------
+        ids : list of int
+            The IDs asked for, sorted and without repeats.
+        rows : dict
+            The rows found, by ID.
+        """
+        self.check()
+        if not self.log_available:
+            raise DatasourceError('The file log is not available.', 404)
+        ids = self._file_ids(ids, DOWNLOAD_MAX_FILES)
+        rows = {}
+        for start in range(0, len(ids), STATUS_BATCH):
+            batch = ids[start:start + STATUS_BATCH]
+            binds = {f'id{index}': id for index, id in enumerate(batch)}
+            in_list = ', '.join(f':{bind}' for bind in binds)
+            statement = sa.text(
+                'select id, sourceid, sourcename, inputfilename, '
+                'outputfullfilename, filestatus, outfiledeleted, '
+                f'startloaddate from {LOG_TABLE} where id in ({in_list})'
+            ).bindparams(**binds)
+            for row in db.execute(statement, as_table=True):
+                row = self._normalize(row)
+                rows[row['id']] = row
+        return ids, rows
+
+    def _file_ids(self, ids, limit):
+        """Get the file IDs of a request, sorted, or raise naming the fault."""
+        try:
+            ids = sorted({int(id) for id in ids or []})
+        except (TypeError, ValueError):
+            raise DatasourceError('ids must be file IDs.')
+        if not ids:
+            raise DatasourceError('No files given.')
+        if len(ids) > limit:
+            raise DatasourceError(f'At most {limit} files at once.')
+        return ids
 
     def read_state(self):
         """Get the lane locks of PDI_CORE_STATE.
