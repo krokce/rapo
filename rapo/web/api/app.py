@@ -766,6 +766,16 @@ def get_ds_files(id: int, kind: str = 'match', files_mask: str | None = None,
                                    clean_mask=clean_mask, subdirs=subdirs)
 
 
+@api.get('/check-ds-mask')
+def check_ds_mask(mask: str, names: list[str] = fastapi.Query([])):
+    """Check a file mask and try it on sample file names (whole name)."""
+    pattern, error = ds_files.compile_mask(mask)
+    return {'error': error,
+            'names': [{'name': name,
+                       'matches': bool(pattern and pattern.fullmatch(name))}
+                      for name in names]}
+
+
 @api.post('/create-ds-directory')
 def create_ds_directory(id: int, path: str):
     """Create a missing directory of a saved datasource."""

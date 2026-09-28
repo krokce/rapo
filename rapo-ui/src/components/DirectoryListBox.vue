@@ -2,40 +2,39 @@
   <div class="q-gutter-y-sm">
     <div v-for="(part, index) in parts" :key="index" class="row items-center no-wrap q-gutter-x-sm">
       <q-input
-        class="col"
+        class="directory-input"
         outlined
         :model-value="part"
-        :label="index === 0 ? label : undefined"
-        :placeholder="index === 0 ? '/data_in/SOURCE' : 'another directory'"
+        :label="index === 0 ? label : `Another ${label.toLowerCase()}`"
+        placeholder="/data_in/SOURCE"
         :rules="[(value) => isAbsolute(value) || 'An absolute path, starting with /']"
         lazy-rules
         hide-bottom-space
         @update:model-value="(value) => setPart(index, value)">
         <template #prepend>
-          <q-icon :name="stateOf(part).icon" :color="stateOf(part).color" size="16px">
-            <q-tooltip>{{ stateOf(part).text }}</q-tooltip>
+          <q-icon
+            :name="stateOf(part).icon"
+            :color="stateOf(part).color"
+            :class="{ 'cursor-pointer': stateOf(part).attention }"
+            @click.stop.prevent="stateOf(part).attention && $emit('attention')">
+            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">{{ stateOf(part).text }}</q-tooltip>
           </q-icon>
         </template>
       </q-input>
-      <q-btn
-        v-if="stateOf(part).creatable && canCreate"
-        outline
-        dense
-        no-caps
-        color="red-5"
-        icon="fas fa-folder-plus"
-        label="Create"
-        class="field-button"
-        @click="$emit('create', part)">
-        <q-tooltip>Create {{ part }} on this server, with the mode of [DATASOURCES] dir_mode</q-tooltip>
-      </q-btn>
-      <q-btn v-if="multiple && parts.length > 1" flat round dense size="sm" icon="fas fa-times" color="grey-7" @click="removePart(index)">
-        <q-tooltip>Remove this directory</q-tooltip>
-      </q-btn>
+      <!-- Both slots are always there, so a row keeps its width whichever buttons it shows. -->
+      <template v-if="multiple">
+        <div class="part-slot">
+          <q-btn size="sm" color="primary" flat round v-if="parts.length > 1" icon="fas fa-minus" @click="removePart(index)">
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Remove this directory</q-tooltip>
+          </q-btn>
+        </div>
+        <div class="part-slot">
+          <q-btn size="sm" color="primary" flat round icon="fas fa-plus" v-if="index === parts.length - 1" @click="addPart">
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Add a directory: PDI Core scans every directory of the list</q-tooltip>
+          </q-btn>
+        </div>
+      </template>
     </div>
-    <q-btn v-if="multiple" flat dense no-caps color="primary" icon="fas fa-plus" label="Add directory" @click="addPart">
-      <q-tooltip>PDI Core scans every directory of the list, saved separated by |</q-tooltip>
-    </q-btn>
   </div>
 </template>
 
@@ -54,9 +53,8 @@ export default {
     multiple: { type: Boolean, default: false },
     // [{field, path, exists, writable}] of the saved datasource.
     states: { type: Array, default: () => [] },
-    canCreate: { type: Boolean, default: false },
   },
-  emits: ["create"],
+  emits: ["attention"],
   data() {
     return {
       // The paths as typed, blank ones included, so a new line doesn't vanish before it is filled.
@@ -124,10 +122,10 @@ export default {
         return { icon: "fas fa-question-circle", color: "grey-6", text: "Unknown: checking it took longer than 5 s (a slow or hung network file system?)" };
       }
       if (!state.exists) {
-        return { icon: "fas fa-folder-minus", color: "red-5", text: "Does not exist on this server", creatable: true };
+        return { icon: "fas fa-folder-minus", color: "red-5", text: "Does not exist on this server. Create it on Need attention.", attention: true };
       }
       if (!state.writable) {
-        return { icon: "fas fa-folder", color: "orange-8", text: "Exists, but rapo may not write in it; PDI Core's user needs read and write access" };
+        return { icon: "fas fa-folder", color: "orange-8", text: "Exists, but rapo may not write in it; PDI Core's user needs read and write access. See Need attention.", attention: true };
       }
       return { icon: "fas fa-folder-open", color: "teal", text: "Exists on this server" };
     },
@@ -136,8 +134,13 @@ export default {
 </script>
 
 <style scoped>
-/* As tall as the outlined input beside it. */
-.field-button {
-  height: 56px;
+.directory-input {
+  width: 600px;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+.part-slot {
+  width: 32px;
+  flex: none;
 }
 </style>

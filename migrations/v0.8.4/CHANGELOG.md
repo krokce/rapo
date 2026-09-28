@@ -18,14 +18,23 @@ The upgrade steps are in the [migration instructions](README.md).
      *Errors 24h*. The row menu has Edit, Clone, the file lists, *Create input directory*, *Set lane*, and *Delete*
      for a disabled datasource (links go; file log and tables stay).
    - **Editor** (`/edit-datasource/<id>`), like the control editor: tabs *Main*, with the boxes *General*, *Input
-     files* (each directory with whether it exists and *Create*; matched, all and clean-up file lists, searchable and
-     exportable; the masks tried on the directories in the background and as you type) and *Processing*; *Archive*
-     (the directories, and *Explore*: a tree of the saved archive, error and duplicate directories, each folder
-     read from this server when opened, with its files' size, date, owner and mode, thousands of files scrolled
-     smoothly); *Retention* (linked tables with their partitioning from the dictionary and warnings; a table another
-     datasource already retains says so, with a link to it and its key and days, and *Copy* fills them in); and
-     *File log*. Old links to `?tab=files` or `?tab=processing` open *Main*. *Clone* starts disabled without
-     partition settings; a rename asks first; a save changed meanwhile by others (also by SQL) is refused with
+     files* (each directory with whether it exists; matched, all and clean-up file lists, searchable and exportable;
+     the masks tried on the directories in the background and as you type) and *Processing*; *Retention*, with the
+     boxes *Files* (archive, error and duplicate directories, days kept), *Tables* (linked tables with their
+     partitioning from the dictionary and warnings; a table another datasource already retains says so, with a link to
+     it and its key and days, and *Copy* fills them in) and *Explore* (a tree of the saved archive, error and
+     duplicate directories, each folder read from this server when opened, with its files' size, date, owner and mode,
+     thousands of files scrolled smoothly); *File log*; and last *Need attention*, shown only when the saved
+     datasource has issues: missing directories with *Create*, read-only or unreadable ones, an invalid pattern,
+     *Stalled*, errors in the last 24 hours, no tables or no retention, each with a way to fix or look at it (the same
+     issues as the list's badges; a red folder icon on Main or Retention opens it). Fields have plain labels (*File
+     name pattern*, *Scheduler lane*, *Keep files gzipped*, ...) with an icon and a tooltip naming what they do,
+     Yes/No drop-downs instead of switches, and fixed widths: directories and patterns 600 px (as is *Source name*,
+     with *Scheduler lane* and *ID* above it), so adding or removing a directory never resizes the rows. *Check regex*
+     next to each pattern checks it with the server's regular expressions and tries it on sample file names, also
+     before the first save; *Matching files*, *All files* and *Clean-up files* are at the bottom of *Input files*. Old
+     links to `?tab=files` or `?tab=processing` open *Main*, `?tab=archive` *Retention*. *Clone* starts disabled
+     without partition settings; a rename asks first; a save changed meanwhile by others (also by SQL) is refused with
      *Reload* or *Overwrite*.
    - **Files are read from this server's file system** (local or mounted as PDI Core sees them): the incoming files of
      the active datasources are counted every `scan_interval` seconds while the UI is open, by a small child process,
@@ -36,7 +45,7 @@ The upgrade steps are in the [migration instructions](README.md).
      `dir_mode` (2775), `stalled_minutes` (60), `lock_stale_minutes` (30), `file_download` (True),
      `max_download_mb` (500).
    - API: `get-ds-list`, `get-ds-status`, `get-ds-config`, `check-ds-directories`, `save-ds-config`, `set-ds-active`,
-     `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `create-ds-directory`,
+     `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `check-ds-mask`, `create-ds-directory`,
      `list-ds-archive`, `get-ds-table-facts` (`partitioned_by` with each datasource's key and days),
      `get-ds-file-log`, `get-ds-file-log-text`; `info` reports `datasources_*`; live event `datasources:changed`.
 2. **Files page (PDI Core file log).** A new *Files* menu item: the file log (`PDI_CORE_FILE_LOG`) of one day, like

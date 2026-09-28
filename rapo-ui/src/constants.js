@@ -156,10 +156,10 @@ export function datasourceLane(value) {
 
 // Duplicate handling of a datasource (pdi_core_ds_config.files_dup_handling), as the PDI Core documentation says.
 export const DUP_HANDLING_OPTIONS = [
-  { value: "PREVENT", label: "PREVENT", description: "Skip the load and archive the file in the duplicate directory. A duplicate has the same MD5 hash." },
-  { value: "PREVENTX", label: "PREVENTX", description: "Like PREVENT, but a duplicate needs both the same MD5 hash and the same file name." },
-  { value: "REPLACE", label: "REPLACE", description: "Delete the records of the older file and load the new one, archived in the archive directory." },
-  { value: "LOAD", label: "LOAD", description: "Load the new file over the older one's records, which are kept. Archived in the archive directory." },
+  { value: "PREVENT", label: "Skip (same content)", description: "Skip the load and archive the file in the duplicate directory. A duplicate has the same MD5 hash." },
+  { value: "PREVENTX", label: "Skip (same content and name)", description: "Like PREVENT, but a duplicate needs both the same MD5 hash and the same file name." },
+  { value: "REPLACE", label: "Replace older file", description: "Delete the records of the older file and load the new one, archived in the archive directory." },
+  { value: "LOAD", label: "Load again", description: "Load the new file over the older one's records, which are kept. Archived in the archive directory." },
 ];
 
 // File statuses of the PDI Core file log (pdi_core_file_log.filestatus). RECYCLE, RELOAD and DELETE are asked for from

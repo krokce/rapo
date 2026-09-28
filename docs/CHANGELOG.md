@@ -11,10 +11,11 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 No change to Rapo's own schema, and none to the `PL` engine.
 
 - **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`, own schema or synonyms): list
-  with incoming files and 24h loads, lane switch with undo, issue badges; editor with input-file lists, mask test,
-  *Create* directory, an archive/error/duplicate directory explorer, retention tables (noting a table another
-  datasource retains, with *Copy*) and the file log; clone, delete, 409 on concurrent changes. Directories are
-  read by a child process of the server; new `[DATASOURCES]` options.
+  with incoming files and 24h loads, lane switch with undo, issue badges; editor with plain labels, input-file
+  lists, *Check regex* on sample names, a *Need attention* tab (missing directories with *Create*, the list's
+  issues), a directory explorer, retention tables (noting a table another datasource retains, with *Copy*) and the
+  file log; clone, delete, 409 on concurrent changes. Directories are read by a child process of the server; new
+  `[DATASOURCES]` options.
 - **Files page**: the PDI Core file log of one day by datasource (status columns, records, runtime, a week's
   change, badges), an hourly heatmap, a file search and lane locks (`PDI_CORE_STATE`); per datasource the files
   to Recycle (SUCCESS, ERROR), Reload (SUCCESS), Delete (any status) or **Download** (SUCCESS, ERROR: the archived

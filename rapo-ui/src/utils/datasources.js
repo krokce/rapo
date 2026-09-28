@@ -72,7 +72,7 @@ export const ISSUES = [
   { key: "dir_missing", label: "Input dir missing", color: "red-5", icon: "fas fa-folder-minus" },
   { key: "dir_unreadable", label: "Input dir unreadable", color: "red-5", icon: "fas fa-lock" },
   { key: "other_missing", label: "Archive dir missing", color: "orange-8", icon: "fas fa-folder-minus" },
-  { key: "invalid_mask", label: "Invalid mask", color: "red-5", icon: "fas fa-exclamation-triangle" },
+  { key: "invalid_mask", label: "Invalid pattern", color: "red-5", icon: "fas fa-exclamation-triangle" },
   { key: "stalled", label: "Stalled", color: "red-5", icon: "fas fa-hourglass-end" },
   { key: "errors", label: "Errors 24h", color: "red-5", icon: "fas fa-exclamation-circle" },
 ];
@@ -98,7 +98,7 @@ export function issuesOf(row, status, stalledMinutes = 60) {
     add("other_missing", `Missing on this server: ${status.missing_other.map((name) => name.toUpperCase()).join(", ")}`);
   }
   if (status.mask_error || status.clean_mask_error) {
-    add("invalid_mask", [status.mask_error && `FILES_MASK: ${status.mask_error}`, status.clean_mask_error && `INPUT_CLEAN_FILES_MASK: ${status.clean_mask_error}`].filter(Boolean).join("; "));
+    add("invalid_mask", [status.mask_error && `File name pattern: ${status.mask_error}`, status.clean_mask_error && `Clean-up file pattern: ${status.clean_mask_error}`].filter(Boolean).join("; "));
   }
   if (status.stalled) {
     add("stalled", `Active, and its oldest incoming file has waited longer than ${stalledMinutes} minutes`);

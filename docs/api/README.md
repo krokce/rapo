@@ -509,6 +509,11 @@ Answers `files` (oldest first, at most `list_max_files`: `name`, `directory`, `s
 `clean_mask_error`, `subdirs` and the limits used. A listing reads for `[DATASOURCES] list_budget_seconds` at most;
 what it did not read makes it `truncated`.
 
+#### `GET /api/check-ds-mask`
+Check a file mask (`mask`, a regular expression) and try it on sample file names (`names`, repeated), each matched
+whole (`re.fullmatch`, like Java's `matches()` in PDI Core). Needs no saved datasource. Answers `error` (null when the
+mask compiles) and `names` (`{name, matches}`).
+
 #### `POST /api/create-ds-directory`
 Create a missing directory (`path`) of a saved datasource (`id`), with its missing parents, each with the mode of
 `[DATASOURCES] dir_mode` (umask ignored). Only a directory the saved datasource names: `400` otherwise, or when it
