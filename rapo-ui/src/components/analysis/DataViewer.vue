@@ -1,7 +1,7 @@
 <template>
   <div class="column no-wrap viewer">
     <div class="row items-center q-gutter-sm q-mb-sm toolbar">
-      <q-input v-model="searchText" dense outlined clearable class="search-input" placeholder="Search all columns" debounce="400">
+      <q-input v-model="searchText" outlined clearable class="search-input" placeholder="Search all columns" debounce="400">
         <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
       </q-input>
       <q-btn outline dense color="blue-grey-7" icon="fas fa-columns" no-caps :label="columnsLabel" class="q-px-sm">
@@ -16,6 +16,9 @@
                   <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Show found' : 'Show all'" @click="setColumnsHidden(false)" />
                   <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Hide found' : 'Hide all'" @click="setColumnsHidden(true)" />
                   <q-btn flat dense size="sm" color="primary" no-caps label="Reset order" @click="resetColumns" />
+                  <q-btn v-if="keyColumnNames.length" flat dense size="sm" color="primary" no-caps label="Key fields" @click="showKeyColumns">
+                    <q-tooltip max-width="320px">Show only the fields of the control's match and mismatch criteria, its date and key fields and the RAPO_ fields</q-tooltip>
+                  </q-btn>
                 </div>
               </q-item-section>
             </q-item>
@@ -175,12 +178,12 @@
           <div class="text-caption text-grey-7">{{ filterColumn.db_type }}</div>
         </q-card-section>
         <q-card-section class="q-pt-none q-gutter-sm">
-          <q-select v-model="draft.op" dense outlined emit-value map-options options-dense :options="operatorOptions" label="Condition" />
+          <q-select v-model="draft.op" outlined emit-value map-options options-dense :options="operatorOptions" label="Condition" />
           <template v-if="draft.op === 'range'">
-            <q-input v-model="draft.min" dense outlined :label="filterColumn.kind === 'datetime' ? 'From (YYYY-MM-DD HH:MM:SS)' : 'Minimum'" clearable />
-            <q-input v-model="draft.max" dense outlined :label="filterColumn.kind === 'datetime' ? 'To (YYYY-MM-DD HH:MM:SS)' : 'Maximum'" clearable />
+            <q-input v-model="draft.min" outlined :label="filterColumn.kind === 'datetime' ? 'From (YYYY-MM-DD HH:MM:SS)' : 'Minimum'" clearable />
+            <q-input v-model="draft.max" outlined :label="filterColumn.kind === 'datetime' ? 'To (YYYY-MM-DD HH:MM:SS)' : 'Maximum'" clearable />
           </template>
-          <q-input v-else-if="['eq', 'ne', 'contains', 'starts'].includes(draft.op)" v-model="draft.value" dense outlined autofocus label="Value" @keyup.enter="applyFilter" />
+          <q-input v-else-if="['eq', 'ne', 'contains', 'starts'].includes(draft.op)" v-model="draft.value" outlined autofocus label="Value" @keyup.enter="applyFilter" />
           <div v-else-if="draft.op === 'in'" class="values-list">
             <div v-if="!topValues.length" class="text-grey-7 text-caption">The most frequent values appear once the columns are profiled.</div>
             <q-checkbox
@@ -260,6 +263,8 @@ export default {
     profiles: { type: Array, default: null },
     storageKey: { type: String, default: null },
     exportName: { type: String, default: "data" },
+    // The names the control's criteria use on this side (meta.key_fields, lower case), for the Columns menu's Key fields.
+    keyFields: { type: Array, default: () => [] },
     // {icon, label} of a button on every row, emitting "row" with its values.
     rowAction: { type: Object, default: null },
   },
@@ -327,6 +332,11 @@ export default {
     pickerColumns() {
       const find = (this.columnFind || "").toLowerCase();
       return this.orderedColumns.map((column, position) => ({ column, position })).filter(({ column }) => !find || column.name.toLowerCase().includes(find));
+    },
+    // The key fields among the columns: the ones the criteria name, and Rapo's own RAPO_ columns.
+    keyColumnNames() {
+      const keys = new Set(this.keyFields.map((name) => String(name).toLowerCase()));
+      return this.columns.map((column) => column.name).filter((name) => keys.has(name.toLowerCase()) || name.toLowerCase().startsWith("rapo_"));
     },
     shownColumns() {
       return this.orderedColumns.filter((column) => !this.hidden.includes(column.name));
@@ -611,6 +621,12 @@ export default {
       this.hidden = hide ? others.concat(names) : others;
       this.savePreferences();
     },
+    // Shows the key fields only, in their current order.
+    showKeyColumns() {
+      const keys = this.keyColumnNames;
+      this.hidden = this.columns.map((column) => column.name).filter((name) => !keys.includes(name));
+      this.savePreferences();
+    },
     resetColumns() {
       this.order = [];
       this.hidden = [];
@@ -661,6 +677,12 @@ export default {
 
 .toolbar {
   flex: 0 0 auto;
+}
+
+/* As tall as the search box beside them, like the buttons of the other pages' filter rows. */
+.toolbar > .q-btn,
+.toolbar > .q-btn-dropdown {
+  min-height: 56px;
 }
 
 .search-input {

@@ -1,5 +1,6 @@
-// code-compare exists only in Font Awesome 6; the app loads the v5 font, so it is imported as an SVG icon.
-import { fasCodeCompare } from "@quasar/extras/fontawesome-v6";
+// code-compare and file-circle-check exist only in Font Awesome 6; the app loads the v5 font, so they are imported as
+// SVG icons.
+import { fasCodeCompare, fasFileCircleCheck } from "@quasar/extras/fontawesome-v6";
 
 // Control types (rapo_ref_types) with the icon and Quasar color used for their chips, tabs and names.
 export const CONTROL_TYPES = {
@@ -133,7 +134,7 @@ export function schedulerState(state) {
 
 // PDI Core datasources (pdi_core_ds_config). ISACTIVE is the scheduler lane: the SCHEDULER_ID of the core_load job
 // that processes the datasource, 1-9; 0 disables it. Each lane has a color of its own, the same everywhere.
-export const DATASOURCE_ICON = "fas fa-file-import";
+export const DATASOURCE_ICON = "fas fa-database";
 
 const DATASOURCE_LANE_COLORS = ["grey-6", "teal-7", "indigo-6", "deep-orange-7", "purple-6", "blue-7", "green-7", "brown-6", "pink-6", "cyan-8"];
 
@@ -223,5 +224,5 @@ export function fileStatus(status) {
   return FILE_STATUSES[status] || { label: status || "Unknown", icon: "fas fa-question-circle", color: "grey" };
 }
 
-// The icon of the Files page and its menu item.
-export const FILES_ICON = "fas fa-file-alt";
+// The icon of the Files page and its menu item: a processed file (PDI Core's file log).
+export const FILES_ICON = fasFileCircleCheck;

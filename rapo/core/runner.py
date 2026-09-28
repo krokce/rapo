@@ -80,6 +80,9 @@ class Job:
         self.runs = None
         self.switched = None
         self.seen = None
+        # {process_id, name, type} of the run performed now (an upstream of
+        # a chain, an iteration or a cascade child), cached by process ID.
+        self.current_control = None
         self.canceled = False
 
     @property
@@ -102,16 +105,40 @@ class Job:
         return process_ids
 
     def describe(self):
-        """Get job description for the status report."""
+        """Get job description for the status report.
+
+        `control_name`/`control_type` are those of the run the process
+        performs now, which may be an upstream run of a chain or a cascade
+        child of another control: `job_control_name` names the control the
+        job was submitted for.
+        """
+        process_id = self.process_id
+        current = self._current_control(process_id)
         return {
             'event_id': self.event_id,
-            'control_name': self.control.name,
+            'control_name': current.get('name') or self.control.name,
+            'control_type': current.get('type') or self.control.type,
+            'job_control_name': self.control.name,
             'trigger_type': self.trigger_type,
-            'process_id': self.process_id,
+            'process_id': process_id,
             'pid': self.process.pid if self.process else None,
             'queued': self.queued,
             'started': self.started,
         }
+
+
+    def _current_control(self, process_id):
+        """Get the name and type of the control of a run of this job."""
+        if process_id is None or process_id == self.control.process_id:
+            return {}
+        cached = self.current_control
+        if cached and cached['process_id'] == process_id:
+            return cached
+        state = reader.read_run_state(process_id) or {}
+        self.current_control = {'process_id': process_id,
+                                'name': state.get('control_name'),
+                                'type': state.get('control_type')}
+        return self.current_control
 
 
 class RunManager:
@@ -238,9 +265,13 @@ class RunManager:
 
     def status(self):
         """Get run manager status report."""
+        # Described outside the lock: a job reads the control of the run it
+        # performs now from the database.
         with self.condition:
-            pending = [job.describe() for job in self.pending]
-            running = [job.describe() for job in self.running]
+            pending = list(self.pending)
+            running = list(self.running)
+        pending = [job.describe() for job in pending]
+        running = [job.describe() for job in running]
         return {
             'runner': self.name,
             'active': self.active,

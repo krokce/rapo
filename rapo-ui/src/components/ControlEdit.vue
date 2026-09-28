@@ -8,13 +8,15 @@
       <editor-skeleton />
     </div>
     <div v-else>
-      <h2 class="row items-center q-mb-lg">
-        <q-chip size="xl" :title="controlType(control.control_type).label">
-          <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" class="type-avatar" />
-          {{ control.control_type }}
-        </q-chip>
-        &nbsp;
-        {{ control.control_name ? control.control_name : "New control" }}
+      <h2 class="row items-center q-gutter-x-lg q-mb-lg">
+        <div>{{ control.control_id && !$route.query.clone ? "Edit control" : "New control" }}</div>
+        <div class="row items-center no-wrap text-grey-7 page-subject">
+          <q-chip size="lg" :title="controlType(control.control_type).label">
+            <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" class="type-avatar" />
+            {{ control.control_type }}
+          </q-chip>
+          <span class="q-ml-xs">{{ control.control_name }}</span>
+        </div>
         <q-space />
         <template v-if="control.control_id">
           <run-control-dialog v-if="!dirty" :control_name="control.control_name" :hook="runStarted">

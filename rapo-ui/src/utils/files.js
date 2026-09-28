@@ -75,7 +75,6 @@ export function datasourceRows(day, datasources, keep, keepRow, withoutFiles) {
       return;
     }
     const perf = (day.perf || {})[row.id] || null;
-    row.perf = perf;
     row.lastSuccess = perf ? perf.last_success : null;
     row.weekBefore = (day.week_before || {})[row.id] || 0;
     row.change = row.weekBefore ? (row.dayFiles - row.weekBefore) / row.weekBefore : null;
@@ -160,12 +159,4 @@ export function compactNumber(value) {
     }
   }
   return String(Math.round(number));
-}
-
-// A throughput in k records per second, with the precision it needs.
-export function formatRate(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 }

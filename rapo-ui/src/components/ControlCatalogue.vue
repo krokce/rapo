@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <h2 class="row items-end q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <h2 class="row items-center q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <div v-if="showSkeleton">Controls</div>
       <div v-else>{{ countTitle }}</div>
       <div v-if="!showSkeleton && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>

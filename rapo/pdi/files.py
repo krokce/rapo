@@ -269,6 +269,79 @@ def create_directory(row, path):
     return list(reversed(missing))
 
 
+def list_archive(row, field, path=None):
+    """Get one level of the archive, error or duplicate directory.
+
+    Parameters
+    ----------
+    row : dict
+        The saved datasource.
+    field : str
+        `archive_directory`, `error_directory` or `duplicate_directory`.
+    path : str, optional
+        A subdirectory relative to the field's directory, e.g. a day
+        (YYYYMMDD); the directory itself when empty. It must stay inside it.
+
+    Returns
+    -------
+    listing : dict
+        `root`, `path`, `exists`, `readable`, `error`, `truncated` (stopped at
+        list_max_files entries or at list_budget_seconds), `dirs` (newest name
+        first) and `files` (by name).
+    """
+    if field not in OTHER_DIRECTORIES:
+        raise DatasourceError(f'field must be one of '
+                              f'{", ".join(OTHER_DIRECTORIES)}.')
+    root = (row.get(field) or '').strip()
+    if not root:
+        raise DatasourceError(f'Datasource {row["sourcename"]} has no '
+                              f'{field.upper()}.')
+    path = (path or '').strip().strip('/')
+    real_root = os.path.realpath(root)
+    target = os.path.realpath(os.path.join(real_root, path))
+    if os.path.commonpath([real_root, target]) != real_root:
+        raise DatasourceError(f'{path} is not inside {root}.')
+    limit = max(number_option('list_max_files'), 1)
+    deadline = time.monotonic() + max(number_option('list_budget_seconds'), 1)
+    result = {'root': root, 'path': path, 'exists': True, 'readable': True,
+              'error': None, 'truncated': False, 'dirs': [], 'files': []}
+    try:
+        with os.scandir(target) as entries:
+            for entry in entries:
+                if (len(result['dirs']) + len(result['files']) >= limit
+                        or time.monotonic() > deadline):
+                    result['truncated'] = True
+                    break
+                try:
+                    relative = os.path.join(path, entry.name)
+                    if entry.is_dir(follow_symlinks=False):
+                        info = entry.stat(follow_symlinks=False)
+                        result['dirs'].append({
+                            'name': entry.name, 'path': relative,
+                            'modified': dt.datetime.fromtimestamp(
+                                int(info.st_mtime))})
+                    elif entry.is_file():
+                        info = entry.stat()
+                        result['files'].append({
+                            'name': entry.name, 'path': relative,
+                            'size': info.st_size,
+                            'modified': dt.datetime.fromtimestamp(
+                                int(info.st_mtime)),
+                            'owner': user_name(info.st_uid),
+                            'group': group_name(info.st_gid),
+                            'mode': stat.filemode(info.st_mode)})
+                except OSError:
+                    continue
+    except (FileNotFoundError, NotADirectoryError):
+        result['exists'] = False
+    except OSError as error:
+        result['readable'] = False
+        result['error'] = error.strerror or str(error)
+    result['dirs'].sort(key=lambda item: item['name'], reverse=True)
+    result['files'].sort(key=lambda item: item['name'])
+    return result
+
+
 class Scanner:
     """Counts the files waiting for every active datasource, in the background.
 

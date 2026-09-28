@@ -514,11 +514,18 @@ Create a missing directory (`path`) of a saved datasource (`id`), with its missi
 `[DATASOURCES] dir_mode` (umask ignored). Only a directory the saved datasource names: `400` otherwise, or when it
 exists or can not be created. Answers `{"status": 200, "created": [...]}`.
 
+#### `GET /api/list-ds-archive`
+One level of a saved datasource's (`id`) `field` directory (`archive_directory`, `error_directory` or
+`duplicate_directory`), or of its subdirectory `path` (relative, e.g. a day `YYYYMMDD`; `400` when it leads outside).
+Answers `root`, `path`, `exists`, `readable`, `error`, `dirs` (`{name, path, modified}`, newest name first), `files`
+(`{name, path, size, modified, owner, group, mode}`, by name) and `truncated`, stopped at `[DATASOURCES]
+list_max_files` entries or `list_budget_seconds`. `path` of an entry is what to pass to list it.
+
 #### `GET /api/get-ds-table-facts`
 What the dictionary says about tables (`tables`, repeated) of Rapo's schema, by name: `exists`, `num_rows`,
 `partitioned`, `partitioning_type`, `interval`, `partition_keys`, `partition_count`, `first_partition` and
-`last_partition` (their high values), and `partitioned_by`, the datasources (`{id, sourcename}`) configuring a
-partition key for the table.
+`last_partition` (their high values), and `partitioned_by`, the datasources (`{id, sourcename, partition_key,
+partition_days_to_retain, partition_days_in_advance}`) configuring a partition key for the table.
 
 #### `GET /api/get-ds-file-log`
 The files a datasource (`id`) loaded on one day (`date`, `YYYY-MM-DD`, default the database's today), newest first,
@@ -620,7 +627,9 @@ list of `{column, desc}`, and `search` a case-insensitive text looked for in eve
 `process_id`, `dataset`. Answers `{sql, meta}`: the dataset's SQL, formatted, and its description (control, run
 window and status, `table_name`, `total` rows - exact for a result dataset, the run's count for a fetched one -
 `stale`, true when the control was saved after the run started, and `datasets`, the run's other datasets
-`[{dataset, kind, side, count}]` with the counts of its run log; empty for a report). 404 when the run, the dataset or the result
+`[{dataset, kind, side, count}]` with the counts of its run log; empty for a report; `key_fields`, the lower-case
+identifiers of the control's criteria on the dataset's side: REC correlation and discrepancy fields, CMP match and
+mismatch columns, ANL error and case definitions, plus the date and key fields). 404 when the run, the dataset or the result
 table does not exist.
 
 #### `POST /api/analysis-start`
@@ -753,7 +762,10 @@ The state of the scheduler, of its lease and of the run manager of **this** serv
 * `scheduled_controls`, `last_fire`, `next_maintenance`;
 * `server_time` - the server's clock, which the UI uses to show relative times;
 * `runner` - `{runner, active, capacity, queued, running}`, where `queued` and `running` list
-  `{event_id, control_name, trigger_type, process_id, pid, queued, started}`.
+  `{event_id, control_name, control_type, job_control_name, trigger_type, process_id, pid, queued, started}`.
+  `process_id`, `control_name` and `control_type` are those of the run the job process performs now, which is an
+  upstream run of a chain, an iteration or a cascade child while those run; `job_control_name` is the control the
+  job was submitted for.
 
 #### `POST /api/scheduler-stop` and `POST /api/scheduler-start`
 Stop or resume scheduling. The switch is stored in the database, so it survives a restart and applies to every

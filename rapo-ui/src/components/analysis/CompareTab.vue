@@ -23,7 +23,7 @@
           <q-select
             v-model="custom.control"
             class="col-12 col-md-4"
-            dense
+           
             outlined
             use-input
             input-debounce="0"
@@ -34,7 +34,7 @@
           <q-select
             v-model="custom.run"
             class="col-12 col-md-3"
-            dense
+           
             outlined
             emit-value
             map-options
@@ -42,7 +42,7 @@
             :options="runOptions"
             :disable="!custom.control"
             :loading="runsLoading" />
-          <q-select v-model="custom.dataset" class="col-12 col-md-2" dense outlined emit-value map-options label="Dataset" :options="datasetOptions" :disable="!custom.run" />
+          <q-select v-model="custom.dataset" class="col-12 col-md-2" outlined emit-value map-options label="Dataset" :options="datasetOptions" :disable="!custom.run" />
           <q-btn unelevated no-caps color="primary" icon="fas fa-balance-scale" label="Compare" :disable="!custom.run || !custom.dataset" @click="startCustom" />
         </div>
       </q-card-section>
@@ -104,9 +104,9 @@
         </template>
         <div class="q-pa-sm">
           <div v-for="(pair, index) in pairs" :key="index" class="row items-center q-gutter-sm q-mb-xs">
-            <q-select v-model="pair.a" dense outlined options-dense class="col" :options="columnsA" label="A" />
+            <q-select v-model="pair.a" outlined options-dense class="col" :options="columnsA" label="A" />
             <q-icon name="fas fa-arrows-alt-h" color="grey-6" />
-            <q-select v-model="pair.b" dense outlined options-dense class="col" :options="columnsB" label="B" />
+            <q-select v-model="pair.b" outlined options-dense class="col" :options="columnsB" label="B" />
             <q-chip v-if="pair.source === 'criteria'" dense size="sm" color="teal-1" text-color="teal-9" title="From the reconciliation's criteria">criteria</q-chip>
             <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-trash" @click="removePair(index)" />
           </div>

@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
         <div class="text-grey-6 results-day">{{ dayTitle }}</div>
         <div v-if="hasDay && activeFilters.length" class="row items-center">

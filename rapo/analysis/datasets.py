@@ -15,7 +15,9 @@ A dataset is named by the Results column it stands for:
 """
 
 import datetime as dt
+import json
 import math
+import re
 
 import sqlalchemy as sa
 
@@ -84,8 +86,50 @@ def resolve(process_id, dataset):
         'total_exact': exact,
         'stale': kind == 'fetched' and _changed_since(control, run),
         'datasets': _datasets(control),
+        'key_fields': key_fields(control, side),
     }
     return sql, meta
+
+
+IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_$#]*')
+
+
+def key_fields(control, side):
+    """Get the names the control's criteria use on one side, lower case.
+
+    The criteria of a REC are its correlation (match) and discrepancy
+    (mismatch) fields, of a CMP its match (`rule_config`) and mismatch
+    (`error_definition`) columns, of an ANL its error and case definitions;
+    the date and key fields count too. A formula or SQL text gives every
+    identifier in it, so a dataset column is a key field when its name is
+    one of them (the page adds the RAPO_ columns). Read from the current
+    configuration, like the fetched select; never fails.
+    """
+    config = control.config
+    texts = []
+    try:
+        if control.is_reconciliation:
+            rules = json.loads(config['rule_config'] or '{}')
+            for item in ((rules.get('correlation_config') or [])
+                         + (rules.get('discrepancy_config') or [])):
+                texts.append(item.get(f'field_{side}'))
+            texts += [config[f'source_date_field_{side}'],
+                      config[f'source_key_field_{side}']]
+        elif control.is_comparison:
+            for key in ('rule_config', 'error_definition'):
+                for item in json.loads(config[key] or '[]'):
+                    texts.append(item.get(f'column_{side}'))
+            texts.append(config[f'source_date_field_{side}'])
+        else:
+            texts += [config['error_definition'], config['case_definition'],
+                      config['source_date_field']]
+    except (ValueError, TypeError, AttributeError, KeyError):
+        pass
+    names = set()
+    for text in texts:
+        if text:
+            names.update(name.lower() for name in IDENTIFIER.findall(str(text)))
+    return sorted(names)
 
 
 def _datasets(control):

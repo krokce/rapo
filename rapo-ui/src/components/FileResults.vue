@@ -1,8 +1,8 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-md'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
-        <div>Files</div>
+      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+        <div>File processing</div>
         <div class="text-grey-6 results-day">{{ dayTitle }}</div>
         <div v-if="hasDay && activeFilters.length" class="row items-center">
           <filter-badge :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" @clear="clearFilters" />
@@ -183,7 +183,7 @@
       type="table"
       dense
       class="list-table files-table"
-      :style="{ minWidth: tableWidth + 'px' }"
+      :style="{ '--table-width': tableWidth + 'px' }"
       :items="sortedRows"
       :virtual-scroll-item-size="52"
       :virtual-scroll-sticky-size-start="28"
@@ -276,7 +276,6 @@
             <span v-else-if="column.key === 'rejected'" :class="{ 'text-red-6 text-weight-bold': row.rejected }">{{ row.files ? formatNumber(row.rejected) : "" }}</span>
             <span v-else-if="column.key === 'runtime'">{{ row.files ? formatDuration(row.runtime) : "" }}</span>
             <span v-else-if="column.key === 'lastSuccess'">{{ toTimeString(row.lastSuccess) }}</span>
-            <span v-else-if="column.key === 'median'" :title="perfTitle(row)">{{ row.perf && row.perf.n ? formatRate(row.perf.median) : "" }}</span>
             <template v-else-if="column.key === 'change'">
               <span v-if="row.change !== null" :class="changeClass(row.change)" :title="`${row.dayFiles} file(s), ${row.weekBefore} a week earlier${isToday ? ' up to this time' : ''}`">
                 {{ row.change > 0 ? "+" : "" }}{{ Math.round(row.change * 100) }}%
@@ -313,7 +312,7 @@ import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { formatAge } from "../utils/datasources";
-import { FILE_ISSUES, compactNumber, datasourceRows, dayStatuses, formatRate, heatmapRows, statusTotals } from "../utils/files";
+import { FILE_ISSUES, compactNumber, datasourceRows, dayStatuses, heatmapRows, statusTotals } from "../utils/files";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
@@ -337,7 +336,6 @@ const TRAILING_COLUMNS = [
   { key: "rejected", label: "Rejected", align: "right", width: 90, number: true },
   { key: "runtime", label: "Runtime", align: "right", width: 100, number: true, title: "The runtimes of the files, summed (h:mm:ss)" },
   { key: "lastSuccess", label: "Last success", align: "left", width: 100 },
-  { key: "median", label: "k records/s", align: "right", width: 100, number: true, title: "The median of the k records written per second of the SUCCESS files" },
   { key: "change", label: "vs. week", align: "right", width: 80 },
 ];
 
@@ -468,10 +466,7 @@ export default {
       }
       const valueOf = key.startsWith("status:")
         ? (row) => row.statuses[key.slice(7)] || null
-        : {
-            waiting: (row) => this.waitingOf(row),
-            median: (row) => (row.perf ? row.perf.median : null),
-          }[key] || ((row) => row[key]);
+        : { waiting: (row) => this.waitingOf(row) }[key] || ((row) => row[key]);
       return sortRows(this.rows, valueOf, this.sort.dir);
     },
     // The Datasource column fits the longest name of the day, whatever the filters, so it doesn't change width while
@@ -544,7 +539,6 @@ export default {
     fillViewportToBottom,
     formatAge,
     formatNumber,
-    formatRate,
     sortIcon,
     toDateTimeString,
     toTimeString,
@@ -578,11 +572,6 @@ export default {
     statusClass(status, count) {
       if (!count) return "";
       return status === "ERROR" ? "text-red-6 text-weight-bold" : ["RECYCLE", "RELOAD", "DELETE"].includes(status) ? "text-indigo-7 text-weight-bold" : "";
-    },
-    perfTitle(row) {
-      const perf = row.perf;
-      if (!perf || !perf.n) return "";
-      return `k records written/s of ${perf.n} SUCCESS file(s) this day (not filtered by hour): min ${formatRate(perf.min)}, 25% ${formatRate(perf.p25)}, median ${formatRate(perf.median)}, 75% ${formatRate(perf.p75)}, max ${formatRate(perf.max)}`;
     },
     changeClass(change) {
       return change <= -0.5 ? "text-red-6 text-weight-bold" : change < 0 ? "text-orange-9" : "text-grey-8";
@@ -770,8 +759,10 @@ export default {
 .datasource-name:hover {
   text-decoration: underline;
 }
+/* The table keeps its columns' widths and scrolls sideways inside the list, never widening the page. */
 .files-table :deep(table) {
   table-layout: fixed;
+  min-width: var(--table-width);
 }
 .files-table td {
   white-space: nowrap;

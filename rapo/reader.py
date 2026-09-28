@@ -97,14 +97,15 @@ class Reader:
         -------
         record : dict or None
             Status, initiation date, start date and configured timeout of
-            the run.
+            the run, and the name and type of its control.
         """
         log = db.tables.log
         config = db.tables.config
         join = log.join(config, log.c.control_id == config.c.control_id,
                         isouter=True)
         select = (sa.select(log.c.status, log.c.added, log.c.start_date,
-                            config.c.timeout)
+                            config.c.timeout, config.c.control_name,
+                            config.c.control_type)
                     .select_from(join)
                     .where(log.c.process_id == process_id))
         return db.execute(select, as_dict=True)

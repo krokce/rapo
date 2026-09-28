@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end q-mb-md">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-md q-mb-none">
+      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-md q-mb-none">
         <div>Data analysis</div>
         <div v-if="!datasetOptions.length" class="text-grey-6 analysis-subtitle">{{ datasetLabel(meta) || datasetTitle }}</div>
       </h2>
@@ -156,7 +156,7 @@
     <sql-filter-dialog v-if="meta" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
 
     <template v-if="session">
-      <q-tabs v-model="tab" dense align="left" class="text-blue-grey-8" active-color="primary" indicator-color="primary" no-caps>
+      <q-tabs v-model="tab" dense inline-label align="left" class="text-blue-grey-8" active-color="primary" indicator-color="primary" no-caps>
         <q-tab name="overview" icon="fas fa-clipboard-list" label="Overview" />
         <q-tab name="columns" icon="fas fa-columns" label="Columns" />
         <q-tab name="correlations" icon="fas fa-project-diagram" label="Correlations" />
@@ -217,6 +217,7 @@
             :view="view"
             :profiles="sampleColumns"
             :storage-key="storageKey"
+            :key-fields="meta.key_fields || []"
             :export-name="exportName"
             :row-action="meta.control_type === 'REC' ? { icon: 'fas fa-exchange-alt', label: 'Find the counterpart on the other side' } : null"
             @profile-rows="profileRows"

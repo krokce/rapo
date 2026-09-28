@@ -17,11 +17,16 @@ The upgrade steps are in the [migration instructions](README.md).
      directories flag *No tables*, *No retention*, missing or unreadable directories, an invalid mask, *Stalled* and
      *Errors 24h*. The row menu has Edit, Clone, the file lists, *Create input directory*, *Set lane*, and *Delete*
      for a disabled datasource (links go; file log and tables stay).
-   - **Editor** (`/edit-datasource/<id>`), like the control editor: tabs *Main*, *Input files* (each directory with
-     whether it exists and *Create*; matched, all and clean-up file lists, searchable and exportable; the masks tried
-     on the directories as you type), *Processing*, *Archive*, *Retention* (linked tables with their partitioning
-     from the dictionary and warnings) and *File log*. *Clone* starts disabled without partition settings; a rename
-     asks first; a save changed meanwhile by others (also by SQL) is refused with *Reload* or *Overwrite*.
+   - **Editor** (`/edit-datasource/<id>`), like the control editor: tabs *Main*, with the boxes *General*, *Input
+     files* (each directory with whether it exists and *Create*; matched, all and clean-up file lists, searchable and
+     exportable; the masks tried on the directories in the background and as you type) and *Processing*; *Archive*
+     (the directories, and *Explore*: a tree of the saved archive, error and duplicate directories, each folder
+     read from this server when opened, with its files' size, date, owner and mode, thousands of files scrolled
+     smoothly); *Retention* (linked tables with their partitioning from the dictionary and warnings; a table another
+     datasource already retains says so, with a link to it and its key and days, and *Copy* fills them in); and
+     *File log*. Old links to `?tab=files` or `?tab=processing` open *Main*. *Clone* starts disabled without
+     partition settings; a rename asks first; a save changed meanwhile by others (also by SQL) is refused with
+     *Reload* or *Overwrite*.
    - **Files are read from this server's file system** (local or mounted as PDI Core sees them): the incoming files of
      the active datasources are counted every `scan_interval` seconds while the UI is open, by a small child process,
      so a slow or hung network file system never holds up the UI. Opening a datasource does not touch the file
@@ -31,13 +36,14 @@ The upgrade steps are in the [migration instructions](README.md).
      `dir_mode` (2775), `stalled_minutes` (60), `lock_stale_minutes` (30), `file_download` (True),
      `max_download_mb` (500).
    - API: `get-ds-list`, `get-ds-status`, `get-ds-config`, `check-ds-directories`, `save-ds-config`, `set-ds-active`,
-     `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `create-ds-directory`, `get-ds-table-facts`,
+     `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `create-ds-directory`,
+     `list-ds-archive`, `get-ds-table-facts` (`partitioned_by` with each datasource's key and days),
      `get-ds-file-log`, `get-ds-file-log-text`; `info` reports `datasources_*`; live event `datasources:changed`.
 2. **Files page (PDI Core file log).** A new *Files* menu item: the file log (`PDI_CORE_FILE_LOG`) of one day, like
    Results is for control runs (`/files?date=`).
    - **By datasource:** files, a column per status of the day, duplicates, *Incoming* (today), records read / written /
-     rejected, runtime, last success, throughput (median k records/s) and the change against a week earlier, with
-     *Silent*, *Drop*, *Errors* and *Log name differs* badges. Header totals and status and duplicate chips filter it;
+     rejected, runtime, last success and the change against a week earlier (the table scrolls sideways when wider
+     than the page), with *Silent*, *Drop*, *Errors* and *Log name differs* badges. Header totals and status and duplicate chips filter it;
      an hourly heatmap by lane filters by hour; *Find file* searches the day's file names across all datasources.
    - **Lanes** (`PDI_CORE_STATE`): a chip per lane shows whether a core_load run holds it, red when older than
      `lock_stale_minutes`; clicking removes the lock after a confirmation. *Lock all lanes* / *Unlock all lanes* set
@@ -57,7 +63,7 @@ The upgrade steps are in the [migration instructions](README.md).
      numbers (and its name) open its file log filtered to exactly those files: the status clicked, or the page's
      status filter, its hour and, for Duplicates, only duplicates (`/files-log/<id>?status=&hour=&dup=`). Such a link
      replaces the file log's kept filters; the file log's filters are written back into its URL, so a reload or Back
-     keeps them. *Incoming* opens the datasource's *Input files* tab with the matching files listed
+     keeps them. *Incoming* opens the datasource's editor with the matching files listed
      (`/edit-datasource/<id>?tab=files&list=match`). **Behavior change:** clicking a status count no longer filters
      the Files page; the status chips of the header still do.
    - API: `get-files-day`, `search-files`, `set-file-status`, `download-ds-files`, `get-pdi-state`, `remove-lane-lock`,
@@ -112,7 +118,11 @@ The upgrade steps are in the [migration instructions](README.md).
    the form, which left out chain-rule sides and `{variables}` and followed unsaved changes.
 10. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
    the search is set, the buttons show or hide the found columns only, so you can hide everything and then show the
-   few columns you need. With no column shown, the table says so, and Export is disabled.
+   few columns you need. With no column shown, the table says so, and Export is disabled. **Key fields** shows only
+   the columns the control's criteria use on this side (a REC's match and mismatch fields, a CMP's match and
+   mismatch columns, the columns an ANL's error and case definitions name; formulas included), its date and key
+   fields and every `RAPO_` column, and hides the rest. The page's text boxes and drop-down lists now have the
+   height of every other form, and its tabs show the icon beside the title.
 11. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
@@ -129,3 +139,13 @@ The upgrade steps are in the [migration instructions](README.md).
    column (Update schema) or an incompatible type (Recreate schema). The schema dialog lists *Nullable* columns
    only with *Show all columns*. The bulk check also no longer differed from the editor on primary-key columns,
    whose `NOT NULL` a result table does not copy.
+14. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
+   file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
+   by the type chip and name, smaller.
+15. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
+   the tabs, as the Files page does, and scroll inside the table from there.
+16. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
+   cascade run in the same job process, one after the other. The list showed the run ID of the one running now, but
+   always the name of the control the job was started for, so e.g. the ANL upstream of a reconciliation never
+   appeared. It now shows the control of the run in progress with its type chip, and *for <control>* when that run
+   belongs to another control's job. `scheduler-status` reports `control_type` and `job_control_name` too.

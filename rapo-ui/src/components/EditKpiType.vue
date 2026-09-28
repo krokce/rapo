@@ -9,14 +9,16 @@
     </div>
     <div v-else>
       <!-- The chip is colored by the unit as saved, not by the one being typed. -->
-      <h2 class="row q-mb-lg">
-        <q-chip v-if="savedKpiType" size="xl" :title="savedKpiType.kpi_value_unit || 'No unit'">
-          <q-avatar :icon="kpiIcon" :color="kpiUnitColor(savedKpiType.kpi_value_unit)" text-color="white" class="type-avatar" />
-          {{ savedKpiType.kpi_type }}
-        </q-chip>
-        <q-chip v-else size="xl" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
-        &nbsp;
-        {{ savedKpiType ? savedKpiType.kpi_type_desc : "New KPI type" }}
+      <h2 class="row items-center q-gutter-x-lg q-mb-lg">
+        <div>{{ savedKpiType ? "Edit KPI type" : "New KPI type" }}</div>
+        <div class="row items-center no-wrap text-grey-7 page-subject">
+          <q-chip v-if="savedKpiType" size="lg" :title="savedKpiType.kpi_value_unit || 'No unit'">
+            <q-avatar :icon="kpiIcon" :color="kpiUnitColor(savedKpiType.kpi_value_unit)" text-color="white" class="type-avatar" />
+            {{ savedKpiType.kpi_type }}
+          </q-chip>
+          <q-chip v-else size="lg" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
+          <span class="q-ml-xs">{{ savedKpiType ? savedKpiType.kpi_type_desc : "" }}</span>
+        </div>
       </h2>
 
       <q-card>

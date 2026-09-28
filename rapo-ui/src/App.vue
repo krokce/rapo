@@ -31,8 +31,9 @@
           :color="getSocketConnected ? 'teal' : 'grey-5'">
           <q-tooltip>{{ getSocketConnected ? "Live updates on" : "Live updates offline, reconnecting..." }}</q-tooltip>
         </q-icon>
+        <!-- The only way to the Scheduler page (it has no menu item), so it is there before the status is (grey, Unknown). -->
         <q-btn
-          v-if="getTokenIsValid && schedulerStatus"
+          v-if="getTokenIsValid"
           round
           flat
           dense
@@ -328,7 +329,7 @@ export default {
         links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log"], gap: true });
         links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
-      links.push({ icon: "fas fa-clock", text: "Scheduler", route: "/scheduler", routes: ["scheduler"], gap: true });
+      // The Scheduler page has no menu item: the header's scheduler button opens it.
       return links;
     },
     schedulerStateInfo() {
@@ -491,4 +492,22 @@ export default {
 
 .skeleton-row td
   height: 45px
+
+// A page title row: its items are centered (the h2's rows are items-center), and so are the chips, badges and spinners
+// inside each item, which would otherwise sit on the text baseline of the h2's tall line.
+h2.row > div
+  display: flex
+  align-items: center
+
+// A title followed by a smaller text only (the day of Results and Files, the dataset of Data analysis): both share the
+// title's baseline, so that they end on one line; centered, the smaller text would sit higher. A title with a chip
+// (the editors, a datasource's file log) stays centered, as a chip on the baseline would hang below the title.
+h2.title-baseline > div:first-child,
+h2.title-baseline > .results-day,
+h2.title-baseline > .analysis-subtitle
+  align-self: baseline
+
+// What an editor page shows (its type chip and name), after the page name in its h2, smaller like the day of Results.
+.page-subject
+  font-size: 0.6em
 </style>

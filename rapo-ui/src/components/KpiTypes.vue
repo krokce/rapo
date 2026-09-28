@@ -1,6 +1,6 @@
 <template>
   <q-page>
-    <h2 class="row items-end q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <h2 class="row items-center q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <div v-if="!loaded">KPI types</div>
       <div v-else>{{ countTitle }}</div>
       <div v-if="loaded && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>

@@ -775,6 +775,15 @@ def create_ds_directory(id: int, path: str):
     return {'status': 200, 'created': created}
 
 
+@api.get('/list-ds-archive')
+def list_ds_archive(id: int, field: str, path: str | None = None):
+    """List one level of the archive, error or duplicate directory of a saved
+    datasource: its subdirectories (days) and files."""
+    row = find_datasource(id)
+    with datasource_errors():
+        return ds_files.list_archive(row, field, path)
+
+
 @api.get('/get-ds-table-facts')
 def get_ds_table_facts(tables: list[str] = fastapi.Query([])):
     """Get the partitioning of tables and the datasources retaining them."""

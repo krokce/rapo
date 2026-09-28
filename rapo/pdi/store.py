@@ -813,7 +813,8 @@ class Store:
             By table name: `exists`, `partitioned`, `partitioning_type`,
             `interval`, `partition_keys`, `partition_count`, the high values
             of the first and last partition, and `partitioned_by`: the
-            datasources configuring a partition key for it.
+            datasources configuring a partition key for it, with their
+            key and days.
         """
         self.check()
         names = sorted({str(table).strip().upper() for table in tables
@@ -864,14 +865,21 @@ class Store:
             if fact['partition_count'] == 1:
                 fact['last_partition'] = row['high_value']
         statement = sa.text(
-            f'select t.table_name, c.id, c.sourcename from {TABLES_TABLE} t '
+            f'select t.table_name, c.id, c.sourcename, t.partition_key, '
+            f't.partition_days_to_retain, t.partition_days_in_advance '
+            f'from {TABLES_TABLE} t '
             f'join {CONFIG_TABLE} c on c.id = t.sourceid '
             f'where t.partition_key is not null and t.table_name in '
             f'({in_list}) order by c.sourcename')
         for row in db.execute(statement.bindparams(**binds), as_table=True):
             facts[row['table_name']]['partitioned_by'].append(
                 {'id': self._value(row['id']),
-                 'sourcename': row['sourcename']})
+                 'sourcename': row['sourcename'],
+                 'partition_key': row['partition_key'],
+                 'partition_days_to_retain': self._value(
+                     row['partition_days_to_retain']),
+                 'partition_days_in_advance': self._value(
+                     row['partition_days_in_advance'])})
         return facts
 
     def signature(self):

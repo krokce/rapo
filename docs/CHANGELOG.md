@@ -12,10 +12,11 @@ No change to Rapo's own schema, and none to the `PL` engine.
 
 - **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`, own schema or synonyms): list
   with incoming files and 24h loads, lane switch with undo, issue badges; editor with input-file lists, mask test,
-  *Create* directory, retention tables and the file log; clone, delete, 409 on concurrent changes. Directories are
+  *Create* directory, an archive/error/duplicate directory explorer, retention tables (noting a table another
+  datasource retains, with *Copy*) and the file log; clone, delete, 409 on concurrent changes. Directories are
   read by a child process of the server; new `[DATASOURCES]` options.
-- **Files page**: the PDI Core file log of one day by datasource (status columns, records, runtime, throughput, a
-  week's change, badges), an hourly heatmap, a file search and lane locks (`PDI_CORE_STATE`); per datasource the files
+- **Files page**: the PDI Core file log of one day by datasource (status columns, records, runtime, a week's
+  change, badges), an hourly heatmap, a file search and lane locks (`PDI_CORE_STATE`); per datasource the files
   to Recycle (SUCCESS, ERROR), Reload (SUCCESS), Delete (any status) or **Download** (SUCCESS, ERROR: the archived
   file, several as one ZIP; `[DATASOURCES] file_download`, `max_download_mb`), also in the editor's File log tab. Its
   counts (Files, statuses, Duplicates) open exactly those files with the page's status/hour filters; Incoming opens
@@ -36,12 +37,17 @@ No change to Rapo's own schema, and none to the `PL` engine.
   The tab, sampling, search and the filters that fit go along, and Back returns.
 - **Run log menu in the editor.** Its numbers open *Copy SQL* and *Data analysis*, as on Results. The SQL is the
   server's, no longer the editor's own, which missed chain sides and `{variables}`.
-- **Hide all columns** and a column search in the Data tab's *Columns* menu.
+- **Hide all columns**, **Key fields** (the control's match/mismatch, date and key fields and the `RAPO_` fields) and a
+  column search in the Data tab's *Columns* menu; the analysis page's inputs and tabs look like the other forms'.
 - **Nullability is no schema drift:** only missing, too narrow or incompatible columns show *Schema drift* /
   *Schema changes*; runs make NOT NULL columns nullable themselves as before.
 - **"Checking schema…"** in the editor footer while the result tables are compared with the datasource
   (slow over large views), instead of showing nothing as if the schema matched.
 - **Fix:** leaving the analysis page no longer reports "The run trend could not be loaded. 422".
+- Editor and file-log pages are titled (*Edit control*, *Edit KPI type*, *Edit datasource*, *Files log*); the
+  Scheduler tables reach the bottom of the window.
+- **Fix:** the Scheduler's running list names the control of the run in progress (an upstream, iteration or cascade
+  run showed under the name of the control whose job it is), with its type.
 
 ## v0.8.3 — 2026-09-24
 

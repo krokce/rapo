@@ -12,8 +12,9 @@
       @filters="filtersChanged"
       @loaded="(files) => (loggedName = files.length ? files[0].sourcename : loggedName)">
       <template #title>
-        <div class="row items-center no-wrap">
-          <q-chip v-if="datasource" size="xl" :title="lane(datasource.isactive).label">
+        <div>Files log</div>
+        <div class="row items-center no-wrap text-grey-7 page-subject">
+          <q-chip v-if="datasource" size="lg" :title="lane(datasource.isactive).label">
             <q-avatar :icon="lane(datasource.isactive).icon" :color="lane(datasource.isactive).color" text-color="white" class="type-avatar" />
             <span class="text-weight-bold">{{ lane(datasource.isactive).short }}</span>
           </q-chip>

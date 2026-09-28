@@ -1,6 +1,6 @@
 <template>
-  <q-page class="column no-wrap" :style-fn="fillViewport">
-    <h2 class="row q-gutter-lg q-mb-lg">
+  <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
+    <h2 class="row items-center q-gutter-lg q-mb-lg">
       <div>Scheduler</div>
     </h2>
 
@@ -51,6 +51,7 @@
             <thead>
               <tr class="bg-blue-grey-1">
                 <th class="text-left">State</th>
+                <th class="text-left">Type</th>
                 <th class="text-left">Control</th>
                 <th class="text-left">Trigger</th>
                 <th class="text-center">Run PID</th>
@@ -66,7 +67,20 @@
                   <q-icon :name="job.state === 'running' ? 'fas fa-sync fa-spin' : 'fas fa-hourglass-half'" :color="job.state === 'running' ? 'blue' : 'indigo'" class="q-mr-sm" />
                   {{ job.state === "running" ? "Running" : "Queued" }}
                 </td>
-                <td class="text-weight-bold text-teal">{{ job.control_name }}</td>
+                <td>
+                  <q-chip v-if="job.control_type" size="11px" :title="controlType(job.control_type).label">
+                    <q-avatar :icon="controlType(job.control_type).icon" :color="controlType(job.control_type).color" text-color="white" />
+                    {{ job.control_type }}
+                  </q-chip>
+                </td>
+                <!-- The run the job performs now: an upstream of a chain or a cascade child runs in the job of another control. -->
+                <td>
+                  <span class="text-weight-bold text-teal">{{ job.control_name }}</span>
+                  <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
+                    for {{ job.job_control_name }}
+                    <q-tooltip>Runs in the job of {{ job.job_control_name }}, as its upstream (chain) or cascade</q-tooltip>
+                  </span>
+                </td>
                 <td><q-icon :name="triggerType(job.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(job.trigger_type).label }}</td>
                 <td class="text-center text-blue-grey-7">{{ job.process_id }}</td>
                 <td class="text-center text-blue-grey-7">{{ job.pid }}</td>
@@ -116,8 +130,8 @@
       <q-separator />
 
       <q-tab-panels v-model="tab" keep-alive class="fill-panels">
-        <q-tab-panel name="upcoming">
-          <div class="q-ma-lg q-gutter-y-md fill-column">
+        <q-tab-panel name="upcoming" class="q-pb-none">
+          <div class="q-mx-lg q-mt-lg q-gutter-y-md fill-column">
             <div class="row items-center">
               <q-select
                 v-model="upcomingHours"
@@ -204,8 +218,8 @@
           </div>
         </q-tab-panel>
 
-        <q-tab-panel name="history">
-          <div class="q-ma-lg q-gutter-y-md fill-column">
+        <q-tab-panel name="history" class="q-pb-none">
+          <div class="q-mx-lg q-mt-lg q-gutter-y-md fill-column">
             <div class="row items-center">
               <q-input clearable class="col-3 q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
               <q-select
@@ -349,7 +363,7 @@ import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { valueFilter } from "../utils/filters";
-import { fillViewport, textWidth } from "../utils/layout";
+import { fillViewportToBottom, textWidth } from "../utils/layout";
 import persistFilters from "../mixins/persistFilters";
 
 // Naive server datetime string as milliseconds, read as local time like the server wrote it.
@@ -451,7 +465,7 @@ export default {
     triggerType(type) {
       return TRIGGER_TYPES[type] || { label: type, icon: "fas fa-question" };
     },
-    fillViewport,
+    fillViewportToBottom,
     newDay(rows, index, key) {
       return index > 0 && toDateString(rows[index - 1][key]) !== toDateString(rows[index][key]);
     },

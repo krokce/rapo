@@ -10,7 +10,7 @@
       <template #avatar><q-icon name="fas fa-info-circle" size="16px" /></template>
       Table {{ sourceTableHint }} exists and is named like the datasource, but is not linked.
       <template #action>
-        <q-btn flat dense no-caps label="Link it" @click="addLink(sourceTableHint)" />
+        <q-btn flat label="Link it" @click="addLink(sourceTableHint)" />
       </template>
     </q-banner>
 
@@ -87,19 +87,31 @@
               <div v-for="(line, lineIndex) in factLines(link)" :key="lineIndex" :class="line.class">
                 <q-icon v-if="line.icon" :name="line.icon" size="12px" class="q-mr-xs" />{{ line.text }}
               </div>
+              <!-- Another datasource retaining the table: PDI Core should partition a table from one datasource only. -->
+              <div v-for="other in otherRetainers(link)" :key="other.id" :class="link.partition_key ? 'text-orange-9' : 'text-blue-grey-8'">
+                <q-icon :name="link.partition_key ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'" size="12px" class="q-mr-xs" />
+                {{ link.partition_key ? "Also retained by" : "Retained by" }}
+                <router-link :to="{ name: 'edit-datasource', params: { id: String(other.id) }, query: { tab: 'retention' } }">{{ other.sourcename }}</router-link>:
+                {{ other.partition_key }}, {{ other.partition_days_to_retain }} day(s){{ other.partition_days_in_advance != null ? `, ${other.partition_days_in_advance} ahead` : "" }}
+                <q-btn v-if="!link.partition_key" flat size="sm" color="primary" label="Copy" class="q-ml-xs" @click="copyRetention(link, other)">
+                  <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]" max-width="360px">Fill in the partition key and days of {{ other.sourcename }}, e.g. to move the retention here; then remove them there</q-tooltip>
+                </q-btn>
+              </div>
             </template>
             <q-skeleton v-else-if="link.table_name" type="text" width="70%" />
           </td>
           <td>
-            <q-btn v-if="removable(link)" flat round dense size="sm" icon="fas fa-times" color="grey-7" @click="links.splice(index, 1)">
-              <q-tooltip>Remove the table from the datasource (the table itself stays)</q-tooltip>
+            <q-btn v-if="removable(link)" size="sm" color="primary" flat round icon="fas fa-minus" @click="links.splice(index, 1)">
+              <q-tooltip anchor="top right" self="bottom right" :offset="[0, 5]">Remove the table from the datasource (the table itself stays)</q-tooltip>
             </q-btn>
           </td>
         </tr>
       </tbody>
     </q-markup-table>
 
-    <q-btn flat dense no-caps color="primary" icon="fas fa-plus" label="Add table" @click="addLink(links.length ? '' : datasource.sourcename)" />
+    <div>
+      <q-btn size="md" color="primary" icon="fas fa-plus" label="Add table" @click="addLink(links.length ? '' : datasource.sourcename)" />
+    </div>
   </div>
 </template>
 
@@ -153,6 +165,11 @@ export default {
     },
   },
   watch: {
+    // A save or reload swaps the datasource: which datasources partition a table may have changed with it.
+    modelValue() {
+      this.facts = {};
+      this.loadFacts(this.factNames);
+    },
     tables(value) {
       this.tableOptions = value;
     },
@@ -240,7 +257,7 @@ export default {
       const lines = [];
       if (!fact.exists) {
         lines.push({ text: "Not found in rapo's schema", class: "text-orange-9", icon: "fas fa-exclamation-triangle" });
-        return lines.concat(this.otherPartitioners(link, fact));
+        return lines;
       }
       if (!fact.partitioned) {
         lines.push({ text: `Not partitioned${fact.num_rows != null ? `, ~${Number(fact.num_rows).toLocaleString()} rows` : ""}` });
@@ -258,17 +275,18 @@ export default {
           lines.push({ text: `The table is partitioned by ${fact.partition_keys.join(", ")}, not ${link.partition_key}`, class: "text-red-6", icon: "fas fa-exclamation-circle" });
         }
       }
-      return lines.concat(this.otherPartitioners(link, fact));
+      return lines;
     },
-    // Other datasources partitioning the same table, which the PDI Core documentation warns against.
-    otherPartitioners(link, fact) {
-      if (!link.partition_key) {
-        return [];
-      }
-      const others = fact.partitioned_by.filter((item) => item.id !== this.datasource.id);
-      return others.length
-        ? [{ text: `Also partitioned by ${others.map((item) => item.sourcename).join(", ")}`, class: "text-orange-9", icon: "fas fa-exclamation-triangle" }]
-        : [];
+    // Other datasources partitioning the same table, with their key and days: a note, and a warning once this one
+    // partitions it too, which the PDI Core documentation warns against.
+    otherRetainers(link) {
+      const fact = this.factsOf(link.table_name);
+      return fact ? fact.partitioned_by.filter((item) => item.id !== this.datasource.id) : [];
+    },
+    copyRetention(link, other) {
+      link.partition_key = other.partition_key;
+      link.partition_days_to_retain = other.partition_days_to_retain;
+      link.partition_days_in_advance = other.partition_days_in_advance;
     },
   },
 };

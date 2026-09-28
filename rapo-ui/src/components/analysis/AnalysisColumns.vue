@@ -4,7 +4,7 @@
   </div>
   <div v-else>
     <div class="row items-center q-gutter-sm q-mb-md">
-      <q-input v-model="search" dense outlined clearable class="column-search" placeholder="Find a column">
+      <q-input v-model="search" outlined clearable class="column-search" placeholder="Find a column">
         <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
       </q-input>
       <q-btn-toggle
