@@ -6,52 +6,34 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
-## v0.8.4 — unreleased
+## v0.8.4 — 2026-09-28
 
-No change to Rapo's own schema, and none to the `PL` engine.
+No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need grants on its tables.
 
-- **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`, own schema or synonyms): list
-  with incoming files and 24h loads, lane switch with undo, issue badges; editor with plain labels, input-file
-  lists, *Check regex* on sample names, a *Need attention* tab (missing directories with *Create*, the list's
-  issues), a directory explorer, retention tables (noting a table another datasource retains, with *Copy*) and the
-  file log; clone, delete, 409 on concurrent changes. Directories are read by a child process of the server; new
+- **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`): list with incoming files,
+  24h loads, lane switch and issue badges; editor with input-file lists, *Check regex*, retention tables, a
+  directory explorer, the file log and a *Need attention* tab; clone, delete, 409 on concurrent changes. New
   `[DATASOURCES]` options.
-- **Files page**: the PDI Core file log of one day by datasource (status columns, records, runtime, a week's
-  change, badges), an hourly heatmap, a file search and lane locks (`PDI_CORE_STATE`); per datasource the files
-  to Recycle (SUCCESS, ERROR), Reload (SUCCESS), Delete (any status) or **Download** (SUCCESS, ERROR: the archived
-  file, several as one ZIP; `[DATASOURCES] file_download`, `max_download_mb`), also in the editor's File log tab. Its
-  counts (Files, statuses, Duplicates) open exactly those files with the page's status/hour filters; Incoming opens
-  the waiting files in the editor. The counts no longer filter the Files page (its status chips still do).
-- **Results and Controls lists:** Results day totals read **ANL** (26); Controls names link to the editor.
-- **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the
-  confirmation offers to keep them. API callers: `delete-control` now drops by default, pass `drop_tables=false` to
-  keep them. A control with a run in progress cannot be deleted.
-- **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.` like REC
-  (`"formula_mode": true` in `rule_config`/`error_definition`); the two boxes are stacked. Switching *Formula* off
-  (CMP and REC) restores a plain `a.<column>` as that column.
-- **Active-filter badge** on every list page: a *Filter* badge that clears every filter and the header search (not
-  the sort), with the active filters as removable chips below it. Filters,
-  sort and the header search are kept for the browser session (per tab, reloads included).
-- **Random analysis samples.** A sample is drawn at random by default (`order by dbms_random.value`, uniform at any
-  size, Extend included) instead of the first records the database returns, which could all be from one load. A
-  *Random / First rows* switch keeps the old, faster mode; `analysis-start` takes `random` (default true).
-- **Counterpart by `RAPO_DISCREPANCY_ID`.** A REC discrepancy's counterpart now shows first the exact record it was
-  matched with (its key field is the row's `RAPO_DISCREPANCY_ID`), then the records of the same correlation key.
-- **Dataset switch on the analysis page.** Source A/B and Discrepancies A/B of the same run, with their counts.
-  The tab, sampling, search and the filters that fit go along, and Back returns.
-- **Run log menu in the editor.** Its numbers open *Copy SQL* and *Data analysis*, as on Results. The SQL is the
-  server's, no longer the editor's own, which missed chain sides and `{variables}`.
-- **Hide all columns**, **Key fields** (the control's match/mismatch, date and key fields and the `RAPO_` fields) and a
-  column search in the Data tab's *Columns* menu; the analysis page's inputs and tabs look like the other forms'.
-- **Nullability is no schema drift:** only missing, too narrow or incompatible columns show *Schema drift* /
-  *Schema changes*; runs make NOT NULL columns nullable themselves as before.
-- **"Checking schema…"** in the editor footer while the result tables are compared with the datasource
-  (slow over large views), instead of showing nothing as if the schema matched.
+- **Files page**: one day of the PDI Core file log by datasource, an hourly heatmap, file search and lane locks;
+  per datasource the files to Recycle, Reload, Delete or **Download** (one file or a ZIP). Counts open exactly those
+  files and no longer filter the page.
+- **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
+  API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
+- **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC
+  (`"formula_mode": true`); the two boxes are stacked. Switching *Formula* off (CMP and REC) keeps a plain
+  `a.<column>` as that column.
+- **Random analysis samples** by default (`order by dbms_random.value`); *First rows* keeps the faster old mode.
+- **Counterpart by `RAPO_DISCREPANCY_ID`:** a REC discrepancy shows first the exact record it was matched with.
+- **Nullability is no schema drift:** only missing, too narrow or incompatible columns count.
+- **Fix:** the Scheduler's running list names the control of the run in progress (upstream, iteration, cascade).
+- **Active filters** on every list page as a badge and removable chips; filters, sort and search are kept for the
+  browser session.
+- **Analysis:** a dataset switch between Source A/B and Discrepancies A/B of a run; *Hide all*, *Key fields* and a
+  search in the *Columns* menu; the editor's run log opens *Copy SQL* and *Data analysis* with the server's SQL.
+- **"Checking schema…"** in the editor footer while the result tables are compared.
 - **Fix:** leaving the analysis page no longer reports "The run trend could not be loaded. 422".
-- Editor and file-log pages are titled (*Edit control*, *Edit KPI type*, *Edit datasource*, *Files log*); the
-  Scheduler tables reach the bottom of the window.
-- **Fix:** the Scheduler's running list names the control of the run in progress (an upstream, iteration or cascade
-  run showed under the name of the control whose job it is), with its type.
+- Smaller: Results totals read **ANL** (26), Controls names link to the editor, editor pages are titled, Scheduler
+  tables fill the window.
 
 ## v0.8.3 — 2026-09-24
 
