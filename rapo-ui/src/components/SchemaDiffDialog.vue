@@ -156,7 +156,8 @@ export default {
       return SCHEMA_STATUSES[column.status] || SCHEMA_STATUSES.ok;
     },
     rowsOf(table) {
-      return this.showAll ? table.columns : table.columns.filter((column) => column.status !== "ok");
+      // Nullable columns are no drift (each run relaxes them), so they show with the OK ones.
+      return this.showAll ? table.columns : table.columns.filter((column) => !["ok", "nullable"].includes(column.status));
     },
     // Why nothing writes the table: a reconciliation side whose output is off, or a table of another control type.
     orphanReason(orphan) {

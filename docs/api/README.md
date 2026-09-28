@@ -275,7 +275,8 @@ changed.
   `added` (missing in the table); `widened` (too narrow for the datasource);
   `nullable` (NOT NULL only in the table); `not_output` (no longer filled, kept with its history);
   `incompatible` (the type cannot be converted in a table with data, e.g. `VARCHAR2` → `NUMBER`). `ddl` is the
-  change `update-control-schema` makes, or `null`.
+  change `update-control-schema` makes, or `null`. Only `added`/`widened` changes and `incompatible` columns are
+  drift; a `ddl` of `nullable`/`not_output` (`MODIFY ... NULL`) is not, since every run applies it before it saves.
 - A datasource that cannot be read is reported as `error` (top level), a table whose expected schema cannot be
   built (e.g. an output column missing in the datasource) as `error` of that table. Both answer `200`.
 
@@ -294,7 +295,7 @@ control:
  "unowned": [{"table": "RAPO_RESA_OLD_CONTROL", "rows": 1315, "rows_analyzed": "2026-09-21T22:00:04"}]}
 ```
 
-`level` is `ok`, `update` (changes `update-control-schema` makes), `recreate` (incompatible columns), `error` (the
+`level` is `ok`, `update` (added or widened columns; nullability never counts), `recreate` (incompatible columns), `error` (the
 configuration names a column its datasource lacks, see `reason`), `missing` (no written table exists yet),
 `not_checked`, or `rebuilt` (the control drops its tables on every run, so only its `orphans` are reported).
 `orphans` are the control's tables its saved configuration no longer writes, with the optimizer statistics

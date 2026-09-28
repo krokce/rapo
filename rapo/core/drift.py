@@ -6,6 +6,8 @@ catalogue. This builds the expected columns from the dictionary instead: a
 result table is a CTAS copy of plain datasource columns, so their dictionary
 types are what the CTAS would create. It mirrors
 Executor._prepare_output_columns and compares with the same diff_column rules.
+Nullability is ignored (is_drift), so the dictionary's NOT NULL of a primary
+key column, which a CTAS does not copy, makes no difference.
 
 What only a CTAS can type is reported as not checked: CMP output columns that
 coalesce A and B, datasource names with {variables}, and datasources over a
@@ -24,7 +26,9 @@ import sqlalchemy as sa
 from ..database import db
 from ..logger import logger
 from ..reader import reader
-from .control import Control, RESULT_PREFIXES, diff_column, output_table_names
+from .control import (
+    Control, RESULT_PREFIXES, diff_column, is_drift, output_table_names
+)
 from .fields import (
     PROCESS_ID, RESULT_KEY, RESULT_VALUE, RESULT_TYPE, DISCREPANCY_ID,
     DISCREPANCY_DESCRIPTION
@@ -291,7 +295,8 @@ def _expected_columns(control, table_name, columns):
     # db.normalize: a TIMESTAMP date field is cast to DATE, and a cast column
     # is created nullable.
     date_fields = {(field or '').lower() for field in date_fields}
-    return [dict(column, data_type='DATE', data_length=7, nullable='Y')
+    return [dict(column, data_type='DATE', data_length=7, data_precision=None,
+                 data_scale=None, nullable='Y')
             if column['name'] in date_fields
             and column['data_type'].startswith('TIMESTAMP')
             else column for column in output]
@@ -327,7 +332,7 @@ def _control_drift(control, columns):
                  for name, column in expected.items()]
         diffs += [diff_column(column, None) for name, column in current.items()
                   if name not in expected]
-        changes = sum(1 for diff in diffs if diff['ddl'])
+        changes = sum(1 for diff in diffs if is_drift(diff))
         incompatible = sum(1 for diff in diffs
                            if diff['status'] == 'incompatible')
         if changes or incompatible:

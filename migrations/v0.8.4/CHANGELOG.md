@@ -116,3 +116,16 @@ The upgrade steps are in the [migration instructions](README.md).
 11. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
+12. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
+   control is opened, after a change of its datasource or output columns, and after Apply, Update schema, Recreate
+   schema or dropping an orphan. Over large or complex views this can take a while, and until it answered the footer
+   showed nothing, as if the schema matched while the *Schema drift* badge of the Controls list said otherwise. The
+   footer now shows *Checking schema…* with a spinner until the answer comes. A re-check after a run keeps the
+   notice it has meanwhile.
+13. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
+   nullable, or an old column that is `NOT NULL` but no longer filled, no longer shows *Schema drift* on the
+   Controls list, *Schema changes* in the editor, or counts toward Update schema. Each run already makes such
+   columns nullable before it saves, so results are always written. Drift now means only a missing or too narrow
+   column (Update schema) or an incompatible type (Recreate schema). The schema dialog lists *Nullable* columns
+   only with *Show all columns*. The bulk check also no longer differed from the editor on primary-key columns,
+   whose `NOT NULL` a result table does not copy.

@@ -37,6 +37,10 @@ No change to Rapo's own schema, and none to the `PL` engine.
 - **Run log menu in the editor.** Its numbers open *Copy SQL* and *Data analysis*, as on Results. The SQL is the
   server's, no longer the editor's own, which missed chain sides and `{variables}`.
 - **Hide all columns** and a column search in the Data tab's *Columns* menu.
+- **Nullability is no schema drift:** only missing, too narrow or incompatible columns show *Schema drift* /
+  *Schema changes*; runs make NOT NULL columns nullable themselves as before.
+- **"Checking schema…"** in the editor footer while the result tables are compared with the datasource
+  (slow over large views), instead of showing nothing as if the schema matched.
 - **Fix:** leaving the analysis page no longer reports "The run trend could not be loaded. 422".
 
 ## v0.8.3 — 2026-09-24

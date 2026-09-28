@@ -4425,6 +4425,8 @@ def diff_column(current, expected):
 
     Either may be None (missing on that side); both are user_tab_columns
     rows. Returns the column's status and the ALTER TABLE clause fixing it.
+    Only is_drift() clauses make a schema drift: making a column nullable
+    (nullable, not_output) is applied by every run itself.
     """
     name = (expected or current)['name']
     item = {'name': name,
@@ -4451,6 +4453,15 @@ def diff_column(current, expected):
             item['status'] = 'nullable'
             item['ddl'] = f'MODIFY ({name} NULL)'
     return item
+
+
+def is_drift(item):
+    """Tell whether a diff_column item needs a change for results to fit.
+
+    Nullability is no drift: a NOT NULL column the run may leave empty is made
+    nullable by each run before it saves (_prepare_output_table).
+    """
+    return bool(item['ddl']) and item['status'] in ('added', 'widened')
 
 
 _TEXT_TYPES = ('VARCHAR2', 'NVARCHAR2', 'CHAR', 'NCHAR', 'RAW')

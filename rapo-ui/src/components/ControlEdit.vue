@@ -965,8 +965,15 @@
             </q-btn>
             <q-btn label="Cancel" type="reset" color="primary" flat />
             <q-space />
+            <div v-if="schemaCheckPending" class="text-grey-7 text-weight-medium row items-center no-wrap">
+              <q-spinner size="12px" class="q-mr-sm" />
+              Checking schema…
+              <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
+                Comparing the result tables with the schema the configuration would create. Large or complex views take a while.
+              </q-tooltip>
+            </div>
             <div
-              v-if="schemaNotice"
+              v-else-if="schemaNotice"
               class="schema-notice text-weight-medium row items-center no-wrap cursor-pointer"
               :class="schemaNotice.class"
               @click="$refs.schemaDialog.open()">
@@ -1150,6 +1157,9 @@ export default {
       activeRunStatuses: ACTIVE_RUN_STATUSES,
       // The answer of check-control-schema for the form as it is, null until the first one.
       schemaCheck: null,
+      // A check-control-schema request is running, and the schemaKey the current schemaCheck answers.
+      schemaChecking: false,
+      schemaCheckedKey: null,
       schemaBusy: false,
       // Exact row counts asked for in SchemaDiffDialog ({table: {rows, counted}}), and the tables being counted.
       schemaExactRows: {},
@@ -1276,6 +1286,11 @@ export default {
     },
     schemaSummary() {
       return summarizeSchema(this.schemaCheck);
+    },
+    // A check is running and nothing valid is known yet: no answer, one for another form, or one before the tables
+    // were changed. A re-check after a run keeps its notice meanwhile.
+    schemaCheckPending() {
+      return this.schemaEnabled && this.schemaChecking && (!this.schemaCheck || this.schemaCheckedKey !== this.schemaKey);
     },
     // A new datasource or a column Update schema cannot convert: starting the tables anew is the better fix.
     schemaRecreateSuggested() {
@@ -1994,7 +2009,7 @@ export default {
       await this.afterSave(result, true);
       this.saving = false;
       this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved." });
-      this.checkSchema();
+      this.checkSchema(0, true);
       return true;
     },
     // Takes the saved row's ID and stamps into the form (an insert has none yet, and the next save needs them),
@@ -2088,24 +2103,31 @@ export default {
       this.refreshLogs();
     },
     // Compares the result tables with the schema the form would create (debounced), for the footer marker.
-    // An answer overtaken by a later request is dropped.
-    checkSchema(delay = 0) {
+    // An answer overtaken by a later request is dropped. renew: the tables were changed, so the answer is outdated.
+    checkSchema(delay = 0, renew = false) {
       clearTimeout(this.schemaTimer);
+      if (renew) {
+        this.schemaCheckedKey = null;
+      }
       if (!this.schemaEnabled) {
         this.schemaCheck = null;
+        this.schemaChecking = false;
         return;
       }
       this.schemaTimer = setTimeout(async () => {
         const request = (this.schemaRequest = (this.schemaRequest || 0) + 1);
+        const key = this.schemaKey;
+        this.schemaChecking = true;
+        let check;
         try {
-          const check = await api("check-control-schema", { method: "POST", body: this.buildControlPayload(), loadingBar: false });
-          if (request === this.schemaRequest) {
-            this.schemaCheck = check;
-          }
+          check = await api("check-control-schema", { method: "POST", body: this.buildControlPayload(), loadingBar: false });
         } catch (error) {
-          if (request === this.schemaRequest) {
-            this.schemaCheck = { source_changed: [], tables: [], error: error.message };
-          }
+          check = { source_changed: [], tables: [], error: error.message };
+        }
+        if (request === this.schemaRequest) {
+          this.schemaCheck = check;
+          this.schemaCheckedKey = key;
+          this.schemaChecking = false;
         }
       }, delay);
     },
@@ -2155,7 +2177,7 @@ export default {
             notifyError("Dropping " + table.toUpperCase() + " failed.", error);
           } finally {
             this.schemaBusy = false;
-            this.checkSchema();
+            this.checkSchema(0, true);
           }
         });
     },
@@ -2212,7 +2234,7 @@ export default {
           } finally {
             this.schemaBusy = false;
             this.schemaExactRows = {};
-            this.checkSchema();
+            this.checkSchema(0, true);
           }
         });
     },

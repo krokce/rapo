@@ -7,14 +7,15 @@ export const SCHEMA_STATUSES = {
   ok: { label: "OK", color: "grey-5", title: "Holds every value of the datasource (it may be wider than the datasource column)" },
   added: { label: "Added", color: "positive", title: "Missing in the table, Update schema adds it" },
   widened: { label: "Widened", color: "primary", title: "Too narrow for the datasource, Update schema widens it" },
-  nullable: { label: "Nullable", color: "blue-grey", title: "NOT NULL in the table only, Update schema makes it nullable" },
+  nullable: { label: "Nullable", color: "blue-grey", title: "NOT NULL in the table only. Not a drift: each run makes it nullable itself, and so does Update schema" },
   not_output: { label: "Not output", color: "grey-7", title: "No longer filled by the control, kept with its history" },
   incompatible: { label: "Incompatible", color: "negative", title: "Its type cannot be converted in a table with data, only Recreate schema fixes it" },
 };
 
-// Update schema applies these; not_output only when the column is NOT NULL (then it is made nullable).
+// The changes Update schema is offered for: added and widened columns. Nullability is no drift, since each run makes
+// a NOT NULL column it may leave empty nullable (Update schema does too, as long as it runs). Mirrors is_drift().
 export function isSafeChange(column) {
-  return Boolean(column.ddl);
+  return Boolean(column.ddl) && ["added", "widened"].includes(column.status);
 }
 
 export function summarizeSchema(check) {
@@ -74,7 +75,7 @@ export function recreateTargets(check) {
     const side = { rapo_resa_: "A", rapo_resb_: "B" }[target.slice(0, 10)];
     return side ? changed.includes(side) : changed.length > 0;
   };
-  const drifted = tables.filter((table) => (table.exists && table.columns.some((column) => column.ddl || column.status === "incompatible")) || sourceChanged(table.target));
+  const drifted = tables.filter((table) => (table.exists && table.columns.some((column) => isSafeChange(column) || column.status === "incompatible")) || sourceChanged(table.target));
   return (drifted.length ? drifted : tables).map((table) => table.target);
 }
 
