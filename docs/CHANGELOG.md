@@ -26,6 +26,9 @@ No change to Rapo's own schema, and none to the `PL` engine.
 - **Deleting a control drops its result tables** (`RAPO_REST_`/`RESA_`/`RESB_<name>`, orphans included); the
   confirmation offers to keep them. API callers: `delete-control` now drops by default, pass `drop_tables=false` to
   keep them. A control with a run in progress cannot be deleted.
+- **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.` like REC
+  (`"formula_mode": true` in `rule_config`/`error_definition`); the two boxes are stacked. Switching *Formula* off
+  (CMP and REC) restores a plain `a.<column>` as that column.
 - **Active-filter badge** on every list page: a *Filter* badge that clears every filter and the header search (not
   the sort), with the active filters as removable chips below it. Filters,
   sort and the header search are kept for the browser session (per tab, reloads included).

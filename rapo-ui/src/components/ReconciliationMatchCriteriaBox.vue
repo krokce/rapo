@@ -92,11 +92,11 @@
               (value) => {
                 ruleConfigObject.correlation_config[index].formula_mode = value;
                 if (value) {
-                  ruleConfigObject.correlation_config[index].field_a = 'a.' + (ruleConfigObject.correlation_config[index].field_a || '');
-                  ruleConfigObject.correlation_config[index].field_b = 'b.' + (ruleConfigObject.correlation_config[index].field_b || '');
+                  ruleConfigObject.correlation_config[index].field_a = toFormula(ruleConfigObject.correlation_config[index].field_a, 'a.');
+                  ruleConfigObject.correlation_config[index].field_b = toFormula(ruleConfigObject.correlation_config[index].field_b, 'b.');
                 } else {
-                  ruleConfigObject.correlation_config[index].field_a = null;
-                  ruleConfigObject.correlation_config[index].field_b = null;
+                  ruleConfigObject.correlation_config[index].field_a = fromFormula(ruleConfigObject.correlation_config[index].field_a, 'a.', datasourceAColumns);
+                  ruleConfigObject.correlation_config[index].field_b = fromFormula(ruleConfigObject.correlation_config[index].field_b, 'b.', datasourceBColumns);
                 }
               }
             ">
@@ -129,6 +129,7 @@
 
 <script>
 import columnFilter from "../mixins/columnFilter";
+import { fromFormula, toFormula } from "../utils/formula";
 
 // correlation_config of a reconciliation (REC) rule_config. modelValue is the parent's rule_config object and is
 // edited in place.
@@ -145,6 +146,8 @@ export default {
     },
   },
   methods: {
+    fromFormula,
+    toFormula,
     addCorrelationConfig() {
       this.ruleConfigObject.correlation_config.push({
         field_a: this.firstColumn(this.datasourceAColumns),

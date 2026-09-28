@@ -115,11 +115,11 @@
                 ruleConfigObject.discrepancy_config[index].formula_mode = value;
                 if (value) {
                   ruleConfigObject.discrepancy_config[index].formula_alias = ruleConfigObject.discrepancy_config[index].field_a;
-                  ruleConfigObject.discrepancy_config[index].field_a = 'a.' + (ruleConfigObject.discrepancy_config[index].field_a || '');
-                  ruleConfigObject.discrepancy_config[index].field_b = 'b.' + (ruleConfigObject.discrepancy_config[index].field_b || '');
+                  ruleConfigObject.discrepancy_config[index].field_a = toFormula(ruleConfigObject.discrepancy_config[index].field_a, 'a.');
+                  ruleConfigObject.discrepancy_config[index].field_b = toFormula(ruleConfigObject.discrepancy_config[index].field_b, 'b.');
                 } else {
-                  ruleConfigObject.discrepancy_config[index].field_a = null;
-                  ruleConfigObject.discrepancy_config[index].field_b = null;
+                  ruleConfigObject.discrepancy_config[index].field_a = fromFormula(ruleConfigObject.discrepancy_config[index].field_a, 'a.', datasourceAColumns);
+                  ruleConfigObject.discrepancy_config[index].field_b = fromFormula(ruleConfigObject.discrepancy_config[index].field_b, 'b.', datasourceBColumns);
                 }
               }
             ">
@@ -163,6 +163,7 @@
 
 <script>
 import columnFilter from "../mixins/columnFilter";
+import { fromFormula, toFormula } from "../utils/formula";
 
 // discrepancy_config of a reconciliation (REC) rule_config. modelValue is the parent's rule_config object and is
 // edited in place.
@@ -179,6 +180,8 @@ export default {
     },
   },
   methods: {
+    fromFormula,
+    toFormula,
     addCorrelationConfig() {
       this.ruleConfigObject.discrepancy_config.push({
         field_a: this.firstColumn(this.datasourceAColumns),

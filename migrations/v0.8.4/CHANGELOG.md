@@ -89,7 +89,17 @@ The upgrade steps are in the [migration instructions](README.md).
    - **Behavior change for API callers:** `delete-control` drops the tables by default (`drop_tables`, default
      true) and answers the dropped names in `dropped`. Scripts that relied on the tables being kept must pass
      `drop_tables=false`.
-5. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
+5. **Formula mode in comparison (CMP) criteria.** Each *Match criteria* and *Mismatch criteria* row has a *Formula*
+   Yes/No, as in reconciliations: with *Yes*, Field A and Field B are SQL expressions instead of column names, the
+   fetched source A as `a.` and source B as `b.`, e.g. `'0' || substr(a.MSISDN, 3)` = `b.MSISDN` or `round(a.AMOUNT)`
+   ≠ `b.AMOUNT`. The run uses them as written in the join (match) and the `!=` conditions (mismatch), so an invalid
+   expression fails the run with Oracle's message. Switching *Yes* on turns the chosen columns into `a.<column>` /
+   `b.<column>`. Both boxes are now full width, one below the other, like the reconciliation ones.
+   - `rule_config` and `error_definition` items take an optional `"formula_mode": true` (missing = false); existing
+     controls run unchanged. The comparison SQL now names the fetched tables `a` and `b`.
+   - Switching *Formula* off, in CMP and REC criteria alike, turns a formula that is only `a.<column>` / `b.<column>`
+     back into that column; any other formula is cleared, as before.
+6. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
    orange *Filter* badge while any filter is set, the header search included, and the active filters under it as
    light orange chips, each removable with its ✕. The badge's ✕ removes them all (the sort stays), replacing the
    former *Clear filters* button, which also reset the sort. The count reads "12 of 340 Controls" (Results and
@@ -98,7 +108,7 @@ The upgrade steps are in the [migration instructions](README.md).
    The filters, the sort and the header search are now **kept for the browser session**: they survive leaving the
    page, a reload and signing in again, until the browser tab is closed. KPI types and Scheduler used to start
    empty on every visit. Each browser tab keeps its own.
-6. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
+7. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
    the order they were loaded, so it could stand for one partition or one load batch only. A sample is now drawn at
    random by default: the records are read in random order (`order by dbms_random.value`), so the sample is uniform
    at any size, and *Extend* keeps it so. The sample bar has a *Random / First rows* switch; *First rows* is the
@@ -107,13 +117,13 @@ The upgrade steps are in the [migration instructions](README.md).
    database filter. The choice is kept in the URL (`rnd=0` for first rows), and a comparison's sample B is drawn
    the same way. *Copy SQL* still copies the plain statement.
    - API: `analysis-start` takes `random` (default true); `meta.random` says which was used.
-7. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
+8. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
    the key field (`Source key field`) of the record of the other side it was matched with. The counterpart dialog
    now shows that record first, under *Matched record*, from the other side's result table and from its datasource
    for the run's window. The records with the same correlation key are still listed below it. A row without a
    discrepancy ID (a Loss, a fetched record) shows the correlation-key lookup only, as before.
    - API: `analysis-counterpart` answers `pair` `{key_field, value, results, source}`, or null.
-8. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
+9. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
    *Source B*, *Discrepancies A*, *Discrepancies B* (what the control type has; none for a report), each with the
    run's count. An empty one is disabled. A switch opens the other dataset of the same run, and Back returns. The
    tab, the sampling, the search, and the Data tab's filters, sort and group-by go along; those on a column the other
@@ -121,39 +131,39 @@ The upgrade steps are in the [migration instructions](README.md).
    they belong to one dataset.
    - API: the dataset `meta` (`analysis-start`, `get-run-dataset-sql`) has `datasets`, `[{dataset, kind, side,
      count}]`.
-9. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
+10. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
    run log open the same menu as on Results (click or right-click): *Copy SQL to clipboard* and *Data analysis*.
    The copied SQL is now the server's, as on Results. Before, the editor built the fetched SQL in the browser from
    the form, which left out chain-rule sides and `{variables}` and followed unsaved changes.
-10. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
+11. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
    the search is set, the buttons show or hide the found columns only, so you can hide everything and then show the
    few columns you need. With no column shown, the table says so, and Export is disabled. **Key fields** shows only
    the columns the control's criteria use on this side (a REC's match and mismatch fields, a CMP's match and
    mismatch columns, the columns an ANL's error and case definitions name; formulas included), its date and key
    fields and every `RAPO_` column, and hides the rest. The page's text boxes and drop-down lists now have the
    height of every other form, and its tabs show the icon beside the title.
-11. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
+12. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
-12. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
+13. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
    control is opened, after a change of its datasource or output columns, and after Apply, Update schema, Recreate
    schema or dropping an orphan. Over large or complex views this can take a while, and until it answered the footer
    showed nothing, as if the schema matched while the *Schema drift* badge of the Controls list said otherwise. The
    footer now shows *Checking schema…* with a spinner until the answer comes. A re-check after a run keeps the
    notice it has meanwhile.
-13. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
+14. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
    nullable, or an old column that is `NOT NULL` but no longer filled, no longer shows *Schema drift* on the
    Controls list, *Schema changes* in the editor, or counts toward Update schema. Each run already makes such
    columns nullable before it saves, so results are always written. Drift now means only a missing or too narrow
    column (Update schema) or an incompatible type (Recreate schema). The schema dialog lists *Nullable* columns
    only with *Show all columns*. The bulk check also no longer differed from the editor on primary-key columns,
    whose `NOT NULL` a result table does not copy.
-14. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
+15. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
    by the type chip and name, smaller.
-15. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
+16. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
    the tabs, as the Files page does, and scroll inside the table from there.
-16. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
+17. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
    cascade run in the same job process, one after the other. The list showed the run ID of the one running now, but
    always the name of the control the job was started for, so e.g. the ANL upstream of a reconciliation never
    appeared. It now shows the control of the run in progress with its type chip, and *for <control>* when that run

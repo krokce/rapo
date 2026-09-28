@@ -510,24 +510,21 @@
                   </div>
                 </div>
 
-                <div class="row q-my-xs q-gutter-md" v-if="control.control_type == 'CMP'">
-                  <div class="col">
-                    <comparison-criteria-box
-                      class="col"
-                      title="Match criteria"
-                      v-model="ruleConfigObject"
-                      :datasource-a-columns="datasourceAColumns"
-                      :datasource-b-columns="datasourceBColumns" />
-                  </div>
-                  <div class="col">
-                    <comparison-criteria-box
-                      class="col"
-                      title="Mismatch criteria"
-                      icon="fas fa-not-equal"
-                      v-model="ruleErrorObject"
-                      :datasource-a-columns="datasourceAColumns"
-                      :datasource-b-columns="datasourceBColumns" />
-                  </div>
+                <div class="col q-my-lg q-gutter-y-md" v-if="control.control_type == 'CMP'">
+                  <comparison-criteria-box
+                    class="col"
+                    title="Match criteria"
+                    v-model="ruleConfigObject"
+                    :datasource-a-columns="datasourceAColumns"
+                    :datasource-b-columns="datasourceBColumns" />
+
+                  <comparison-criteria-box
+                    class="col"
+                    title="Mismatch criteria"
+                    icon="fas fa-not-equal"
+                    v-model="ruleErrorObject"
+                    :datasource-a-columns="datasourceAColumns"
+                    :datasource-b-columns="datasourceBColumns" />
                 </div>
 
                 <div class="col q-my-lg q-gutter-y-md" v-if="control.control_type === 'REC'">

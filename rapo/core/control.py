@@ -2410,10 +2410,14 @@ class Parser:
         raw = self.control.config['rule_config']
         config = []
         for item in json.loads(raw or '[]'):
-            column_a = item['column_a'].lower()
-            column_b = item['column_b'].lower()
+            column_a = item['column_a']
+            column_b = item['column_b']
+            formula_mode = item.get('formula_mode', False)
+            if not formula_mode:
+                column_a, column_b = column_a.lower(), column_b.lower()
 
-            new = {'column_a': column_a, 'column_b': column_b}
+            new = {'column_a': column_a, 'column_b': column_b,
+                   'formula_mode': formula_mode}
             config.append(new)
         logger.debug(f'{self.c} Rule configuration parsed')
         return config
@@ -2430,10 +2434,14 @@ class Parser:
         raw = self.control.config['error_definition']
         config = []
         for item in json.loads(raw or '[]'):
-            column_a = item['column_a'].lower()
-            column_b = item['column_b'].lower()
+            column_a = item['column_a']
+            column_b = item['column_b']
+            formula_mode = item.get('formula_mode', False)
+            if not formula_mode:
+                column_a, column_b = column_a.lower(), column_b.lower()
 
-            new = {'column_a': column_a, 'column_b': column_b}
+            new = {'column_a': column_a, 'column_b': column_b,
+                   'formula_mode': formula_mode}
             config.append(new)
         logger.debug(f'{self.c} Error definition parsed')
         return config
@@ -3455,20 +3463,14 @@ class Executor:
         )
         execute(save_a, save_b)
 
-    def match(self):
-        """Run data matching for comparison control.
+    def _comparison_tables(self):
+        """Get the fetched tables of a comparison aliased as `a` and `b`."""
+        table_a = self.control.input_table_a.alias('a')
+        table_b = self.control.input_table_b.alias('b')
+        return table_a, table_b
 
-        Returns
-        -------
-        table : sqlalchemy.Table
-            Object reflecting table with matched data in case if DB is chosen
-            engine.
-        """
-        logger.debug(f'{self.c} Defining matches...')
-
-        table_a = self.control.input_table_a
-        table_b = self.control.input_table_b
-
+    def _comparison_columns(self, table_a, table_b):
+        """Get the columns a comparison saves from its aliased tables."""
         columns = []
         output_columns = self.control.output_columns
         if output_columns is None or len(output_columns) == 0:
@@ -3496,30 +3498,59 @@ class Executor:
 
                 column = column.label(name) if name else column
                 columns.append(column)
+        return columns
 
-        keys = []
-        for rule in self.control.rule_config:
-            column_a = table_a.c[rule['column_a']]
-            column_b = table_b.c[rule['column_b']]
-            keys.append(column_a == column_b)
-        join = table_a.join(table_b, *keys)
-        select = sa.select(*columns).select_from(join)
+    @staticmethod
+    def _comparison_operands(item, table_a, table_b):
+        """Get both sides of a comparison criterion.
 
-        keys = []
-        for error in self.control.error_definition:
-            column_a = table_a.c[error['column_a']]
-            column_b = table_b.c[error['column_b']]
-            select = select.where(column_a == column_b)
+        In formula mode they are the expressions as written, referring to the
+        tables as `a` and `b`.
+        """
+        if item['formula_mode']:
+            return (sa.literal_column(f'({item["column_a"]})'),
+                    sa.literal_column(f'({item["column_b"]})'))
+        return table_a.c[item['column_a']], table_b.c[item['column_b']]
 
-        table_name = f'rapo_temp_md_{self.control.process_id}'
+    def _create_comparison_table(self, table_name, select):
+        """Create a temporary table of a comparison from a select."""
         select = db.compile(select)
         ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
         text = db.formatter.document(ctas)
         logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
         db.execute(ctas)
         logger.debug(f'{self.c} {table_name} created')
+        return db.table(table_name)
 
-        table = db.table(table_name)
+    def match(self):
+        """Run data matching for comparison control.
+
+        Returns
+        -------
+        table : sqlalchemy.Table
+            Object reflecting table with matched data in case if DB is chosen
+            engine.
+        """
+        logger.debug(f'{self.c} Defining matches...')
+
+        table_a, table_b = self._comparison_tables()
+        columns = self._comparison_columns(table_a, table_b)
+
+        keys = []
+        for rule in self.control.rule_config:
+            column_a, column_b = self._comparison_operands(rule, table_a,
+                                                           table_b)
+            keys.append(column_a == column_b)
+        join = table_a.join(table_b, *keys)
+        select = sa.select(*columns).select_from(join)
+
+        for error in self.control.error_definition:
+            column_a, column_b = self._comparison_operands(error, table_a,
+                                                           table_b)
+            select = select.where(column_a == column_b)
+
+        table_name = f'rapo_temp_md_{self.control.process_id}'
+        table = self._create_comparison_table(table_name, select)
         logger.debug(f'{self.c} Matches defined')
         return table
 
@@ -3534,41 +3565,13 @@ class Executor:
         """
         logger.debug(f'{self.c} Defining mismatches...')
 
-        table_a = self.control.input_table_a
-        table_b = self.control.input_table_b
-
-        columns = []
-        output_columns = self.control.output_columns
-        if output_columns is None or len(output_columns) == 0:
-            # Named the way _prepare_output_columns names the result columns.
-            columns.extend(column.label(f'a_{column.name}')
-                           for column in table_a.columns)
-            columns.extend(column.label(f'b_{column.name}')
-                           for column in table_b.columns)
-        else:
-            for output_column in output_columns:
-                name = output_column['column']
-
-                column_a = output_column['column_a']
-                column_a = table_a.c[column_a] if column_a else None
-
-                column_b = output_column['column_b']
-                column_b = table_b.c[column_b] if column_b else None
-
-                if column_a is not None and column_b is not None:
-                    column = sa.func.coalesce(column_a, column_b)
-                elif column_a is not None:
-                    column = column_a
-                elif column_b is not None:
-                    column = column_b
-
-                column = column.label(name) if name else column
-                columns.append(column)
+        table_a, table_b = self._comparison_tables()
+        columns = self._comparison_columns(table_a, table_b)
 
         keys = None
         for rule in self.control.rule_config:
-            column_a = table_a.c[rule['column_a']]
-            column_b = table_b.c[rule['column_b']]
+            column_a, column_b = self._comparison_operands(rule, table_a,
+                                                           table_b)
             if keys is None:
                 keys = (column_a == column_b)
             else:
@@ -3577,19 +3580,12 @@ class Executor:
         select = sa.select(*columns).select_from(join)
 
         for error in self.control.error_definition:
-            column_a = table_a.c[error['column_a']]
-            column_b = table_b.c[error['column_b']]
+            column_a, column_b = self._comparison_operands(error, table_a,
+                                                           table_b)
             select = select.where(column_a != column_b)
 
         table_name = f'rapo_temp_nmd_{self.control.process_id}'
-        select = db.compile(select)
-        ctas = sa.text(f'CREATE TABLE {table_name} NOLOGGING AS\n{select}')
-        text = db.formatter.document(ctas)
-        logger.info(f'{self.c} Creating {table_name} with query:\n{text}')
-        db.execute(ctas)
-        logger.debug(f'{self.c} {table_name} created')
-
-        table = db.table(table_name)
+        table = self._create_comparison_table(table_name, select)
         logger.debug(f'{self.c} Mismatches defined')
         return table
 
