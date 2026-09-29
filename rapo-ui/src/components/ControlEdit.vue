@@ -947,9 +947,6 @@
                               <q-item dense clickable @click="$refs.runLogDialog.open({ process_id: log.process_id, control_name: control.control_name })" v-close-popup>
                                 <q-item-section> Show full log </q-item-section>
                               </q-item>
-                              <q-item dense clickable @click="dropTemporaryTables(logRun(log))" v-close-popup>
-                                <q-item-section> Drop temporary tables </q-item-section>
-                              </q-item>
                             </q-list>
                           </q-menu>
                         </q-btn>
@@ -1046,7 +1043,7 @@
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, dropTemporaryTables, reRun, revokeRun } from "../runActions";
+import { cancelRun, reRun, revokeRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
@@ -1375,7 +1372,6 @@ export default {
     reRun,
     cancelRun,
     revokeRun,
-    dropTemporaryTables,
     filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();

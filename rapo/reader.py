@@ -373,7 +373,8 @@ class Reader:
             {(owner, table_name): [column, ...]} in column order, each column
             a dict like Executor._read_table_schema returns, plus the object
             type (TABLE or VIEW) under 'object_type'. A table that does not
-            exist is absent.
+            exist is absent. Invisible columns (no column_id) are left out,
+            as SQLAlchemy's reflection and select * leave them out.
         """
         schema, user = db.execute(
             "select sys_context('userenv', 'current_schema'), user from dual",
@@ -392,12 +393,14 @@ class Reader:
             params = {f't{j}': name for j, name in enumerate(part)}
             query = sa.text(
                 'select c.table_name, lower(c.column_name) name, '
+                'c.column_name, '
                 'c.data_type, c.data_length, c.char_length, c.char_used, '
                 'c.data_precision, c.data_scale, c.nullable, '
                 "nvl2(t.table_name, 'TABLE', 'VIEW') object_type "
                 'from user_tab_columns c '
                 'left join user_tables t on t.table_name = c.table_name '
                 f'where c.table_name in ({names}) '
+                'and c.column_id is not null '
                 'order by c.table_name, c.column_id'
             ).bindparams(**params)
             for row in db.execute(query, as_table=True):
@@ -411,6 +414,7 @@ class Reader:
                 params[f'o{j}'], params[f't{j}'] = owner, name
             query = sa.text(
                 'select c.owner, c.table_name, lower(c.column_name) name, '
+                'c.column_name, '
                 'c.data_type, c.data_length, c.char_length, c.char_used, '
                 'c.data_precision, c.data_scale, c.nullable, '
                 "nvl2(t.table_name, 'TABLE', 'VIEW') object_type "
@@ -418,6 +422,7 @@ class Reader:
                 'left join all_tables t '
                 'on t.owner = c.owner and t.table_name = c.table_name '
                 f'where (c.owner, c.table_name) in ({pairs}) '
+                'and c.column_id is not null '
                 'order by c.owner, c.table_name, c.column_id'
             ).bindparams(**params)
             for row in db.execute(query, as_table=True):

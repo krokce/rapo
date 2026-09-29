@@ -19,6 +19,9 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
   files and no longer filter the page.
 - **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
   API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
+- **Temporary tables** left by failed, canceled and debug runs: a Controls header chip lists them by run, with
+  *Drop* and *Drop all*; only recognized Rapo temp objects are dropped. The run menus lose *Drop temporary tables*
+  and *Show error log*; API: `get-temp-tables`/`drop-temp-tables` replace `delete-control-temporary-tables`.
 - **Dark mode:** a header button cycles Automatic (follows the system, default) / Light / Dark, remembered by the
   browser; pages, dialogs, charts and SQL editors have dark variants, the light theme is unchanged.
 - **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC
@@ -26,7 +29,11 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
   `a.<column>` as that column.
 - **Random analysis samples** by default (`order by dbms_random.value`); *First rows* keeps the faster old mode.
 - **Counterpart by `RAPO_DISCREPANCY_ID`:** a REC discrepancy shows first the exact record it was matched with.
-- **Nullability is no schema drift:** only missing, too narrow or incompatible columns count.
+- **Fix: reconciliation saves after a schema update** (since v0.8.3): a column added after `RAPO_PROCESS_ID`
+  swapped values with it (`ORA-01438`, or rows saved under a wrong process ID); REC matches columns by name.
+  Schema updates quote mixed-case and reserved column names.
+- **Nullability is no schema drift:** only missing, too narrow or incompatible columns count. Invisible
+  datasource columns no longer show a drift the editor does not.
 - **Fix:** the Scheduler's running list names the control of the run in progress (upstream, iteration, cascade).
 - **Active filters** on every list page as a badge and removable chips; filters, sort and search are kept for the
   browser session.

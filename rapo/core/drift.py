@@ -229,7 +229,7 @@ def _output_columns(value):
 
 
 def _renamed(column, name):
-    return dict(column, name=name)
+    return dict(column, name=name, column_name=name.upper())
 
 
 def _expected_columns(control, table_name, columns):

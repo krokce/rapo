@@ -29,6 +29,12 @@
             </q-tooltip>
           </q-chip>
         </div>
+        <div v-if="tempTables.total_tables">
+          <q-chip clickable color="blue-grey" text-color="white" icon="fas fa-trash-alt" @click="$refs.tempDialog.open()">
+            {{ tempTables.total_tables }} temporary table{{ tempTables.total_tables > 1 ? "s" : "" }} · {{ formatNumber(tempTables.total_mb, 1) }} MB
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Left by failed, canceled or debug runs: review and drop them</q-tooltip>
+          </q-chip>
+        </div>
       </div>
     </div>
     <filter-chips :filters="activeFilters" class="q-mb-md" />
@@ -359,6 +365,7 @@
       </q-list>
     </q-menu>
     <orphan-tables-dialog ref="orphanDialog" :tables="orphanTables" @changed="refreshSchemaDrift" />
+    <temp-tables-dialog ref="tempDialog" :tables="tempTables" @changed="refreshTempTables" />
   </q-page>
 </template>
 
@@ -371,12 +378,13 @@ import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import OrphanTablesDialog from "./OrphanTablesDialog.vue";
+import TempTablesDialog from "./TempTablesDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
 import { chainIndex } from "../utils/chain";
 import { sendsEmail } from "../utils/email";
-import { toDateTimeString } from "../utils/format";
+import { formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -387,6 +395,7 @@ export default {
   mixins: [persistFilters("controls", ["filter", "sort"])],
   components: {
     OrphanTablesDialog,
+    TempTablesDialog,
     RunControlDialog,
     FilterBadge,
     FilterChips,
@@ -397,6 +406,9 @@ export default {
     return {
       // The message of a failed get-schema-drift, shown in the header, or null.
       schemaDriftError: null,
+      // The answer of get-temp-tables: temporary tables runs left behind, shown as a header chip.
+      tempTables: {},
+      tempTablesRequest: 0,
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
       kpiIcon: KPI_ICON,
       // The ids of the controls with at least one KPI (racs_kpi_config), or null when that is not known, e.g.
@@ -424,6 +436,7 @@ export default {
   methods: {
     ...mapActions(["updateControlCatalogue", "updateSchemaDrift"]),
     controlType,
+    formatNumber,
     toDateTimeString,
     sortIcon,
     ariaSort,
@@ -524,6 +537,19 @@ export default {
         // Shown in the header rather than as a notification: the check refreshes itself on every change, and the
         // editor's own check still works.
         this.schemaDriftError = error.message;
+      }
+    },
+    // A failure only hides the chip (the server log has it); the tables are refetched on the next run change.
+    async refreshTempTables() {
+      const request = ++this.tempTablesRequest;
+      let data = {};
+      try {
+        data = await api("get-temp-tables", { loadingBar: false });
+      } catch {
+        // Nothing to show.
+      }
+      if (request === this.tempTablesRequest) {
+        this.tempTables = data;
       }
     },
     lacksKpi(control) {
@@ -712,6 +738,8 @@ export default {
     // A save or a schema update fixes drift, and so does a run (it updates its tables before saving).
     const stopDriftConfig = liveRefetch("controls:changed", this.refreshSchemaDrift);
     const stopDriftRuns = liveRefetch("runs:changed", this.refreshSchemaDrift, { interval: 30000 });
+    // Runs leave temporary tables behind, or drop them.
+    const stopTempRuns = liveRefetch("runs:changed", this.refreshTempTables, { interval: 30000 });
     // save-control writes the KPIs of a control; nothing watches racs_kpi_config itself.
     const stopKpis = liveRefetch("controls:changed", this.refreshKpiControls);
     this.stopLiveUpdates = () => {
@@ -719,9 +747,11 @@ export default {
       stopCatalogue();
       stopDriftConfig();
       stopDriftRuns();
+      stopTempRuns();
     };
     this.refreshControlCatalogue();
     this.refreshSchemaDrift();
+    this.refreshTempTables();
     this.refreshKpiControls();
   },
   deactivated() {

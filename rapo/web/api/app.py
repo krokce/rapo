@@ -30,6 +30,7 @@ from ...core import mailer
 from ...core import schedule
 from ...core import sqlcheck
 from ...core import drift
+from ...core import temp
 from ...core import chain
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
@@ -447,6 +448,33 @@ def drop_orphaned_table(table: str):
     return {'status': 200}
 
 
+@api.get('/get-temp-tables')
+def get_temp_tables():
+    """Get the temporary tables runs left behind, by run, and the other
+    RAPO_TEMP_* objects of the schema."""
+    return temp.temp_tables()
+
+
+@api.post('/drop-temp-tables')
+def drop_temp_tables(data: dict = fastapi.Body(...)):
+    """Drop the temporary tables of runs (process_ids) and scratch tables
+    of schema checks (tables). Only objects temp.temp_tables() lists are
+    dropped; a run in progress is skipped."""
+    process_ids = data.get('process_ids') or []
+    tables = data.get('tables') or []
+    if (
+        not isinstance(process_ids, list) or not isinstance(tables, list)
+        or not all(isinstance(pid, int) for pid in process_ids)
+        or not all(isinstance(name, str) for name in tables)
+    ):
+        detail = 'process_ids is a list of integers, tables one of names'
+        raise fastapi.HTTPException(status_code=422, detail=detail)
+    try:
+        return temp.drop(process_ids, tables)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+
+
 @api.post('/update-control-schema')
 def update_control_schema(name: str):
     """Apply the safe schema changes (add, widen, nullable) to the result
@@ -479,14 +507,6 @@ def recreate_control_schema(name: str, tables: str | None = None):
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     events.poke()
-    return {'status': 200}
-
-
-@api.delete('/delete-control-temporary-tables')
-def delete_control_temporary_tables(id: int):
-    """Delete temporary tables of particular control run."""
-    control = find_control(id)
-    control.executor.delete_temporary_tables()
     return {'status': 200}
 
 

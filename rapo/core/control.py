@@ -3787,11 +3787,9 @@ class Executor:
         need_issues_a = rule_config['need_issues_a']
         need_recons_a = rule_config['need_recons_a']
         output_table = self.prepare_output_table_a()
-        output_columns = output_table.columns
         output_limit = self.control.config['output_limit']
         if not output_limit:
             output_limit = rule_config['output_limit_a']
-        process_id = self.control.key_column
         input_tables = []
         if need_issues_a:
             if self.control.error_table_a is not None:
@@ -3800,12 +3798,8 @@ class Executor:
             if self.control.stage_table_a is not None:
                 input_tables.append(self.control.stage_table_a)
         for input_table in input_tables:
-            input_columns = []
-            for output_column in output_columns:
-                if output_column.name in input_table.columns:
-                    input_column = input_table.c[output_column.name]
-                    input_columns.append(input_column)
-            select = sa.select(*input_columns, process_id)
+            output_columns, select = self._select_output(input_table,
+                                                         output_table)
             if isinstance(output_limit, int) and output_limit >= 0:
                 select = select.limit(output_limit)
             insert = output_table.insert().from_select(output_columns, select)
@@ -3819,11 +3813,9 @@ class Executor:
         need_issues_b = rule_config['need_issues_b']
         need_recons_b = rule_config['need_recons_b']
         output_table = self.prepare_output_table_b()
-        output_columns = output_table.columns
         output_limit = self.control.config['output_limit']
         if not output_limit:
             output_limit = rule_config['output_limit_b']
-        process_id = self.control.key_column
         input_tables = []
         if need_issues_b:
             if self.control.error_table_b is not None:
@@ -3832,12 +3824,8 @@ class Executor:
             if self.control.stage_table_b is not None:
                 input_tables.append(self.control.stage_table_b)
         for input_table in input_tables:
-            input_columns = []
-            for output_column in output_columns:
-                if output_column.name in input_table.columns:
-                    input_column = input_table.c[output_column.name]
-                    input_columns.append(input_column)
-            select = sa.select(*input_columns, process_id)
+            output_columns, select = self._select_output(input_table,
+                                                         output_table)
             if isinstance(output_limit, int) and output_limit >= 0:
                 select = select.limit(output_limit)
             insert = output_table.insert().from_select(output_columns, select)
@@ -3932,8 +3920,8 @@ class Executor:
             db.execute(f'DROP TABLE {scratch} PURGE')
 
     def _read_table_schema(self, table_name):
-        query = sa.text('select lower(column_name) name, data_type, '
-                        'data_length, char_length, char_used, '
+        query = sa.text('select lower(column_name) name, column_name, '
+                        'data_type, data_length, char_length, char_used, '
                         'data_precision, data_scale, nullable '
                         'from user_tab_columns '
                         'where table_name = :table_name order by column_id')
@@ -4424,8 +4412,8 @@ def diff_column(current, expected):
     Only is_drift() clauses make a schema drift: making a column nullable
     (nullable, not_output) is applied by every run itself.
     """
-    name = (expected or current)['name']
-    item = {'name': name,
+    name = _identifier(current or expected)
+    item = {'name': (expected or current)['name'],
             'current': _column_type(current) if current else None,
             'expected': _column_type(expected) if expected else None,
             'status': 'ok', 'ddl': None}
@@ -4458,6 +4446,18 @@ def is_drift(item):
     nullable by each run before it saves (_prepare_output_table).
     """
     return bool(item['ddl']) and item['status'] in ('added', 'widened')
+
+
+def _identifier(column):
+    """Write the name of a user_tab_columns row as a DDL clause needs it.
+
+    name is lowercased, so a mixed-case or reserved name (e.g. "Amount",
+    SIZE) is quoted from the dictionary's column_name, as SQLAlchemy does.
+    """
+    dialect = db.engine.dialect
+    column_name = column.get('column_name') or column['name'].upper()
+    return dialect.identifier_preparer.quote(
+        dialect.normalize_name(column_name))
 
 
 _TEXT_TYPES = ('VARCHAR2', 'NVARCHAR2', 'CHAR', 'NCHAR', 'RAW')

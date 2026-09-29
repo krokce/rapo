@@ -4,6 +4,8 @@ import { api } from "../api";
 let controlResultsRequest = 0;
 // The same for get-files-day.
 let fileDayRequest = 0;
+// The same for get-schema-drift, whose answer may take seconds: a slow one must not bring back a fixed drift.
+let schemaDriftRequest = 0;
 
 export default {
   async updateControlCatalogue(context) {
@@ -14,8 +16,11 @@ export default {
   // A dictionary-only check of every control's result tables: cheap, but not free, so it has no loading bar and
   // is refreshed on demand rather than with every catalogue fetch.
   async updateSchemaDrift(context) {
+    const request = ++schemaDriftRequest;
     const data = await api("get-schema-drift", { loadingBar: false });
-    context.commit("updateSchemaDrift", data);
+    if (request === schemaDriftRequest) {
+      context.commit("updateSchemaDrift", data);
+    }
     return data;
   },
   // Runs started on one day (YYYY-MM-DD, default: the server's today).

@@ -94,9 +94,6 @@ is voided for its owner to stop. Runs in status `I`, `W`, `S`, `P` and `F` can b
 #### `DELETE /api/revoke-control-run`
 Revoke a finished run (`id` = `process_id`): its results are deleted and the run is marked `X`.
 
-#### `DELETE /api/delete-control-temporary-tables`
-Delete the temporary tables of one run (`id` = `process_id`), e.g. after a run in debug mode.
-
 #### `DELETE /api/delete-control-output-tables`
 Delete the result tables of a control (`name`). Irreversible. The next run creates them again. To drop and create
 them at once, use [`recreate-control-schema`](#post-apirecreate-control-schema).
@@ -275,7 +272,7 @@ changed.
   `added` (missing in the table); `widened` (too narrow for the datasource);
   `nullable` (NOT NULL only in the table); `not_output` (no longer filled, kept with its history);
   `incompatible` (the type cannot be converted in a table with data, e.g. `VARCHAR2` → `NUMBER`). `ddl` is the
-  change `update-control-schema` makes, or `null`. Only `added`/`widened` changes and `incompatible` columns are
+  change `update-control-schema` makes (mixed-case and reserved column names quoted), or `null`. Only `added`/`widened` changes and `incompatible` columns are
   drift; a `ddl` of `nullable`/`not_output` (`MODIFY ... NULL`) is not, since every run applies it before it saves.
 - A datasource that cannot be read is reported as `error` (top level), a table whose expected schema cannot be
   built (e.g. an output column missing in the datasource) as `error` of that table. Both answer `200`.
@@ -333,6 +330,35 @@ Drop one result table (`table`) that no run writes any more: an orphan of a cont
 configuration, or a table of no control. Past results are deleted. `400` when the table is still written by its
 control, is not a result table (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_`), or does not exist. `400` with the reason when a table cannot be created, e.g. a missing
 datasource.
+
+#### `GET /api/get-temp-tables`
+The temporary tables runs left behind. A run drops its `RAPO_TEMP_*` tables only when it ends `D` without debug
+mode, so failed, canceled and debug runs keep them. Only objects of the connected schema are read (`user_objects`,
+tables and materialized views), and only names Rapo creates (`RAPO_TEMP_<kind>_<process_id>`, current and legacy
+kinds, and the scratch `RAPO_TEMP_SCHEMA_<16 hex>` of a schema check) are recognized:
+
+```json
+{"runs": [{"process_id": 1000003094, "control_id": 45, "control_name": "TESST", "status": "E",
+           "started": "2026-09-29T07:41:12", "debug": false, "in_log": true,
+           "tables": ["RAPO_TEMP_SOURCE_B_1000003094"], "mb": 0.1}],
+ "scratch": [{"table": "RAPO_TEMP_SCHEMA_ABCDEF0123456789", "type": "TABLE", "created": "2026-09-29T05:55:54", "mb": 0.0}],
+ "unknown": [{"table": "RAPO_TEMP_ZZZ_1", "type": "TABLE", "created": "2026-09-29T05:59:54", "mb": 0.0}],
+ "total_tables": 3, "total_mb": 0.1}
+```
+
+`runs` are newest first; a run in progress (`I`, `W`, `S`, `P`, `F`, or voided) is left out. `debug` marks a run
+started in debug mode, `in_log` false a process ID no longer in `rapo_log`. `scratch` lists schema-check tables older
+than an hour. `unknown` lists other `RAPO_TEMP_*` objects, which are never dropped by the API (check them manually).
+`mb` includes index and LOB segments; `created` is the database clock.
+
+#### `POST /api/drop-temp-tables`
+Drop temporary tables, body `{"process_ids": [1000003094], "tables": ["RAPO_TEMP_SCHEMA_ABCDEF0123456789"]}`:
+the recognized tables of those runs, and scratch tables (`tables` accepts nothing else). The server re-reads the
+dictionary and drops only what it recognizes itself, by its exact name (`DROP MATERIALIZED VIEW` for a
+materialized view, else `DROP TABLE ... PURGE`). Answers `{dropped: [table], skipped: [{process_id, reason}],
+failed: [{table, error}]}`: a run in progress or without temporary tables is skipped, and one failure never stops
+the others. `400` when a name in `tables` is not a listed scratch table (nothing is dropped then), `422` for a body
+that is not lists of integers and names.
 
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. With `drop_tables` (default **true**) its result tables are

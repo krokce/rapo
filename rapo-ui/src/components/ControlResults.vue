@@ -305,14 +305,8 @@
         <q-item dense clickable class="col items-center" @click="$refs.runLogDialog.open(menuRow)" v-close-popup>
           <q-item-section> Show full log </q-item-section>
         </q-item>
-        <q-item v-if="menuRow.status == 'E'" dense clickable class="col items-center" @click="showErrorLog(menuRow)" v-close-popup>
-          <q-item-section> Show error log </q-item-section>
-        </q-item>
         <q-item v-if="menuRow.status == 'D' && menuRowSendsEmail" dense clickable class="col items-center" @click="sendEmail(menuRow)" v-close-popup>
           <q-item-section> Send email </q-item-section>
-        </q-item>
-        <q-item dense clickable @click="dropTemporaryTables(menuRow)" v-close-popup>
-          <q-item-section> Drop temporary tables </q-item-section>
         </q-item>
       </q-list>
     </q-menu>
@@ -329,7 +323,7 @@ import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
+import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
 import { dayTitle, formatNumber, round, shiftDay, toDateString, toTimeString } from "../utils/format";
@@ -386,8 +380,6 @@ export default {
     reRun,
     cancelRun,
     revokeRun,
-    dropTemporaryTables,
-    showErrorLog,
     sendEmail,
     sortIcon,
     ariaSort,

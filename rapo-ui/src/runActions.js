@@ -5,7 +5,7 @@ import { api, notifyError } from "./api";
 import store from "./store";
 import { cascadeMessage, chainOf } from "./utils/schedule";
 import { upstreamMessage } from "./utils/chain";
-import { copyText, escapeHtml, toDateString, toDateTimeString } from "./utils/format";
+import { copyText, toDateString, toDateTimeString } from "./utils/format";
 
 // Resolves to false on cancel, otherwise to the selected options (an empty array when there are none).
 function confirm(title, message, options) {
@@ -133,31 +133,6 @@ export async function sendEmail(run) {
   } catch (error) {
     notifyError(`Email of control run ${runLabel(run)} was not sent.`, error);
   }
-}
-
-export async function dropTemporaryTables(run) {
-  if (!(await confirm(run.control_name, `Do you really want to drop all debug temporary tables for execution with PID: ${run.process_id} ?`))) {
-    return;
-  }
-  try {
-    await api("delete-control-temporary-tables", { method: "DELETE", params: { id: run.process_id } });
-    Notify.create({ type: "positive", message: `All temporary tables for PID:${run.process_id} were deleted` });
-  } catch (error) {
-    notifyError(`Temporary tables deletion for PID:${run.process_id} failed.`, error);
-  }
-}
-
-export function showText(title, text) {
-  Dialog.create({
-    title,
-    message: `<pre class="text-body2" style="white-space: pre-wrap;">${escapeHtml(text)}</pre>`,
-    html: true,
-    style: { width: "800px", maxWidth: "90vw" },
-  });
-}
-
-export function showErrorLog(run) {
-  showText(run.control_name + " - Error log", run.text_error || "No error log available");
 }
 
 // Copies text to the clipboard and says so; `what` reads "<what> copied to clipboard", `failure` is the error prefix.
