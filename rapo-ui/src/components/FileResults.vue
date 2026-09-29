@@ -16,8 +16,19 @@
       <q-space />
 
       <!-- The day's totals, whatever the filters, like the day totals of Results; a status chip filters by it. -->
-      <div v-if="hasDay" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
-        <div>
+      <div v-if="hasDay" class="column items-end text-blue-grey-8">
+        <div v-if="statusEntries.length || totals.duplicates" class="row items-center justify-end">
+          <q-chip v-for="entry in statusEntries" :key="entry.status" clickable @click="addStatusFilter(entry.status)">
+            <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
+          </q-chip>
+          <q-chip v-if="totals.duplicates" clickable @click="filter.duplicates = true">
+            <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(totals.duplicates) }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources with duplicate files</q-tooltip>
+          </q-chip>
+        </div>
+        <div class="q-mr-xs">
           {{ formatNumber(totals.files) }} files &middot;
           <template v-if="totals.duplicates">{{ formatNumber(totals.duplicates) }} duplicates &middot;</template>
           {{ compactNumber(totals.read) }} read &middot;
@@ -28,17 +39,6 @@
             Records read {{ formatNumber(totals.read) }}, written {{ formatNumber(totals.written) }}, rejected {{ formatNumber(totals.rejected) }}; the runtimes of
             the files summed
           </q-tooltip>
-        </div>
-        <div v-if="statusEntries.length || totals.duplicates">
-          <q-chip v-for="entry in statusEntries" :key="entry.status" clickable @click="addStatusFilter(entry.status)">
-            <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
-          </q-chip>
-          <q-chip v-if="totals.duplicates" clickable @click="filter.duplicates = true">
-            <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(totals.duplicates) }})
-            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources with duplicate files</q-tooltip>
-          </q-chip>
         </div>
       </div>
     </div>

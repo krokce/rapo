@@ -34,7 +34,7 @@
           :color="getSocketConnected ? 'teal' : 'grey-5'">
           <q-tooltip>{{ getSocketConnected ? "Live updates on" : "Live updates offline, reconnecting..." }}</q-tooltip>
         </q-icon>
-        <!-- The only way to the Scheduler page (it has no menu item), so it is there before the status is (grey, Unknown). -->
+        <!-- Shown before the scheduler status is known (grey, Unknown). -->
         <q-btn aria-label="Scheduler"
           v-if="getTokenIsValid"
           round
@@ -346,12 +346,12 @@ export default {
       if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
         links.push({ icon: "fas fa-calculator", text: "KPI types", route: "/kpi-types", routes: ["kpi-types", "edit-kpi-type"] });
       }
+      links.push({ icon: "fas fa-clock", text: "Scheduler", route: "/scheduler", routes: ["scheduler"], gap: true });
       // PDI Core datasources, where their tables are readable; spaced from the lists of rapo's own objects.
       if (this.getEnvInfo && this.getEnvInfo.datasources_available) {
         links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log"], gap: true });
         links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
-      // The Scheduler page has no menu item: the header's scheduler button opens it.
       return links;
     },
     schedulerStateInfo() {

@@ -280,14 +280,18 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 
 25. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
    count in brackets; the "25 controls · 190 runs" counts are no longer bold. On Controls, the control name is a link
-   to its editor, like the datasource names (the version link under it stays).
+   to its editor, like the datasource names (the version link under it stays). The Controls header also counts the
+   controls flagged *Datasource missing*, *Schema drift* and *No KPI* in the whole list (whatever the filters), as
+   chips like the Results totals; a click filters the list by that attribute. On the Files page the day's figures
+   (files, read, written, rejected, runtime) are now a line under the status chips, both right-aligned by the title.
 
 26. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
    by the type chip and name, smaller.
 
 27. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
-   the tabs, as the Files page does, and scroll inside the table from there.
+   the tabs, as the Files page does, and scroll inside the table from there. The *Scheduler* menu item moves up,
+   after *KPI types*, spaced from it and from *Files*; the header's clock button still opens the page too.
 
 28. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
    misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").

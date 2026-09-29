@@ -35,6 +35,26 @@
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Left by failed, canceled or debug runs: review and drop them</q-tooltip>
           </q-chip>
         </div>
+        <!-- The controls flagged in the list, whatever the filters, like the day totals of Results; a chip filters by it. -->
+        <div v-if="headerCounts.sourceMissing || headerCounts.drift || headerCounts.noKpi">
+          <q-chip v-if="headerCounts.sourceMissing" clickable @click="addAttributeFilter('Datasource missing')">
+            <q-avatar icon="fas fa-unlink" color="negative" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">Datasource missing</span>({{ headerCounts.sourceMissing }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Controls whose datasource does not exist: their runs fail</q-tooltip>
+          </q-chip>
+          <q-chip v-if="headerCounts.drift" clickable @click="addAttributeFilter('Schema drift')">
+            <q-avatar icon="fas fa-table" :color="headerCounts.driftColor" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">Schema drift</span>({{ headerCounts.drift }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
+              Controls whose result tables need Update or Recreate schema, or have orphaned tables
+            </q-tooltip>
+          </q-chip>
+          <q-chip v-if="headerCounts.noKpi" clickable @click="addAttributeFilter('No KPI')">
+            <q-avatar :icon="kpiIcon" color="red-4" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">No KPI</span>({{ headerCounts.noKpi }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Controls without a KPI configuration</q-tooltip>
+          </q-chip>
+        </div>
       </div>
     </div>
     <filter-chips :filters="activeFilters" class="q-mb-md" />
@@ -690,6 +710,21 @@ export default {
         ...listFilter("attribute", "Attribute", filter.other_attributes, (value) => (filter.other_attributes = filter.other_attributes.filter((item) => item !== value))),
         ...searchFilter(this.$store),
       ];
+    },
+    // How many controls of the whole catalogue each header chip counts; the drift avatar is amber only while every
+    // drift is a plain Update schema, as the row chips are.
+    headerCounts() {
+      const counts = { sourceMissing: 0, drift: 0, noKpi: 0, driftColor: "amber-8" };
+      this.controlCatalogue.forEach((control) => {
+        const drift = this.driftOf(control);
+        if (drift) {
+          counts.drift++;
+          if (this.driftColor(drift) !== "amber-8") counts.driftColor = "red-4";
+        }
+        if (this.sourceMissingOf(control)) counts.sourceMissing++;
+        if (this.lacksKpi(control)) counts.noKpi++;
+      });
+      return counts;
     },
     attributeOptions() {
       const options = ["DB engine", "PL engine", "Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];

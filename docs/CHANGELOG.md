@@ -60,8 +60,10 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   options), one confirmation dialog style, the KPI types page as a virtual-scroll list like Controls, and the
   styles the pages duplicated moved into one global stylesheet with `--rapo-*` color variables, with dead code and
   typos removed.
-- Smaller: Results totals read **ANL** (26), Controls names link to the editor, editor pages are titled, Scheduler
-  tables fill the window.
+- **Controls header counts** of *Datasource missing*, *Schema drift* and *No KPI* controls, each filtering the list.
+- Smaller: Results totals read **ANL** (26), Controls names link to the editor, the Files day figures sit under its
+  status chips, editor pages are titled, Scheduler tables fill the window, the *Scheduler* menu item follows
+  *KPI types*.
 
 ## v0.8.3 — 2026-09-24
 
