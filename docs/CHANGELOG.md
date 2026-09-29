@@ -8,7 +8,7 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ## v0.8.4 — 2026-09-28
 
-No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need grants on its tables.
+No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PDI Core pages need grants on its tables.
 
 - **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`): list with incoming files,
   24h loads, lane switch and issue badges; editor with input-file lists, *Check regex*, retention tables, a
@@ -22,6 +22,12 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
 - **Temporary tables** left by failed, canceled and debug runs: a Controls header chip lists them by run, with
   *Drop* and *Drop all*; only recognized Rapo temp objects are dropped. The run menus lose *Drop temporary tables*
   and *Show error log*; API: `get-temp-tables`/`drop-temp-tables` replace `delete-control-temporary-tables`.
+- **Fix: ORA-30926 in a DB-engine reconciliation** whose key field is not unique. Such rows still get repeated
+  results in both engines, so the run is now flagged with a warning: check it and pick a unique key (or `ROWID`).
+- **Run warnings:** a key field that is not unique, `correlation_limit` reached, approximate PL matching and an
+  output limit that cut the saved rows add a `Warning:` run message; Results shows an icon and a *Warnings* filter
+  chip (API: `has_warning` in `get-control-runs`).
+- **Engine chip on Controls:** reconciliations show *DB engine* / *PL engine*, filterable as an attribute.
 - **Dark mode:** a header button cycles Automatic (follows the system, default) / Light / Dark, remembered by the
   browser; pages, dialogs, charts and SQL editors have dark variants, the light theme is unchanged.
 - **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC

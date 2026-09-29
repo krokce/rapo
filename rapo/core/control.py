@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 from ..database import db
 from ..logger import logger
-from ..reader import reader
+from ..reader import reader, WARNING_PREFIX
 from ..utils import utils
 
 from ..config import get_algorithm_setting
@@ -1274,6 +1274,7 @@ class Control:
             self.__fetch_a()
             if self.is_reconciliation:
                 self.__index_a()
+                self._check_unique_key('a')
         except Exception as error:
             self._pending_error = error
 
@@ -1288,6 +1289,7 @@ class Control:
             self.__fetch_b()
             if self.is_reconciliation:
                 self.__index_b()
+                self._check_unique_key('b')
         except Exception as error:
             self._pending_error = error
 
@@ -1296,6 +1298,22 @@ class Control:
         self.input_table_b = self.executor.fetch_records_b()
         self.fetched_number_b = self.executor.count_fetched_b()
         logger.info(f'{self} Records fetched B: {self.fetched_number_b}')
+
+    def _check_unique_key(self, side):
+        # Both engines take the key field as the row identity, so rows sharing
+        # a key get their results repeated. Rapo does not require it unique.
+        fetched = getattr(self, f'fetched_number_{side}') or 0
+        if fetched < 2:
+            return
+        try:
+            values, rows = self.executor.count_duplicate_keys(side)
+        except Exception:
+            logger.warning()   # only a check: it never fails the run
+            return
+        if values:
+            self._warn(duplicate_key_message(
+                getattr(self, f'source_key_field_{side}'), side,
+                getattr(self, f'source_name_{side}'), values, rows, fetched))
 
     def __index_a(self):
         logger.info(f'{self} Indexing data from {self.source_name_a}...')
@@ -1535,6 +1553,11 @@ class Control:
                                  type_=sa.Text)
         appended = column+separator+sa.literal(new_record, type_=sa.Text)
         self._update_process_log(text_message=appended)
+
+    def _warn(self, message):
+        """Log a result-quality warning and flag the run with it."""
+        logger.warning(f'{self} {message}')
+        self._save_text_message(f'{WARNING_PREFIX}{message}')
 
     def _save_text_error(self, text_error):
         self._update_process_log(text_error=text_error)
@@ -2877,6 +2900,10 @@ class Executor:
                 if not isinstance(message, str):
                     message = message.read() if message is not None else ''
                 write(f'{self.c} [engine] {message}')
+                if record.log_level == 'WARNING':
+                    # the engine's warnings flag the run like the DB engine's
+                    self.control._save_text_message(
+                        f'{WARNING_PREFIX}{message}')
                 state['last'] = record.record_number
             if records:
                 delete = (table.delete()
@@ -3429,6 +3456,14 @@ class Executor:
         )
 
         execute(correlate)
+        if fetch_limit:
+            table_name = f'rapo_temp_t01_mod_{self.control.process_id}'
+            count = f'select count(*) from {table_name}'
+            if db.execute(count, as_scalar=True) >= fetch_limit:
+                self.control._warn(
+                    f'correlation_limit of {fetch_limit} candidate pairs was '
+                    'reached; the remaining rows were left uncorrelated and '
+                    'are reported as losses')
 
         organize_a = prepare_paralell('organize_a', organize_a)
         organize_b = prepare_paralell('organize_b', organize_b)
@@ -3610,6 +3645,23 @@ class Executor:
             fetched_b = self._count_fetched_to_table(table)
         return fetched_b
 
+    def count_duplicate_keys(self, side):
+        """Count key values shared by several fetched rows of one side.
+
+        Returns
+        -------
+        values, rows : int
+            Number of such key values and of the rows holding them.
+        """
+        table_name = f'rapo_temp_source_{side}_{self.control.process_id}'
+        key_field = getattr(self.control, f'source_key_field_{side}')
+        query = (f'select count(*) key_values, nvl(sum(n), 0) key_rows '
+                 f'from (select count(*) n from {table_name} '
+                 f'where {key_field} is not null '
+                 f'group by {key_field} having count(*) > 1)')
+        result = db.execute(query, as_dict=True)
+        return int(result['key_values']), int(result['key_rows'])
+
     def count_errors(self):
         """Count found errors in control.
 
@@ -3768,8 +3820,24 @@ class Executor:
         output_limit = int(output_limit)
         error_number = self.control.error_number
         if error_number is not None and error_number > output_limit:
-            logger.info(f'{self.c} Output limited to {output_limit} '
-                        f'of {error_number} records')
+            self.control._warn(f'Output limit of {output_limit} reached: '
+                               f'{output_limit} of {error_number} records '
+                               'written')
+        return select.limit(output_limit)
+
+    def _limit_reconciliation_output(self, select, input_table, output_limit,
+                                     side):
+        """Apply output_limit to one table a REC side saves from."""
+        if not isinstance(output_limit, int) or output_limit < 0:
+            return select
+        count = sa.select(sa.func.count()).select_from(input_table)
+        number = db.execute(count, as_scalar=True)
+        if number > output_limit:
+            stage_table = getattr(self.control, f'stage_table_{side}')
+            what = 'matches' if input_table is stage_table else 'issues'
+            self.control._warn(f'Output limit of {output_limit} reached: '
+                               f'{output_limit} of {number} {what} of side '
+                               f'{side.upper()} written')
         return select.limit(output_limit)
 
     def save_matches(self):
@@ -3800,8 +3868,8 @@ class Executor:
         for input_table in input_tables:
             output_columns, select = self._select_output(input_table,
                                                          output_table)
-            if isinstance(output_limit, int) and output_limit >= 0:
-                select = select.limit(output_limit)
+            select = self._limit_reconciliation_output(
+                select, input_table, output_limit, 'a')
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
         logger.debug(f'{self.c} Reconciliation output A saved')
@@ -3826,8 +3894,8 @@ class Executor:
         for input_table in input_tables:
             output_columns, select = self._select_output(input_table,
                                                          output_table)
-            if isinstance(output_limit, int) and output_limit >= 0:
-                select = select.limit(output_limit)
+            select = self._limit_reconciliation_output(
+                select, input_table, output_limit, 'b')
             insert = output_table.insert().from_select(output_columns, select)
             db.execute(insert)
         logger.debug(f'{self.c} Reconciliation output B saved')
@@ -4397,6 +4465,19 @@ class Executor:
 
 
 RESULT_PREFIXES = ('rapo_rest_', 'rapo_resa_', 'rapo_resb_')
+
+
+def duplicate_key_message(key_field, side, source_name, values, rows, total):
+    """Warning for a key field shared by several rows of one side.
+
+    RAPO_USAGE_RULE.check_unique_keys writes the same text for the PL engine.
+    """
+    return (f'Key field {key_field.upper()} of source {side.upper()} '
+            f'({source_name.upper()}) is not unique: {values} values are '
+            f'shared by {rows} of {total} rows. Rows are identified by this '
+            'key, so the results of these rows are repeated and unreliable. '
+            'Use a unique key field; on a table, a key field name that is '
+            'not one of its columns makes Rapo use ROWID.')
 
 
 def output_table_names(control_name):

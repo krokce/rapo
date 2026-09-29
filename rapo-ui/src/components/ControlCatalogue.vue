@@ -173,6 +173,18 @@
                 No Post-run hook
               </q-chip>
 
+              <q-chip
+                clickable
+                v-if="engineOf(control)"
+                size="sm"
+                color="indigo-4"
+                text-color="white"
+                icon="fas fa-cogs"
+                :title="engineTitle(control)"
+                @click="addAttributeFilter(`${engineOf(control)} engine`)">
+                {{ engineOf(control) }} engine
+              </q-chip>
+
               <q-chip clickable v-if="lacksKpi(control)" size="sm" color="red-4" text-color="white" :icon="kpiIcon" @click="addAttributeFilter('No KPI')">
                 No KPI
               </q-chip>
@@ -392,7 +404,7 @@ import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import OrphanTablesDialog from "./OrphanTablesDialog.vue";
 import TempTablesDialog from "./TempTablesDialog.vue";
 import { api, notifyError } from "../api";
-import { CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
+import { CONTROL_ENGINES, CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
 import { chainIndex } from "../utils/chain";
 import { sendsEmail } from "../utils/email";
@@ -569,6 +581,14 @@ export default {
         this.tempTables = data;
       }
     },
+    // The engine of a REC control, the only type that has a choice; the others always run on DB.
+    engineOf(control) {
+      return control.control_type === "REC" ? control.control_engine || "DB" : null;
+    },
+    engineTitle(control) {
+      const engine = CONTROL_ENGINES[this.engineOf(control)];
+      return engine ? `Runs on the ${engine.label} engine` : "";
+    },
     lacksKpi(control) {
       return this.kpiControlIds !== null && !this.kpiControlIds.has(control.control_id);
     },
@@ -672,7 +692,7 @@ export default {
       ];
     },
     attributeOptions() {
-      const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
+      const options = ["DB engine", "PL engine", "Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
       if (this.kpiControlIds !== null) options.push("No KPI");
       return [...options, "Email", "Schema drift", "Datasource missing"];
     },
@@ -717,6 +737,7 @@ export default {
         this.filter.other_attributes && this.filter.other_attributes.length > 0
           ? this.filter.other_attributes.some((attr) => {
           return (
+            (attr === `${this.engineOf(item)} engine`) ||
             (attr === "Preparation SQL" && item.preparation_sql) ||
             (attr === "Prerequisite SQL" && item.prerequisite_sql) ||
             (attr === "Completion SQL" && item.completion_sql) ||

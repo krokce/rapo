@@ -6,6 +6,10 @@ import sqlalchemy as sa
 from .database import db
 
 
+# Prefix of the rapo_log.text_message lines that flag a run with a warning.
+WARNING_PREFIX = 'Warning: '
+
+
 class Reader:
     """Represents application data reader.
 
@@ -306,7 +310,7 @@ class Reader:
 
     def read_control_results_for_day(self, day):
         """Get list of all control runs started on the passed day."""
-        select = """
+        select = f"""
                 select
                     c.control_name,
                     c.control_id,
@@ -326,6 +330,8 @@ class Reader:
                     nvl(coalesce(error_level_b, 0), 0) as error_level_b,
                     text_log,
                     nvl(text_error, text_message) text_error,
+                    case when dbms_lob.instr(text_message, '{WARNING_PREFIX}') > 0
+                         then 1 else 0 end as has_warning,
                     prerequisite_value,
                     nvl(round((l.end_date - nvl(l.start_date, l.added)) * 1440, 2), 0) duration_minutes
                 from rapo_log l

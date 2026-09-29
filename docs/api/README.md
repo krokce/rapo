@@ -141,7 +141,9 @@ list is not capped.
 Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `start_date`, `date_from`, `date_to`,
 `status`, the A/B counters (`fetched_number_a`/`_b`, `success_number_a`/`_b`, `error_number_a`/`_b`,
 `error_level_a`/`_b`, the A column holding the single value of a one-sided control), `text_log`, `text_error`,
-`prerequisite_value` and `duration_minutes`.
+`has_warning`, `prerequisite_value` and `duration_minutes`. `has_warning` is `1` when the run's messages hold a
+`Warning: ` line (a key field that is not unique, `correlation_limit` reached, approximate matching over
+`max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
 
 > Until v0.8.0 this route took no parameters and returned the last 200 runs as a plain array.
 

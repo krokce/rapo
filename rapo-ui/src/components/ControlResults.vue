@@ -33,6 +33,13 @@
             <span class="text-weight-bold q-mr-xs">{{ runStatus(item.key).label }}</span>({{ item.count }})
           </q-chip>
         </div>
+        <div v-if="summary.warnings">
+          <q-chip clickable @click="filter.warnings = true">
+            <q-avatar icon="fas fa-exclamation-triangle" color="amber-9" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">Warnings</span>({{ summary.warnings }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Runs flagged with a warning about their results</q-tooltip>
+          </q-chip>
+        </div>
       </div>
     </div>
 
@@ -247,11 +254,19 @@
               name="fas fa-play"
               :title="`Prerequisite SQL value is ${control.prerequisite_value}`" />
           </td>
-          <td class="text-left">
+          <td class="text-left text-no-wrap">
             <q-chip clickable class="cursor-pointer" @click="!filter.status.includes(control.status) && filter.status.push(control.status)">
               <q-avatar :icon="runStatus(control.status).icon" :color="runStatus(control.status).color" text-color="white" />
               {{ runStatus(control.status).label }}
             </q-chip>
+            <q-icon
+              v-if="control.has_warning"
+              class="cursor-pointer"
+              name="fas fa-exclamation-triangle"
+              color="amber-9"
+              size="16px"
+              title="Finished with warnings: click for the run details"
+              @click="$refs.runLogDialog.open(control)" />
           </td>
           <td class="text-left">
             <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
@@ -361,6 +376,7 @@ export default {
         control_name: null,
         type: null,
         status: [],
+        warnings: null,
       },
       sort: {
         key: "start_date",
@@ -427,6 +443,7 @@ export default {
       this.filter.control_name = null;
       this.filter.type = null;
       this.filter.status = [];
+      this.filter.warnings = null;
       this.$store.commit("updateSearch", "");
     },
     getSortValue(item) {
@@ -489,6 +506,7 @@ export default {
         runs: rows.length,
         types: countBy("control_type", Object.keys(CONTROL_TYPES)),
         statuses: countBy("status", Object.keys(RUN_STATUSES)),
+        warnings: rows.filter((row) => row.has_warning).length,
       };
     },
     ...mapGetters(["getSearch", "controlCatalogueById"]),
@@ -504,6 +522,7 @@ export default {
           (value) => (filter.status = filter.status.filter((item) => item !== value)),
           (value) => runStatus(value).label,
         ),
+        ...valueFilter("warnings", "Warnings", filter.warnings || null, () => (filter.warnings = null), { label: "Flagged runs" }),
         ...searchFilter(this.$store),
       ];
     },
@@ -522,7 +541,8 @@ export default {
           (!s || (item.control_name || "").toUpperCase().includes(s)) &&
           (!name || (item.control_name || "").toUpperCase().includes(name)) &&
           (!this.filter.type || item.control_type === this.filter.type) &&
-          (this.filter.status.length === 0 || this.filter.status.includes(item.status))
+          (this.filter.status.length === 0 || this.filter.status.includes(item.status)) &&
+          (!this.filter.warnings || item.has_warning)
       );
     },
   },
@@ -587,6 +607,6 @@ a:visited {
 .results-table th:nth-child(12),
 .results-table th:nth-child(13) { width: 80px; }
 .results-table th:nth-child(14) { width: 34px; }
-.results-table th:nth-child(15) { width: 104px; }
+.results-table th:nth-child(15) { width: 128px; }
 .results-table th:nth-child(16) { width: 50px; }
 </style>

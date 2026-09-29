@@ -6,9 +6,10 @@ recycles, reloads, deletes or downloads the files it loaded. Deleting a control 
 callers: see item 3), leftover temporary tables can be reviewed and dropped, the web UI has a dark mode, comparison
 criteria get the formula mode of reconciliations, and the data analysis draws random samples, shows the exact
 counterpart of a discrepancy and switches between a run's datasets. The list pages show and keep their active
-filters. The UI was also reviewed: the editors load on first visit, keyboard and screen-reader access, one global
-stylesheet and shared code. There is no change to Rapo's own schema, and none to the `PL` engine. The upgrade steps
-are in the [migration instructions](README.md).
+filters. A reconciliation whose key field is not unique no longer fails on the `DB` engine, and runs with incomplete
+or unreliable results are flagged with a warning. The UI was also reviewed: the editors load on first visit,
+keyboard and screen-reader access, one global stylesheet and shared code. There is no change to Rapo's own schema;
+the `PL` engine's procedure must be redeployed. The upgrade steps are in the [migration instructions](README.md).
 
 1. **Datasources page (PDI Core).** A new *Datasources* menu item lists and edits the datasources of the PDI Core
    file loader (`PDI_CORE_DS_CONFIG`) with their tables (`PDI_CORE_DS_TABLES`). It shows where Rapo's database user
@@ -102,12 +103,41 @@ are in the [migration instructions](README.md).
      from Results (*Show full log* shows the error).
    - **API:** `get-temp-tables` and `drop-temp-tables` are new; `delete-control-temporary-tables` is removed.
 
-5. **Dark mode.** A button in the header cycles the theme: *Automatic* (follows the operating system, the default),
+5. **Fix: reconciliation failed with ORA-30926 when its key field is not unique (DB engine).** Rapo does not
+   require `source_key_field_a|b` to be unique, but a key value shared by rows of a square (fuzzy) cluster made the
+   `match_duplicates` step fail with *ORA-30926: unable to get a stable set of rows in the source tables*. The `DB`
+   engine now completes. Both engines still identify rows by the key, so such rows get their results **repeated**
+   (a key shared by k rows gives up to k² result rows, with possibly different verdicts, and the two engines differ
+   for them): the run now says so (item 6). **Check** the controls flagged with it and choose a unique key field; on
+   a table, a key field name that is not one of its columns makes Rapo use `ROWID` (as it already does for sources
+   without the column).
+
+6. **Run warnings.** A run whose results are incomplete or unreliable now ends *Done* with a warning: a line
+   `Warning: ...` in the run's messages (*Run details → Messages* of the run log dialog) and a WARNING in its log.
+   - **Key field not unique:** `Key field TAG of source A (VIDS_AVSTX_LX) is not unique: N values are shared by M of
+     T rows ...`, checked on the fetched rows (`DB`) or the rows of the window (`PL`); keys taken from `ROWID` are
+     not checked.
+   - **`correlation_limit` reached:** the remaining rows were left uncorrelated and are reported as losses. The `PL`
+     engine logged this before; the `DB` engine now warns too.
+   - **Approximate matching:** a `PL` key group had more rows within reach than `max_candidates` (logged before).
+   - **Output limit reached:** `output_limit` (or `output_limit_a|b` of a reconciliation) cut the saved rows:
+     *Output limit of 1000 reached: 1000 of 5230 issues of side A written*. Before, a reconciliation cut them
+     silently and the other types logged an INFO.
+   - **Results** shows an amber warning icon beside the status of a flagged run, which opens its run log dialog, and
+     a *Warnings (N)* chip in the day totals that filters the flagged runs.
+   - **API:** `get-control-runs` rows carry `has_warning`.
+   - The `PL` engine's procedure `RAPO_USAGE_RULE` changed: redeploy it (see the migration instructions).
+
+7. **Engine on the Controls page.** Reconciliation controls show a *DB engine* or *PL engine* chip among their
+   attributes; clicking it, or picking it under *Control attributes*, filters by engine. Other types always run on
+   the `DB` engine and show none.
+
+8. **Dark mode.** A button in the header cycles the theme: *Automatic* (follows the operating system, the default),
    *Light* and *Dark*. The choice is kept by the browser (`rapo_theme`). The pages, dialogs, tables, chips, the
    analysis charts and the SQL editors have dark variants; the colors of both themes are the `--rapo-*` variables of
    `src/styles/app.sass`, so a component needs no rules of its own. The light theme looks as before.
 
-6. **Formula mode in comparison (CMP) criteria.** Each *Match criteria* and *Mismatch criteria* row has a *Formula*
+9. **Formula mode in comparison (CMP) criteria.** Each *Match criteria* and *Mismatch criteria* row has a *Formula*
    Yes/No, as in reconciliations: with *Yes*, Field A and Field B are SQL expressions instead of column names, the
    fetched source A as `a.` and source B as `b.`, e.g. `'0' || substr(a.MSISDN, 3)` = `b.MSISDN` or `round(a.AMOUNT)`
    ≠ `b.AMOUNT`. The run uses them as written in the join (match) and the `!=` conditions (mismatch), so an invalid
@@ -118,7 +148,7 @@ are in the [migration instructions](README.md).
    - Switching *Formula* off, in CMP and REC criteria alike, turns a formula that is only `a.<column>` / `b.<column>`
      back into that column; any other formula is cleared, as before.
 
-7. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
+10. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
    the order they were loaded, so it could stand for one partition or one load batch only. A sample is now drawn at
    random by default: the records are read in random order (`order by dbms_random.value`), so the sample is uniform
    at any size, and *Extend* keeps it so. The sample bar has a *Random / First rows* switch; *First rows* is the
@@ -128,14 +158,14 @@ are in the [migration instructions](README.md).
    the same way. *Copy SQL* still copies the plain statement.
    - API: `analysis-start` takes `random` (default true); `meta.random` says which was used.
 
-8. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
+11. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
    the key field (`Source key field`) of the record of the other side it was matched with. The counterpart dialog
    now shows that record first, under *Matched record*, from the other side's result table and from its datasource
    for the run's window. The records with the same correlation key are still listed below it. A row without a
    discrepancy ID (a Loss, a fetched record) shows the correlation-key lookup only, as before.
    - API: `analysis-counterpart` answers `pair` `{key_field, value, results, source}`, or null.
 
-9. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
+12. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
    nullable, or an old column that is `NOT NULL` but no longer filled, no longer shows *Schema drift* on the
    Controls list, *Schema changes* in the editor, or counts toward Update schema. Each run already makes such
    columns nullable before it saves, so results are always written. Drift now means only a missing or too narrow
@@ -154,7 +184,7 @@ are in the [migration instructions](README.md).
      API: `get-schema-drift` level `source_missing`.
    - Datasources that are synonyms are now checked as the table or view they name, instead of being skipped.
 
-10. **Fix: reconciliation results after a schema update (since v0.8.3).** *Update schema* and the schema update of a
+13. **Fix: reconciliation results after a schema update (since v0.8.3).** *Update schema* and the schema update of a
    run add a column at the end of the result table, after `RAPO_PROCESS_ID`. A reconciliation (REC, both engines)
    saved its A/B results by position with `RAPO_PROCESS_ID` last, so the new column and `RAPO_PROCESS_ID` got each
    other's values. The run failed, e.g. with `ORA-01438: value larger than specified precision allowed for this
@@ -172,13 +202,13 @@ are in the [migration instructions](README.md).
      where regexp_like(c.table_name, '^RAPO_RES[AB]_') and c.column_id > p.column_id;
      ```
 
-11. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
+14. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
    cascade run in the same job process, one after the other. The list showed the run ID of the one running now, but
    always the name of the control the job was started for, so e.g. the ANL upstream of a reconciliation never
    appeared. It now shows the control of the run in progress with its type chip, and *for <control>* when that run
    belongs to another control's job. `scheduler-status` reports `control_type` and `job_control_name` too.
 
-12. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
+15. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
    orange *Filter* badge while any filter is set, the header search included, and the active filters under it as
    light orange chips, each removable with its ✕. The badge's ✕ removes them all (the sort stays), replacing the
    former *Clear filters* button, which also reset the sort. The count reads "12 of 340 Controls" (Results and
@@ -188,7 +218,7 @@ are in the [migration instructions](README.md).
    page, a reload and signing in again, until the browser tab is closed. KPI types and Scheduler used to start
    empty on every visit. Each browser tab keeps its own.
 
-13. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
+16. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
    *Source B*, *Discrepancies A*, *Discrepancies B* (what the control type has; none for a report), each with the
    run's count. An empty one is disabled. A switch opens the other dataset of the same run, and Back returns. The
    tab, the sampling, the search, and the Data tab's filters, sort and group-by go along; those on a column the other
@@ -197,11 +227,11 @@ are in the [migration instructions](README.md).
    - API: the dataset `meta` (`analysis-start`, `get-run-dataset-sql`) has `datasets`, `[{dataset, kind, side,
      count}]`.
 
-14. **Lazy-loaded editors.** The control, datasource and KPI type editors and the file log page are separate chunks
+17. **Lazy-loaded editors.** The control, datasource and KPI type editors and the file log page are separate chunks
    loaded on first visit, so CodeMirror and the editor boxes are no longer part of the first page load (the vendor
    bundle drops from about 870 KB to 440 KB).
 
-15. **Accessibility.** Every icon-only button has an accessible name, sortable column headers report `aria-sort`, and
+18. **Accessibility.** Every icon-only button has an accessible name, sortable column headers report `aria-sort`, and
    the Group by toggle reports its state. Clickable elements that were not buttons (sortable headers, run numbers on
    Results and in the editor's run log, analysis rows and cards, heatmap cells, the archive tree, code variables) can
    be reached with Tab and activated with Enter or Space, and every focused element shows a teal ring. The token
@@ -209,19 +239,19 @@ are in the [migration instructions](README.md).
    amber/orange chips, are darker to be readable; the heatmap's error cells have a corner mark and the trend's
    current run a dark outline, so neither depends on color alone. Column names in analysis chart tooltips are escaped.
 
-16. **Icons, headers and analysis states.** The remaining Material icons (menu, close, add, search, clock) are Font
+19. **Icons, headers and analysis states.** The remaining Material icons (menu, close, add, search, clock) are Font
    Awesome 5 like the rest of the UI and the Material icon font is no longer loaded. The Controls and KPI types titles
    follow the same header layout as the other list pages,.
    Empty states in the analysis panels share one look; a failed run trend, a failed page of rows or a section that
    cannot be computed now says so with a *Retry* button instead of showing a skeleton or "No rows match the filters"
    forever. The SQL filter and Copy SQL buttons are hidden, not disabled, until their data exists.
 
-17. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
+20. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
    run log open the same menu as on Results (click or right-click): *Copy SQL to clipboard* and *Data analysis*.
    The copied SQL is now the server's, as on Results. Before, the editor built the fetched SQL in the browser from
    the form, which left out chain-rule sides and `{variables}` and followed unsaved changes.
 
-18. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
+21. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
    the search is set, the buttons show or hide the found columns only, so you can hide everything and then show the
    few columns you need. With no column shown, the table says so, and Export is disabled. **Key fields** shows only
    the columns the control's criteria use on this side (a REC's match and mismatch fields, a CMP's match and
@@ -229,18 +259,18 @@ are in the [migration instructions](README.md).
    fields and every `RAPO_` column, and hides the rest. The page's text boxes and drop-down lists now have the
    height of every other form, and its tabs show the icon beside the title.
 
-19. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
+22. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
    control is opened, after a change of its datasource or output columns, and after Apply, Update schema, Recreate
    schema or dropping an orphan. Over large or complex views this can take a while, and until it answered the footer
    showed nothing, as if the schema matched while the *Schema drift* badge of the Controls list said otherwise. The
    footer now shows *Checking schema…* with a spinner until the answer comes. A re-check after a run keeps the
    notice it has meanwhile.
 
-20. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
+23. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
 
-21. **Shared code and lists.** The copies of small helpers are gone: one `formatBytes`, one download-a-file and one
+24. **Shared code and lists.** The copies of small helpers are gone: one `formatBytes`, one download-a-file and one
    copy-and-notify routine, one run-start call for the Run dialog and Re-run, one day-navigation helper for Results,
    Files and the file log, the KPI statement check shared by the KPI editor and the control's KPI box, one alert-label
    table and one base ECharts option for the analysis charts. Confirmations all use the same Quasar dialog (the
@@ -248,18 +278,18 @@ are in the [migration instructions](README.md).
    title and have a red action button. The KPI types page is a virtual-scroll list with a sticky header, like Controls,
    and stays fast with thousands of rows.
 
-22. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
+25. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
    count in brackets; the "25 controls · 190 runs" counts are no longer bold. On Controls, the control name is a link
    to its editor, like the datasource names (the version link under it stays).
 
-23. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
+26. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
    by the type chip and name, smaller.
 
-24. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
+27. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
    the tabs, as the Files page does, and scroll inside the table from there.
 
-25. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
+28. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
    misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").
    The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
    the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are

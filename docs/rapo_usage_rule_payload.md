@@ -75,7 +75,7 @@ A payload is therefore self-contained: capture one from the run log and it repla
 | `name` | Table, view or materialized view in the current schema |
 | `filter` | SQL predicate, or null, with its `{variables}` already rendered by rapo (other braces as written). Wrapped in parentheses and ANDed |
 | `date_field` | The correlation date column. Cast to `DATE`, so a `TIMESTAMP` loses sub-second precision exactly as the Python engine's fetch does |
-| `key_field` | The row identity. If the source has no such column, `rowid` is aliased under that name — the same fallback `_parse_select` makes |
+| `key_field` | The row identity. If the source has no such column, `rowid` is aliased under that name — the same fallback `_parse_select` makes. Rapo does not require it unique, but the join-back repeats rows sharing a key (see *Warnings*) |
 | `process_id` | Null, or for a source that is another control's result table (a chain-rule) the `rapo_process_id` of the upstream run. The side then reads only that run's rows, with no date window (not in the fetch, the null-key select, the output re-filter or the join-back), and leaves out the source's `RAPO_PROCESS_ID`, `RAPO_RESULT_TYPE` and `RAPO_DISCREPANCY_*` columns, which it writes itself |
 
 ## `rule_config`
@@ -145,7 +145,7 @@ PGA is process memory and does not spill, unlike the temp table the `DB` engine 
 
 **The trade-off:** on a cluster larger than `max_candidates`, a row can only be compared against a subset of
 its rivals, so the matching becomes approximate. The run log carries a `WARNING` naming how many groups hit
-the limit. If that appears, the correlation key is usually too coarse or `time_shift` too wide; raising
+the limit, and the run is flagged with it (see *Warnings*). If that appears, the correlation key is usually too coarse or `time_shift` too wide; raising
 `max_candidates` is the last resort, since the ranking cost is quadratic in it.
 
 ### Which normalization actually changes anything
@@ -176,7 +176,7 @@ Both engines flip together, which is what verifies the port of the distance form
 |---|---|
 | `rapo_temp_error_{a,b}_<pid>` | `Loss`, `Discrepancy` and (unless `allow_duplicates`) `Duplicate` rows |
 | `rapo_temp_stage_{a,b}_<pid>` | `Match` rows |
-| `rapo_temp_verdict_{a,b}_<pid>` | Internal; dropped unless `debug_mode` |
+| `rapo_temp_verdict_{a,b}_<pid>` | Internal, one row per source row of the window: its `row_id` (key) and verdict, `Dropped` for a `Duplicate` that `allow_duplicates` leaves out. Dropped unless `debug_mode` |
 
 The error and stage tables carry every source column plus `rapo_result_type`, `rapo_discrepancy_id` and
 `rapo_discrepancy_description` — the names `save_reconciliation_output_a/b` matches on. Rapo's ordinary
@@ -209,6 +209,19 @@ moves `updated` correctly and is what tells the UI a long run is still alive.
 
 Rows left behind by a hard-killed process are the only way the table can grow; a rerun of the same
 `process_id` clears its own rows first.
+
+## Warnings
+
+A `WARNING` line flags the run: the drain also appends it to `rapo_log.text_message` as `Warning: <message>`, the
+same way the `DB` engine flags its own, so Results marks the run and its run details list the warnings. The
+procedure warns when:
+
+- `correlation_limit` was reached: the remaining rows were left uncorrelated and are reported as losses;
+- a key group exceeded `max_candidates`: the matching is approximate (see above);
+- **the key field is not unique** on a side (`check_unique_keys`, before `materialise`, counted over the verdict
+  table, so without another scan of the source; skipped for a `rowid` key). The join-back matches verdicts to
+  source rows by the key, so k rows sharing one get up to k² result rows, possibly with different verdicts. The
+  text is the one of `duplicate_key_message` in `rapo/core/control.py`.
 
 ## Errors
 

@@ -21,6 +21,7 @@ AS
        match_duplicates  s03-s05   pair square (F) clusters positionally
        match_conflicts   s06-s07   mutual-best-choice fixpoint for A/B/M
        emit_row          s08-s09   Match / Discrepancy / Loss / Duplicate
+       check_unique_keys           warn when the key field is shared by several rows of a side
        materialise       s08-s09   write the temp tables Rapo then saves
 
      Correlation types, decided per cluster in classify_pairs:
@@ -1528,6 +1529,8 @@ AS
             push_verdict(side, r_id, rtype, did, ddesc);
         ELSIF rtype IS NULL AND r_matched THEN
             push_verdict(side, r_id, 'Match', NULL, NULL);
+        ELSIF rtype = 'Duplicate' THEN
+            push_verdict(side, r_id, 'Dropped', NULL, NULL);   -- no output, but check_unique_keys must see the row
         END IF;
     END emit_row;
 
@@ -1617,7 +1620,7 @@ AS
                 || ', v.result_type as rapo_result_type'
                 || ', v.discrepancy_id as rapo_discrepancy_id'
                 || ', v.discrepancy_description as rapo_discrepancy_description'
-                || base || ' and v.result_type != ''Match''';
+                || base || ' and v.result_type not in (''Match'', ''Dropped'')';
         log_info('Creating ' || error_table || ' with query:' || chr(10) || stmt);
         EXECUTE IMMEDIATE stmt;
         EXECUTE IMMEDIATE 'select count(*) from ' || error_table INTO issues;
@@ -1640,6 +1643,27 @@ AS
         log_info('Side ' || side || ': ' || CASE WHEN need_recons THEN to_char(matches) ELSE 'no' END || ' matched, ' || issues
                  || ' with issues');
     END materialise;
+
+    -- Warn when the key field is shared by several rows of a side. Rows are identified by it, so materialise repeats each of them once per
+    -- row sharing its key. Counted over the verdict rows, 'Dropped' included, so no extra scan of the source; Python's
+    -- duplicate_key_message has the same text for the DB engine.
+    PROCEDURE check_unique_keys (side CHAR) IS
+        verdict  VARCHAR2(128) := CASE WHEN side = 'A' THEN v_tmp_verdict_a ELSE v_tmp_verdict_b END;
+        n_values NUMBER;
+        n_rows   NUMBER;
+        n_total  NUMBER;
+    BEGIN
+        IF CASE WHEN side = 'A' THEN v_key_rowid_a ELSE v_key_rowid_b END THEN RETURN; END IF;
+        EXECUTE IMMEDIATE 'select count(*), nvl(sum(n), 0) from (select count(*) n from ' || verdict
+                       || ' where row_id is not null group by row_id having count(*) > 1)' INTO n_values, n_rows;
+        IF n_values = 0 THEN RETURN; END IF;
+        EXECUTE IMMEDIATE 'select count(*) from ' || verdict INTO n_total;
+        log_line('WARNING', 'Key field ' || upper(CASE WHEN side = 'A' THEN v_key_field_a ELSE v_key_field_b END) || ' of source ' || side
+                            || ' (' || upper(CASE WHEN side = 'A' THEN v_source_a ELSE v_source_b END) || ') is not unique: ' || n_values
+                            || ' values are shared by ' || n_rows || ' of ' || n_total || ' rows. Rows are identified by this key, so the '
+                            || 'results of these rows are repeated and unreliable. Use a unique key field; on a table, a key field name that '
+                            || 'is not one of its columns makes Rapo use ROWID.');
+    END check_unique_keys;
 
     -- The per-side scratch table the merge writes its verdicts into. Dropped first in case a previous run with this process_id left one
     -- behind, and NOLOGGING because it never outlives the run.
@@ -1821,8 +1845,8 @@ BEGIN
     IF v_need_b THEN count_null_key_rows('B'); END IF;
     COMMIT;
 
-    IF v_need_a THEN materialise('A'); END IF;
-    IF v_need_b THEN materialise('B'); END IF;
+    IF v_need_a THEN check_unique_keys('A'); materialise('A'); END IF;
+    IF v_need_b THEN check_unique_keys('B'); materialise('B'); END IF;
 
     report_progress;
     log_info('PL-SQL engine finished: ' || fetched_a || '/' || fetched_b || ' records fetched');

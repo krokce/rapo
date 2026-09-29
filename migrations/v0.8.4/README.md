@@ -3,7 +3,7 @@
 Upgrades Rapo from v0.8.3 to v0.8.4. Commands run in the application folder.
 What the release contains is in the [change log](CHANGELOG.md).
 
-There is **no database schema change**, and the `PL` engine's procedure is unchanged.
+There is **no database schema change**; the `PL` engine's procedure `RAPO_USAGE_RULE` is redeployed.
 
 1. Wait until all your Rapo controls are completed or cancel them. Stop the web server.
     ```bash
@@ -15,6 +15,13 @@ There is **no database schema change**, and the `PL` engine's procedure is uncha
     git checkout v0.8.4
     ./install.sh
     ```
+1. If you deployed the `PL` engine, redeploy its procedure as the Rapo schema owner, so that its runs warn about a
+   key field that is not unique.
+    ```bash
+    sqlplus <user>/<password>@<database> @schema/rapo_usage_rule.sql
+    ```
+1. After the upgrade, look at *Results* for runs with the warning icon: a reconciliation flagged *Key field ... is not
+   unique* has repeated results; choose a unique key field for it.
 1. For the Datasources page, where PDI Core is installed:
     * Rapo's database user needs `SELECT` on `PDI_CORE_DS_CONFIG`, `PDI_CORE_DS_TABLES` and `PDI_CORE_FILE_LOG`,
       plus `INSERT`, `UPDATE` on the first two to edit and `DELETE` to delete datasources and remove their tables.
