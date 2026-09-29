@@ -1,10 +1,12 @@
 <template>
-  <q-page>
-    <h2 class="row items-center q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
-      <div v-if="!loaded">KPI types</div>
-      <div v-else>{{ countTitle }}</div>
-      <div v-if="loaded && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
-    </h2>
+  <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
+    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+        <div v-if="!loaded">KPI types</div>
+        <div v-else>{{ countTitle }}</div>
+        <div v-if="loaded && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
+      </h2>
+    </div>
     <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
@@ -47,129 +49,121 @@
 
     </div>
 
-    <div>
-      <q-markup-table>
+    <q-virtual-scroll
+      type="table"
+      class="list-table kpi-table"
+      :items="sortedKpiTypes"
+      :virtual-scroll-item-size="56"
+      :virtual-scroll-sticky-size-start="48"
+      :table-colspan="8">
+      <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" style="width: 120px" @click="toggleSort(sort, 'kpi_type')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'kpi_type')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type')">
               Code
               <q-icon v-if="sort.key === 'kpi_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'kpi_type_desc')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'kpi_type_desc')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type_desc')">
               Description
               <q-icon v-if="sort.key === 'kpi_type_desc'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" style="width: 70px" @click="toggleSort(sort, 'kpi_value_unit')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_value_unit')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_value_unit')">
               Unit
               <q-icon v-if="sort.key === 'kpi_value_unit'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" style="width: 80px" @click="toggleSort(sort, 'kpi_priority')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_priority')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_priority')">
               Priority
               <q-icon v-if="sort.key === 'kpi_priority'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" style="width: 90px" @click="toggleSort(sort, 'kpi_decimal_places')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_decimal_places')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_decimal_places')">
               Decimals
               <q-icon v-if="sort.key === 'kpi_decimal_places'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center" style="width: 200px">Default statements</th>
-            <th class="text-center sortable" style="width: 90px" @click="toggleSort(sort, 'usage_count')">
+            <th class="text-center">Default statements</th>
+            <th class="text-center sortable" @click="toggleSort(sort, 'usage_count')" v-keyboard :aria-sort="ariaSort(sort, 'usage_count')">
               Used by
               <q-icon v-if="sort.key === 'usage_count'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th class="text-left"></th>
           </tr>
         </thead>
+      </template>
+      <!-- The row opens the editor; what reacts on its own (the unit chip, the menu) stops the click. -->
+      <template #default="{ item: kpiType }">
+        <tr :key="kpiType.kpi_type" class="clickable-row" @click="$router.push({ name: 'edit-kpi-type', params: { kpiCode: kpiType.kpi_type } })">
+          <td class="text-left">
+            <q-chip :title="kpiType.kpi_value_unit || 'No unit'">
+              <q-avatar :icon="kpiIcon" :color="kpiUnitColor(kpiType.kpi_value_unit)" text-color="white" />
+              {{ kpiType.kpi_type }}
+            </q-chip>
+          </td>
+          <td class="text-left">{{ kpiType.kpi_type_desc }}</td>
+          <td class="text-center">
+            <q-chip v-if="kpiType.kpi_value_unit" size="12px" clickable @click.stop="filter.unit = kpiType.kpi_value_unit">
+              {{ kpiType.kpi_value_unit }}
+            </q-chip>
+          </td>
+          <td class="text-center">{{ kpiType.kpi_priority }}</td>
+          <td class="text-center">{{ kpiType.kpi_decimal_places }}</td>
+          <td class="text-center">
+            <!-- A type without a default leaves that half to the controls, which is worth seeing at a glance. -->
+            <q-chip v-if="kpiType.default_kpi_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-calculator"> KPI </q-chip>
+            <q-chip v-if="kpiType.default_alarm_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-bell"> Alarm </q-chip>
+          </td>
+          <td class="text-center">
+            <span v-if="usageOf(kpiType.kpi_type).length">{{ usageOf(kpiType.kpi_type).length }}</span>
+            <span v-else class="text-grey-7">&ndash;</span>
+          </td>
+          <td @click.stop>
+            <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, kpiType)" />
+          </td>
+        </tr>
+      </template>
+      <template #after>
         <tbody v-if="!loaded">
           <skeleton-rows :rows="8" :columns="['QChip', 'text', 'QChip', 'text', 'text', 'text', 'text', null]" />
         </tbody>
-        <tbody v-else>
-          <!-- The row opens the editor; what reacts on its own (the unit chip, the menu) stops the click. -->
-          <tr
-            v-for="kpiType in sortedKpiTypes"
-            :key="kpiType.kpi_type"
-            class="clickable-row"
-            @click="$router.push({ name: 'edit-kpi-type', params: { kpiCode: kpiType.kpi_type } })">
-            <td class="text-left">
-              <q-chip :title="kpiType.kpi_value_unit || 'No unit'">
-                <q-avatar :icon="kpiIcon" :color="kpiUnitColor(kpiType.kpi_value_unit)" text-color="white" />
-                {{ kpiType.kpi_type }}
-              </q-chip>
-            </td>
-            <td class="text-left">{{ kpiType.kpi_type_desc }}</td>
-            <td class="text-center">
-              <q-chip v-if="kpiType.kpi_value_unit" size="12px" clickable @click.stop="filter.unit = kpiType.kpi_value_unit">
-                {{ kpiType.kpi_value_unit }}
-              </q-chip>
-            </td>
-            <td class="text-center">{{ kpiType.kpi_priority }}</td>
-            <td class="text-center">{{ kpiType.kpi_decimal_places }}</td>
-            <td class="text-center">
-              <!-- A type without a default leaves that half to the controls, which is worth seeing at a glance. -->
-              <q-chip v-if="kpiType.default_kpi_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-calculator"> KPI </q-chip>
-              <q-chip v-if="kpiType.default_alarm_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-bell"> Alarm </q-chip>
-            </td>
-            <td class="text-center">
-              <span v-if="usageOf(kpiType.kpi_type).length">{{ usageOf(kpiType.kpi_type).length }}</span>
-              <span v-else class="text-grey-5">&ndash;</span>
-            </td>
-
-            <td @click.stop>
-              <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
-                <q-menu>
-                  <q-list dense class="text-no-wrap">
-                    <q-item
-                      clickable
-                      :to="{
-                        name: 'edit-kpi-type',
-                        params: { kpiCode: kpiType.kpi_type },
-                      }">
-                      <q-item-section> Edit KPI type </q-item-section>
-                    </q-item>
-                    <q-separator />
-                    <!-- racs_kpi_config references the code, so a used type cannot be deleted. -->
-                    <q-item v-if="usageOf(kpiType.kpi_type).length" dense disable>
-                      <q-item-section> Delete KPI type </q-item-section>
-                      <q-tooltip anchor="top middle" self="bottom middle">
-                        Used by {{ usageOf(kpiType.kpi_type).length }} control(s)
-                      </q-tooltip>
-                    </q-item>
-                    <confirm-dialog
-                      v-else
-                      icon="fas fa-trash-alt"
-                      :text="'Do you really want to delete KPI type ' + kpiType.kpi_type + '?'"
-                      :action="deleteKpiType"
-                      :argument="kpiType.kpi_type">
-                      <q-item dense clickable>
-                        <q-item-section> Delete KPI type </q-item-section>
-                      </q-item>
-                    </confirm-dialog>
-                  </q-list>
-                </q-menu>
-              </q-btn>
-            </td>
+        <tbody v-else-if="!sortedKpiTypes.length">
+          <tr>
+            <td colspan="8" class="text-center text-grey-7 q-pa-lg">No KPI types match the filters</td>
           </tr>
         </tbody>
-      </q-markup-table>
-    </div>
+      </template>
+    </q-virtual-scroll>
+    <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
+      <q-list v-if="menuRow" dense class="text-no-wrap">
+        <q-item clickable v-close-popup :to="{ name: 'edit-kpi-type', params: { kpiCode: menuRow.kpi_type } }">
+          <q-item-section> Edit KPI type </q-item-section>
+        </q-item>
+        <q-separator />
+        <!-- racs_kpi_config references the code, so a used type cannot be deleted. -->
+        <q-item v-if="usageOf(menuRow.kpi_type).length" dense disable>
+          <q-item-section> Delete KPI type </q-item-section>
+          <q-tooltip anchor="top middle" self="bottom middle"> Used by {{ usageOf(menuRow.kpi_type).length }} control(s) </q-tooltip>
+        </q-item>
+        <q-item v-else dense clickable v-close-popup @click="confirmDeleteKpiType(menuRow.kpi_type)">
+          <q-item-section> Delete KPI type </q-item-section>
+        </q-item>
+      </q-list>
+    </q-menu>
   </q-page>
 </template>
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import ConfirmDialog from "./ConfirmDialog.vue";
 import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { KPI_ICON, kpiUnitColor } from "../constants";
 import { searchFilter, valueFilter } from "../utils/filters";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { fillViewportToBottom } from "../utils/layout";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 export default {
   mixins: [persistFilters("kpi_types", ["filter", "sort"])],
   components: {
-    ConfirmDialog,
     FilterBadge,
     FilterChips,
     SkeletonRows,
@@ -190,13 +184,22 @@ export default {
         key: null,
         dir: "asc",
       },
+      menuTarget: false,
+      menuKpiType: null,
     };
   },
   methods: {
     ...mapActions(["updateKpiTypes"]),
     sortIcon,
+    ariaSort,
     toggleSort,
     kpiUnitColor,
+    fillViewportToBottom,
+    openRowMenu(event, row) {
+      this.menuTarget = event.currentTarget;
+      this.menuKpiType = row.kpi_type;
+      this.$nextTick(() => this.$refs.rowMenu.show());
+    },
     usageOf(kpiType) {
       return this.usage.filter((item) => item.kpi_type === kpiType);
     },
@@ -214,6 +217,11 @@ export default {
     },
     async loadUsage() {
       this.usage = await api("get-kpi-type-usage", { loadingBar: false });
+    },
+    confirmDeleteKpiType(kpi_type) {
+      this.$q
+        .dialog({ title: kpi_type, message: `Do you really want to delete KPI type ${kpi_type}?`, cancel: true, persistent: true, ok: { label: "Delete", color: "negative" } })
+        .onOk(() => this.deleteKpiType(kpi_type));
     },
     async deleteKpiType(kpi_type) {
       try {
@@ -243,6 +251,10 @@ export default {
         ...valueFilter("used", "Usage", filter.used, () => (filter.used = null), { label: filter.used === "Y" ? "Used by controls" : "Not used" }),
         ...searchFilter(this.$store),
       ];
+    },
+    // Looked up by code, so an open menu follows a refresh.
+    menuRow() {
+      return this.kpiTypes.find((item) => item.kpi_type === this.menuKpiType) || null;
     },
     unitOptions() {
       return [...new Set(this.kpiTypes.map((item) => item.kpi_value_unit).filter(Boolean))].sort();
@@ -289,16 +301,16 @@ export default {
 </script>
 
 <style scoped>
-.sortable {
-  cursor: pointer;
-  user-select: none;
+/* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
+.kpi-table :deep(table) {
+  table-layout: fixed;
+  min-width: 860px;
 }
-
-.clickable-row {
-  cursor: pointer;
-}
-
-.clickable-row:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
+.kpi-table th:nth-child(1) { width: 190px; }
+.kpi-table th:nth-child(3) { width: 80px; }
+.kpi-table th:nth-child(4) { width: 90px; }
+.kpi-table th:nth-child(5) { width: 100px; }
+.kpi-table th:nth-child(6) { width: 200px; }
+.kpi-table th:nth-child(7) { width: 100px; }
+.kpi-table th:nth-child(8) { width: 62px; }
 </style>

@@ -1,7 +1,7 @@
 // The Files page: the file log of one day as aggregates (get-files-day `cells`: one per datasource, hour and status), turned
 // into its table rows, header totals and heatmap, all in the browser so that every filter applies at once.
 
-import { datasourceLane } from "../constants";
+import { datasourceLane, fileStatus } from "../constants";
 
 // Files, records read, written and rejected, duplicates and runtime (s) of a set of cells.
 function emptyTotals() {
@@ -142,6 +142,42 @@ export function heatmapRows(day, datasources, keep) {
 
 function emptyHours() {
   return Array.from({ length: 24 }, () => ({ files: 0, errors: 0 }));
+}
+
+// The hour a file log row started loading (startloaddate, the database's clock), or null.
+export function loadHour(file) {
+  const hour = Number(String(file.startloaddate || "").slice(11, 13));
+  return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : null;
+}
+
+// "09:00–10:00" for the hour 9.
+export function hourRange(hour) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(hour)}:00–${pad(hour + 1)}:00`;
+}
+
+// Files per hour of one datasource's log: one row per status present and a Total row, like heatmapRows.
+export function statusHeatmapRows(files) {
+  const rows = new Map();
+  const total = { key: "total", label: "Total", cells: emptyHours() };
+  files.forEach((file) => {
+    const hour = loadHour(file);
+    if (hour === null) {
+      return;
+    }
+    if (!rows.has(file.filestatus)) {
+      const info = fileStatus(file.filestatus);
+      rows.set(file.filestatus, { key: `status-${file.filestatus}`, label: info.label, color: info.color, cells: emptyHours() });
+    }
+    [rows.get(file.filestatus), total].forEach((row) => {
+      row.cells[hour].files += 1;
+      if (file.filestatus === "ERROR") {
+        row.cells[hour].errors += 1;
+      }
+    });
+  });
+  const list = [...rows.values()].sort((a, b) => b.cells.reduce((n, c) => n + c.files, 0) - a.cells.reduce((n, c) => n + c.files, 0));
+  return list.length > 1 ? [...list, total] : list.length ? list : [total];
 }
 
 // 1234 → 1.2k, 1234567 → 1.2M; the exact number goes to a tooltip.

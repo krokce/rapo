@@ -8,7 +8,7 @@
           {{ runStatus(run.status).label }}
         </q-chip>
         <q-space />
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 
@@ -50,17 +50,17 @@
             {{ level.name }} <span class="q-ml-xs">({{ levelCounts[level.name] || 0 }})</span>
           </q-chip>
           <q-input v-model="search" dense outlined clearable debounce="300" placeholder="Search log" class="col-3">
-            <template v-slot:prepend><q-icon name="search" /></template>
+            <template v-slot:prepend><q-icon name="fas fa-search" /></template>
           </q-input>
           <q-space />
-          <small class="text-grey-7" v-if="log && log.exists">{{ formatSize(log.size) }}, modified {{ toTimeString(log.modified) }}</small>
-          <q-btn flat dense round icon="fas fa-sync" @click="load">
+          <small class="text-grey-7" v-if="log && log.exists">{{ formatBytes(log.size) }}, modified {{ toTimeString(log.modified) }}</small>
+          <q-btn aria-label="Refresh" flat dense round icon="fas fa-sync" @click="load">
             <q-tooltip>Refresh</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="fas fa-copy" :disable="!filteredRecords.length" @click="copyLog">
+          <q-btn aria-label="Copy shown lines" flat dense round icon="fas fa-copy" :disable="!filteredRecords.length" @click="copyLog">
             <q-tooltip>Copy shown lines</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="fas fa-download" :disable="!log || !log.exists" @click="download">
+          <q-btn aria-label="Download full log file" flat dense round icon="fas fa-download" :disable="!log || !log.exists" @click="download">
             <q-tooltip>Download full log file</q-tooltip>
           </q-btn>
         </div>
@@ -73,13 +73,13 @@
         <div class="col log-body q-mx-md q-mb-md">
           <q-virtual-scroll ref="scroll" class="fit" :items="filteredRecords" :virtual-scroll-item-size="18" v-slot="{ item }">
             <div :key="item.index" class="log-record">
-              <span class="text-grey-6">{{ item.time }}</span>
+              <span class="text-grey-7">{{ item.time }}</span>
               <span class="log-level" :class="'text-' + levelColor(item.level)">{{ item.level }}</span>
-              <span class="text-grey-6 log-thread">{{ item.thread }}</span>
+              <span class="text-grey-7 log-thread">{{ item.thread }}</span>
               <span class="log-message">{{ item.message }}</span>
             </div>
           </q-virtual-scroll>
-          <div v-if="log && log.exists && !filteredRecords.length" class="absolute-center text-grey-6">No matching lines</div>
+          <div v-if="log && log.exists && !filteredRecords.length" class="absolute-center text-grey-7">No matching lines</div>
         </div>
       </template>
     </q-card>
@@ -87,11 +87,11 @@
 </template>
 
 <script>
-import { Notify } from "quasar";
+import { copyAndNotify } from "../runActions";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, runStatus } from "../constants";
 import { liveRefetch } from "../socket";
-import { copyText, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
+import { downloadBlob, formatBytes, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 
 const LEVELS = [
   { name: "ERROR", color: "deep-orange" },
@@ -170,7 +170,7 @@ export default {
         }
       }
       if (this.log.truncated) {
-        notices.push(`The log file has ${this.formatSize(this.log.size)}, only its end is shown. Download it to see everything.`);
+        notices.push(`The log file has ${formatBytes(this.log.size)}, only its end is shown. Download it to see everything.`);
       }
       return notices;
     },
@@ -251,32 +251,15 @@ export default {
       const level = LEVELS.find((item) => item.name === name);
       return level ? level.color : "grey-7";
     },
-    formatSize(bytes) {
-      if (bytes == null) {
-        return "";
-      }
-      return bytes < 1024 * 1024 ? `${formatNumber(bytes / 1024, 1)} KB` : `${formatNumber(bytes / 1024 / 1024, 1)} MB`;
-    },
+    formatBytes,
     async copyLog() {
       const text = this.filteredRecords.map((record) => [record.time, record.thread, record.level, record.message].join("\t")).join("\n");
-      try {
-        await copyText(text);
-        Notify.create({ type: "positive", message: `${this.filteredRecords.length} log records copied to clipboard` });
-      } catch (error) {
-        notifyError("Failed to copy the log.", error);
-      }
+      await copyAndNotify(text, `${this.filteredRecords.length} log records`, "Failed to copy the log.");
     },
     async download() {
       try {
         const response = await api("download-control-run-log", { params: { process_id: this.processId }, raw: true });
-        const url = URL.createObjectURL(await response.blob());
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${this.controlName}_${this.processId}.log`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadBlob(await response.blob(), `${this.controlName}_${this.processId}.log`);
       } catch (error) {
         notifyError("Failed to download the log file.", error);
       }
@@ -303,14 +286,14 @@ export default {
   margin: 2px 0 0;
   max-height: 160px;
   overflow: auto;
-  background: #f5f7f8;
+  background: var(--rapo-surface-alt);
   padding: 6px;
 }
 
 .log-body {
   position: relative;
-  border: 1px solid #e0e0e0;
-  background: #fafafa;
+  border: 1px solid var(--rapo-panel-border);
+  background: var(--rapo-surface-alt);
   min-height: 0;
 }
 

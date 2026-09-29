@@ -1,0 +1,189 @@
+// Tokens and rules shared by several components. App.vue keeps what only the shell uses.
+
+:root
+  --rapo-teal: #009688
+  --rapo-teal-soft: #e0f2f1
+  --rapo-header: #cfd8dc
+  --rapo-grid: #eceff1
+  --rapo-panel-border: #e0e0e0
+  --rapo-row-hover: rgba(0, 0, 0, 0.03)
+  --rapo-page: #fafafa
+  --rapo-drawer: #f5f5f5
+  --rapo-surface: #ffffff
+  --rapo-surface-alt: #f5f7f8
+  --rapo-muted: #757575
+  --rapo-border-soft: rgba(0, 0, 0, 0.12)
+  --rapo-highlight: #fff8e1
+  --rapo-selected: #e3f2fd
+  --rapo-added-bg: #e8f5e9
+  --rapo-added-fg: #1b5e20
+  --rapo-removed-bg: #ffebee
+  --rapo-removed-fg: #b71c1c
+  --rapo-filter-border: #ffcc80
+  --rapo-code-border: #bbb
+  --rapo-info: #01579b
+  --rapo-header-text: #263238
+  --rapo-label: #78909c
+  --rapo-strong: #455a64
+  --rapo-selected-row: #b2dfdb
+
+// The dark theme (Quasar's Dark plugin sets body--dark): the same tokens, so components need no dark rules of their own.
+body.body--dark
+  --rapo-teal: #4db6ac
+  --rapo-teal-soft: rgba(77, 182, 172, 0.18)
+  --rapo-header: #37474f
+  --rapo-grid: #2c3438
+  --rapo-panel-border: #424242
+  --rapo-row-hover: rgba(255, 255, 255, 0.05)
+  --rapo-page: #121212
+  --rapo-drawer: #181818
+  --rapo-surface: #1d1d1d
+  --rapo-surface-alt: #242a2d
+  --rapo-muted: #a3a3a3
+  --rapo-border-soft: rgba(255, 255, 255, 0.14)
+  --rapo-highlight: rgba(255, 193, 7, 0.16)
+  --rapo-selected: rgba(66, 165, 245, 0.2)
+  --rapo-added-bg: rgba(76, 175, 80, 0.2)
+  --rapo-added-fg: #a5d6a7
+  --rapo-removed-bg: rgba(229, 57, 53, 0.22)
+  --rapo-removed-fg: #ef9a9a
+  --rapo-filter-border: #8d6e63
+  --rapo-code-border: #555
+  --rapo-info: #90caf9
+  --rapo-header-text: #eceff1
+  --rapo-label: #90a4ae
+  --rapo-strong: #cfd8dc
+  --rapo-selected-row: rgba(77, 182, 172, 0.3)
+
+.sortable
+  cursor: pointer
+  user-select: none
+
+.text-mono
+  font-family: monospace
+
+.clickable-row
+  cursor: pointer
+
+  &:hover
+    background: var(--rapo-row-hover)
+
+// Whole numbers in a monospace font, right-aligned, so their digits line up (Files tables).
+.number-cell
+  font-family: "Roboto Mono", Menlo, Consolas, monospace
+  font-size: 13px
+
+// The day buttons (as tall as the inputs beside them, and no wider than their icon) and the name filter of Results, Files and a datasource file log.
+.day-btn
+  height: 51px
+  min-width: 0
+
+.name-filter
+  min-width: 180px
+
+// A name that links to its editor (Controls, Datasources, Files). The pages add their own wrapping.
+.control-name,
+.datasource-name
+  display: block
+  font-size: 16px
+  text-decoration: none
+
+  &:hover
+    text-decoration: underline
+
+// A row of an inactive datasource.
+.row-inactive > td
+  color: var(--rapo-muted)
+
+// The first row of a new day in a chronological list.
+.new-day-separator,
+.new-day-separator > td
+  border-top: 2px solid var(--rapo-header) !important
+
+// The smaller text after a page title: the day of Results and Files, the dataset of Data analysis, and what an editor
+// page shows (its type chip and name).
+.page-subject
+  font-size: 0.6em
+
+// The Save / Apply / Cancel bar of an editor page: stays in view on every tab, at the bottom of the window while the card is longer.
+.editor-actions
+  position: sticky
+  bottom: 0
+  z-index: 2
+  background: var(--rapo-surface)
+  border-top: 1px solid var(--rapo-border-soft)
+
+// An empty, failed or unavailable state inside a panel: a muted icon above one line of text, centered.
+.state-notice
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: 8px
+  padding: 24px 16px
+  text-align: center
+  color: var(--rapo-muted)
+  .q-icon
+    font-size: 28px
+    color: #90a4ae
+
+.state-notice--error .q-icon
+  color: #e53935
+
+// Keyboard focus: a visible ring on everything Tab reaches, none for mouse clicks.
+:focus-visible
+  outline: 2px solid var(--rapo-teal)
+  outline-offset: 2px
+
+th.sortable:focus-visible, tr:focus-visible
+  outline-offset: -2px
+
+// Quasar's color utilities are fixed light-theme colors (with !important), so the dark theme re-maps the ones the pages use.
+body.body--dark
+  .bg-white
+    background: var(--rapo-surface) !important
+  .bg-grey-1
+    background: var(--rapo-page) !important
+  .bg-grey-2
+    background: var(--rapo-drawer) !important
+  .bg-grey-3
+    background: #2a2a2a !important
+  .bg-blue-grey-1
+    background: var(--rapo-grid) !important
+  .bg-blue-grey-2
+    background: var(--rapo-header) !important
+  .bg-red-1
+    background: rgba(229, 57, 53, 0.2) !important
+  .bg-orange-1
+    background: rgba(251, 140, 0, 0.2) !important
+  .bg-amber-1
+    background: rgba(255, 193, 7, 0.16) !important
+  .text-grey-7
+    color: #b0b0b0 !important
+  .text-grey-8
+    color: #c8c8c8 !important
+  .text-grey-9
+    color: #e0e0e0 !important
+  .text-blue-grey-7, .text-blue-grey-8
+    color: #a9bcc5 !important
+  .text-blue-grey-9, .text-blue-grey-10
+    color: #cfd8dc !important
+  .text-red-4, .text-red-5, .text-red-6, .text-red-8, .text-red-9, .text-red-10
+    color: #ef9a9a !important
+  .text-orange-9, .text-orange-10, .text-deep-orange-9, .text-deep-orange-4, .text-amber-9, .text-amber-10, .text-brown-9
+    color: #ffb74d !important
+  .text-teal-8, .text-teal-9, .text-teal-10
+    color: #4db6ac !important
+  .text-green-8
+    color: #81c784 !important
+  .text-pink-8
+    color: #f48fb1 !important
+  .text-lime-8
+    color: #dce775 !important
+  .text-indigo-4, .text-indigo-6, .text-indigo-7
+    color: #9fa8da !important
+  .text-purple-6, .text-purple-8
+    color: #ce93d8 !important
+  .text-primary
+    color: #42a5f5 !important
+  .text-negative
+    color: #ff6b6b !important

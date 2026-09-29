@@ -19,7 +19,7 @@
 
       <q-input class="col" outlined v-model="scheduleObject.mday" label="Month" v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn round dense flat icon="add">
+          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.mday" :key="menu.menuText">
@@ -36,7 +36,7 @@
 
       <q-input class="col" outlined v-model="scheduleObject.wday" label="Week" v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn round dense flat icon="add">
+          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.wday" :key="menu.menuText">
@@ -162,7 +162,7 @@
         label="Hour"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn round dense flat icon="add">
+          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.hour" :key="menu.menuText">
@@ -185,7 +185,7 @@
         label="Minute"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn round dense flat icon="add">
+          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.min" :key="menu.menuText">
@@ -208,7 +208,7 @@
         label="Second"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn round dense flat icon="add">
+          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.sec" :key="menu.menuText">
@@ -232,7 +232,7 @@
         :rules="[(val) => /^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(val) || 'Must be a valid time (HH:mm:ss) format']"
         @update:model-value="scheduleDateTimeChanged">
         <template v-slot:append>
-          <q-icon name="access_time" class="cursor-pointer">
+          <q-icon name="far fa-clock" class="cursor-pointer">
             <q-popup-proxy cover transition-show="scale" transition-hide="scale">
               <q-time v-model="scheduleTimepicker" with-seconds format24h color="teal">
                 <div class="row items-center justify-end">
@@ -397,5 +397,3 @@ export default {
   },
 };
 </script>
-
-<style></style>

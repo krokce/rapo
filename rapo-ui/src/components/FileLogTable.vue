@@ -5,7 +5,7 @@
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
       <component :is="embedded ? 'div' : 'h2'" class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none" :class="{ 'text-h6': embedded }">
         <slot name="title" />
-        <div class="text-grey-6" :class="{ 'results-day': !embedded }">{{ dayTitle }}</div>
+        <div class="text-grey-7" :class="{ 'page-subject': !embedded }">{{ dayTitle }}</div>
         <slot name="after-day" />
         <div v-if="activeFilters.length" class="row items-center">
           <filter-badge :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" @clear="clearFilters" />
@@ -46,7 +46,7 @@
     <file-heatmap v-if="!embedded && files.length" :rows="heatmap" :selected="hour" class="q-mt-sm q-mb-md" @select="(value) => (hour = value)" />
 
     <div class="row items-center" :class="{ 'q-mb-sm': !embedded }">
-      <q-btn class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="shiftDay(-1)">
+      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="shiftDay(-1)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
       </q-btn>
 
@@ -81,10 +81,10 @@
       </q-select>
 
       <q-space />
-      <q-btn v-if="day && day < today" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="shiftDay(1)">
+      <q-btn aria-label="Next day" v-if="day && day < today" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="shiftDay(1)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
       </q-btn>
-      <q-btn v-if="day && day < today" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="load(null)">
+      <q-btn aria-label="Today" v-if="day && day < today" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="load(null)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
       </q-btn>
     </div>
@@ -142,7 +142,7 @@
                 <q-tooltip>Select or unselect every file shown ({{ formatNumber(shownFiles.length) }})</q-tooltip>
               </q-checkbox>
             </th>
-            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)">
+            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)" v-keyboard :aria-sort="ariaSort(sort, column.key)">
               {{ column.label }}
               <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -150,7 +150,7 @@
         </thead>
       </template>
       <template #default="{ item: file }">
-        <tr :key="file.id" class="clickable-row" :class="{ 'file-row--highlight': file.id === highlightId, 'file-row--selected': selected.has(file.id) }" @click="openLog(file)">
+        <tr :key="file.id" class="clickable-row" :class="{ 'file-row--highlight': file.id === highlightId, 'file-row--selected': selected.has(file.id) }" v-keyboard @click="openLog(file)">
           <td v-if="selectable" class="text-center" @click.stop>
             <q-checkbox :model-value="selected.has(file.id)" dense @update:model-value="toggle(file.id)" />
           </td>
@@ -182,7 +182,7 @@
           <td class="text-right number-cell">{{ formatNumber(file.recordswrite || 0) }}</td>
           <td class="text-right number-cell" :class="{ 'text-red-6 text-weight-bold': file.recordsreject > 0 }">{{ formatNumber(file.recordsreject || 0) }}</td>
           <td class="text-center" @click.stop>
-            <q-icon v-if="file.duplicate" name="fas fa-clone" color="purple-3" size="16px" class="cursor-pointer" @click="duplicate = 'Y'">
+            <q-icon v-if="file.duplicate" name="fas fa-clone" color="purple-3" size="16px" class="cursor-pointer" aria-label="Show duplicates only" v-keyboard:button @click="duplicate = 'Y'">
               <q-tooltip>Duplicate: click to show only the duplicates</q-tooltip>
             </q-icon>
           </td>
@@ -204,10 +204,10 @@
         <q-card-section class="row items-center q-py-sm">
           <q-icon v-if="logFile" :name="fileStatus(logFile.filestatus).icon" :color="fileStatus(logFile.filestatus).color" size="20px" class="q-mr-sm" />
           <div class="text-h6 ellipsis col">{{ logFile && logFile.inputfilename }}</div>
-          <q-btn flat round dense icon="fas fa-copy" :disable="!logText" @click="copyLog">
+          <q-btn aria-label="Copy the log" flat round dense icon="fas fa-copy" :disable="!logText" @click="copyLog">
             <q-tooltip>Copy the log</q-tooltip>
           </q-btn>
-          <q-btn flat round icon="close" v-close-popup />
+          <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
         </q-card-section>
         <q-separator />
         <q-card-section v-if="logFile" class="q-py-sm text-caption file-facts">
@@ -231,18 +231,18 @@
 </template>
 
 <script>
+import { mapGetters } from "vuex";
 import FileHeatmap from "./FileHeatmap.vue";
 import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { api, notifyError } from "../api";
 import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
-import { date as quasarDate } from "quasar";
 import { liveRefetch } from "../socket";
-import { compactNumber } from "../utils/files";
+import { copyAndNotify } from "../runActions";
+import { compactNumber, hourRange, loadHour, statusHeatmapRows } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
-import { copyText, escapeHtml, formatNumber, toDateString, toDateTimeString, toTimeString } from "../utils/format";
-import { formatBytes } from "../utils/datasources";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // The files one datasource loaded on one day (get-ds-file-log, the database's day), newest first. A row opens the log
@@ -263,10 +263,6 @@ const COLUMNS = [
   { key: "recordsreject", label: "Rejected", align: "right" },
   { key: "duplicate", label: "Duplicate", align: "center" },
 ];
-
-function emptyHours() {
-  return Array.from({ length: 24 }, () => ({ files: 0, errors: 0 }));
-}
 
 export default {
   name: "FileLogTable",
@@ -314,6 +310,7 @@ export default {
     };
   },
   computed: {
+    ...mapGetters(["getEnvInfo"]),
     statusCounts() {
       const counts = new Map();
       this.files.forEach((file) => counts.set(file.filestatus, (counts.get(file.filestatus) || 0) + 1));
@@ -340,7 +337,7 @@ export default {
       );
     },
     dayTitle() {
-      return this.day ? quasarDate.formatDate(quasarDate.extractDate(this.day, "YYYY-MM-DD"), "DD.MM.YYYY") : "";
+      return dayTitle(this.day);
     },
     activeFilters() {
       return [
@@ -348,7 +345,7 @@ export default {
         ...listFilter("status", "Status", this.statuses, (value) => (this.statuses = this.statuses.filter((item) => item !== value)), (value) => fileStatus(value).label),
         ...valueFilter("duplicate", "Duplicate", this.duplicate, () => (this.duplicate = null), { label: this.duplicate === "Y" ? "Duplicates" : "Not duplicates" }),
         ...valueFilter("hour", "Hour", this.hour, () => (this.hour = null), {
-          label: this.hour === null ? null : `${String(this.hour).padStart(2, "0")}:00–${String(this.hour + 1).padStart(2, "0")}:00`,
+          label: this.hour === null ? null : hourRange(this.hour),
         }),
       ];
     },
@@ -364,32 +361,13 @@ export default {
       );
     },
     heatmap() {
-      const rows = new Map();
-      const total = { key: "total", label: "Total", cells: emptyHours() };
-      this.filesButHour.forEach((file) => {
-        const hour = Number(String(file.startloaddate || "").slice(11, 13));
-        if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-          return;
-        }
-        if (!rows.has(file.filestatus)) {
-          const info = fileStatus(file.filestatus);
-          rows.set(file.filestatus, { key: `status-${file.filestatus}`, label: info.label, color: info.color, cells: emptyHours() });
-        }
-        [rows.get(file.filestatus), total].forEach((row) => {
-          row.cells[hour].files += 1;
-          if (file.filestatus === "ERROR") {
-            row.cells[hour].errors += 1;
-          }
-        });
-      });
-      const list = [...rows.values()].sort((a, b) => b.cells.reduce((n, c) => n + c.files, 0) - a.cells.reduce((n, c) => n + c.files, 0));
-      return list.length > 1 ? [...list, total] : list.length ? list : [total];
+      return statusHeatmapRows(this.filesButHour);
     },
     shownFiles() {
       if (this.hour === null) {
         return this.filesButHour;
       }
-      return this.filesButHour.filter((file) => Number(String(file.startloaddate || "").slice(11, 13)) === this.hour);
+      return this.filesButHour.filter((file) => loadHour(file) === this.hour);
     },
     sortedFiles() {
       const key = this.sort.key;
@@ -407,15 +385,13 @@ export default {
       return all ? true : null;
     },
     canAct() {
-      const info = this.$store.getters.getEnvInfo;
-      return Boolean(info && info.datasources_file_actions);
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_actions);
     },
     filesById() {
       return new Map(this.files.map((file) => [file.id, file]));
     },
     canDownload() {
-      const info = this.$store.getters.getEnvInfo;
-      return Boolean(info && info.datasources_file_download);
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_download);
     },
     eligibleDownload() {
       return this.eligibleFor(FILE_DOWNLOAD, null);
@@ -454,6 +430,7 @@ export default {
     compactNumber,
     fileStatus,
     sortIcon,
+    ariaSort,
     toggleSort,
     addStatus(status) {
       if (!this.statuses.includes(status)) {
@@ -518,10 +495,7 @@ export default {
       }
     },
     shiftDay(days) {
-      const date = new Date(`${this.day}T12:00:00`);
-      date.setDate(date.getDate() + days);
-      const pad = (value) => String(value).padStart(2, "0");
-      this.load(`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`);
+      this.load(shiftDay(this.day, days));
     },
     toggle(id) {
       const selected = new Set(this.selected);
@@ -616,14 +590,7 @@ export default {
         const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
         const name = match ? decodeURIComponent(match[1] || match[2]) : files.length === 1 ? files[0].inputfilename : "files.zip";
         const skipped = Number(response.headers.get("X-Rapo-Skipped") || 0);
-        const url = URL.createObjectURL(await response.blob());
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadBlob(await response.blob(), name);
         if (skipped) {
           this.$q.notify({
             type: "warning",
@@ -651,12 +618,7 @@ export default {
       }
     },
     async copyLog() {
-      try {
-        await copyText(this.logText);
-        this.$q.notify({ message: "Log copied", timeout: 1000 });
-      } catch (error) {
-        notifyError("The log was not copied.", error);
-      }
+      await copyAndNotify(this.logText, "Log", "The log was not copied.");
     },
   },
   // After persistFilters restored the kept filters, which a link's filters replace.
@@ -680,38 +642,17 @@ export default {
 </script>
 
 <style scoped>
-.clickable-row {
-  cursor: pointer;
-}
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-.clickable-row:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
 .file-row--selected {
-  background: #e3f2fd;
+  background: var(--rapo-selected);
 }
 .file-row--highlight > td {
-  background: #fff8e1;
+  background: var(--rapo-highlight);
 }
 .selection-bar {
   min-height: 40px;
   padding: 2px 8px;
-  background: #e3f2fd;
+  background: var(--rapo-selected);
   border-radius: 4px;
-}
-/* The day buttons are as tall as the inputs beside them, as on Results. */
-.day-btn {
-  height: 51px;
-  min-width: 0;
-}
-.name-filter {
-  min-width: 200px;
-}
-.results-day {
-  font-size: 0.6em;
 }
 .file-log-table :deep(table) {
   table-layout: fixed;
@@ -738,11 +679,6 @@ export default {
 .file-log-table--selectable th:nth-child(9) { width: 110px; }
 .file-log-table--selectable th:nth-child(10) { width: 90px; }
 .file-log-table--selectable th:nth-child(11) { width: 80px; }
-/* Whole numbers in a monospace font, right-aligned, so their digits line up (as on the Files page). */
-.number-cell {
-  font-family: "Roboto Mono", Menlo, Consolas, monospace;
-  font-size: 13px;
-}
 .log-text {
   font-size: 12px;
   white-space: pre-wrap;
@@ -756,6 +692,6 @@ export default {
 .file-facts span {
   display: inline-block;
   width: 70px;
-  color: #757575;
+  color: var(--rapo-muted);
 }
 </style>

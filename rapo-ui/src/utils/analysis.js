@@ -17,6 +17,24 @@ export const KIND_ICONS = {
   text: { icon: "fas fa-font", color: "teal-7", label: "Text" },
 };
 
+export const ALERT_LABELS = {
+  duplicates: "Duplicates",
+  empty: "Empty",
+  constant: "Constant",
+  unique: "Unique",
+  missing: "Missing",
+  some_missing: "Missing",
+  high_cardinality: "High cardinality",
+  imbalanced: "Imbalanced",
+  zeros: "Zeros",
+  skewed: "Skewed",
+  blank: "Blank",
+};
+
+export function alertLabel(code) {
+  return ALERT_LABELS[code] || code;
+}
+
 export function kindInfo(column) {
   const key = column && column.categorical ? "categorical" : column && column.kind;
   return KIND_ICONS[key] || KIND_ICONS.text;
@@ -70,19 +88,6 @@ export function formatPct(value) {
     return "<0.1%";
   }
   return `${formatNumber(value, value >= 10 || Number.isInteger(value) ? 0 : 1)}%`;
-}
-
-export function formatBytes(value) {
-  if (!value) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB"];
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${formatNumber(value, index ? 1 : 0)} ${units[index]}`;
 }
 
 function quote(value) {
@@ -141,16 +146,39 @@ function binLabel(low, high, kind) {
   return `${formatStat(low)} – ${formatStat(high)}`;
 }
 
+// The colors ECharts cannot read from CSS variables: text, axis lines and grid lines of the light and dark themes. Explicit colors
+// in an option (series, visual maps) win over these.
+export function chartTheme(dark) {
+  const text = dark ? "#b0b0b0" : "#616161";
+  const axis = { axisLabel: { color: text }, axisLine: { lineStyle: { color: dark ? "#555" : "#ccc" } }, splitLine: { lineStyle: { color: dark ? "#2c3438" : "#eceff1" } } };
+  return {
+    textStyle: { color: text },
+    legend: { textStyle: { color: text } },
+    categoryAxis: axis,
+    valueAxis: axis,
+    tooltip: { backgroundColor: dark ? "#2b2b2b" : "#ffffff", borderColor: dark ? "#555" : "#ccc", textStyle: { color: dark ? "#e0e0e0" : "#333" } },
+  };
+}
+
+// The options every chart shares: no animation, labels inside the grid, a shadow pointer on axis tooltips.
+export function baseOption({ grid, tooltip, ...rest }) {
+  const axisTooltip = tooltip && tooltip.trigger === "axis" ? { axisPointer: { type: "shadow" } } : {};
+  return { animation: false, grid: { containLabel: true, ...grid }, tooltip: { ...axisTooltip, ...tooltip }, ...rest };
+}
+
+// A value axis with the small labels and the light grid lines of the charts; `axisLabel` extends the defaults.
+export function valueAxis({ axisLabel, ...rest } = {}) {
+  return { type: "value", axisLabel: { fontSize: 10, ...axisLabel }, ...rest };
+}
+
 // ECharts option of a histogram from {counts, edges}.
 export function histogramOption(histogram, kind, color = "#5c6bc0") {
   const { counts, edges } = histogram;
   const labels = counts.map((count, index) => binLabel(edges[index], edges[index + 1], kind));
-  return {
-    animation: false,
-    grid: { left: 8, right: 16, top: 12, bottom: 4, containLabel: true },
+  return baseOption({
+    grid: { left: 8, right: 16, top: 12, bottom: 4 },
     tooltip: {
       trigger: "axis",
-      axisPointer: { type: "shadow" },
       formatter: (items) => {
         const index = items[0].dataIndex;
         const range = kind === "datetime" ? `${toDateTimeString(edges[index])} – ${toDateTimeString(edges[index + 1])}` : labels[index];
@@ -163,22 +191,28 @@ export function histogramOption(histogram, kind, color = "#5c6bc0") {
       axisLabel: { fontSize: 10, hideOverlap: true, formatter: (label) => (kind === "datetime" ? label.substring(0, 16) : label) },
       axisTick: { alignWithLabel: true },
     },
-    yAxis: { type: "value", axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: "#eceff1" } } },
+    yAxis: valueAxis(),
     series: [{ type: "bar", data: counts, barCategoryGap: "8%", itemStyle: { color }, cursor: "pointer" }],
-  };
+  });
 }
 
 // ECharts option of a small distribution over fixed labels (hours, weekdays).
 export function distributionOption(labels, counts, color = "#7e57c2") {
-  return {
-    animation: false,
+  return baseOption({
     grid: { left: 40, right: 8, top: 8, bottom: 24 },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (items) => `${items[0].name}<br/><b>${formatNumber(items[0].value)}</b> rows` },
+    tooltip: { trigger: "axis", formatter: (items) => `${items[0].name}<br/><b>${formatNumber(items[0].value)}</b> rows` },
     xAxis: { type: "category", data: labels, axisLabel: { fontSize: 10 } },
-    yAxis: { type: "value", axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: "#eceff1" } } },
+    yAxis: valueAxis(),
     series: [{ type: "bar", data: counts, itemStyle: { color } }],
-  };
+  });
 }
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const HOURS = Array.from({ length: 24 }, (item, index) => String(index).padStart(2, "0"));
+
+const LIGHT_CHIP_COLORS = new Set(["orange-8", "amber-8", "blue-grey-4"]);
+
+// Text color that stays readable on a Quasar chip color from the strength/lift scales.
+export function chipTextColor(color) {
+  return LIGHT_CHIP_COLORS.has(color) ? "grey-10" : "white";
+}

@@ -44,7 +44,7 @@
 
         <q-separator />
 
-        <q-form ref="form" @submit="persist('stay')" @reset="cancel" @validation-error="validationError">
+        <q-form @submit="persist('stay')" @reset="cancel" @validation-error="validationError">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -414,7 +414,7 @@
             </template>
             <q-btn :label="writable ? 'Cancel' : 'Close'" type="reset" color="primary" flat />
             <q-space />
-            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap cursor-pointer" @click="diffVisible = true">
+            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap cursor-pointer" v-keyboard:button @click="diffVisible = true">
               <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
               Unsaved changes
               <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Show what Apply will change</q-tooltip>
@@ -429,7 +429,7 @@
         <q-card-section class="row items-center q-py-sm">
           <div class="text-h6">Unsaved changes ({{ unsavedChanges.length }})</div>
           <q-space />
-          <q-btn flat round icon="close" v-close-popup />
+          <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
         </q-card-section>
         <q-separator />
         <q-card-section class="scroll" style="max-height: 70vh">
@@ -1015,15 +1015,6 @@ export default {
   border-radius: 50%;
 }
 
-/* Save / Apply / Cancel stay in view on every tab, at the bottom of the window while the card is longer. */
-.editor-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  background: white;
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
-}
-
 /* As tall as the outlined input beside it. */
 .field-button {
   height: 56px;
@@ -1066,23 +1057,13 @@ export default {
   max-width: 100%;
   flex: 0 1 auto;
 }
-.field-100 {
-  width: 100px;
-}
 .field-200 {
   width: 200px;
 }
 .field-240 {
   width: 240px;
 }
-.field-260 {
-  width: 260px;
-}
 .field-320 {
   width: 320px;
-}
-
-:deep(.text-mono) {
-  font-family: monospace;
 }
 </style>

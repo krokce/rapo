@@ -3,7 +3,7 @@ import { diffLines } from "diff";
 // Not configuration: the audit columns of rapo_config_bak (never saved to rapo_config), the row stamps (set anew by
 // every save), what the editor adds to a version for its selector, and the editor's own copies of the output
 // columns, which are saved as output_table* (save-control drops keys that are no rapo_config column).
-export const IGNORED_FIELDS = [
+const IGNORED_FIELDS = [
   "output_table_columns",
   "output_table_a_columns",
   "output_table_b_columns",
@@ -51,7 +51,7 @@ function same(a, b) {
 }
 
 // A unified line diff: [{ type: " " | "+" | "-" | "gap", text }], unchanged runs cut to CONTEXT_LINES around changes.
-export function lineDiff(oldText, newText) {
+function lineDiff(oldText, newText) {
   const ending = (text) => (text && !text.endsWith("\n") ? text + "\n" : text || "");
   const lines = [];
   diffLines(ending(oldText), ending(newText)).forEach((part) => {
@@ -166,7 +166,7 @@ function sorted(value) {
 
 // The configuration of a rapo_config(_bak) row as one string: IGNORED_FIELDS left out, JSON columns decoded, keys
 // sorted. Two rows with the same key hold the same configuration.
-export function configKey(row) {
+function configKey(row) {
   const fields = Object.keys(row)
     .filter((key) => !IGNORED_FIELDS.includes(key))
     .sort()

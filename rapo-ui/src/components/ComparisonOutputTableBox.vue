@@ -37,8 +37,8 @@
 
           <q-input use-input fill-input class="col-3" outlined clearable v-model="cmpOutputTable[index].column" label="Name (optional)" />
 
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCorrelationConfig(index)" />
-          <q-btn v-if="index == cmpOutputTable.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addColumn" />
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeColumn(index)" />
+          <q-btn aria-label="Add row" v-if="index == cmpOutputTable.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addColumn" />
         </div>
         <q-btn
           v-if="!cmpOutputTable || cmpOutputTable.length == 0"
@@ -73,11 +73,9 @@ export default {
     addColumn() {
       this.cmpOutputTable.push({ column_a: null, column_b: null, column: null });
     },
-    removeCorrelationConfig(index) {
+    removeColumn(index) {
       this.cmpOutputTable.splice(index, 1);
     },
   },
 };
 </script>
-
-<style></style>

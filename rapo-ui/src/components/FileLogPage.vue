@@ -38,10 +38,10 @@
           </q-chip>
         </div>
         <div class="row items-center">
-          <q-btn flat round color="primary" icon="fas fa-arrow-left" :to="{ name: 'files', query: dayQuery }">
+          <q-btn aria-label="Back to the Files of the day" flat round color="primary" icon="fas fa-arrow-left" :to="{ name: 'files', query: dayQuery }">
             <q-tooltip>Back to the Files of the day</q-tooltip>
           </q-btn>
-          <q-btn v-if="datasource" flat round color="primary" :icon="datasourceIcon" :to="{ name: 'edit-datasource', params: { id } }">
+          <q-btn aria-label="Edit the datasource" v-if="datasource" flat round color="primary" :icon="datasourceIcon" :to="{ name: 'edit-datasource', params: { id } }">
             <q-tooltip>Edit the datasource</q-tooltip>
           </q-btn>
         </div>

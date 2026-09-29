@@ -66,8 +66,8 @@
             </q-tooltip>
           </q-select>
 
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="criteria.splice(index, 1)" />
-          <q-btn v-if="index == criteria.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCriterion" />
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="criteria.splice(index, 1)" />
+          <q-btn aria-label="Add row" v-if="index == criteria.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCriterion" />
         </div>
         <q-btn v-if="criteria.length == 0" size="md" color="primary" icon="fas fa-plus" :label="'Add ' + title.toLowerCase()" @click="addCriterion" />
       </q-card-section>

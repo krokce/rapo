@@ -11,7 +11,7 @@
 
           <q-select
             v-if="!control_name"
-            class="col"
+            class="col bg-white"
             outlined
             use-input
             hide-selected
@@ -20,8 +20,7 @@
             @filter="filterControlCatalogue"
             v-model="run_control_name"
             :options="controlNameOptions"
-            label="Select control to run"
-            style="background-color: white">
+            label="Select control to run">
           </q-select>
         </div>
       </q-card-section>
@@ -77,6 +76,7 @@
 <script>
 import { mapActions, mapState } from "vuex";
 import { api, notifyError } from "../api";
+import { startRun } from "../runActions";
 import { cascadeMessage, chainOf } from "../utils/schedule";
 import { upstreamMessage } from "../utils/chain";
 import { localDate, toDateString } from "../utils/format";
@@ -176,13 +176,9 @@ export default {
         ...this.dateParams(),
       };
 
-      try {
-        await api("run-control", { method: "POST", params });
-      } catch (error) {
-        notifyError("Control " + this.run_control_name + " failed to start.", error);
+      if (!(await startRun(params))) {
         return;
       }
-      this.$q.notify({ type: "positive", message: "Control " + this.run_control_name + " queued for execution" });
       if (this.hook) {
         this.hook();
         this.visible = false;

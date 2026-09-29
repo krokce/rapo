@@ -1,4 +1,5 @@
 // PDI Core datasources (pdi_core_ds_config and its pdi_core_ds_tables rows), shared by the Datasources list and editor.
+import { downloadBlob } from "./format";
 
 // A new datasource: the column defaults of pdi_core_ds_config.
 export function emptyDatasource() {
@@ -28,7 +29,7 @@ export function emptyLink() {
 }
 
 // The columns of a datasource as saved (save-ds-config), in DDL order.
-export const DATASOURCE_FIELDS = Object.keys(emptyDatasource()).filter((key) => key !== "links");
+const DATASOURCE_FIELDS = Object.keys(emptyDatasource()).filter((key) => key !== "links");
 
 // PDI Core separates the paths of INPUT_DIRECTORY by "|".
 export function splitDirectories(value) {
@@ -109,20 +110,6 @@ export function issuesOf(row, status, stalledMinutes = 60) {
   return issues;
 }
 
-export function formatBytes(bytes) {
-  if (bytes === null || bytes === undefined) {
-    return "";
-  }
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = Number(bytes);
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${unit ? value.toFixed(value < 10 ? 1 : 0) : value} ${units[unit]}`;
-}
-
 // "45 s", "12 min", "3 h", "2 d".
 export function formatAge(seconds) {
   if (seconds === null || seconds === undefined) {
@@ -135,14 +122,6 @@ export function formatAge(seconds) {
   return `${Math.floor(value / 86400)} d ${Math.floor((value % 86400) / 3600)} h`;
 }
 
-// Seconds between two naive ISO datetimes of the same clock.
-export function secondsBetween(earlier, later) {
-  if (!earlier || !later) {
-    return null;
-  }
-  return (new Date(later) - new Date(earlier)) / 1000;
-}
-
 // A row of a file list as CSV, the separator and quotes escaped.
 export function toCsv(rows, columns) {
   const escape = (value) => {
@@ -153,12 +132,5 @@ export function toCsv(rows, columns) {
 }
 
 export function downloadText(text, filename, type = "text/csv") {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([text], { type }), filename);
 }

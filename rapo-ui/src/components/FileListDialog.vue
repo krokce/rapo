@@ -14,13 +14,13 @@
           :options="kindOptions"
           @update:model-value="load" />
         <q-space />
-        <q-btn flat round dense icon="fas fa-sync" :loading="loading" @click="load">
+        <q-btn aria-label="Read the directories again" flat round dense icon="fas fa-sync" :loading="loading" @click="load">
           <q-tooltip>Read the directories again</q-tooltip>
         </q-btn>
-        <q-btn flat round dense icon="fas fa-file-csv" :disable="!sortedFiles.length" @click="exportCsv">
+        <q-btn aria-label="Download the listed files as CSV" flat round dense icon="fas fa-file-csv" :disable="!sortedFiles.length" @click="exportCsv">
           <q-tooltip>Download the listed files as CSV</q-tooltip>
         </q-btn>
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 
@@ -30,7 +30,7 @@
           <span class="text-mono">{{ directory.path }}</span>
           <span v-if="!directory.exists" class="text-red-6">does not exist on this server</span>
           <span v-else-if="!directory.readable" class="text-red-6">not readable: {{ directory.error }}</span>
-          <span v-else-if="directory.capped" class="text-orange-8">read up to [DATASOURCES] scan_max_entries files</span>
+          <span v-else-if="directory.capped" class="text-orange-10">read up to [DATASOURCES] scan_max_entries files</span>
         </div>
         <div class="row items-center q-gutter-x-md q-mt-xs text-grey-8">
           <span>{{ formatNumber(result.total) }} file(s) read</span>
@@ -63,7 +63,7 @@
           <template #before>
             <thead>
               <tr class="bg-blue-grey-2">
-                <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)">
+                <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
                   {{ column.label }}
                   <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
                 </th>
@@ -72,7 +72,7 @@
             </thead>
           </template>
           <template #default="{ item: file }">
-            <tr :key="file.path" :class="{ 'text-grey-6': kind === 'all' && !file.matches }">
+            <tr :key="file.path" :class="{ 'text-grey-7': kind === 'all' && !file.matches }">
               <td class="text-left ellipsis" :title="file.path">
                 <span v-if="file.subdir" class="text-grey-7">{{ file.subdir }}/</span>{{ file.name }}
               </td>
@@ -82,7 +82,7 @@
               <td class="text-left ellipsis">{{ file.owner }}:{{ file.group }}</td>
               <td class="text-left text-mono">{{ file.mode }}</td>
               <td class="text-left ellipsis">
-                <q-badge v-if="file.young" color="amber-8" class="q-mr-xs" :title="`Modified less than ${result.young_seconds} s ago: PDI Core skips it for now`">young</q-badge>
+                <q-badge v-if="file.young" color="amber-8" text-color="grey-10" class="q-mr-xs" :title="`Modified less than ${result.young_seconds} s ago: PDI Core skips it for now`">young</q-badge>
                 <q-badge v-if="file.pdi_deletes" color="red-5" class="q-mr-xs" :title="`Under ${result.pdi_clean_bytes} bytes: the PDI Core clean-up deletes it`">
                   PDI deletes
                 </q-badge>
@@ -92,7 +92,7 @@
                 <span v-if="kind === 'all'" class="text-caption">{{ file.reason }}</span>
               </td>
               <td class="text-right">
-                <q-btn flat round dense size="sm" icon="fas fa-copy" color="grey-7" @click="copyPath(file)">
+                <q-btn aria-label="Copy the path" flat round dense size="sm" icon="fas fa-copy" color="grey-7" @click="copyPath(file)">
                   <q-tooltip>Copy the path</q-tooltip>
                 </q-btn>
               </td>
@@ -113,9 +113,10 @@
 
 <script>
 import { api, notifyError } from "../api";
-import { copyText, formatNumber, toDateTimeString } from "../utils/format";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
-import { downloadText, formatAge, formatBytes, toCsv } from "../utils/datasources";
+import { copyAndNotify } from "../runActions";
+import { formatBytes, formatNumber, toDateTimeString } from "../utils/format";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { downloadText, formatAge, toCsv } from "../utils/datasources";
 
 const KINDS = {
   match: "Matching files",
@@ -183,6 +184,7 @@ export default {
     formatNumber,
     sortIcon,
     toDateTimeString,
+    ariaSort,
     toggleSort,
     // datasource is the saved row ({id, sourcename}); overrides the editor's {files_mask, clean_mask, subdirs}.
     open(datasource, kind = "match", overrides = {}) {
@@ -213,12 +215,7 @@ export default {
       return directory.exists && directory.readable ? "teal" : "red-5";
     },
     async copyPath(file) {
-      try {
-        await copyText(file.path);
-        this.$q.notify({ message: "Path copied", timeout: 1000 });
-      } catch (error) {
-        notifyError("The path was not copied.", error);
-      }
+      await copyAndNotify(file.path, "Path", "The path was not copied.");
     },
     exportCsv() {
       const columns = [
@@ -246,13 +243,6 @@ function emptyResult() {
 </script>
 
 <style scoped>
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-.text-mono {
-  font-family: monospace;
-}
 .directory-line {
   font-size: 13px;
 }

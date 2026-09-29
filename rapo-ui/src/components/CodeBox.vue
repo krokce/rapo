@@ -5,7 +5,7 @@
       <div class="row items-center no-wrap">
         <slot name="actions"></slot>
         <q-btn v-if="check && !readonly" flat size="sm" label="Check" :disable="!code || !code.trim()" :loading="checking" @click="runCheck" />
-        <q-btn v-if="code && !readonly" flat size="xs" icon="fas fa-times" @click="clearCode">
+        <q-btn aria-label="Clear text" v-if="code && !readonly" flat size="xs" icon="fas fa-times" @click="clearCode">
           <q-tooltip>Clear text</q-tooltip>
         </q-btn>
         <q-btn v-if="!readonly && hasExamples" flat size="sm" label="Example" icon-right="fas fa-caret-down">
@@ -54,7 +54,7 @@
       @ready="onReady" />
     <div v-if="variableList.length && !readonly" class="row items-center q-gutter-xs q-mt-xs text-caption text-grey-7">
       <span>{{ templateVariables.length ? "Variables:" : "Binds:" }}</span>
-      <span v-for="variable in variableList" :key="variable.name" class="code-variable" @mousedown.prevent @click="insertText(variable.token)">
+      <span v-for="variable in variableList" :key="variable.name" class="code-variable" v-keyboard:button @mousedown.prevent @click="insertText(variable.token)">
         {{ variable.token }}
         <q-tooltip v-if="variable.label">{{ variable.label }} — click to insert</q-tooltip>
       </span>
@@ -70,7 +70,9 @@
 import { Codemirror } from "vue-codemirror";
 import { EditorState } from "@codemirror/state";
 import { sql, PLSQL } from "@codemirror/lang-sql";
+import { Dark } from "quasar";
 import { notifyError } from "../api";
+import { darkExtensions } from "../utils/codeTheme";
 import { escapeHtml } from "../utils/format";
 
 // One line for the answer of a check: the error, the warning, or what the statement returns.
@@ -215,6 +217,9 @@ export default {
       if (this.templateVariables.length) {
         extensions.push(PLSQL.language.data.of({ autocomplete: templateVariableCompletionSource(this.templateVariables) }));
       }
+      if (Dark.isActive) {
+        extensions.push(...darkExtensions);
+      }
       return extensions;
     },
     code: {
@@ -304,19 +309,19 @@ export default {
 .cm-editor {
   min-height: 56px;
   max-height: 20em;
-  border: 1px solid #bbb;
+  border: 1px solid var(--rapo-code-border);
   border-radius: 0.25em;
   outline: none;
 }
 
 .cm-gutters {
   min-height: 56px !important; /* Matches the min-height of .cm-editor */
-  border-right: 1px solid #bbb;
+  border-right: 1px solid var(--rapo-code-border);
   box-sizing: border-box; /* Ensures padding and borders are included in the height calculation */
 }
 
 .cm-editor:hover {
-  border: 1px solid #666;
+  border: 1px solid var(--rapo-muted);
 }
 
 .cm-editor.cm-focused {
@@ -344,13 +349,13 @@ export default {
   font-family: monospace;
   padding: 0 4px;
   border-radius: 3px;
-  background: #eceff1;
+  background: var(--rapo-grid);
   cursor: pointer;
 }
 
 .code-variable:hover {
-  background: #cfd8dc;
-  color: #263238;
+  background: var(--rapo-header);
+  color: var(--rapo-header-text);
 }
 
 .check-result {
@@ -361,19 +366,19 @@ export default {
   max-height: 16em;
   overflow: auto;
   padding: 8px;
-  background: #f5f5f5;
+  background: var(--rapo-surface-alt);
   border-radius: 4px;
   font-size: 12px;
 }
 
 /* A read-only editor shows a value that is not the user's to edit, e.g. a KPI type's default statement. */
 .cm-readonly .cm-editor {
-  background: #f5f5f5;
-  color: #757575;
+  background: var(--rapo-surface-alt);
+  color: var(--rapo-muted);
 }
 
 .cm-readonly .cm-editor:hover {
-  border: 1px solid #bbb;
+  border: 1px solid var(--rapo-code-border);
 }
 
 .cm-readonly .cm-cursor {

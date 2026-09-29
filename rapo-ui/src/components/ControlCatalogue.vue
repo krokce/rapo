@@ -1,32 +1,36 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <h2 class="row items-center q-gutter-lg" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
-      <div v-if="showSkeleton">Controls</div>
-      <div v-else>{{ countTitle }}</div>
-      <div v-if="!showSkeleton && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
-      <div v-if="refreshing && !showSkeleton">
-        <q-avatar size="lg" color="grey-5">
-          <q-icon name="fas fa-sync fa-spin" />
-        </q-avatar>
-      </div>
+    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+        <div v-if="showSkeleton">Controls</div>
+        <div v-else>{{ countTitle }}</div>
+        <div v-if="!showSkeleton && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
+        <div v-if="refreshing && !showSkeleton">
+          <q-avatar size="lg" color="grey-5">
+            <q-icon name="fas fa-sync fa-spin" />
+          </q-avatar>
+        </div>
+      </h2>
       <q-space />
-      <div v-if="schemaDriftError">
-        <q-chip color="orange-8" text-color="white" icon="fas fa-exclamation-triangle">
-          Schema check failed
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]" max-width="500px">
-            Schema drift and orphaned tables cannot be shown: {{ schemaDriftError }}. The server log has the details.
-          </q-tooltip>
-        </q-chip>
+      <div class="row items-center justify-end q-gutter-x-md">
+        <div v-if="schemaDriftError">
+          <q-chip color="amber-8" text-color="grey-10" icon="fas fa-exclamation-triangle">
+            Schema check failed
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]" max-width="500px">
+              Schema drift and orphaned tables cannot be shown: {{ schemaDriftError }}. The server log has the details.
+            </q-tooltip>
+          </q-chip>
+        </div>
+        <div v-if="orphanTables.length">
+          <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
+            {{ orphanTables.length }} orphaned result table{{ orphanTables.length > 1 ? "s" : "" }}
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
+              Result tables no run writes any more: review and drop them
+            </q-tooltip>
+          </q-chip>
+        </div>
       </div>
-      <div v-if="orphanTables.length">
-        <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
-          {{ orphanTables.length }} orphaned result table{{ orphanTables.length > 1 ? "s" : "" }}
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
-            Result tables no run writes any more: review and drop them
-          </q-tooltip>
-        </q-chip>
-      </div>
-    </h2>
+    </div>
     <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
@@ -95,23 +99,23 @@
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-center sortable" @click="toggleSort(sort, 'control_type')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Name
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_description')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_description')" v-keyboard :aria-sort="ariaSort(sort, 'control_description')">
               Description
               <q-icon v-if="sort.key === 'control_description'" :name="sortIcon(sort)" size="12px" />
             </th>
 
             <th class="text-left">
-              <span class="text-left sortable" @click="toggleSort(sort, 'schedule_days')"> Periods back</span> 
+              <span class="text-left sortable" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span> 
               <q-icon v-if="sort.key === 'schedule_days'" :name="sortIcon(sort)" size="12px" /> / 
-              <span class="text-left sortable" @click="toggleSort(sort, 'schedule_time')"> Schedule</span>
+              <span class="text-left sortable" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
               <q-icon v-if="sort.key === 'schedule_time'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th class="text-left"></th>
@@ -301,7 +305,7 @@
           </td>
 
           <td>
-            <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
+            <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
           </td>
         </tr>
       </template>
@@ -346,15 +350,9 @@
           <q-item-section> Clone control</q-item-section>
         </q-item>
         <q-separator />
-        <confirm-dialog
-          icon="fas fa-trash-alt"
-          text="Recreate result tables? Past discrepancies will be deleted!"
-          :action="recreateSchema"
-          :argument="menuRow.control_name">
-          <q-item dense clickable>
-            <q-item-section> Recreate schema </q-item-section>
-          </q-item>
-        </confirm-dialog>
+        <q-item dense clickable v-close-popup @click="confirmRecreateSchema(menuRow.control_name)">
+          <q-item-section> Recreate schema </q-item-section>
+        </q-item>
         <q-item dense clickable v-close-popup @click="deleteControl(menuRow)">
           <q-item-section> Delete control </q-item-section>
         </q-item>
@@ -369,7 +367,6 @@ import { mapActions, mapGetters, mapState } from "vuex";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
-import ConfirmDialog from "./ConfirmDialog.vue";
 import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
@@ -381,7 +378,7 @@ import { chainIndex } from "../utils/chain";
 import { sendsEmail } from "../utils/email";
 import { toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
@@ -391,7 +388,6 @@ export default {
   components: {
     OrphanTablesDialog,
     RunControlDialog,
-    ConfirmDialog,
     FilterBadge,
     FilterChips,
     SchedulePresentBox,
@@ -430,6 +426,7 @@ export default {
     controlType,
     toDateTimeString,
     sortIcon,
+    ariaSort,
     toggleSort,
     fillViewportToBottom,
     async refreshControlCatalogue() {
@@ -483,6 +480,11 @@ export default {
           }
           await Promise.all([this.updateControlCatalogue(), this.refreshSchemaDrift()]);
         });
+    },
+    confirmRecreateSchema(control_name) {
+      this.$q
+        .dialog({ title: control_name, message: "Recreate result tables? Past discrepancies will be deleted!", cancel: true, persistent: true, ok: { label: "Recreate", color: "negative" } })
+        .onOk(() => this.recreateSchema(control_name));
     },
     async recreateSchema(control_name) {
       try {
@@ -729,11 +731,6 @@ export default {
 </script>
 
 <style scoped>
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-
 /* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
 .catalogue-table :deep(table) {
   table-layout: fixed;
@@ -745,13 +742,7 @@ export default {
 .catalogue-table th:nth-child(5) { width: 62px; }
 .catalogue-table td:nth-child(4) { white-space: normal; }
 .control-name {
-  display: block;
-  font-size: 16px;
   white-space: normal;
   overflow-wrap: anywhere;
-  text-decoration: none;
-}
-.control-name:hover {
-  text-decoration: underline;
 }
 </style>

@@ -5,7 +5,7 @@
         The saved directories as this server sees them, read one folder at a time when it is opened (at most [DATASOURCES] list_max_files entries each).
       </div>
       <q-space />
-      <q-btn flat dense round size="sm" icon="fas fa-sync" color="grey-7" @click="reset">
+      <q-btn aria-label="Read the open folders again" flat dense round size="sm" icon="fas fa-sync" color="grey-7" @click="reset">
         <q-tooltip anchor="top right" self="bottom right" :offset="[0, 5]">Read the open folders again</q-tooltip>
       </q-btn>
     </div>
@@ -20,7 +20,7 @@
     <!-- One flat list of the rows shown, so that a folder of thousands of files scrolls without rendering them all. -->
     <q-virtual-scroll class="tree-body" :items="rows" :virtual-scroll-item-size="ROW_HEIGHT">
       <template #default="{ item }">
-        <div :key="item.key" class="tree-row row no-wrap items-center" :class="{ 'cursor-pointer': item.expandable }" @click="item.expandable && toggle(item)">
+        <div :key="item.key" class="tree-row row no-wrap items-center" :class="{ 'cursor-pointer': item.expandable }" v-keyboard="!!item.expandable" @click="item.expandable && toggle(item)">
           <div class="col row no-wrap items-center ellipsis" :style="{ paddingLeft: item.depth * 20 + 'px' }">
             <q-icon
               v-if="item.expandable"
@@ -34,7 +34,7 @@
             <q-icon v-else-if="item.icon" :name="item.icon" :color="item.color" size="14px" class="q-mr-sm" />
             <span :class="item.class" class="ellipsis" :title="item.title">{{ item.label }}</span>
             <span v-if="item.detail" class="text-mono text-grey-8 q-ml-md ellipsis" :title="item.detail">{{ item.detail }}</span>
-            <span v-if="item.summary" class="text-grey-6 q-ml-sm text-no-wrap">{{ item.summary }}</span>
+            <span v-if="item.summary" class="text-grey-7 q-ml-sm text-no-wrap">{{ item.summary }}</span>
           </div>
           <div class="cell-size text-right">
             {{ item.size != null ? formatBytes(item.size) : "" }}
@@ -52,8 +52,7 @@
 
 <script>
 import { api } from "../api";
-import { formatBytes } from "../utils/datasources";
-import { formatNumber, toDateTimeString } from "../utils/format";
+import { formatBytes, formatNumber, toDateTimeString } from "../utils/format";
 
 const ROW_HEIGHT = 30;
 
@@ -156,7 +155,7 @@ export default {
           depth,
           kind: "loading",
           label: "Reading...",
-          class: "text-grey-6",
+          class: "text-grey-7",
         });
         return;
       }
@@ -192,7 +191,7 @@ export default {
           depth,
           kind: "note",
           label: "Empty",
-          class: "text-grey-6",
+          class: "text-grey-7",
         });
       }
       for (const dir of listing.dirs) {
@@ -313,14 +312,14 @@ function summaryOf(listing) {
 
 <style scoped>
 .tree-header {
-  background: #cfd8dc;
+  background: var(--rapo-header);
   font-size: 12px;
   font-weight: 500;
   padding: 4px 8px;
 }
 .tree-body {
   max-height: 60vh;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--rapo-border-soft);
   border-top: none;
 }
 .tree-row {
@@ -329,7 +328,7 @@ function summaryOf(listing) {
   font-size: 13px;
 }
 .tree-row.cursor-pointer:hover {
-  background: #eceff1;
+  background: var(--rapo-grid);
 }
 .chevron {
   width: 18px;
@@ -351,8 +350,5 @@ function summaryOf(listing) {
 .cell-mode {
   width: 100px;
   flex: none;
-}
-.text-mono {
-  font-family: monospace;
 }
 </style>

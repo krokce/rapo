@@ -42,7 +42,7 @@ export default {
     state.schedulerStatus = payload;
   },
   updateKpiTypes(state, payload) {
-    state.kpiTypes = payload;
+    state.kpiTypes = freezeRows(payload);
   },
   updateDatasourceCatalogue(state, payload) {
     state.datasourceCatalogue = freezeRows(payload);

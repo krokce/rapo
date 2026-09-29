@@ -24,7 +24,7 @@ export default {
   max-width: 360px;
 }
 .filter-chip {
-  border: 1px solid #ffcc80;
+  border: 1px solid var(--rapo-filter-border);
   font-weight: 500;
 }
 </style>

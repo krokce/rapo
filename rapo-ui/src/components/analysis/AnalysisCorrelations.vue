@@ -13,7 +13,7 @@
     </div>
     <div class="row q-col-gutter-lg">
       <div class="col-12 col-lg-8">
-        <div v-if="matrix.columns.length < 2" class="text-grey-7 q-pa-lg text-center">{{ emptyText }}</div>
+        <div v-if="matrix.columns.length < 2" class="state-notice"><q-icon name="fas fa-th" /><div>{{ emptyText }}</div></div>
         <e-chart v-else :option="heatmapOption" :height="heatmapHeight" />
       </div>
       <div class="col-12 col-lg-4">
@@ -26,7 +26,7 @@
               <q-item-label caption>{{ methodLabel(pair.method) }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-chip dense square :color="strengthColor(pair.value)" text-color="white" class="text-weight-bold">{{ pair.value.toFixed(2) }}</q-chip>
+              <q-chip dense square :color="strengthColor(pair.value)" :text-color="chipTextColor(strengthColor(pair.value))" class="text-weight-bold">{{ pair.value.toFixed(2) }}</q-chip>
             </q-item-section>
           </q-item>
         </q-list>
@@ -36,8 +36,10 @@
 </template>
 
 <script>
+import { Dark } from "quasar";
 import EChart from "./EChart.vue";
-import { formatNumber } from "../../utils/format";
+import { escapeHtml, formatNumber } from "../../utils/format";
+import { baseOption, chipTextColor } from "../../utils/analysis";
 
 const METHODS = {
   pearson: { label: "Pearson", help: "Linear relation between numeric columns, from -1 to 1." },
@@ -78,13 +80,14 @@ export default {
       const data = [];
       this.matrix.matrix.forEach((row, y) => row.forEach((value, x) => data.push([x, y, value === null ? "-" : value])));
       const signed = this.method !== "cramers";
-      return {
-        animation: false,
-        grid: { left: 8, right: 16, top: 8, bottom: 60, containLabel: true },
+      const dark = Dark.isActive;
+      const neutral = dark ? "#2c3438" : "#f5f5f5";
+      return baseOption({
+        grid: { left: 8, right: 16, top: 8, bottom: 60 },
         tooltip: {
           formatter: (item) => {
             const value = item.value[2];
-            return `${names[item.value[1]]} · ${names[item.value[0]]}<br/><b>${value === "-" ? "not measured" : Number(value).toFixed(3)}</b>`;
+            return `${escapeHtml(names[item.value[1]])} · ${escapeHtml(names[item.value[0]])}<br/><b>${value === "-" ? "not measured" : formatNumber(value, 3)}</b>`;
           },
         },
         xAxis: { type: "category", data: names, axisLabel: { rotate: 45, fontSize: 10, interval: 0 }, splitArea: { show: true } },
@@ -97,18 +100,18 @@ export default {
           left: "center",
           bottom: 0,
           itemHeight: 160,
-          inRange: { color: signed ? ["#1e88e5", "#f5f5f5", "#e53935"] : ["#f5f5f5", "#6a1b9a"] },
+          inRange: { color: signed ? ["#1e88e5", neutral, "#e53935"] : [neutral, dark ? "#ba68c8" : "#6a1b9a"] },
           textStyle: { fontSize: 10 },
         },
         series: [
           {
             type: "heatmap",
             data,
-            label: { show: names.length <= 14, fontSize: 9, formatter: (item) => (item.value[2] === "-" ? "" : Number(item.value[2]).toFixed(2)) },
+            label: { show: names.length <= 14, fontSize: 10, formatter: (item) => (item.value[2] === "-" ? "" : formatNumber(item.value[2], 2)) },
             progressive: 0,
           },
         ],
-      };
+      });
     },
   },
   watch: {
@@ -130,6 +133,7 @@ export default {
     methodLabel(method) {
       return METHODS[method].label;
     },
+    chipTextColor,
     strengthColor(value) {
       const strength = Math.abs(value);
       return strength >= 0.9 ? "red-7" : strength >= 0.7 ? "orange-8" : strength >= 0.4 ? "amber-8" : "blue-grey-4";

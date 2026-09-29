@@ -4,7 +4,7 @@
       <q-card-section class="row items-center q-py-sm">
         <div class="text-h6">Orphaned result tables</div>
         <q-space />
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 

@@ -1,17 +1,14 @@
 import { createRouter, createWebHistory } from "vue-router";
 import ControlCatalogue from "./components/ControlCatalogue.vue";
-import ControlEdit from "./components/ControlEdit.vue";
 import ControlResults from "./components/ControlResults.vue";
 import DatasourceCatalogue from "./components/DatasourceCatalogue.vue";
-import EditDatasource from "./components/EditDatasource.vue";
-import FileLogPage from "./components/FileLogPage.vue";
 import FileResults from "./components/FileResults.vue";
-import EditKpiType from "./components/EditKpiType.vue";
 import KpiTypes from "./components/KpiTypes.vue";
 import SchedulerPage from "./components/SchedulerPage.vue";
 import TokenBox from "./components/TokenBox.vue";
 import store from "./store";
 
+// The editors and the file log are their own chunks (CodeMirror and the editor boxes leave the first load).
 const router = createRouter({
   // Fixes issue with page router navigates to renders scrolled to the bottom
   scrollBehavior: (to, from, savedPosition) => {
@@ -55,7 +52,7 @@ const router = createRouter({
       name: "edit-control",
       path: "/edit-control/:controlId?",
       meta: { hideSearch: true },
-      component: ControlEdit,
+      component: () => import(/* webpackChunkName: "control-editor" */ "./components/ControlEdit.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
         if (!to.params.controlId) {
@@ -75,7 +72,7 @@ const router = createRouter({
       name: "edit-kpi-type",
       path: "/edit-kpi-type/:kpiCode?",
       meta: { hideSearch: true },
-      component: EditKpiType,
+      component: () => import(/* webpackChunkName: "kpi-type-editor" */ "./components/EditKpiType.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
         if (!to.params.kpiCode) {
@@ -95,7 +92,7 @@ const router = createRouter({
       name: "files-log",
       path: "/files-log/:id",
       meta: { hideSearch: true },
-      component: FileLogPage,
+      component: () => import(/* webpackChunkName: "file-log" */ "./components/FileLogPage.vue"),
       props: true,
     },
     {
@@ -108,7 +105,7 @@ const router = createRouter({
       name: "edit-datasource",
       path: "/edit-datasource/:id?",
       meta: { hideSearch: true },
-      component: EditDatasource,
+      component: () => import(/* webpackChunkName: "datasource-editor" */ "./components/EditDatasource.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
         if (!to.params.id) {

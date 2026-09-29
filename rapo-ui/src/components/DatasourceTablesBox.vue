@@ -101,7 +101,7 @@
             <q-skeleton v-else-if="link.table_name" type="text" width="70%" />
           </td>
           <td>
-            <q-btn v-if="removable(link)" size="sm" color="primary" flat round icon="fas fa-minus" @click="links.splice(index, 1)">
+            <q-btn aria-label="Remove row" v-if="removable(link)" size="sm" color="primary" flat round icon="fas fa-minus" @click="links.splice(index, 1)">
               <q-tooltip anchor="top right" self="bottom right" :offset="[0, 5]">Remove the table from the datasource (the table itself stays)</q-tooltip>
             </q-btn>
           </td>

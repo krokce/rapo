@@ -16,6 +16,9 @@
         class="file-heatmap__cell"
         :class="{ 'file-heatmap__cell--errors': cell.errors, 'file-heatmap__cell--selected': selected === hour, 'file-heatmap__cell--dim': selected !== null && selected !== hour }"
         :style="{ background: color(cell.files, row.key === 'total') }"
+        v-keyboard:button
+        :aria-pressed="selected === hour"
+        :aria-label="`${hour}:00, ${cell.files} files${cell.errors ? ', with errors' : ''}`"
         @click="$emit('select', selected === hour ? null : hour)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 6]">
           {{ String(hour).padStart(2, "0") }}:00–{{ String(hour + 1).padStart(2, "0") }}:00, {{ row.label }}: {{ cell.files.toLocaleString() }} file(s)<span
@@ -31,6 +34,8 @@
 <script>
 // Files per hour of the day (the database's clock): one row per lane and a Total, colored by count on a square-root
 // scale up to the busiest cell. A cell with ERROR files has a red outline. A click picks the hour, a second clears it.
+import { Dark } from "quasar";
+
 export default {
   name: "FileHeatmap",
   props: {
@@ -50,10 +55,10 @@ export default {
   methods: {
     color(files, total = false) {
       if (!files) {
-        return "#eceff1";
+        return "var(--rapo-grid)";
       }
       const share = Math.sqrt(files / (total ? this.maxima.total : this.maxima.lanes));
-      const lightness = 92 - Math.min(share, 1) * 55;
+      const lightness = Dark.isActive ? 20 + Math.min(share, 1) * 40 : 92 - Math.min(share, 1) * 55;
       return `hsl(199, 80%, ${lightness}%)`;
     },
   },
@@ -75,15 +80,15 @@ export default {
   align-items: center;
 }
 .file-heatmap__label {
-  color: #546e7a;
+  color: var(--rapo-strong);
   padding-right: 6px;
 }
 .file-heatmap__hour {
   text-align: center;
-  color: #90a4ae;
+  color: var(--rapo-label);
 }
 .file-heatmap__hour--selected {
-  color: #01579b;
+  color: var(--rapo-info);
   font-weight: bold;
 }
 .file-heatmap__cell {
@@ -94,9 +99,19 @@ export default {
 }
 .file-heatmap__cell--errors {
   border: 2px solid #e53935;
+  position: relative;
+}
+.file-heatmap__cell--errors::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent #e53935 transparent transparent;
 }
 .file-heatmap__cell--selected {
-  outline: 2px solid #01579b;
+  outline: 2px solid var(--rapo-info);
   outline-offset: 1px;
 }
 .file-heatmap__cell--dim {

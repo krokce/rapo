@@ -6,14 +6,14 @@
   <div v-else>
     <div class="row q-col-gutter-md q-mb-lg">
       <div v-for="card in cards" :key="card.label" class="col-6 col-sm-4 col-md-2">
-        <q-card flat bordered class="stat-card" :class="{ 'cursor-pointer': card.filters }" @click="card.filters && $emit('show-rows', card.filters)">
+        <q-card flat bordered class="stat-card" :class="{ 'cursor-pointer': card.filters }" v-keyboard:button="!!card.filters" @click="card.filters && $emit('show-rows', card.filters)">
           <q-card-section class="q-pa-sm">
             <div class="text-caption text-grey-7">
               <q-icon :name="card.icon" class="q-mr-xs" />
               {{ card.label }}
             </div>
             <div class="text-h6 text-blue-grey-9">{{ card.value }}</div>
-            <div class="text-caption text-grey-6">{{ card.note || "\u00a0" }}</div>
+            <div class="text-caption text-grey-7">{{ card.note || "\u00a0" }}</div>
           </q-card-section>
         </q-card>
       </div>
@@ -51,7 +51,10 @@
               { label: 'All', value: 'all' },
             ]" />
         </div>
-        <div v-if="!shownAlerts.length" class="text-grey-7 q-pa-md">No alerts{{ alertLevel === "warning" ? " at warning level" : "" }}.</div>
+        <div v-if="!shownAlerts.length" class="state-notice">
+          <q-icon name="fas fa-check-circle" />
+          <div>No alerts{{ alertLevel === "warning" ? " at warning level" : "" }}.</div>
+        </div>
         <q-list v-else dense bordered separator class="rounded-borders">
           <q-item v-for="(alert, index) in shownAlerts" :key="index">
             <q-item-section avatar>
@@ -59,7 +62,7 @@
             </q-item-section>
             <q-item-section>
               <q-item-label>
-                <a v-if="alert.column" class="column-link" @click="$emit('show-column', alert.column)">{{ alert.column.toUpperCase() }}</a>
+                <a v-if="alert.column" class="column-link" v-keyboard:link @click="$emit('show-column', alert.column)">{{ alert.column.toUpperCase() }}</a>
                 <span :class="{ 'q-ml-sm': alert.column }">{{ alert.message }}</span>
               </q-item-label>
             </q-item-section>
@@ -67,7 +70,7 @@
               <q-chip dense square size="sm" color="grey-3" text-color="grey-8">{{ alertLabel(alert.code) }}</q-chip>
             </q-item-section>
             <q-item-section side>
-              <q-btn v-if="alertFilters(alert)" flat dense round size="sm" color="primary" icon="fas fa-table" @click="$emit('show-rows', alertFilters(alert))">
+              <q-btn aria-label="Show these rows" v-if="alertFilters(alert)" flat dense round size="sm" color="primary" icon="fas fa-table" @click="$emit('show-rows', alertFilters(alert))">
                 <q-tooltip>Show these rows</q-tooltip>
               </q-btn>
             </q-item-section>
@@ -79,22 +82,8 @@
 </template>
 
 <script>
-import { formatNumber } from "../../utils/format";
-import { KIND_ICONS, formatBytes, formatPct } from "../../utils/analysis";
-
-const ALERT_LABELS = {
-  duplicates: "Duplicates",
-  empty: "Empty",
-  constant: "Constant",
-  unique: "Unique",
-  missing: "Missing",
-  some_missing: "Missing",
-  high_cardinality: "High cardinality",
-  imbalanced: "Imbalanced",
-  zeros: "Zeros",
-  skewed: "Skewed",
-  blank: "Blank",
-};
+import { formatBytes, formatNumber } from "../../utils/format";
+import { KIND_ICONS, alertLabel, formatPct } from "../../utils/analysis";
 
 export default {
   name: "AnalysisOverview",
@@ -145,9 +134,7 @@ export default {
     },
   },
   methods: {
-    alertLabel(code) {
-      return ALERT_LABELS[code] || code;
-    },
+    alertLabel,
     alertFilters(alert) {
       if (alert.code === "duplicates") {
         return [{ op: "duplicated" }];
@@ -167,7 +154,7 @@ export default {
 }
 
 .column-link {
-  color: #009688;
+  color: var(--rapo-teal);
   cursor: pointer;
   font-weight: 500;
 }

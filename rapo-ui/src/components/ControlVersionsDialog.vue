@@ -4,7 +4,7 @@
       <q-card-section class="row items-center q-py-sm">
         <div class="text-h6">
           <template v-if="comparison">
-            <q-btn flat round dense icon="fas fa-arrow-left" size="sm" class="q-mr-sm" @click="comparison = null">
+            <q-btn aria-label="Back to the versions" flat round dense icon="fas fa-arrow-left" size="sm" class="q-mr-sm" @click="comparison = null">
               <q-tooltip>Back to the versions</q-tooltip>
             </q-btn>
             {{ comparison.from.label }} &rarr; {{ comparison.to.label }} ({{ comparison.rows.length }})
@@ -12,7 +12,7 @@
           <template v-else>Versions of {{ current && current.control_name }} ({{ versions.length }})</template>
         </div>
         <q-space />
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 
@@ -73,10 +73,10 @@
                 <td>{{ row.user }}</td>
                 <td class="text-right">
                   <template v-if="!row.current">
-                    <q-btn flat round dense size="sm" icon="fas fa-file-import" color="primary" @click="load(row)">
+                    <q-btn aria-label="Load this version into the editor" flat round dense size="sm" icon="fas fa-file-import" color="primary" @click="load(row)">
                       <q-tooltip>Load this version into the editor</q-tooltip>
                     </q-btn>
-                    <q-btn flat round dense size="sm" icon="fas fa-trash" color="negative" :disable="busy" @click="remove([row])">
+                    <q-btn aria-label="Delete this version" flat round dense size="sm" icon="fas fa-trash" color="negative" :disable="busy" @click="remove([row])">
                       <q-tooltip>Delete this version</q-tooltip>
                     </q-btn>
                   </template>
@@ -345,26 +345,26 @@ export default {
     position: sticky
     top: 0
     z-index: 1
-    background: #cfd8dc
+    background: var(--rapo-header)
     text-align: left
     font-weight: 500
     padding: 6px 8px
 
   td
     padding: 2px 8px
-    border-bottom: 1px solid #eeeeee
+    border-bottom: 1px solid var(--rapo-panel-border)
     white-space: nowrap
     overflow: hidden
     text-overflow: ellipsis
 
 .versions-table__current td
-  background: #e0f2f1
+  background: var(--rapo-teal-soft)
 
 // Versions the removal in view would delete.
 .versions-table__marked td
-  background: #ffebee
+  background: var(--rapo-removed-bg)
 
   .versions-table__label
     text-decoration: line-through
-    color: #b71c1c
+    color: var(--rapo-removed-fg)
 </style>

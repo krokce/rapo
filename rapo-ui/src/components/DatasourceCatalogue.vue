@@ -103,7 +103,7 @@
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)">
+            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
               {{ column.label }}
               <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -159,7 +159,7 @@
                 <q-tooltip>Oldest incoming file modified {{ toDateTimeString(statusOf(row).oldest_at) }}</q-tooltip>
               </div>
             </template>
-            <span v-else-if="row.isactive === 0 && datasourceStatus && !datasourceStatus.pending" class="text-grey-5" title="Not counted: the datasource is disabled">
+            <span v-else-if="row.isactive === 0 && datasourceStatus && !datasourceStatus.pending" class="text-grey-7" title="Not counted: the datasource is disabled">
               &ndash;
             </span>
             <q-skeleton v-else type="text" width="40px" class="float-right" />
@@ -177,7 +177,7 @@
                 </q-tooltip>
               </div>
             </template>
-            <span v-else-if="datasourceStatus && !datasourceStatus.pending" class="text-grey-5" title="Nothing loaded in the last 24 hours">&ndash;</span>
+            <span v-else-if="datasourceStatus && !datasourceStatus.pending" class="text-grey-7" title="Nothing loaded in the last 24 hours">&ndash;</span>
           </td>
           <td class="text-right">{{ row.files_retention_days }}</td>
           <td class="text-right">{{ row.files_max_per_cycle }}</td>
@@ -185,7 +185,7 @@
             <q-icon v-if="row.input_scan_subdirs" name="fas fa-sitemap" color="grey-7" size="14px" title="Subdirectories are scanned" />
           </td>
           <td>
-            <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, row)" />
+            <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, row)" />
           </td>
         </tr>
       </template>
@@ -308,11 +308,11 @@ import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { DATASOURCE_LANES, datasourceLane } from "../constants";
 import { liveRefetch } from "../socket";
-import { ISSUES, formatAge, formatBytes, issuesOf, splitDirectories } from "../utils/datasources";
+import { ISSUES, formatAge, issuesOf, splitDirectories } from "../utils/datasources";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { escapeHtml, formatNumber, toDateTimeString } from "../utils/format";
+import { escapeHtml, formatBytes, formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 const COLUMNS = [
@@ -488,6 +488,7 @@ export default {
     formatNumber,
     sortIcon,
     toDateTimeString,
+    ariaSort,
     toggleSort,
     lane: datasourceLane,
     statusOf(row) {
@@ -520,7 +521,7 @@ export default {
       const status = this.statusOf(row);
       if (status.stalled) return "text-red-6 text-weight-bold";
       if (status.waiting) return "text-weight-bold";
-      return "text-grey-6";
+      return "text-grey-7";
     },
     addIssueFilter(key) {
       if (!this.filter.issues.includes(key)) {
@@ -636,11 +637,6 @@ export default {
 </script>
 
 <style scoped>
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-
 /* Fixed columns, so rows swapped in while scrolling don't resize them; the input directory takes the rest. */
 .datasource-table :deep(table) {
   table-layout: fixed;
@@ -661,14 +657,8 @@ export default {
 
 /* The same as the control names of the Controls page. */
 .datasource-name {
-  display: block;
-  font-size: 16px;
   white-space: normal;
   overflow-wrap: anywhere;
-  text-decoration: none;
-}
-.datasource-name:hover {
-  text-decoration: underline;
 }
 /* The issue chips under the directories keep the page's font. */
 .issue-chips {
@@ -681,14 +671,11 @@ export default {
 }
 
 /* A disabled datasource (ISACTIVE=0) is dimmed, its name still readable and a link. */
-.row-inactive > td {
-  color: #9e9e9e;
-}
 .row-inactive > td > * {
   opacity: 0.6;
 }
 .row-inactive .datasource-name {
   opacity: 1;
-  color: #757575 !important;
+  color: var(--rapo-muted) !important;
 }
 </style>

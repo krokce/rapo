@@ -25,7 +25,7 @@
         <column-card :column="column" :db-type="dbTypes[column.name]" :focused="focusedName === column.name" @show-rows="$emit('show-rows', $event)" />
       </q-intersection>
     </div>
-    <div v-if="!shown.length" class="text-grey-7 q-pa-md">No column matches.</div>
+    <div v-if="!shown.length" class="state-notice"><q-icon name="fas fa-search" /><div>No column matches.</div></div>
   </div>
 </template>
 

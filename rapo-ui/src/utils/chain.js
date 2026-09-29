@@ -4,7 +4,7 @@
 const RESULT_PREFIXES = ["rapo_rest_", "rapo_resa_", "rapo_resb_"];
 
 // The datasource fields of a control type, with the side each feeds.
-export function sourceFields(controlType) {
+function sourceFields(controlType) {
   if (controlType === "ANL" || controlType === "REP") {
     return [{ field: "source_name", side: null }];
   }

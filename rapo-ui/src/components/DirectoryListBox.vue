@@ -29,7 +29,7 @@
           </q-btn>
         </div>
         <div class="part-slot">
-          <q-btn size="sm" color="primary" flat round icon="fas fa-plus" v-if="index === parts.length - 1" @click="addPart">
+          <q-btn aria-label="Add row" size="sm" color="primary" flat round icon="fas fa-plus" v-if="index === parts.length - 1" @click="addPart">
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Add a directory: PDI Core scans every directory of the list</q-tooltip>
           </q-btn>
         </div>

@@ -14,7 +14,6 @@
 </template>
 
 <script>
-import { Dialog, Notify } from "quasar";
 import { mapActions, mapState } from "vuex";
 import { api, notifyError } from "../api";
 
@@ -34,7 +33,7 @@ export default {
     ...mapActions(["updateSchedulerStatus"]),
     toggle() {
       const stopping = !this.stopped;
-      Dialog.create({
+      this.$q.dialog({
         title: stopping ? "Stop scheduler" : "Start scheduler",
         message: stopping
           ? "Scheduled controls will not run on any server until the scheduler is started again. Running and queued runs continue, and controls can still be run manually. Fires skipped meanwhile are not recorded as missed."
@@ -47,7 +46,7 @@ export default {
       this.busy = true;
       try {
         await api(stopping ? "scheduler-stop" : "scheduler-start", { method: "POST" });
-        Notify.create({ type: "positive", message: stopping ? "Scheduler stopped" : "Scheduler started" });
+        this.$q.notify({ type: "positive", message: stopping ? "Scheduler stopped" : "Scheduler started" });
       } catch (error) {
         notifyError(stopping ? "Failed to stop the scheduler." : "Failed to start the scheduler.", error);
       } finally {

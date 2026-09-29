@@ -3,23 +3,23 @@
     <div class="row items-end q-mb-md">
       <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-md q-mb-none">
         <div>Data analysis</div>
-        <div v-if="!datasetOptions.length" class="text-grey-6 analysis-subtitle">{{ datasetLabel(meta) || datasetTitle }}</div>
+        <div v-if="!datasetOptions.length" class="text-grey-7 page-subject">{{ datasetLabel(meta) || datasetTitle }}</div>
+        <div v-if="datasetOptions.length">
+          <q-btn-toggle
+            :model-value="$route.params.dataset"
+            no-caps
+            unelevated
+            toggle-color="blue-grey-7"
+            color="grey-3"
+            text-color="grey-8"
+            :options="datasetOptions"
+            @update:model-value="switchDataset">
+            <template v-for="option in datasetOptions" :key="option.value" #[option.slot]>
+              {{ option.text }}<span v-if="option.count" class="dataset-count">({{ option.count }})</span>
+            </template>
+          </q-btn-toggle>
+        </div>
       </h2>
-      <q-btn-toggle
-        v-if="datasetOptions.length"
-        :model-value="$route.params.dataset"
-        class="q-ml-lg dataset-switch"
-        no-caps
-        unelevated
-        toggle-color="blue-grey-7"
-        color="grey-3"
-        text-color="grey-8"
-        :options="datasetOptions"
-        @update:model-value="switchDataset">
-        <template v-for="option in datasetOptions" :key="option.value" #[option.slot]>
-          {{ option.text }}<span v-if="option.count" class="dataset-count">({{ option.count }})</span>
-        </template>
-      </q-btn-toggle>
       <q-space />
       <div v-if="meta" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
         <q-chip>
@@ -40,7 +40,7 @@
           <q-avatar :icon="runStatus(meta.status).icon" :color="runStatus(meta.status).color" text-color="white" />
           {{ runStatus(meta.status).label }}
         </q-chip>
-        <q-btn flat dense round size="sm" color="blue-grey-7" icon="fas fa-link" @click="copyLink">
+        <q-btn aria-label="Copy a link to this view" flat dense round size="sm" color="blue-grey-7" icon="fas fa-link" @click="copyLink">
           <q-tooltip anchor="top middle" self="bottom middle">Copy a link to this view</q-tooltip>
         </q-btn>
       </div>
@@ -144,10 +144,10 @@
           @click="extend">
           <q-tooltip anchor="top middle" self="bottom middle">Fetch the next rows of the dataset into the sample</q-tooltip>
         </q-btn>
-        <q-btn flat dense round size="sm" color="blue-grey-7" icon="fas fa-code" :disable="!session" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
+        <q-btn aria-label="SQL filter, applied by the database" v-if="session" flat dense round size="sm" color="blue-grey-7" icon="fas fa-code" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
           <q-tooltip anchor="top middle" self="bottom middle">SQL filter, applied by the database</q-tooltip>
         </q-btn>
-        <q-btn flat dense round size="sm" color="blue-grey-7" icon="fas fa-copy" :disable="!meta" @click="copySql">
+        <q-btn aria-label="Copy SQL to clipboard" v-if="meta" flat dense round size="sm" color="blue-grey-7" icon="fas fa-copy" @click="copySql">
           <q-tooltip anchor="top middle" self="bottom middle">Copy SQL to clipboard</q-tooltip>
         </q-btn>
       </q-card-section>
@@ -178,7 +178,12 @@
         <q-chip v-if="scope.search" dense color="teal-1" text-color="teal-10">contains "{{ scope.search }}"</q-chip>
         <q-btn flat dense no-caps color="primary" icon="fas fa-times" label="Whole sample" @click="scope = null" />
       </div>
-      <q-tab-panels v-model="tab" class="col analysis-panels" keep-alive>
+      <div v-if="tabError" class="state-notice state-notice--error">
+        <q-icon name="fas fa-exclamation-triangle" />
+        <div>This tab could not be loaded: {{ tabError }}</div>
+        <q-btn flat dense no-caps color="primary" label="Retry" @click="retrySections" />
+      </div>
+      <q-tab-panels v-show="!tabError" v-model="tab" class="col analysis-panels" keep-alive>
         <q-tab-panel name="overview" class="scroll-panel">
           <run-trend class="q-mb-lg" :process-id="meta.process_id" :dataset="meta.dataset" :report-only="meta.control_type === 'REP'" />
           <result-breakdown v-if="hasBreakdown" class="q-mb-lg" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
@@ -234,12 +239,12 @@
 </template>
 
 <script>
-import { Dialog, Notify } from "quasar";
 import socket from "../../socket";
 import { api, notifyError } from "../../api";
 import store from "../../store";
 import { controlType, runStatus } from "../../constants";
-import { copyText, formatNumber, toDateTimeString } from "../../utils/format";
+import { copyAndNotify } from "../../runActions";
+import { formatNumber, toDateTimeString } from "../../utils/format";
 import { fillViewportToBottom } from "../../utils/layout";
 import { DATASETS, datasetLabel, describeFilter } from "../../utils/analysis";
 import AnalysisColumns from "./AnalysisColumns.vue";
@@ -310,6 +315,7 @@ export default {
       sectionKeys: {},
       requested: {},
       loading: {},
+      sectionErrors: {},
       scopeId: 0,
       view: { filters: [], search: "", sort: [], group: null },
       // Filtered rows the profile tabs describe, or null for the whole sample.
@@ -338,7 +344,7 @@ export default {
         return [];
       }
       return this.meta.datasets.map((item) => {
-        const label = datasetLabel({ control_type: this.meta.control_type, kind: item.kind, side: item.side }).replace("Fetched", "Source");
+        const label = datasetLabel({ control_type: this.meta.control_type, kind: item.kind, side: item.side });
         const count = item.count === null || item.count === undefined ? "" : formatNumber(item.count);
         return { text: label, count, slot: `dataset-${item.dataset}`, value: item.dataset, disable: !item.count && item.dataset !== this.meta.dataset };
       });
@@ -439,6 +445,10 @@ export default {
         data: [],
       };
       return sections[this.tab] || [];
+    },
+    tabError() {
+      const failed = this.tabSections.find((name) => this.sectionErrors[name]);
+      return failed ? this.sectionErrors[failed] : "";
     },
     storageKey() {
       return this.meta ? `rapo_analysis_columns_${this.meta.control_name}_${this.meta.dataset}` : null;
@@ -593,6 +603,7 @@ export default {
       this.sections = {};
       this.sectionKeys = {};
       this.requested = {};
+      this.sectionErrors = {};
       this.loading = {};
       this.startError = null;
       this.starting = true;
@@ -705,6 +716,12 @@ export default {
     },
     // Loads the sections the open tab shows for the current sample and scope. A section not computed yet is started
     // by the request, and fetched again once the state lists its key as ready.
+    retrySections() {
+      const errors = { ...this.sectionErrors };
+      this.tabSections.forEach((name) => delete errors[name]);
+      this.sectionErrors = errors;
+      this.syncSections();
+    },
     syncSections() {
       if (!this.session || !this.state.version) {
         return;
@@ -732,6 +749,7 @@ export default {
           loadingBar: false,
         });
         if (scopeId === this.scopeId) {
+          this.sectionErrors = { ...this.sectionErrors, [name]: "" };
           this.sectionKeys = { ...this.sectionKeys, [name]: result.key };
           this.requested[result.key] = result.version;
           if (result.ready) {
@@ -739,6 +757,7 @@ export default {
           }
         }
       } catch (error) {
+        this.sectionErrors = { ...this.sectionErrors, [name]: error.message };
         notifyError(`The ${name} could not be loaded.`, error);
       } finally {
         this.loading[name] = false;
@@ -765,20 +784,10 @@ export default {
       }
     },
     async copySql() {
-      try {
-        await copyText(this.meta.sql);
-        Notify.create({ type: "positive", message: `${datasetLabel(this.meta)} SQL statement copied to clipboard` });
-      } catch (error) {
-        notifyError("Failed to copy SQL to clipboard.", error);
-      }
+      await copyAndNotify(this.meta.sql, `${datasetLabel(this.meta)} SQL statement`, "Failed to copy SQL to clipboard.");
     },
     async copyLink() {
-      try {
-        await copyText(window.location.href);
-        Notify.create({ type: "positive", message: "Link to this view copied to clipboard" });
-      } catch (error) {
-        notifyError("Failed to copy the link.", error);
-      }
+      await copyAndNotify(window.location.href, "Link to this view", "Failed to copy the link.");
     },
     // A profile link: the viewer opens on the rows it stands for.
     showRows(filters) {
@@ -804,7 +813,7 @@ export default {
         search: this.view.search || previous.search || "",
         where: previous.where || "",
       };
-      Dialog.create({
+      this.$q.dialog({
         title: "Load from the database",
         message:
           "Fetch a new sample from the records that match the filters, applied by the database. The current sample is " +
@@ -827,21 +836,13 @@ export default {
 </script>
 
 <style scoped>
-.analysis-subtitle {
-  font-size: 0.6em;
-}
-
-.dataset-switch {
-  margin-bottom: 6px;
-}
-
 .dataset-count {
   font-weight: 400;
   margin-left: 4px;
 }
 
 .control-link {
-  color: #009688;
+  color: var(--rapo-teal);
   text-decoration: none;
 }
 

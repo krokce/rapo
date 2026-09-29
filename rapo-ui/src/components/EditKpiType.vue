@@ -37,7 +37,7 @@
 
         <q-separator />
 
-        <q-form @submit="validateAndSave" @reset="cancel" ref="myForm">
+        <q-form @submit="validateAndSave" @reset="cancel">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -89,22 +89,22 @@
                 <q-markup-table flat dense>
                   <thead>
                     <tr class="bg-blue-grey-2">
-                      <th class="text-center sortable" style="width: 50px" @click="toggleSort(sort, 'control_type')">
+                      <th class="text-center sortable" style="width: 50px" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
                         Type
                         <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
                       </th>
-                      <th class="text-left sortable" @click="toggleSort(sort, 'control_name')">
+                      <th class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
                         Name
                         <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
                       </th>
-                      <th class="text-left sortable" @click="toggleSort(sort, 'control_description')">
+                      <th class="text-left sortable" @click="toggleSort(sort, 'control_description')" v-keyboard :aria-sort="ariaSort(sort, 'control_description')">
                         Description
                         <q-icon v-if="sort.key === 'control_description'" :name="sortIcon(sort)" size="12px" />
                       </th>
                       <th class="text-left">
-                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_days')"> Periods back</span>
+                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span>
                         <q-icon v-if="sort.key === 'schedule_days'" :name="sortIcon(sort)" size="12px" /> /
-                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_time')"> Schedule</span>
+                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
                         <q-icon v-if="sort.key === 'schedule_time'" :name="sortIcon(sort)" size="12px" />
                       </th>
                     </tr>
@@ -229,7 +229,8 @@ import SchedulePresentBox from "./SchedulePresentBox.vue";
 import { api, notifyError } from "../api";
 import { controlType, KPI_ICON, kpiUnitColor } from "../constants";
 import { toDateTimeString } from "../utils/format";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { checkKpiStatement } from "../utils/kpi";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // The two statements RACS_KPI_PKG falls back to when a control leaves its own column NULL: the KPI value for a
 // run, then the alarm level for that value.
@@ -324,6 +325,7 @@ export default {
     kpiUnitColor,
     toDateTimeString,
     sortIcon,
+    ariaSort,
     toggleSort,
     // A malformed iteration_config must not break rendering of the whole table.
     iterationCount(control) {
@@ -440,11 +442,7 @@ export default {
     statementExamples(statement) {
       return examplesFor({ field: statement.examples, kpiType: this.kpiType.kpi_type });
     },
-    // Parses the statement on the server without executing it, and never blocks saving: a default statement may
-    // well name a table that only some controls have.
-    checkStatement(statement, text) {
-      return api("validate-kpi-sql", { method: "POST", body: { statement: text, kind: statement.kind }, loadingBar: false });
-    },
+    checkStatement: checkKpiStatement,
   },
   async mounted() {
     try {
@@ -480,16 +478,4 @@ export default {
   border-radius: 50%;
 }
 
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-
-.clickable-row {
-  cursor: pointer;
-}
-
-.clickable-row:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
 </style>

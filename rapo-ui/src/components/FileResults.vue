@@ -3,7 +3,7 @@
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-md'">
       <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
-        <div class="text-grey-6 results-day">{{ dayTitle }}</div>
+        <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
         <div v-if="hasDay && activeFilters.length" class="row items-center">
           <filter-badge :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" @clear="clearFilters" />
         </div>
@@ -58,7 +58,7 @@
         <q-avatar :icon="lane.running ? 'fas fa-sync' : lane.icon" :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'" text-color="white" />
         <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
         <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
-        <span v-else class="text-grey-6">idle</span>
+        <span v-else class="text-grey-7">idle</span>
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
           <template v-if="lane.running">
             Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
@@ -93,7 +93,7 @@
     <file-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" class="q-mt-sm q-mb-md" @select="(hour) => (filter.hour = hour)" />
 
     <div class="row items-center q-mb-sm">
-      <q-btn class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
+      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
       </q-btn>
 
@@ -170,10 +170,10 @@
       </q-select>
 
       <q-space />
-      <q-btn v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
+      <q-btn aria-label="Next day" v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
       </q-btn>
-      <q-btn v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(today)">
+      <q-btn aria-label="Today" v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(today)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
       </q-btn>
     </div>
@@ -197,6 +197,8 @@
               :class="['text-' + column.align, { sortable: column.sort }]"
               :style="{ width: column.width ? column.width + 'px' : undefined }"
               :title="column.title"
+              v-keyboard="column.sort"
+              :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined"
               @click="column.sort && toggleSort(sort, column.key)">
               <q-icon v-if="column.status" :name="fileStatus(column.status).icon" :color="fileStatus(column.status).color" size="13px" class="q-mr-xs" />
               <q-icon v-else-if="column.icon" :name="column.icon" :color="column.iconColor" size="13px" class="q-mr-xs" />
@@ -269,7 +271,7 @@
                 title="Show the files waiting in the input directories">
                 {{ formatNumber(waitingOf(row)) }}
               </router-link>
-              <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-6'">{{ formatNumber(waitingOf(row)) }}</span>
+              <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-7'">{{ formatNumber(waitingOf(row)) }}</span>
             </template>
             <span v-else-if="column.key === 'read'">{{ row.files ? formatNumber(row.read) : "" }}</span>
             <span v-else-if="column.key === 'written'">{{ row.files ? formatNumber(row.written) : "" }}</span>
@@ -302,7 +304,6 @@
 </template>
 
 <script>
-import { date } from "quasar";
 import { mapActions, mapGetters, mapState } from "vuex";
 import FileHeatmap from "./FileHeatmap.vue";
 import FilterBadge from "./FilterBadge.vue";
@@ -312,11 +313,11 @@ import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { formatAge } from "../utils/datasources";
-import { FILE_ISSUES, compactNumber, datasourceRows, dayStatuses, heatmapRows, statusTotals } from "../utils/files";
+import { FILE_ISSUES, compactNumber, datasourceRows, dayStatuses, heatmapRows, hourRange, statusTotals } from "../utils/files";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { formatNumber, toDateTimeString, toTimeString } from "../utils/format";
+import { dayTitle, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // The columns around the status columns (one per status the day has files in): [key, label, align, width, number].
@@ -382,16 +383,16 @@ export default {
       return Boolean(this.fileDay) && this.fileDay.date === this.day;
     },
     dayTitle() {
-      return this.day ? date.formatDate(date.extractDate(this.day, "YYYY-MM-DD"), "DD.MM.YYYY") : "";
+      return dayTitle(this.day);
     },
     dayQuery() {
       return this.$route.query.date ? { date: this.$route.query.date } : {};
     },
     previousDay() {
-      return this.shiftDay(-1);
+      return shiftDay(this.day, -1);
     },
     nextDay() {
-      return this.shiftDay(1);
+      return shiftDay(this.day, 1);
     },
     isToday() {
       return Boolean(this.day) && this.day >= this.today;
@@ -492,7 +493,7 @@ export default {
     activeFilters() {
       const filter = this.filter;
       const issueLabel = (key) => (FILE_ISSUES.find((issue) => issue.key === key) || {}).label || key;
-      const hourLabel = filter.hour === null ? null : `${String(filter.hour).padStart(2, "0")}:00–${String(filter.hour + 1).padStart(2, "0")}:00`;
+      const hourLabel = filter.hour === null ? null : hourRange(filter.hour);
       return [
         ...valueFilter("text", "Datasource", filter.text, () => (filter.text = null), { text: true }),
         ...listFilter("lane", "Lane", filter.lanes, (value) => (filter.lanes = filter.lanes.filter((item) => item !== value)), (value) => datasourceLane(value).label),
@@ -542,6 +543,7 @@ export default {
     sortIcon,
     toDateTimeString,
     toTimeString,
+    ariaSort,
     toggleSort,
     lane: datasourceLane,
     datasourceMatches(id) {
@@ -615,9 +617,6 @@ export default {
     },
     goToDay(day) {
       this.$router.push({ name: "files", query: day && day !== this.today ? { date: day } : {} });
-    },
-    shiftDay(days) {
-      return this.day ? date.formatDate(date.addToDate(date.extractDate(this.day, "YYYY-MM-DD"), { days }), "YYYY-MM-DD") : null;
     },
     async refreshDay() {
       this.refreshing = true;
@@ -736,28 +735,8 @@ export default {
 </script>
 
 <style scoped>
-.day-btn {
-  height: 51px;
-  min-width: 0;
-}
-.name-filter {
-  min-width: 160px;
-}
-.results-day {
-  font-size: 0.6em;
-}
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
 .datasource-name {
-  display: block;
-  font-size: 16px;
   white-space: nowrap;
-  text-decoration: none;
-}
-.datasource-name:hover {
-  text-decoration: underline;
 }
 /* The table keeps its columns' widths and scrolls sideways inside the list, never widening the page. */
 .files-table :deep(table) {
@@ -774,13 +753,5 @@ export default {
 .status-count:hover {
   text-decoration: underline;
 }
-/* Whole numbers in a monospace font, right-aligned, so their digits line up. */
-.number-cell {
-  font-family: "Roboto Mono", Menlo, Consolas, monospace;
-  font-size: 13px;
-}
 .files-table td:nth-child(4) { white-space: normal; }
-.row-inactive > td {
-  color: #9e9e9e;
-}
 </style>

@@ -10,7 +10,7 @@
           </div>
         </div>
         <q-space />
-        <q-btn v-close-popup flat round dense icon="fas fa-times" />
+        <q-btn aria-label="Close" v-close-popup flat round dense icon="fas fa-times" />
       </q-card-section>
 
       <q-card-section class="q-pt-none">
@@ -24,7 +24,7 @@
             </thead>
             <tbody>
               <tr>
-                <td v-for="(value, index) in row" :key="index" :class="{ 'text-grey-5': value === null }">{{ value === null ? "∅" : formatValue(value, columns[index].kind) }}</td>
+                <td v-for="(value, index) in row" :key="index" :class="{ 'text-grey-7': value === null }">{{ value === null ? "∅" : formatValue(value, columns[index].kind) }}</td>
               </tr>
             </tbody>
           </table>
@@ -118,7 +118,7 @@ export default {
       }
       const other = this.result.other_side;
       const lookups = (found, emptyResults) => [
-        { key: "results", title: `Saved by the run in ${found.results.table}`, data: found.results, empty: emptyResults },
+        { key: "results", title: `Saved by the run in ${String(found.results.table).toUpperCase()}`, data: found.results, empty: emptyResults },
         {
           key: "source",
           title: `In datasource ${other} for the run's window`,
@@ -159,7 +159,7 @@ export default {
     },
     cellClass(name, value) {
       if (value === null) {
-        return "text-grey-5";
+        return "text-grey-7";
       }
       return name === "rapo_result_type" ? TYPE_CLASSES[value] || "" : "";
     },
@@ -170,7 +170,7 @@ export default {
 <style scoped>
 .row-scroll {
   overflow-x: auto;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--rapo-panel-border);
   border-radius: 4px;
 }
 
@@ -181,7 +181,7 @@ export default {
 }
 
 .cp-table th {
-  background: #cfd8dc;
+  background: var(--rapo-header);
   padding: 5px 8px;
   text-align: left;
   white-space: nowrap;
@@ -190,7 +190,7 @@ export default {
 
 .cp-table td {
   padding: 4px 8px;
-  border-top: 1px solid #eceff1;
+  border-top: 1px solid var(--rapo-grid);
   white-space: nowrap;
   max-width: 320px;
   overflow: hidden;

@@ -52,7 +52,7 @@
 
         <q-separator />
 
-        <q-form @submit="persist('stay')" @reset="cancel" ref="myForm">
+        <q-form @submit="persist('stay')" @reset="cancel">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -183,7 +183,7 @@
 
                   <q-input class="col" v-model.number="control.timeout" type="number" outlined label="Timeout (sec.)">
                     <template v-slot:prepend>
-                      <q-icon name="fas fas fa-stopwatch" @click.stop.prevent />
+                      <q-icon name="fas fa-stopwatch" @click.stop.prevent />
                     </template>
                     <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                       Stop process if runs longer than defined timeout. <br />Leave empty for no timeout.
@@ -195,7 +195,7 @@
                     outlined
                     emit-value
                     map-options
-                    v-model="withDeleteionDrop"
+                    v-model="withDeletionDrop"
                     :options="[
                       { label: 'Yes', value: 'N' },
                       { label: 'No, delete on each run', value: 'deletion' },
@@ -212,7 +212,7 @@
                   <q-input
                     class="col"
                     v-model.number="control.days_retention"
-                    v-if="withDeleteionDrop === 'N'"
+                    v-if="withDeletionDrop === 'N'"
                     type="number"
                     outlined
                     label="Retention period (days)">
@@ -864,6 +864,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer': logSum(log, 'fetched_number') > 0, 'text-red': control.control_type === 'REP' && logSum(log, 'fetched_number') > 0 }"
+                          v-keyboard:button="logSum(log, 'fetched_number') > 0"
                           @click="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))">
                           {{ formatNumber(logSum(log, "fetched_number")) }}
@@ -872,6 +873,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer': log.fetched_number_b > 0 }"
+                          v-keyboard:button="log.fetched_number_b > 0"
                           @click="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)">
                           {{ formatNumber(log.fetched_number_b) }}
@@ -880,6 +882,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }"
+                          v-keyboard:button="logSum(log, 'error_number') > 0"
                           @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))">
                           {{ formatNumber(logSum(log, "error_number")) }}
@@ -888,6 +891,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }"
+                          v-keyboard:button="log.error_number_b > 0"
                           @click="openDatasetMenu($event, log, 'result_b', log.error_number_b)"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_number_b)">
                           {{ formatNumber(log.error_number_b) }}
@@ -896,6 +900,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }"
+                          v-keyboard:button="logSum(log, 'error_level') > 0"
                           @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))">
                           {{ formatNumber(logSum(log, "error_level"), 2) }}%
@@ -904,6 +909,7 @@
                       <td class="text-right">
                         <span
                           :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }"
+                          v-keyboard:button="log.error_level_b > 0"
                           @click="openDatasetMenu($event, log, 'result_b', log.error_level_b)"
                           @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_level_b)">
                           {{ formatNumber(log.error_level_b, 2) }}%
@@ -924,7 +930,7 @@
                         </q-chip>
                       </td>
                       <td class="text-left" style="width: 50px">
-                        <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
+                        <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
                           <q-menu>
                             <q-list dense class="text-no-wrap">
                               <q-item dense clickable :disable="dirty" @click="reRun(logRun(log), refreshLogs)" v-close-popup>
@@ -1130,7 +1136,7 @@ export default {
       datasourceBNumColumns: null,
       datasourceList: null,
       datasourceListOptions: null,
-      withDeleteionDrop: "N",
+      withDeletionDrop: "N",
       scheduleObject: defaultSchedule(),
       ruleConfigObject: {},
       cmpOutputTable: [],
@@ -1654,7 +1660,7 @@ export default {
           this.iterationConfigObject = [];
         }
 
-        this.withDeleteionDrop = this.control.with_drop === "Y" ? "drop" : this.control.with_deletion === "Y" ? "deletion" : "N";
+        this.withDeletionDrop = this.control.with_drop === "Y" ? "drop" : this.control.with_deletion === "Y" ? "deletion" : "N";
       } catch (err) {
         console.log(err);
       }
@@ -1691,13 +1697,13 @@ export default {
       this.initializing = false;
     },
     deletionDropChanged() {
-      if (this.withDeleteionDrop === "N") {
+      if (this.withDeletionDrop === "N") {
         this.control.with_deletion = "N";
         this.control.with_drop = "N";
-      } else if (this.withDeleteionDrop === "deletion") {
+      } else if (this.withDeletionDrop === "deletion") {
         this.control.with_deletion = "Y";
         this.control.with_drop = "N";
-      } else if (this.withDeleteionDrop === "drop") {
+      } else if (this.withDeletionDrop === "drop") {
         this.control.with_deletion = "N";
         this.control.with_drop = "Y";
       }
@@ -1918,7 +1924,7 @@ export default {
         } else if (this.control.control_type === "REC" && (!this.control.source_date_field_a || !this.control.source_date_field_b)) {
           this.$q.notify({
             type: "negative",
-            message: "Please select a date columns for both A and B datasources.",
+            message: "Please select a date column for both A and B datasources.",
           });
           errorTab = "data";
         }
@@ -2452,20 +2458,8 @@ export default {
   border-radius: 50%;
 }
 
-/* Save / Apply / Cancel stay in view on every tab, at the bottom of the window while the card is longer. */
-.editor-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  background: white;
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
-}
-
 .schema-notice:hover {
   text-decoration: underline;
 }
 
-.new-day-separator > td {
-  border-top: 2px solid #cfd8dc !important;
-}
 </style>

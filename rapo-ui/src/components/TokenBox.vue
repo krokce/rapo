@@ -5,7 +5,12 @@
         <div class="text-overline">Please enter a valid token to connect to backend API</div>
         <q-input v-model="token" outlined :type="isPwd ? 'password' : 'text'" hint="RAPO token" @keyup.enter="connect(token)" autofocus>
           <template v-slot:append>
-            <q-icon :name="isPwd ? 'visibility_off' : 'visibility'" class="cursor-pointer" @click="isPwd = !isPwd" />
+            <q-icon
+              :name="isPwd ? 'fas fa-eye-slash' : 'fas fa-eye'"
+              class="cursor-pointer"
+              :aria-label="isPwd ? 'Show token' : 'Hide token'"
+              v-keyboard:button
+              @click="isPwd = !isPwd" />
           </template>
         </q-input>
         <q-toggle color="teal" v-model="rememberToken" label="Remember token" />

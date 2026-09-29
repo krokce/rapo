@@ -64,7 +64,7 @@ export default {
   td
     padding: 6px 12px 6px 0
     vertical-align: top
-    border-bottom: 1px solid #eeeeee
+    border-bottom: 1px solid var(--rapo-panel-border)
 
 .diff-table__kind
   width: 80px
@@ -82,26 +82,26 @@ export default {
   word-break: break-word
 
 .diff-table__old
-  color: #9e9e9e
+  color: var(--rapo-muted)
   text-decoration: line-through
 
 .diff-table__lines
   white-space: pre-wrap
-  border: 1px solid #e0e0e0
+  border: 1px solid var(--rapo-panel-border)
   border-radius: 4px
 
   > div
     padding: 0 6px
 
 .diff-table__added
-  background: #e8f5e9
-  color: #1b5e20
+  background: var(--rapo-added-bg)
+  color: var(--rapo-added-fg)
 
 .diff-table__removed
-  background: #ffebee
-  color: #b71c1c
+  background: var(--rapo-removed-bg)
+  color: var(--rapo-removed-fg)
 
 .diff-table__gap
-  color: #9e9e9e
-  background: #fafafa
+  color: var(--rapo-muted)
+  background: var(--rapo-surface-alt)
 </style>

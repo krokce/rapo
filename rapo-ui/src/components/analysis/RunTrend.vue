@@ -9,8 +9,16 @@
       <q-btn-toggle v-model="limit" dense no-caps unelevated size="sm" toggle-color="blue-grey-7" color="grey-3" text-color="grey-8" :options="limitOptions" />
     </q-card-section>
     <q-card-section class="q-pt-none">
-      <q-skeleton v-if="!trend" type="rect" height="200px" />
-      <div v-else-if="trend.runs.length < 2" class="text-grey-7 q-pa-md">The control has no finished run for another day.</div>
+      <q-skeleton v-if="!trend && !failed" type="rect" height="200px" />
+      <div v-else-if="!trend" class="state-notice state-notice--error">
+        <q-icon name="fas fa-exclamation-triangle" />
+        <div>The run trend could not be loaded.</div>
+        <q-btn flat dense no-caps color="primary" label="Retry" @click="load" />
+      </div>
+      <div v-else-if="trend.runs.length < 2" class="state-notice">
+        <q-icon name="fas fa-history" />
+        <div>The control has no finished run for another day.</div>
+      </div>
       <e-chart v-else :option="option" :height="220" @select="select" />
     </q-card-section>
   </q-card>
@@ -20,6 +28,7 @@
 import EChart from "./EChart.vue";
 import { api, notifyError } from "../../api";
 import { formatNumber, toDateTimeString } from "../../utils/format";
+import { baseOption, valueAxis } from "../../utils/analysis";
 
 // The counts of the dataset's side over the control's latest days, one point per day (per window) by its last
 // finished run, from the run log only. A click on a run opens the same dataset of that run.
@@ -32,7 +41,7 @@ export default {
     reportOnly: { type: Boolean, default: false },
   },
   data() {
-    return { trend: null, limit: 30 };
+    return { trend: null, failed: false, limit: 30 };
   },
   computed: {
     limitOptions() {
@@ -49,7 +58,7 @@ export default {
       const runs = this.trend.runs;
       const labels = runs.map((run) => this.runLabel(run));
       const current = runs.findIndex((run) => run.process_id === this.processId);
-      const highlight = (value, index) => (index === current ? { value, itemStyle: { color: "#009688" } } : value);
+      const highlight = (value, index) => (index === current ? { value, itemStyle: { color: "#009688", borderColor: "#004d40", borderWidth: 2 } } : value);
       const series = [
         { name: "Fetched", type: "bar", data: runs.map((run, index) => highlight(run.fetched, index)), itemStyle: { color: "#90a4ae" }, cursor: "pointer" },
       ];
@@ -64,13 +73,11 @@ export default {
           cursor: "pointer",
         });
       }
-      return {
-        animation: false,
-        grid: { left: 8, right: 8, top: 30, bottom: 4, containLabel: true },
+      return baseOption({
+        grid: { left: 8, right: 8, top: 30, bottom: 4 },
         legend: { top: 0, left: "center", textStyle: { fontSize: 11 } },
         tooltip: {
           trigger: "axis",
-          axisPointer: { type: "shadow" },
           formatter: (items) => {
             const run = runs[items[0].dataIndex];
             const level = run.error_level === null || run.error_level === undefined ? "" : `<br/>Error level ${formatNumber(run.error_level, 2)}%`;
@@ -83,11 +90,11 @@ export default {
         },
         xAxis: { type: "category", data: labels, axisLabel: { fontSize: 10, hideOverlap: true } },
         yAxis: [
-          { type: "value", axisLabel: { fontSize: 10, color: "#78909c" }, splitLine: { lineStyle: { color: "#eceff1" } } },
-          { type: "value", axisLabel: { fontSize: 10, color: "#e53935" }, splitLine: { show: false } },
+          valueAxis({ axisLabel: { color: "#78909c" } }),
+          valueAxis({ axisLabel: { color: "#e53935" }, splitLine: { show: false } }),
         ],
         series,
-      };
+      });
     },
   },
   watch: {
@@ -103,12 +110,14 @@ export default {
   },
   methods: {
     async load() {
+      this.failed = false;
       try {
         this.trend = await api("get-control-trend", {
           params: { process_id: this.processId, dataset: this.dataset, limit: this.limit },
           loadingBar: false,
         });
       } catch (error) {
+        this.failed = true;
         notifyError("The run trend could not be loaded.", error);
       }
     },

@@ -675,7 +675,7 @@ const KPI_FAMILIES = {
 
 // The family of a KPI type, from the convention of its code (RACS_KPI_TYPE): MVA/MVB/MVAL... are monetary,
 // ER*/DUP/CER discrepancy counts, TR*/ELAT trends, DZ*/DS* record volumes, EL* error levels.
-export function kpiFamily(code) {
+function kpiFamily(code) {
   const value = (code || "").toUpperCase();
   if (/^MV/.test(value)) return "monetary";
   if (/^MP/.test(value)) return "points";
@@ -779,15 +779,4 @@ export function examplesFor(context) {
     default:
       return { items: [], more: [] };
   }
-}
-
-// Every example, for tests: [{ field, group, title, text }].
-export function allExamples() {
-  const lists = { filter: FILTER, error_definition: ERROR_DEFINITION, case_definition: CASE_DEFINITION };
-  Object.assign(lists, { preparation: PREPARATION, prerequisite: PREREQUISITE, completion: COMPLETION, email_filter: EMAIL_FILTER, email_sql: EMAIL_SQL });
-  const rows = [];
-  Object.entries(lists).forEach(([field, items]) => items.forEach((item) => rows.push({ field, group: null, ...item })));
-  Object.entries(KPI).forEach(([group, items]) => items.forEach((item) => rows.push({ field: "kpi_sql", group, ...item })));
-  Object.entries(ALARM).forEach(([group, items]) => items.forEach((item) => rows.push({ field: "alarm_sql", group, ...item })));
-  return rows;
 }

@@ -43,8 +43,8 @@
               <br />Leave empty or 0 to never rerun.
             </q-tooltip>
           </q-input>
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeKpi(index)" />
-          <q-btn
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeKpi(index)" />
+          <q-btn aria-label="Add row"
             v-if="index == kpiConfigObject.length - 1"
             size="sm"
             color="primary"
@@ -170,6 +170,7 @@ import { mapState } from "vuex";
 import { api } from "../api";
 import CodeBox from "./CodeBox.vue";
 import { examplesFor } from "../utils/codeExamples";
+import { checkKpiStatement } from "../utils/kpi";
 import { KPI_ICON, kpiUnitColor } from "../constants";
 
 // The two statements of a KPI, as RACS_KPI_PKG runs them: the KPI value for a run, then the alarm level for
@@ -317,11 +318,7 @@ export default {
       const field = statement.field === "kpi_sql_statement" ? "kpi_sql" : "alarm_sql";
       return examplesFor({ field, controlType: this.controlType, controlName: this.controlName, kpiType: item.kpi_type });
     },
-    // Parses the statement on the server without executing it. A control that has never run has no result
-    // table yet, so a failure here is informative only and never blocks saving.
-    checkStatement(statement, text) {
-      return api("validate-kpi-sql", { method: "POST", body: { statement: text, kind: statement.kind }, loadingBar: false });
-    },
+    checkStatement: checkKpiStatement,
   },
 };
 </script>

@@ -3,10 +3,11 @@
 ## Annotation
 This release adds two pages for the PDI Core file loader: *Datasources* edits its datasources and *Files* shows,
 recycles, reloads, deletes or downloads the files it loaded. Deleting a control now drops its result tables (API
-callers: see item 3), comparison criteria get the formula mode of reconciliations, and the data analysis draws
-random samples, shows the exact counterpart of a discrepancy and switches between a run's datasets. The list pages
-show and keep their active filters. There is no change to Rapo's own schema, and none to the `PL` engine.
-The upgrade steps are in the [migration instructions](README.md).
+callers: see item 3), the web UI has a dark mode, comparison criteria get the formula mode of reconciliations, and
+the data analysis draws random samples, shows the exact counterpart of a discrepancy and switches between a run's
+datasets. The list pages show and keep their active filters. The UI was also reviewed: the editors load on first
+visit, keyboard and screen-reader access, one global stylesheet and shared code. There is no change to Rapo's own
+schema, and none to the `PL` engine. The upgrade steps are in the [migration instructions](README.md).
 
 1. **Datasources page (PDI Core).** A new *Datasources* menu item lists and edits the datasources of the PDI Core
    file loader (`PDI_CORE_DS_CONFIG`) with their tables (`PDI_CORE_DS_TABLES`). It shows where Rapo's database user
@@ -48,6 +49,7 @@ The upgrade steps are in the [migration instructions](README.md).
      `delete-ds-config`, `count-ds-file-log`, `get-ds-files`, `check-ds-mask`, `create-ds-directory`,
      `list-ds-archive`, `get-ds-table-facts` (`partitioned_by` with each datasource's key and days),
      `get-ds-file-log`, `get-ds-file-log-text`; `info` reports `datasources_*`; live event `datasources:changed`.
+
 2. **Files page (PDI Core file log).** A new *Files* menu item: the file log (`PDI_CORE_FILE_LOG`) of one day, like
    Results is for control runs (`/files?date=`).
    - **By datasource:** files, a column per status of the day, duplicates, *Incoming* (today), records read / written /
@@ -78,6 +80,7 @@ The upgrade steps are in the [migration instructions](README.md).
    - API: `get-files-day`, `search-files`, `set-file-status`, `download-ds-files`, `get-pdi-state`, `remove-lane-lock`,
      `set-global-lock`; `info` reports `datasources_file_actions`, `datasources_file_download` and
      `datasources_state*`; `datasources:changed` kinds `state`, `files`.
+
 3. **Deleting a control drops its result tables.** Before, only the configuration row was deleted, and the
    `RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<name>` tables stayed behind as orphans. The confirmation now names the
    tables, with *Also drop the result tables* ticked; untick it to keep them. A control with a run in progress can
@@ -86,7 +89,13 @@ The upgrade steps are in the [migration instructions](README.md).
    - **Behavior change for API callers:** `delete-control` drops the tables by default (`drop_tables`, default
      true) and answers the dropped names in `dropped`. Scripts that relied on the tables being kept must pass
      `drop_tables=false`.
-4. **Formula mode in comparison (CMP) criteria.** Each *Match criteria* and *Mismatch criteria* row has a *Formula*
+
+4. **Dark mode.** A button in the header cycles the theme: *Automatic* (follows the operating system, the default),
+   *Light* and *Dark*. The choice is kept by the browser (`rapo_theme`). The pages, dialogs, tables, chips, the
+   analysis charts and the SQL editors have dark variants; the colors of both themes are the `--rapo-*` variables of
+   `src/styles/app.sass`, so a component needs no rules of its own. The light theme looks as before.
+
+5. **Formula mode in comparison (CMP) criteria.** Each *Match criteria* and *Mismatch criteria* row has a *Formula*
    Yes/No, as in reconciliations: with *Yes*, Field A and Field B are SQL expressions instead of column names, the
    fetched source A as `a.` and source B as `b.`, e.g. `'0' || substr(a.MSISDN, 3)` = `b.MSISDN` or `round(a.AMOUNT)`
    ≠ `b.AMOUNT`. The run uses them as written in the join (match) and the `!=` conditions (mismatch), so an invalid
@@ -96,7 +105,8 @@ The upgrade steps are in the [migration instructions](README.md).
      controls run unchanged. The comparison SQL now names the fetched tables `a` and `b`.
    - Switching *Formula* off, in CMP and REC criteria alike, turns a formula that is only `a.<column>` / `b.<column>`
      back into that column; any other formula is cleared, as before.
-5. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
+
+6. **Random samples.** A sample was the first records of the dataset as the database returned them, usually in
    the order they were loaded, so it could stand for one partition or one load batch only. A sample is now drawn at
    random by default: the records are read in random order (`order by dbms_random.value`), so the sample is uniform
    at any size, and *Extend* keeps it so. The sample bar has a *Random / First rows* switch; *First rows* is the
@@ -105,25 +115,29 @@ The upgrade steps are in the [migration instructions](README.md).
    database filter. The choice is kept in the URL (`rnd=0` for first rows), and a comparison's sample B is drawn
    the same way. *Copy SQL* still copies the plain statement.
    - API: `analysis-start` takes `random` (default true); `meta.random` says which was used.
-6. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
+
+7. **Counterpart by `RAPO_DISCREPANCY_ID`.** A discrepancy row of a reconciliation carries in `RAPO_DISCREPANCY_ID`
    the key field (`Source key field`) of the record of the other side it was matched with. The counterpart dialog
    now shows that record first, under *Matched record*, from the other side's result table and from its datasource
    for the run's window. The records with the same correlation key are still listed below it. A row without a
    discrepancy ID (a Loss, a fetched record) shows the correlation-key lookup only, as before.
    - API: `analysis-counterpart` answers `pair` `{key_field, value, results, source}`, or null.
-7. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
+
+8. **Nullability is no schema drift.** A result-table column that is `NOT NULL` while the datasource's is
    nullable, or an old column that is `NOT NULL` but no longer filled, no longer shows *Schema drift* on the
    Controls list, *Schema changes* in the editor, or counts toward Update schema. Each run already makes such
    columns nullable before it saves, so results are always written. Drift now means only a missing or too narrow
    column (Update schema) or an incompatible type (Recreate schema). The schema dialog lists *Nullable* columns
    only with *Show all columns*. The bulk check also no longer differed from the editor on primary-key columns,
    whose `NOT NULL` a result table does not copy.
-8. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
+
+9. **Fix: the Scheduler's running list named the wrong control.** A run's upstream runs (chain-rules), iterations and
    cascade run in the same job process, one after the other. The list showed the run ID of the one running now, but
    always the name of the control the job was started for, so e.g. the ANL upstream of a reconciliation never
    appeared. It now shows the control of the run in progress with its type chip, and *for <control>* when that run
    belongs to another control's job. `scheduler-status` reports `control_type` and `job_control_name` too.
-9. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
+
+10. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
    orange *Filter* badge while any filter is set, the header search included, and the active filters under it as
    light orange chips, each removable with its ✕. The badge's ✕ removes them all (the sort stays), replacing the
    former *Clear filters* button, which also reset the sort. The count reads "12 of 340 Controls" (Results and
@@ -132,7 +146,8 @@ The upgrade steps are in the [migration instructions](README.md).
    The filters, the sort and the header search are now **kept for the browser session**: they survive leaving the
    page, a reload and signing in again, until the browser tab is closed. KPI types and Scheduler used to start
    empty on every visit. Each browser tab keeps its own.
-10. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
+
+11. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
    *Source B*, *Discrepancies A*, *Discrepancies B* (what the control type has; none for a report), each with the
    run's count. An empty one is disabled. A switch opens the other dataset of the same run, and Back returns. The
    tab, the sampling, the search, and the Data tab's filters, sort and group-by go along; those on a column the other
@@ -140,31 +155,71 @@ The upgrade steps are in the [migration instructions](README.md).
    they belong to one dataset.
    - API: the dataset `meta` (`analysis-start`, `get-run-dataset-sql`) has `datasets`, `[{dataset, kind, side,
      count}]`.
-11. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
+
+12. **Lazy-loaded editors.** The control, datasource and KPI type editors and the file log page are separate chunks
+   loaded on first visit, so CodeMirror and the editor boxes are no longer part of the first page load (the vendor
+   bundle drops from about 870 KB to 440 KB).
+
+13. **Accessibility.** Every icon-only button has an accessible name, sortable column headers report `aria-sort`, and
+   the Group by toggle reports its state. Clickable elements that were not buttons (sortable headers, run numbers on
+   Results and in the editor's run log, analysis rows and cards, heatmap cells, the archive tree, code variables) can
+   be reached with Tab and activated with Enter or Space, and every focused element shows a teal ring. The token
+   box's show/hide icon works again (it used a Material icon name). Muted grey and teal text, and white text on
+   amber/orange chips, are darker to be readable; the heatmap's error cells have a corner mark and the trend's
+   current run a dark outline, so neither depends on color alone. Column names in analysis chart tooltips are escaped.
+
+14. **Icons, headers and analysis states.** The remaining Material icons (menu, close, add, search, clock) are Font
+   Awesome 5 like the rest of the UI and the Material icon font is no longer loaded. The Controls and KPI types titles
+   follow the same header layout as the other list pages,.
+   Empty states in the analysis panels share one look; a failed run trend, a failed page of rows or a section that
+   cannot be computed now says so with a *Retry* button instead of showing a skeleton or "No rows match the filters"
+   forever. The SQL filter and Copy SQL buttons are hidden, not disabled, until their data exists.
+
+15. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
    run log open the same menu as on Results (click or right-click): *Copy SQL to clipboard* and *Data analysis*.
    The copied SQL is now the server's, as on Results. Before, the editor built the fetched SQL in the browser from
    the form, which left out chain-rule sides and `{variables}` and followed unsaved changes.
-12. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
+
+16. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
    the search is set, the buttons show or hide the found columns only, so you can hide everything and then show the
    few columns you need. With no column shown, the table says so, and Export is disabled. **Key fields** shows only
    the columns the control's criteria use on this side (a REC's match and mismatch fields, a CMP's match and
    mismatch columns, the columns an ANL's error and case definitions name; formulas included), its date and key
    fields and every `RAPO_` column, and hides the rest. The page's text boxes and drop-down lists now have the
    height of every other form, and its tabs show the icon beside the title.
-13. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
+
+17. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
    control is opened, after a change of its datasource or output columns, and after Apply, Update schema, Recreate
    schema or dropping an orphan. Over large or complex views this can take a while, and until it answered the footer
    showed nothing, as if the schema matched while the *Schema drift* badge of the Controls list said otherwise. The
    footer now shows *Checking schema…* with a spinner until the answer comes. A re-check after a run keeps the
    notice it has meanwhile.
-14. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
+
+18. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
-15. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
+
+19. **Shared code and lists.** The copies of small helpers are gone: one `formatBytes`, one download-a-file and one
+   copy-and-notify routine, one run-start call for the Run dialog and Re-run, one day-navigation helper for Results,
+   Files and the file log, the KPI statement check shared by the KPI editor and the control's KPI box, one alert-label
+   table and one base ECharts option for the analysis charts. Confirmations all use the same Quasar dialog (the
+   separate Yes/No dialog is removed); *Recreate schema* and *Delete KPI type* now name the control or type in its
+   title and have a red action button. The KPI types page is a virtual-scroll list with a sticky header, like Controls,
+   and stays fast with thousands of rows.
+
+20. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
    count in brackets; the "25 controls · 190 runs" counts are no longer bold. On Controls, the control name is a link
    to its editor, like the datasource names (the version link under it stays).
-16. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
+
+21. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
    by the type chip and name, smaller.
-17. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
+
+22. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
    the tabs, as the Files page does, and scroll inside the table from there.
+
+23. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
+   misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").
+   The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
+   the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are
+   `--rapo-*` CSS variables used by the component styles.

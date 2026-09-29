@@ -25,11 +25,7 @@
             emit-value
             map-options
             v-model="iterationConfigObject[index].period_type"
-            :options="[
-              { label: 'Day', value: 'D' },
-              { label: 'Week', value: 'W' },
-              { label: 'Month', value: 'M' },
-            ]"
+            :options="periodTypeOptions"
             label="Period type" />
           <q-select
             class="col-1"
@@ -37,13 +33,10 @@
             emit-value
             map-options
             v-model="iterationConfigObject[index].status"
-            :options="[
-              { label: 'Yes', value: 'Y' },
-              { label: 'No', value: 'N' },
-            ]"
+            :options="yesNoOptions"
             label="Active" />
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeIterationConfig(index)" />
-          <q-btn
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeIterationConfig(index)" />
+          <q-btn aria-label="Add row"
             v-if="index == iterationConfigObject.length - 1"
             size="sm"
             color="primary"
@@ -59,12 +52,17 @@
 </template>
 
 <script>
+import { PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS } from "../constants";
+
 // iteration_config of a control: extra runs for earlier periods. modelValue is the parent's array and is edited
 // in place; pb is the control's own period_back.
 export default {
   props: {
     modelValue: { type: Array, required: true },
     pb: [Number, String],
+  },
+  data() {
+    return { periodTypeOptions: PERIOD_TYPE_OPTIONS, yesNoOptions: YES_NO_OPTIONS };
   },
   computed: {
     iterationConfigObject() {
@@ -88,5 +86,3 @@ export default {
   },
 };
 </script>
-
-<style></style>

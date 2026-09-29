@@ -3,7 +3,7 @@
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
-        <div class="text-grey-6 results-day">{{ dayTitle }}</div>
+        <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
         <div v-if="hasDay && activeFilters.length" class="row items-center">
           <filter-badge :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" @clear="clearFilters" />
         </div>
@@ -39,7 +39,7 @@
     <filter-chips :filters="activeFilters" class="q-mb-md" />
 
     <div class="row items-center q-mb-md">
-      <q-btn class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
+      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
       </q-btn>
       <q-btn class="col-2 q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-play-circle" label="Run control" @click="$refs.runControlDialog.open()" />
@@ -75,10 +75,10 @@
 
 
       <q-space />
-      <q-btn v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
+      <q-btn aria-label="Next day" v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
       </q-btn>
-      <q-btn v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(serverToday)">
+      <q-btn aria-label="Today" v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(serverToday)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
       </q-btn>
     </div>
@@ -95,63 +95,63 @@
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_type')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'start_date')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
               Start
               <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'duration_minutes')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'duration_minutes')" v-keyboard :aria-sort="ariaSort(sort, 'duration_minutes')">
               Runtime
               <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'process_id')">
+            <th class="text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Processname
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'date_from')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'date_from')" v-keyboard :aria-sort="ariaSort(sort, 'date_from')">
               Run from
               <q-icon v-if="sort.key === 'date_from'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'date_to')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'date_to')" v-keyboard :aria-sort="ariaSort(sort, 'date_to')">
               Run to
               <q-icon v-if="sort.key === 'date_to'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_a')">
               Fetched A
               <q-icon v-if="sort.key === 'fetched_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_b')">
               Fetched B
               <q-icon v-if="sort.key === 'fetched_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_a')">
               Discr. A
               <q-icon v-if="sort.key === 'error_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_b')">
               Discr. B
               <q-icon v-if="sort.key === 'error_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_a')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_a')">
               Err. lvl A [%]
               <q-icon v-if="sort.key === 'error_level_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_b')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_b')">
               Err. lvl B [%]
               <q-icon v-if="sort.key === 'error_level_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'prerequisite_value')">
+            <th class="text-right sortable" @click="toggleSort(sort, 'prerequisite_value')" v-keyboard :aria-sort="ariaSort(sort, 'prerequisite_value')">
               PV
               <q-icon v-if="sort.key === 'prerequisite_value'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'status')">
+            <th class="text-left sortable" @click="toggleSort(sort, 'status')" v-keyboard :aria-sort="ariaSort(sort, 'status')">
               Status
               <q-icon v-if="sort.key === 'status'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -175,8 +175,8 @@
           </td>
           <td class="text-right">{{ round(control.duration_minutes, 1) }} min</td>
           <td class="text-center text-weight-bold text-blue-grey-7">{{ control.process_id }}</td>
-          <td class="text-left text-weight-bold text-teal ellipsis" :title="control.control_name">
-            <q-btn
+          <td class="text-left text-weight-bold text-teal-8 ellipsis" :title="control.control_name">
+            <q-btn aria-label="Filter by this control"
               v-if="!getSearch"
               size="7px"
               color="grey-5"
@@ -204,37 +204,37 @@
             {{ toDateString(control.date_to) }}
           </td>
           <td class="text-right">
-            <span v-if="control.fetched_number_a > 0" class="cursor-pointer number-link" @click="openNumberMenu($event, control, 'fetched_a')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_a')">
+            <span v-if="control.fetched_number_a > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, control, 'fetched_a')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_a')">
               {{ formatNumber(control.fetched_number_a) }}
             </span>
             <span v-else>{{ formatNumber(control.fetched_number_a) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.fetched_number_b > 0" class="cursor-pointer number-link" @click="openNumberMenu($event, control, 'fetched_b')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_b')">
+            <span v-if="control.fetched_number_b > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, control, 'fetched_b')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_b')">
               {{ formatNumber(control.fetched_number_b) }}
             </span>
             <span v-else>{{ formatNumber(control.fetched_number_b) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
+            <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_number_a) }}
             </span>
             <span v-else>{{ formatNumber(control.error_number_a) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
+            <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_number_b) }}
             </span>
             <span v-else>{{ formatNumber(control.error_number_b) }}</span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
+            <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_level_a, 2) }}%
             </span>
             <span v-else> {{ formatNumber(control.error_level_a, 2) }}% </span>
           </td>
           <td class="text-right">
-            <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
+            <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_level_b, 2) }}%
             </span>
             <span v-else> {{ formatNumber(control.error_level_b, 2) }}% </span>
@@ -254,7 +254,7 @@
             </q-chip>
           </td>
           <td class="text-left">
-            <q-btn size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
+            <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, control)" />
           </td>
         </tr>
       </template>
@@ -320,7 +320,6 @@
 </template>
 
 <script>
-import { date } from "quasar";
 import { mapActions, mapGetters, mapState } from "vuex";
 import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
@@ -333,10 +332,10 @@ import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES,
 import { cancelRun, dropTemporaryTables, reRun, revokeRun, sendEmail, showErrorLog } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
-import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
+import { dayTitle, formatNumber, round, shiftDay, toDateString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
@@ -391,6 +390,7 @@ export default {
     showErrorLog,
     sendEmail,
     sortIcon,
+    ariaSort,
     toggleSort,
     fillViewportToBottom,
     async refreshControlResults() {
@@ -416,9 +416,6 @@ export default {
     // The server's today is plain /results, so the menu link and redirects always land on today.
     goToDay(day) {
       this.$router.push({ name: "results", query: day && day !== this.serverToday ? { date: day } : {} });
-    },
-    shiftDay(days) {
-      return date.formatDate(date.addToDate(date.extractDate(this.day, "YYYY-MM-DD"), { days }), "YYYY-MM-DD");
     },
     addStatusFilter(status) {
       if (!this.filter.status.includes(status)) {
@@ -459,13 +456,13 @@ export default {
     },
     // The day shown, as DD.MM.YYYY for the page title.
     dayTitle() {
-      return this.day ? date.formatDate(date.extractDate(this.day, "YYYY-MM-DD"), "DD.MM.YYYY") : "";
+      return dayTitle(this.day);
     },
     previousDay() {
-      return this.shiftDay(-1);
+      return shiftDay(this.day, -1);
     },
     nextDay() {
-      return this.shiftDay(1);
+      return shiftDay(this.day, 1);
     },
     isToday() {
       return this.day >= this.serverToday;
@@ -562,7 +559,7 @@ export default {
 <style lang="css" scoped>
 /* Override the default link styles */
 a {
-  color: #009688;
+  color: var(--rapo-teal);
   text-decoration: none;
 }
 
@@ -571,30 +568,11 @@ a:hover {
 }
 
 a:visited {
-  color: #009688;
-}
-
-/* The day buttons are as tall as the Run control button beside them, and no wider than their icon. */
-.day-btn {
-  height: 51px;
-  min-width: 0;
-}
-
-.name-filter {
-  min-width: 180px;
-}
-
-.results-day {
-  font-size: 0.6em;
-}
-
-.sortable {
-  cursor: pointer;
-  user-select: none;
+  color: var(--rapo-teal);
 }
 
 .number-link:hover {
-  color: #009688;
+  color: var(--rapo-teal);
   text-decoration: underline;
 }
 

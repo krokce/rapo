@@ -29,3 +29,8 @@ export function toggleSort(sort, key) {
 export function sortIcon(sort) {
   return sort.dir === "asc" ? "fas fa-sort-up" : "fas fa-sort-down";
 }
+
+// The aria-sort value of a column header for a `sort` of { key, dir }.
+export function ariaSort(sort, key) {
+  return sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+}

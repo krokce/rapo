@@ -3,7 +3,7 @@
     <q-card-section class="row items-center no-wrap q-py-sm header">
       <q-avatar size="26px" :icon="kind.icon" :color="kind.color" text-color="white" font-size="13px" class="q-mr-sm" :title="kind.label" />
       <div class="text-weight-bold text-blue-grey-10 ellipsis column-name" :title="column.name.toUpperCase()">{{ column.name.toUpperCase() }}</div>
-      <div class="text-caption text-grey-6 q-ml-sm text-no-wrap">{{ dbType }} · {{ kind.label }}</div>
+      <div class="text-caption text-grey-7 q-ml-sm text-no-wrap">{{ dbType }} · {{ kind.label }}</div>
       <q-space />
       <div class="row no-wrap q-gutter-xs alert-chips">
         <q-chip
@@ -24,7 +24,7 @@
       <div class="col-12 col-md-3">
         <table class="stat-table">
           <tbody>
-            <tr v-for="item in summaryStats" :key="item.label" :class="{ 'cursor-pointer link-row': item.filters }" @click="item.filters && $emit('show-rows', item.filters)">
+            <tr v-for="item in summaryStats" :key="item.label" :class="{ 'cursor-pointer link-row': item.filters }" v-keyboard="!!item.filters" @click="item.filters && $emit('show-rows', item.filters)">
               <td class="text-grey-7">{{ item.label }}</td>
               <td class="text-right text-weight-medium" :class="item.warn ? 'text-orange-9' : 'text-blue-grey-9'">{{ item.value }}</td>
             </tr>
@@ -34,7 +34,7 @@
       <div class="col-12 col-md-5">
         <div class="text-caption text-grey-7">{{ chartTitle }}</div>
         <e-chart v-if="chartOption" :option="chartOption" :height="170" @select="selectBin" />
-        <div v-else class="text-grey-5 q-pa-md text-center">No values to chart</div>
+        <div v-else class="text-grey-7 q-pa-md text-center">No values to chart</div>
       </div>
       <div class="col-12 col-md-4">
         <div class="text-caption text-grey-7">Most frequent values</div>
@@ -43,14 +43,15 @@
           :key="item.key"
           class="freq-row row no-wrap items-center cursor-pointer"
           :title="`${item.label}: ${formatNumber(item.count)} (${formatPct(item.pct)})`"
+          v-keyboard:button
           @click="$emit('show-rows', [item.filter])">
-          <div class="freq-label ellipsis" :class="{ 'text-italic text-grey-6': item.muted }">{{ item.label }}</div>
+          <div class="freq-label ellipsis" :class="{ 'text-italic text-grey-7': item.muted }">{{ item.label }}</div>
           <div class="col freq-bar-cell">
             <div class="freq-bar" :class="item.muted ? 'bg-grey-4' : 'bg-blue-grey-3'" :style="{ width: Math.max(item.share, 0.5) + '%' }" />
           </div>
           <div class="freq-count text-right text-grey-8">{{ formatNumber(item.count) }}</div>
         </div>
-        <div v-if="column.other_count" class="freq-row row no-wrap items-center text-grey-6 text-italic">
+        <div v-if="column.other_count" class="freq-row row no-wrap items-center text-grey-7 text-italic">
           <div class="freq-label">Other values ({{ formatNumber(column.distinct - column.top.length) }})</div>
           <div class="col" />
           <div class="freq-count text-right">{{ formatNumber(column.other_count) }}</div>
@@ -113,6 +114,7 @@ import { formatNumber } from "../../utils/format";
 import {
   HOURS,
   WEEKDAYS,
+  alertLabel,
   binFilter,
   distributionOption,
   formatPct,
@@ -122,19 +124,6 @@ import {
   kindInfo,
   valueFilter,
 } from "../../utils/analysis";
-
-const ALERT_LABELS = {
-  empty: "Empty",
-  constant: "Constant",
-  unique: "Unique",
-  missing: "Missing",
-  some_missing: "Missing",
-  high_cardinality: "High cardinality",
-  imbalanced: "Imbalanced",
-  zeros: "Zeros",
-  skewed: "Skewed",
-  blank: "Blank",
-};
 
 // The smallest or largest values of a numeric column, each a link to its rows.
 const ExtremeList = {
@@ -163,7 +152,6 @@ export default {
   props: {
     column: { type: Object, required: true },
     dbType: { type: String, default: "" },
-    rows: { type: Number, default: 0 },
     focused: { type: Boolean, default: false },
   },
   emits: ["show-rows"],
@@ -295,9 +283,7 @@ export default {
     formatNumber,
     formatPct,
     formatStat,
-    alertLabel(code) {
-      return ALERT_LABELS[code] || code;
-    },
+    alertLabel,
     // A histogram bar selects its rows; text length bins have no filter.
     selectBin(event) {
       if (this.column.kind === "text" || !this.column.histogram) {
@@ -315,11 +301,11 @@ export default {
 }
 
 .column-card--focus {
-  box-shadow: 0 0 0 2px #009688;
+  box-shadow: 0 0 0 2px var(--rapo-teal);
 }
 
 .header {
-  background: #f5f7f8;
+  background: var(--rapo-surface-alt);
 }
 
 .column-name {
@@ -339,11 +325,11 @@ export default {
 
 .stat-table :deep(td) {
   padding: 3px 4px;
-  border-bottom: 1px solid #eceff1;
+  border-bottom: 1px solid var(--rapo-grid);
 }
 
 .stat-table :deep(.link-row:hover) {
-  background: #e0f2f1;
+  background: var(--rapo-teal-soft);
 }
 
 .freq-row {
@@ -353,7 +339,7 @@ export default {
 }
 
 .freq-row.cursor-pointer:hover {
-  background: #e0f2f1;
+  background: var(--rapo-teal-soft);
 }
 
 .freq-label {

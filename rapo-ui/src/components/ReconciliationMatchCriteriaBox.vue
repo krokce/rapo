@@ -28,7 +28,7 @@
             <template v-slot:append>
               <q-icon name="fas fa-calculator" @click.stop.prevent />
             </template>
-            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Aways use 'a.' as prefix to DB fields in formula mode </q-tooltip>
+            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Always use 'a.' as prefix to DB fields in formula mode </q-tooltip>
           </q-input>
 
           <q-icon name="fas fa-equals" size="20px" color="blue-grey-3" />
@@ -54,7 +54,7 @@
             <template v-slot:append>
               <q-icon name="fas fa-calculator" @click.stop.prevent />
             </template>
-            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Aways use 'b.' as prefix to DB fields in formula mode </q-tooltip>
+            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Always use 'b.' as prefix to DB fields in formula mode </q-tooltip>
           </q-input>
 
           <q-icon name="fas fa-circle" size="15px" color="blue-grey-3" />
@@ -105,8 +105,8 @@
             </q-tooltip>
           </q-select>
 
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCorrelationConfig(index)" />
-          <q-btn
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCorrelationConfig(index)" />
+          <q-btn aria-label="Add row"
             v-if="index == ruleConfigObject.correlation_config.length - 1"
             size="sm"
             color="primary"
@@ -162,5 +162,3 @@ export default {
   },
 };
 </script>
-
-<style></style>

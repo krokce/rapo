@@ -72,21 +72,28 @@ export async function reRun(run, onDone) {
   if (!selected) {
     return;
   }
-  try {
-    await api("run-control", {
-      method: "POST",
-      params: {
-        name: run.control_name,
-        date_from: toDateTimeString(run.date_from),
-        date_to: toDateTimeString(run.date_to),
-        iterations: selected.includes("iterations") ? "true" : null,
-      },
-    });
-    Notify.create({ type: "positive", message: "Control " + run.control_name + " queued for execution" });
+  if (
+    await startRun({
+      name: run.control_name,
+      date_from: toDateTimeString(run.date_from),
+      date_to: toDateTimeString(run.date_to),
+      iterations: selected.includes("iterations") ? "true" : null,
+    })
+  ) {
     onDone();
-  } catch (error) {
-    notifyError("Control " + run.control_name + " failed to start.", error);
   }
+}
+
+// Queues a run (`params`: name, the window, debug_mode, iterations) and says so; false when the server refused it.
+export async function startRun(params) {
+  try {
+    await api("run-control", { method: "POST", params });
+  } catch (error) {
+    notifyError("Control " + params.name + " failed to start.", error);
+    return false;
+  }
+  Notify.create({ type: "positive", message: "Control " + params.name + " queued for execution" });
+  return true;
 }
 
 export async function cancelRun(run, onDone) {
@@ -153,13 +160,22 @@ export function showErrorLog(run) {
   showText(run.control_name + " - Error log", run.text_error || "No error log available");
 }
 
+// Copies text to the clipboard and says so; `what` reads "<what> copied to clipboard", `failure` is the error prefix.
+export async function copyAndNotify(text, what, failure) {
+  try {
+    await copyText(text);
+    Notify.create({ type: "positive", message: `${what} copied to clipboard` });
+  } catch (error) {
+    notifyError(failure, error);
+  }
+}
+
 // The SQL of the records behind a number of a run (fetched_a|b, result_a|b), built by the server: a fetched dataset
 // is the engine's select for the run's window, which only the engine can build.
 export async function copyDatasetSql(run, dataset, label) {
   try {
     const { sql } = await api("get-run-dataset-sql", { params: { process_id: run.process_id, dataset } });
-    await copyText(sql);
-    Notify.create({ type: "positive", message: `${label} SQL statement copied to clipboard` });
+    await copyAndNotify(sql, `${label} SQL statement`, "Failed to copy SQL to clipboard.");
   } catch (error) {
     notifyError("Failed to copy SQL to clipboard.", error);
   }

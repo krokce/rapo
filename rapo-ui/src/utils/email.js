@@ -10,7 +10,7 @@ export const SEND_WHEN_OPTIONS = [
 ];
 
 // Result types a REC side can export: Loss and Discrepancy when its issues are saved, Match when its matches are.
-export const REC_RESULT_TYPES = ["Loss", "Discrepancy", "Match"];
+const REC_RESULT_TYPES = ["Loss", "Discrepancy", "Match"];
 
 // The {variables} of the subject, the body, the attachment name and the sheet queries (mailer.build_variables).
 // Dates carry a sample strftime format, since a bare datetime prints its time too. `sheets: false` marks the ones

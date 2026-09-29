@@ -65,7 +65,7 @@
         v-model="email.subject"
         label="Subject">
         <template v-slot:append>
-          <q-btn flat dense size="sm" icon="fas fa-code" @click.stop>
+          <q-btn aria-label="Insert variable" flat dense size="sm" icon="fas fa-code" @click.stop>
             <q-tooltip>Insert variable</q-tooltip>
             <q-menu>
               <q-list dense>
@@ -83,7 +83,7 @@
     <div class="row">
       <q-input ref="body" class="col" outlined v-model="email.body" label="Body" type="textarea" autogrow input-style="min-height: 120px">
         <template v-slot:append>
-          <q-btn flat dense size="sm" icon="fas fa-code" @click.stop>
+          <q-btn aria-label="Insert variable" flat dense size="sm" icon="fas fa-code" @click.stop>
             <q-tooltip>Insert variable</q-tooltip>
             <q-menu>
               <q-list dense>
@@ -118,7 +118,7 @@
           <q-icon name="fas fa-file-excel" @click.stop.prevent />
         </template>
         <template v-slot:append>
-          <q-btn flat dense size="sm" icon="fas fa-code" @click.stop>
+          <q-btn aria-label="Insert variable" flat dense size="sm" icon="fas fa-code" @click.stop>
             <q-tooltip>Insert variable</q-tooltip>
             <q-menu>
               <q-list dense>
@@ -193,7 +193,7 @@
           <div>
             <div class="row items-center q-gutter-sm q-mb-sm">
               <span class="text-grey-8">Fields</span>
-              <span class="text-grey-6 text-caption">{{ email.sheets[sheet.key].fields.length ? "" : "none selected: all columns, in table order" }}</span>
+              <span class="text-grey-7 text-caption">{{ email.sheets[sheet.key].fields.length ? "" : "none selected: all columns, in table order" }}</span>
               <q-space />
               <q-select
                 dense
@@ -231,15 +231,15 @@
                       :placeholder="field.column" />
                   </td>
                   <td class="text-right text-no-wrap">
-                    <q-btn flat dense size="sm" icon="fas fa-arrow-up" :disable="index === 0" @click="moveField(sheet.key, index, -1)" />
-                    <q-btn
+                    <q-btn aria-label="Move up" flat dense size="sm" icon="fas fa-arrow-up" :disable="index === 0" @click="moveField(sheet.key, index, -1)" />
+                    <q-btn aria-label="Move down"
                       flat
                       dense
                       size="sm"
                       icon="fas fa-arrow-down"
                       :disable="index === email.sheets[sheet.key].fields.length - 1"
                       @click="moveField(sheet.key, index, 1)" />
-                    <q-btn flat dense size="sm" icon="fas fa-times" @click="email.sheets[sheet.key].fields.splice(index, 1)" />
+                    <q-btn aria-label="Remove field" flat dense size="sm" icon="fas fa-times" @click="email.sheets[sheet.key].fields.splice(index, 1)" />
                   </td>
                 </tr>
               </tbody>
@@ -545,7 +545,4 @@ export default {
 </script>
 
 <style scoped>
-.text-mono {
-  font-family: monospace;
-}
 </style>

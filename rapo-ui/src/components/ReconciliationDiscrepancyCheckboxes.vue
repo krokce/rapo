@@ -159,7 +159,7 @@
           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
             If active, the correlation dataset will be limited to x2.5 times of the larger datasource record-count to prevent huge resultsets caused by weak or
             missing match criteria (cross join)
-            <br />Note that activating the correlation limit will likely result in up to 30% slower performance. Recomended to be used only during the
+            <br />Note that activating the correlation limit will likely result in up to 30% slower performance. Recommended to be used only during the
             development phase.
           </q-tooltip>
         </q-select>
@@ -247,5 +247,3 @@ export default {
   },
 };
 </script>
-
-<style></style>

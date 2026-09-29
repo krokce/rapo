@@ -24,9 +24,10 @@
 </template>
 
 <script>
+import { Dark } from "quasar";
 import EChart from "./EChart.vue";
-import { formatNumber } from "../../utils/format";
-import { formatPct } from "../../utils/analysis";
+import { escapeHtml, formatNumber } from "../../utils/format";
+import { baseOption, formatPct, valueAxis } from "../../utils/analysis";
 
 export default {
   name: "AnalysisMissing",
@@ -44,18 +45,16 @@ export default {
     },
     barOption() {
       const columns = [...this.withMissing].reverse();
-      return {
-        animation: false,
-        grid: { left: 8, right: 60, top: 8, bottom: 24, containLabel: true },
+      return baseOption({
+        grid: { left: 8, right: 60, top: 8, bottom: 24 },
         tooltip: {
           trigger: "axis",
-          axisPointer: { type: "shadow" },
           formatter: (items) => {
             const column = columns[items[0].dataIndex];
-            return `${column.name.toUpperCase()}<br/><b>${formatNumber(column.missing)}</b> missing (${formatPct(column.missing_pct)})`;
+            return `${escapeHtml(column.name.toUpperCase())}<br/><b>${formatNumber(column.missing)}</b> missing (${formatPct(column.missing_pct)})`;
           },
         },
-        xAxis: { type: "value", max: 100, axisLabel: { formatter: "{value}%", fontSize: 10 }, splitLine: { lineStyle: { color: "#eceff1" } } },
+        xAxis: valueAxis({ max: 100, axisLabel: { formatter: "{value}%" } }),
         yAxis: { type: "category", data: columns.map((column) => column.name.toUpperCase()), axisLabel: { fontSize: 11 } },
         series: [
           {
@@ -66,7 +65,7 @@ export default {
             cursor: "pointer",
           },
         ],
-      };
+      });
     },
     matrixColumns() {
       return this.missing.columns.map((column, index) => ({ ...column, index })).filter((column) => column.missing > 0);
@@ -80,13 +79,12 @@ export default {
       columns.forEach((column, y) => {
         this.missing.matrix[column.index].forEach((share, x) => data.push([x, y, share]));
       });
-      return {
-        animation: false,
-        grid: { left: 8, right: 16, top: 8, bottom: 56, containLabel: true },
+      return baseOption({
+        grid: { left: 8, right: 16, top: 8, bottom: 56 },
         tooltip: {
-          formatter: (item) => `${columns[item.value[1]].name.toUpperCase()}, part ${item.value[0] + 1}<br/><b>${formatPct(item.value[2] * 100)}</b> missing`,
+          formatter: (item) => `${escapeHtml(columns[item.value[1]].name.toUpperCase())}, part ${item.value[0] + 1}<br/><b>${formatPct(item.value[2] * 100)}</b> missing`,
         },
-        xAxis: { type: "category", data: Array.from({ length: this.missing.buckets }, (item, index) => index + 1), axisLabel: { show: false }, axisTick: { show: false }, name: "" },
+        xAxis: { type: "category", data: Array.from({ length: this.missing.buckets }, (item, index) => index + 1), axisLabel: { show: false }, axisTick: { show: false } },
         yAxis: { type: "category", data: columns.map((column) => column.name.toUpperCase()), axisLabel: { fontSize: 11 } },
         visualMap: {
           min: 0,
@@ -96,12 +94,12 @@ export default {
           left: "center",
           bottom: 0,
           itemHeight: 120,
-          inRange: { color: ["#eceff1", "#37474f"] },
+          inRange: { color: Dark.isActive ? ["#2c3438", "#b0bec5"] : ["#eceff1", "#37474f"] },
           text: ["all missing", "none missing"],
           textStyle: { fontSize: 10 },
         },
         series: [{ type: "heatmap", data, progressive: 0 }],
-      };
+      });
     },
   },
   methods: {

@@ -4,7 +4,7 @@
       <q-card-section class="row items-center q-py-sm">
         <div class="text-h6">Check {{ label.toLowerCase() }}</div>
         <q-space />
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
       <q-card-section class="q-gutter-y-md">
@@ -56,7 +56,6 @@ export default {
       summary: undefined,
       samples: "",
       result: null,
-      checking: false,
     };
   },
   computed: {
@@ -130,9 +129,5 @@ export default {
 .mask {
   font-size: 15px;
   word-break: break-all;
-}
-:deep(.text-mono),
-.text-mono {
-  font-family: monospace;
 }
 </style>

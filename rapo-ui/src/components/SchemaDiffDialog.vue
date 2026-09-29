@@ -5,7 +5,7 @@
         <div class="text-h6">Result table schema</div>
         <q-space />
         <q-toggle v-model="showAll" dense label="Show all columns" class="q-mr-md" />
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 

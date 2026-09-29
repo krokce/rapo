@@ -33,8 +33,8 @@
               <q-item-section class="text-no-wrap">{{ column.name.toUpperCase() }}</q-item-section>
               <q-item-section side>
                 <div class="row no-wrap">
-                  <q-btn flat dense round size="xs" icon="fas fa-arrow-up" :disable="Boolean(columnFind) || position === 0" @click="moveColumn(position, -1)" />
-                  <q-btn
+                  <q-btn aria-label="Move up" flat dense round size="xs" icon="fas fa-arrow-up" :disable="Boolean(columnFind) || position === 0" @click="moveColumn(position, -1)" />
+                  <q-btn aria-label="Move down"
                     flat
                     dense
                     round
@@ -57,6 +57,7 @@
         color="blue-grey-7"
         icon="fas fa-layer-group"
         label="Group by"
+        :aria-pressed="Boolean(view.group)"
         @click="toggleGroup" />
       <q-btn-dropdown v-if="!view.group" outline dense color="blue-grey-7" icon="fas fa-file-export" no-caps label="Export" class="q-px-sm" :loading="exporting" :disable="!total || !shownColumns.length">
         <q-list dense>
@@ -119,13 +120,18 @@
         <thead>
           <tr class="bg-blue-grey-2">
             <th class="text-right row-number" :style="{ width: numberWidth + 'px' }">#</th>
-            <th v-for="column in shownColumns" :key="column.name" :style="{ width: column.width + 'px' }" :class="column.kind === 'numeric' ? 'text-right' : 'text-left'">
+            <th
+              v-for="column in shownColumns"
+              :key="column.name"
+              :style="{ width: column.width + 'px' }"
+              :class="column.kind === 'numeric' ? 'text-right' : 'text-left'"
+              :aria-sort="ariaSort(column.name)">
               <div class="row no-wrap items-center" :class="{ 'justify-end': column.kind === 'numeric' }">
-                <span class="ellipsis sortable" :title="`${column.name.toUpperCase()} (${column.db_type})`" @click="toggleSort(column.name)">
+                <span class="ellipsis sortable" v-keyboard:button :title="`${column.name.toUpperCase()} (${column.db_type})`" @click="toggleSort(column.name)">
                   {{ column.name.toUpperCase() }}
                 </span>
                 <q-icon v-if="sortOf(column.name)" :name="sortOf(column.name).desc ? 'fas fa-sort-down' : 'fas fa-sort-up'" size="12px" class="q-ml-xs" />
-                <q-btn
+                <q-btn aria-label="Filter this column"
                   flat
                   dense
                   round
@@ -141,8 +147,8 @@
       </template>
       <template #default="{ item, index }">
         <tr :key="index">
-          <td class="text-right text-grey-6 row-number">
-            <q-btn v-if="rowAction && item" flat dense round size="xs" color="primary" :icon="rowAction.icon" class="row-action" @click="$emit('row', item)">
+          <td class="text-right text-grey-7 row-number">
+            <q-btn v-if="rowAction && item" :aria-label="rowAction.label" flat dense round size="xs" color="primary" :icon="rowAction.icon" class="row-action" @click="$emit('row', item)">
               <q-tooltip>{{ rowAction.label }}</q-tooltip>
             </q-btn>
             {{ formatNumber(index + 1) }}
@@ -165,7 +171,17 @@
         </tbody>
         <tbody v-else-if="total === 0">
           <tr>
-            <td :colspan="shownColumns.length + 1" class="text-center text-grey-7 q-pa-lg">No rows match the filters</td>
+            <td :colspan="shownColumns.length + 1">
+              <div v-if="loadError" class="state-notice state-notice--error">
+                <q-icon name="fas fa-exclamation-triangle" />
+                <div>Rows could not be loaded: {{ loadError }}</div>
+                <q-btn flat dense no-caps color="primary" label="Retry" @click="reset" />
+              </div>
+              <div v-else class="state-notice">
+                <q-icon name="fas fa-filter" />
+                <div>No rows match the filters</div>
+              </div>
+            </td>
           </tr>
         </tbody>
       </template>
@@ -195,7 +211,7 @@
               :val="item.value"
               class="full-width">
               <span class="ellipsis">{{ item.value === null ? "(missing)" : formatValue(item.value, filterColumn.kind) }}</span>
-              <span class="text-grey-6 q-ml-xs">{{ formatNumber(item.count) }}</span>
+              <span class="text-grey-7 q-ml-xs">{{ formatNumber(item.count) }}</span>
             </q-checkbox>
           </div>
         </q-card-section>
@@ -210,11 +226,10 @@
 </template>
 
 <script>
-import { Notify } from "quasar";
 import SkeletonRows from "../SkeletonRows.vue";
 import GroupByPanel from "./GroupByPanel.vue";
 import { api, notifyError } from "../../api";
-import { formatNumber } from "../../utils/format";
+import { downloadBlob, formatNumber } from "../../utils/format";
 import { textWidth } from "../../utils/layout";
 import { describeFilter, formatValue } from "../../utils/analysis";
 
@@ -282,6 +297,7 @@ export default {
       filterColumn: null,
       draft: { op: null, value: "", min: null, max: null, values: [] },
       exporting: false,
+      loadError: "",
     };
   },
   computed: {
@@ -432,6 +448,7 @@ export default {
       this.pages = {};
       this.loading = {};
       this.total = null;
+      this.loadError = "";
       if (this.$refs.scroll) {
         this.$refs.scroll.scrollTo(0);
       }
@@ -479,7 +496,10 @@ export default {
       } catch (error) {
         // A closed or expired session is the page's to report.
         if (token === this.token && error.status !== 404) {
-          this.total = this.total === null ? 0 : this.total;
+          if (this.total === null) {
+            this.total = 0;
+            this.loadError = error.message;
+          }
           notifyError("Rows could not be loaded.", error);
         }
       } finally {
@@ -494,6 +514,10 @@ export default {
       }
       const text = formatValue(value, column.kind, column.dateOnly);
       return text.length > 20 ? text : undefined;
+    },
+    ariaSort(name) {
+      const current = this.sortOf(name);
+      return current ? (current.desc ? "descending" : "ascending") : "none";
     },
     sortOf(name) {
       return this.state.sort.find((item) => item.column === name);
@@ -552,7 +576,7 @@ export default {
         filter.value = this.draft.value;
       }
       if ((op === "eq" || op === "ne") && column.kind === "numeric" && Number.isNaN(filter.value)) {
-        Notify.create({ type: "warning", message: `${this.draft.value} is not a number` });
+        this.$q.notify({ type: "warning", message: `${this.draft.value} is not a number` });
         return;
       }
       this.state.filters = this.state.filters.filter((item) => item.column !== column.name).concat([filter]);
@@ -647,17 +671,10 @@ export default {
           },
           raw: true,
         });
-        const blob = await response.blob();
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `${this.exportName}.${format}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+        downloadBlob(await response.blob(), `${this.exportName}.${format}`);
         const cut = response.headers.get("X-Rapo-Cut");
         if (cut) {
-          Notify.create({ type: "warning", message: `Excel holds at most ${formatNumber(Number(cut))} rows; the file was cut there. Use CSV for all rows.` });
+          this.$q.notify({ type: "warning", message: `Excel holds at most ${formatNumber(Number(cut))} rows; the file was cut there. Use CSV for all rows.` });
         }
       } catch (error) {
         notifyError("The export failed.", error);
@@ -714,12 +731,7 @@ export default {
 }
 
 .viewer-table .null-cell {
-  color: #b0bec5;
-}
-
-.sortable {
-  cursor: pointer;
-  user-select: none;
+  color: var(--rapo-label);
 }
 
 .filter-btn {

@@ -1,10 +1,10 @@
 import "./styles/quasar.sass";
+import "./styles/app.sass";
 import iconSet from "quasar/icon-set/fontawesome-v5.js";
 import "@quasar/extras/roboto-font/roboto-font.css";
-import "@quasar/extras/material-icons/material-icons.css";
 import "@quasar/extras/fontawesome-v5/fontawesome-v5.css";
 
-import { Dialog, LoadingBar, Notify, Cookies } from "quasar";
+import { Dark, Dialog, LoadingBar, Notify, Cookies } from "quasar";
 
 // To be used on app.use(Quasar, { ... })
 export default {
@@ -17,7 +17,7 @@ export default {
       icon: "fas fa-info-circle",
       actions: [
         {
-          icon: "close",
+          icon: "fas fa-times",
           color: "white",
           round: true,
           handler: () => {
@@ -27,6 +27,6 @@ export default {
       ],
     },
   },
-  plugins: { Dialog, LoadingBar, Notify, Cookies },
+  plugins: { Dark, Dialog, LoadingBar, Notify, Cookies },
   iconSet: iconSet,
 };

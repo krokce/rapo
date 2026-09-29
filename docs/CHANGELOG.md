@@ -19,6 +19,8 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
   files and no longer filter the page.
 - **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
   API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
+- **Dark mode:** a header button cycles Automatic (follows the system, default) / Light / Dark, remembered by the
+  browser; pages, dialogs, charts and SQL editors have dark variants, the light theme is unchanged.
 - **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC
   (`"formula_mode": true`); the two boxes are stacked. Switching *Formula* off (CMP and REC) keeps a plain
   `a.<column>` as that column.
@@ -30,8 +32,18 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
   browser session.
 - **Analysis:** a dataset switch between Source A/B and Discrepancies A/B of a run; *Hide all*, *Key fields* and a
   search in the *Columns* menu; the editor's run log opens *Copy SQL* and *Data analysis* with the server's SQL.
+- **UI load time:** the editors and the file log page load on first visit, halving the vendor bundle of the first
+  load.
+- **UI accessibility:** names on icon-only buttons, keyboard access (Tab, Enter, Space, focus ring) to sortable
+  headers, run numbers and analysis rows, `aria-sort`, and darker muted text and chip colors for contrast.
+- **UI icons and states:** Material icons replaced by Font Awesome (the Material font is gone), one look for empty
+  analysis panels, and *Retry* states for a failed run trend, page of rows or analysis section.
 - **"Checking schema…"** in the editor footer while the result tables are compared.
 - **Fix:** leaving the analysis page no longer reports "The run trend could not be loaded. 422".
+- **UI consistency:** shared helpers instead of copies (file download, copy, run start, day navigation, chart
+  options), one confirmation dialog style, the KPI types page as a virtual-scroll list like Controls, and the
+  styles the pages duplicated moved into one global stylesheet with `--rapo-*` color variables, with dead code and
+  typos removed.
 - Smaller: Results totals read **ANL** (26), Controls names link to the editor, editor pages are titled, Scheduler
   tables fill the window.
 

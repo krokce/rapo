@@ -2,7 +2,7 @@
   <q-layout view="hHh Lpr lff" class="bg-grey-1 rounded-borders">
     <q-header elevated class="bg-white text-grey-8 q-py-xs" height-hint="58">
       <q-toolbar>
-        <q-btn flat dense round @click="toggleLeftDrawer" aria-label="Menu" icon="menu" />
+        <q-btn flat dense round @click="toggleLeftDrawer" aria-label="Menu" icon="fas fa-bars" />
 
         <q-btn flat no-caps no-wrap class="q-ml-xs" v-if="$q.screen.gt.xs" :to="{ name: 'results' }">
           <q-icon name="fas fa-poll" color="teal" size="40px" />
@@ -19,10 +19,13 @@
 
         <div class="YL__toolbar-input-container row no-wrap" v-if="!hideSearch">
           <q-input dense outlined square v-model="search" :placeholder="searchPlaceholder" class="bg-white col" />
-          <q-btn class="YL__toolbar-input-btn" color="grey-3" text-color="grey-8" icon="close" unelevated @click="updateSearch('')" />
+          <q-btn aria-label="Clear search" class="YL__toolbar-input-btn" color="grey-3" text-color="grey-8" icon="fas fa-times" unelevated @click="updateSearch('')" />
         </div>
 
         <q-space class="col-2" />
+        <q-btn round flat dense size="sm" :icon="themeInfo.icon" :aria-label="`Theme: ${themeInfo.label}`" @click="cycleTheme">
+          <q-tooltip>Theme: {{ themeInfo.label }} (click for {{ nextThemeInfo.label.toLowerCase() }})</q-tooltip>
+        </q-btn>
         <q-icon
           v-if="getTokenIsValid"
           name="fas fa-circle"
@@ -32,7 +35,7 @@
           <q-tooltip>{{ getSocketConnected ? "Live updates on" : "Live updates offline, reconnecting..." }}</q-tooltip>
         </q-icon>
         <!-- The only way to the Scheduler page (it has no menu item), so it is there before the status is (grey, Unknown). -->
-        <q-btn
+        <q-btn aria-label="Scheduler"
           v-if="getTokenIsValid"
           round
           flat
@@ -45,7 +48,7 @@
           <q-tooltip>Scheduler: {{ schedulerStateInfo.label }} &mdash; {{ schedulerStateInfo.description }}</q-tooltip>
         </q-btn>
         <!-- The color of the plug is the only sign of the connection: teal connected, red disconnected. -->
-        <q-btn v-if="getTokenIsValid" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
+        <q-btn aria-label="Instance details" v-if="getTokenIsValid" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
           <q-tooltip>Connected &mdash; instance details</q-tooltip>
         </q-btn>
         <q-icon v-else name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="red">
@@ -170,6 +173,13 @@ import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError, signOut } from "./api";
 import { DATASOURCE_ICON, FILES_ICON, schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
+import { THEMES, applyTheme, readTheme, saveTheme } from "./utils/theme";
+
+const THEME_INFO = {
+  auto: { icon: "fas fa-adjust", label: "Automatic" },
+  light: { icon: "fas fa-sun", label: "Light" },
+  dark: { icon: "fas fa-moon", label: "Dark" },
+};
 
 // The drawer collapsed to its icons (the burger button), remembered by the browser across sessions.
 const MINI_DRAWER_KEY = "rapo_mini_drawer";
@@ -187,6 +197,7 @@ export default {
     return {
       leftDrawerOpen: false,
       miniDrawer: readMiniDrawer(),
+      theme: readTheme(),
       instanceDialog: false,
       reloadingConfig: false,
     };
@@ -206,6 +217,11 @@ export default {
       } catch (error) {
         // Storage unavailable (private mode, blocked): the choice lasts for this page load only.
       }
+    },
+    cycleTheme() {
+      this.theme = THEMES[(THEMES.indexOf(this.theme) + 1) % THEMES.length];
+      applyTheme(this.theme);
+      saveTheme(this.theme);
     },
     isActiveLink(link) {
       return link.routes.includes(this.$route.name);
@@ -304,6 +320,12 @@ export default {
     },
   },
   computed: {
+    themeInfo() {
+      return THEME_INFO[this.theme];
+    },
+    nextThemeInfo() {
+      return THEME_INFO[THEMES[(THEMES.indexOf(this.theme) + 1) % THEMES.length]];
+    },
     ...mapGetters([
       "getSearch",
       "getTokenIsValid",
@@ -438,8 +460,8 @@ export default {
     &:hover
       color: #000
 .menu-link--active
-  color: #009688
-  background: #e0f2f1
+  color: var(--rapo-teal)
+  background: var(--rapo-teal-soft)
   font-weight: 500
 
 .instance-paths
@@ -467,15 +489,15 @@ export default {
 
   // Options of rapo.ini changed on disk and not applied yet.
   tr.env-changed td, tr.env-added td, tr.env-removed td
-    background: #fff8e1
+    background: var(--rapo-highlight)
   tr.env-added td
-    color: #2e7d32
+    color: var(--rapo-added-fg)
   tr.env-removed td
     text-decoration: line-through
-    color: #9e9e9e
+    color: var(--rapo-muted)
 
   .env-old
-    color: #9e9e9e
+    color: var(--rapo-muted)
     text-decoration: line-through
 
 // A virtual-scroll table on a list page (utils/layout.js): as tall as its rows, but no taller than the rest of the
@@ -488,7 +510,7 @@ export default {
     position: sticky
     top: 0
     z-index: 1
-    background: #cfd8dc
+    background: var(--rapo-header)
 
 .skeleton-row td
   height: 45px
@@ -503,11 +525,6 @@ h2.row > div
 // title's baseline, so that they end on one line; centered, the smaller text would sit higher. A title with a chip
 // (the editors, a datasource's file log) stays centered, as a chip on the baseline would hang below the title.
 h2.title-baseline > div:first-child,
-h2.title-baseline > .results-day,
-h2.title-baseline > .analysis-subtitle
+h2.title-baseline > .page-subject
   align-self: baseline
-
-// What an editor page shows (its type chip and name), after the page name in its h2, smaller like the day of Results.
-.page-subject
-  font-size: 0.6em
 </style>

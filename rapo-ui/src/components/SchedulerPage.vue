@@ -75,7 +75,7 @@
                 </td>
                 <!-- The run the job performs now: an upstream of a chain or a cascade child runs in the job of another control. -->
                 <td>
-                  <span class="text-weight-bold text-teal">{{ job.control_name }}</span>
+                  <span class="text-weight-bold text-teal-8">{{ job.control_name }}</span>
                   <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
                     for {{ job.job_control_name }}
                     <q-tooltip>Runs in the job of {{ job.job_control_name }}, as its upstream (chain) or cascade</q-tooltip>
@@ -87,7 +87,7 @@
                 <td>{{ toTimeString(job.queued) }}</td>
                 <td>{{ toTimeString(job.started) }}</td>
                 <td style="width: 50px">
-                  <q-btn size="sm" color="grey-7" round flat icon="fas fa-times" @click="cancelRun(job, refreshAll)">
+                  <q-btn aria-label="Cancel run" size="sm" color="grey-7" round flat icon="fas fa-times" @click="cancelRun(job, refreshAll)">
                     <q-tooltip>Cancel run</q-tooltip>
                   </q-btn>
                 </td>
@@ -206,7 +206,7 @@
               </template>
               <template #after>
                 <tbody v-if="!loaded">
-                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text']" />
+                  <skeleton-rows :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text']" />
                 </tbody>
                 <tbody v-else-if="!filteredUpcoming.length">
                   <tr>
@@ -300,7 +300,7 @@
                       :class="'text-' + controlTypeColor(event.control_type)">
                       {{ event.control_name }}
                     </router-link>
-                    <span v-else class="text-grey-6">Deleted control {{ event.control_id }}</span>
+                    <span v-else class="text-grey-7">Deleted control {{ event.control_id }}</span>
                   </td>
                   <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     {{ toDateString(event.date_from) }}
@@ -325,7 +325,7 @@
                   </td>
                   <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <q-btn v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
+                    <q-btn aria-label="Run for this moment" v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
                       <q-tooltip>Run for this moment</q-tooltip>
                     </q-btn>
                   </td>
@@ -333,7 +333,7 @@
               </template>
               <template #after>
                 <tbody v-if="!loaded">
-                  <skeleton-rows v-if="!loaded" :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'QChip', 'QChip', 'text', null]" />
+                  <skeleton-rows :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'QChip', 'QChip', 'text', null]" />
                 </tbody>
                 <tbody v-else-if="!filteredEvents.length">
                   <tr>
@@ -350,7 +350,6 @@
 </template>
 
 <script>
-import { Dialog, Notify } from "quasar";
 import { mapActions, mapState } from "vuex";
 import DateTimeText from "./DateTimeText.vue";
 import FilterBadge from "./FilterBadge.vue";
@@ -503,7 +502,7 @@ export default {
       }
     },
     runMissed(event) {
-      Dialog.create({
+      this.$q.dialog({
         title: event.control_name,
         message: `Run for the missed fire of ${toDateTimeString(event.scheduled_time)}? The run gets the date range of that moment.`,
         cancel: true,
@@ -511,7 +510,7 @@ export default {
       }).onOk(async () => {
         try {
           await api("run-missed", { method: "POST", params: { event_id: event.event_id } });
-          Notify.create({ type: "positive", message: `Control ${event.control_name} queued for execution` });
+          this.$q.notify({ type: "positive", message: `Control ${event.control_name} queued for execution` });
           this.refreshAll();
         } catch (error) {
           notifyError(`Control ${event.control_name} failed to start.`, error);
@@ -551,10 +550,6 @@ a:hover {
   text-decoration: underline;
 }
 
-.new-day-separator {
-  border-top: 2px solid #cfd8dc !important;
-}
-
 .status-item {
   min-width: 140px;
 }
@@ -562,12 +557,12 @@ a:hover {
 .status-label {
   font-size: 11px;
   text-transform: uppercase;
-  color: #78909c;
+  color: var(--rapo-label);
 }
 
 .status-value {
   font-weight: 600;
-  color: #455a64;
+  color: var(--rapo-strong);
 }
 
 .message {

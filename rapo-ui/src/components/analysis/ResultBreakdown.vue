@@ -5,7 +5,7 @@
         <q-card-section class="q-py-sm">
           <div class="text-subtitle2 text-blue-grey-9">
             {{ column.label }}
-            <span class="text-caption text-grey-6 q-ml-xs">{{ column.column.toUpperCase() }} · {{ formatNumber(column.distinct) }} distinct</span>
+            <span class="text-caption text-grey-7 q-ml-xs">{{ column.column.toUpperCase() }} · {{ formatNumber(column.distinct) }} distinct</span>
           </div>
         </q-card-section>
         <q-card-section class="q-pt-none">
@@ -14,8 +14,9 @@
             :key="index"
             class="row no-wrap items-center breakdown-row cursor-pointer"
             :title="`${item.value === null ? '(missing)' : item.value}: ${formatNumber(item.count)} (${formatPct(item.pct)})`"
+            v-keyboard:button
             @click="$emit('show-rows', [valueFilter(column.column, item.value)])">
-            <div class="breakdown-label ellipsis" :class="{ 'text-italic text-grey-6': item.value === null }">
+            <div class="breakdown-label ellipsis" :class="{ 'text-italic text-grey-7': item.value === null }">
               {{ item.value === null ? "(missing)" : item.value }}
             </div>
             <div class="col bar-cell">
@@ -64,7 +65,7 @@ export default {
 }
 
 .breakdown-row:hover {
-  background: #e0f2f1;
+  background: var(--rapo-teal-soft);
 }
 
 .breakdown-label {

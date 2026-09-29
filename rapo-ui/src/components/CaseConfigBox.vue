@@ -28,8 +28,8 @@
             </q-tooltip>
           </q-input>
 
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCaseConfig(index)" />
-          <q-btn v-if="index == caseConfigObject.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCaseConfig()" />
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCaseConfig(index)" />
+          <q-btn aria-label="Add row" v-if="index == caseConfigObject.length - 1" size="sm" color="primary" flat round icon="fas fa-plus" @click="addCaseConfig()" />
         </div>
         <q-btn v-if="caseConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add case definition" @click="addCaseConfig()" />
       </q-card-section>
@@ -61,5 +61,3 @@ export default {
   },
 };
 </script>
-
-<style></style>

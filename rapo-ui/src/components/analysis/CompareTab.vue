@@ -104,11 +104,11 @@
         </template>
         <div class="q-pa-sm">
           <div v-for="(pair, index) in pairs" :key="index" class="row items-center q-gutter-sm q-mb-xs">
-            <q-select v-model="pair.a" outlined options-dense class="col" :options="columnsA" label="A" />
+            <q-select v-model="pair.a" outlined options-dense class="col" :options="columnsA" :option-label="upper" label="A" />
             <q-icon name="fas fa-arrows-alt-h" color="grey-6" />
-            <q-select v-model="pair.b" outlined options-dense class="col" :options="columnsB" label="B" />
+            <q-select v-model="pair.b" outlined options-dense class="col" :options="columnsB" :option-label="upper" label="B" />
             <q-chip v-if="pair.source === 'criteria'" dense size="sm" color="teal-1" text-color="teal-9" title="From the reconciliation's criteria">criteria</q-chip>
-            <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-trash" @click="removePair(index)" />
+            <q-btn aria-label="Remove pair" flat dense round size="sm" color="grey-7" icon="fas fa-trash" @click="removePair(index)" />
           </div>
           <div class="row q-gutter-sm q-mt-sm">
             <q-btn flat dense no-caps color="primary" icon="fas fa-plus" label="Add a pair" @click="addPair" />
@@ -141,12 +141,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="column in result.columns" :key="column.a + '|' + column.b" class="cursor-pointer" :class="{ selected: selectedKey === keyOf(column) }" @click="select(column)">
+            <tr v-for="column in result.columns" :key="column.a + '|' + column.b" class="cursor-pointer" :class="{ selected: selectedKey === keyOf(column) }" v-keyboard @click="select(column)">
               <td class="text-weight-medium">{{ column.a.toUpperCase() }}</td>
               <td>{{ column.b.toUpperCase() }}</td>
               <td class="text-grey-8">{{ kindLabel(column.kind) }}</td>
               <td>
-                <div v-if="column.level === 'unique'" class="text-grey-6 text-italic">key-like, not ranked</div>
+                <div v-if="column.level === 'unique'" class="text-grey-7 text-italic">key-like, not ranked</div>
                 <div v-else class="row items-center no-wrap">
                   <div class="psi-bar" :style="{ width: psiWidth(column.psi) + 'px', background: levelColor(column.level) }" />
                   <span class="q-ml-sm text-weight-medium" :style="{ color: levelColor(column.level) }">{{ formatStat(column.psi, 3) }}</span>
@@ -162,7 +162,7 @@
 
         <q-card v-if="selected && selected.level !== 'unique'" flat bordered>
           <q-card-section class="q-pb-none">
-            <div class="text-subtitle1 text-blue-grey-9">{{ selected.a.toUpperCase() }} <span class="text-grey-6">vs</span> {{ selected.b.toUpperCase() }}</div>
+            <div class="text-subtitle1 text-blue-grey-9">{{ selected.a.toUpperCase() }} <span class="text-grey-7">vs</span> {{ selected.b.toUpperCase() }}</div>
             <div class="text-caption text-grey-7">
               Share of the rows in each {{ selected.mode === "bins" ? "range" : "value" }}. Lift is the share in A divided by the share in B: above
               1 the value is over-represented in A.
@@ -185,14 +185,14 @@
                 </thead>
                 <tbody>
                   <tr v-for="item in liftRows" :key="item.index">
-                    <td class="ellipsis lift-label" :title="bucketLabel(item)" :class="{ 'text-italic text-grey-6': item.missing || item.other }">{{ bucketLabel(item) }}</td>
+                    <td class="ellipsis lift-label" :title="bucketLabel(item)" :class="{ 'text-italic text-grey-7': item.missing || item.other }">{{ bucketLabel(item) }}</td>
                     <td class="text-right">{{ formatPct(item.share_a) }}</td>
                     <td class="text-right">{{ formatPct(item.share_b) }}</td>
                     <td class="text-right">
-                      <q-chip dense square size="sm" :color="liftColor(item)" text-color="white" class="text-weight-bold">{{ liftText(item) }}</q-chip>
+                      <q-chip dense square size="sm" :color="liftColor(item)" :text-color="chipTextColor(liftColor(item))" class="text-weight-bold">{{ liftText(item) }}</q-chip>
                     </td>
                     <td class="text-right">
-                      <q-btn v-if="!item.other && item.count_a" flat dense round size="xs" color="primary" icon="fas fa-table" @click="showRowsA(item)">
+                      <q-btn aria-label="Show these rows of A" v-if="!item.other && item.count_a" flat dense round size="xs" color="primary" icon="fas fa-table" @click="showRowsA(item)">
                         <q-tooltip>Show these rows of A</q-tooltip>
                       </q-btn>
                     </td>
@@ -211,11 +211,10 @@
 import EChart from "./EChart.vue";
 import { api, notifyError } from "../../api";
 import { formatNumber, toDateTimeString } from "../../utils/format";
-import { KIND_ICONS, formatPct, formatStat, formatValue } from "../../utils/analysis";
+import { DATASETS, KIND_ICONS, baseOption, chipTextColor, datasetLabel, formatPct, formatStat, formatValue, valueAxis } from "../../utils/analysis";
 
 const LEVEL_COLORS = { stable: "#43a047", moderate: "#fb8c00", major: "#e53935" };
 const TARGET_ICONS = { source: "fas fa-database", previous: "fas fa-history", other_side: "fas fa-exchange-alt" };
-const DATASET_LABELS = { fetched_a: "Fetched A", fetched_b: "Fetched B", result_a: "Discrepancies A", result_b: "Discrepancies B" };
 
 // Compares this sample (A) with another (B) held by a second session of the page: the columns are paired (by name,
 // and for the two sides of a reconciliation by its criteria), and the server compares the shares of their values.
@@ -278,7 +277,7 @@ export default {
     datasetOptions() {
       const type = this.customType;
       const keys = type === "REP" ? ["fetched_a"] : type === "ANL" ? ["fetched_a", "result_a"] : ["fetched_a", "fetched_b", "result_a", "result_b"];
-      return keys.map((key) => ({ label: type === "REP" ? "Report rows" : type === "ANL" ? DATASET_LABELS[key].replace(/ A$/, "") : DATASET_LABELS[key], value: key }));
+      return keys.map((key) => ({ label: datasetLabel({ control_type: type, kind: DATASETS[key].kind, side: DATASETS[key].side }), value: key }));
     },
     columnsA() {
       return (this.stateA.columns || []).map((column) => column.name);
@@ -307,18 +306,17 @@ export default {
       const keep = labels.map((label, index) => column.shares_a[index] || column.shares_b[index]);
       const shown = labels.filter((label, index) => keep[index]);
       const pick = (shares) => shares.filter((share, index) => keep[index]);
-      return {
-        animation: false,
-        grid: { left: 8, right: 16, top: 30, bottom: 8, containLabel: true },
+      return baseOption({
+        grid: { left: 8, right: 16, top: 30, bottom: 8 },
         legend: { top: 0, textStyle: { fontSize: 11 } },
-        tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value) => formatPct(value) },
+        tooltip: { trigger: "axis", valueFormatter: (value) => formatPct(value) },
         xAxis: { type: "category", data: shown, axisLabel: { fontSize: 10, hideOverlap: true, rotate: column.mode === "values" ? 30 : 0 } },
-        yAxis: { type: "value", axisLabel: { fontSize: 10, formatter: "{value}%" }, splitLine: { lineStyle: { color: "#eceff1" } } },
+        yAxis: valueAxis({ axisLabel: { formatter: "{value}%" } }),
         series: [
           { name: `A: ${this.labelA}`, type: "bar", data: pick(column.shares_a), itemStyle: { color: "#26a69a" } },
           { name: `B: ${this.compare.target.label}`, type: "bar", data: pick(column.shares_b), itemStyle: { color: "#ff7043" } },
         ],
-      };
+      });
     },
   },
   watch: {
@@ -349,6 +347,9 @@ export default {
     clearTimeout(this.timer);
   },
   methods: {
+    upper(name) {
+      return String(name).toUpperCase();
+    },
     formatNumber,
     formatPct,
     formatStat,
@@ -506,8 +507,9 @@ export default {
       if (item.lift === null) {
         return "A only";
       }
-      return item.lift >= 100 ? "×99+" : `×${item.lift.toFixed(item.lift >= 10 ? 0 : 2)}`;
+      return item.lift >= 100 ? "×99+" : `×${formatNumber(item.lift, item.lift >= 10 ? 0 : 2)}`;
     },
+    chipTextColor,
     liftColor(item) {
       if (item.lift === null || item.lift >= 2) {
         return "red-7";
@@ -538,11 +540,11 @@ export default {
 
 <style scoped>
 .ranking tbody tr:hover {
-  background: #e0f2f1;
+  background: var(--rapo-teal-soft);
 }
 
 .ranking tbody tr.selected {
-  background: #b2dfdb;
+  background: var(--rapo-selected-row);
 }
 
 .psi-bar {
@@ -555,7 +557,7 @@ export default {
 }
 
 .mapping {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--rapo-panel-border);
   border-radius: 4px;
   background: white;
 }

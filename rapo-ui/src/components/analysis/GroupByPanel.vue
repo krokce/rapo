@@ -62,22 +62,22 @@
       <table v-if="result && result.rows.length" class="groups-table">
         <thead>
           <tr>
-            <th v-for="(name, index) in result.by" :key="'k' + index" class="text-left sortable" @click="toggleSort(name)">
+            <th v-for="(name, index) in result.by" :key="'k' + index" class="text-left sortable" v-keyboard :aria-sort="ariaSort(name)" @click="toggleSort(name)">
               {{ name.toUpperCase() }}<span v-if="bucketOf(name)" class="text-grey-7"> ({{ bucketOf(name) }})</span>
               <q-icon v-if="sortIcon(name)" :name="sortIcon(name)" size="12px" />
             </th>
-            <th class="text-right sortable count-col" @click="toggleSort('count')">
+            <th class="text-right sortable count-col" v-keyboard :aria-sort="ariaSort('count')" @click="toggleSort('count')">
               Count <q-icon v-if="sortIcon('count')" :name="sortIcon('count')" size="12px" />
             </th>
             <th class="share-col">Share</th>
-            <th v-for="label in result.aggregates" :key="label" class="text-right sortable" @click="toggleSort(label)">
+            <th v-for="label in result.aggregates" :key="label" class="text-right sortable" v-keyboard :aria-sort="ariaSort(label)" @click="toggleSort(label)">
               {{ aggregateLabel(label) }} <q-icon v-if="sortIcon(label)" :name="sortIcon(label)" size="12px" />
             </th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, index) in result.rows" :key="index" class="cursor-pointer" @click="drill(row)">
-            <td v-for="(key, position) in row.keys" :key="position" :class="{ 'text-grey-5 text-italic': key === null }">
+          <tr v-for="(row, index) in result.rows" :key="index" class="cursor-pointer" v-keyboard @click="drill(row)">
+            <td v-for="(key, position) in row.keys" :key="position" :class="{ 'text-grey-7 text-italic': key === null }">
               {{ key === null ? "(missing)" : formatKey(key, position) }}
             </td>
             <td class="text-right text-weight-medium">{{ formatNumber(row.count) }}</td>
@@ -91,7 +91,7 @@
           </tr>
         </tbody>
       </table>
-      <div v-else-if="result" class="text-grey-7 q-pa-md">No rows match the filters.</div>
+      <div v-else-if="result" class="state-notice"><q-icon name="fas fa-filter" /><div>No rows match the filters.</div></div>
     </div>
   </div>
 </template>
@@ -274,6 +274,10 @@ export default {
       }
       return sort.desc ? "fas fa-sort-down" : "fas fa-sort-up";
     },
+    ariaSort(column) {
+      const sort = this.group.sort || { column: "count", desc: true };
+      return sort.column === column ? (sort.desc ? "descending" : "ascending") : "none";
+    },
     toggleSort(column) {
       const sort = this.group.sort || { column: "count", desc: true };
       this.state.sort = sort.column === column ? { column, desc: !sort.desc } : { column, desc: column === "count" || column.includes("(") };
@@ -311,7 +315,7 @@ export default {
 .groups-scroll {
   min-height: 0;
   overflow: auto;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--rapo-panel-border);
   border-radius: 4px;
   background: white;
 }
@@ -325,7 +329,7 @@ export default {
 .groups-table th {
   position: sticky;
   top: 0;
-  background: #cfd8dc;
+  background: var(--rapo-header);
   padding: 6px 8px;
   font-weight: 600;
   white-space: nowrap;
@@ -334,7 +338,7 @@ export default {
 
 .groups-table td {
   padding: 5px 8px;
-  border-bottom: 1px solid #eceff1;
+  border-bottom: 1px solid var(--rapo-grid);
   white-space: nowrap;
   max-width: 360px;
   overflow: hidden;
@@ -342,12 +346,7 @@ export default {
 }
 
 .groups-table tbody tr:hover {
-  background: #e0f2f1;
-}
-
-.sortable {
-  cursor: pointer;
-  user-select: none;
+  background: var(--rapo-teal-soft);
 }
 
 .count-col {

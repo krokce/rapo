@@ -28,7 +28,7 @@
             <template v-slot:append>
               <q-icon name="fas fa-calculator" @click.stop.prevent />
             </template>
-            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Aways use 'a.' as prefix to DB fields in formula mode </q-tooltip>
+            <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Always use 'a.' as prefix to DB fields in formula mode </q-tooltip>
           </q-input>
 
           <q-icon name="fas fa-equals" size="20px" color="blue-grey-3" />
@@ -139,23 +139,23 @@
             <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Name to be used when presenting the discrepancies </q-tooltip>
           </q-input>
 
-          <q-btn size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCorrelationConfig(index)" />
-          <q-btn
+          <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeCriteria(index)" />
+          <q-btn aria-label="Add row"
             v-if="index == ruleConfigObject.discrepancy_config.length - 1"
             size="sm"
             color="primary"
             flat
             round
             icon="fas fa-plus"
-            @click="addCorrelationConfig" />
+            @click="addCriteria" />
         </div>
         <q-btn
           v-if="ruleConfigObject.discrepancy_config.length == 0"
           size="md"
           color="primary"
           icon="fas fa-plus"
-          label="Add mis-match criteria"
-          @click="addCorrelationConfig" />
+          label="Add mismatch criteria"
+          @click="addCriteria" />
       </q-card-section>
     </q-card>
   </div>
@@ -182,7 +182,7 @@ export default {
   methods: {
     fromFormula,
     toFormula,
-    addCorrelationConfig() {
+    addCriteria() {
       this.ruleConfigObject.discrepancy_config.push({
         field_a: this.firstColumn(this.datasourceAColumns),
         field_b: this.firstColumn(this.datasourceBColumns),
@@ -193,11 +193,9 @@ export default {
         formula_alias: null,
       });
     },
-    removeCorrelationConfig(index) {
+    removeCriteria(index) {
       this.ruleConfigObject.discrepancy_config.splice(index, 1);
     },
   },
 };
 </script>
-
-<style></style>

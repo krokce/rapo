@@ -15,7 +15,7 @@
         'bg-grey-5': !schedule_type,
       }"
       text-color="white"
-      icon="alarm">
+      icon="far fa-clock">
       {{ schedule_text }}
     </q-chip>
   </span>

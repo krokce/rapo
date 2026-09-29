@@ -26,9 +26,9 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, index) in duplicates.rows" :key="index" class="cursor-pointer" title="Show these rows" @click="showRow(row)">
+          <tr v-for="(row, index) in duplicates.rows" :key="index" class="cursor-pointer" title="Show these rows" v-keyboard @click="showRow(row)">
             <td class="text-right text-weight-bold">{{ formatNumber(row.count) }}</td>
-            <td v-for="(value, position) in row.values" :key="position" :class="{ 'text-grey-5': value === null }">
+            <td v-for="(value, position) in row.values" :key="position" :class="{ 'text-grey-7': value === null }">
               {{ value === null ? "–" : formatValue(value, kinds[duplicates.columns[position]]) }}
             </td>
           </tr>
@@ -77,6 +77,6 @@ export default {
 }
 
 .duplicates-table tbody tr:hover {
-  background: #e0f2f1;
+  background: var(--rapo-teal-soft);
 }
 </style>
