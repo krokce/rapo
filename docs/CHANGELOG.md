@@ -32,8 +32,11 @@ No change to Rapo's own schema, and none to the `PL` engine. PDI Core pages need
 - **Fix: reconciliation saves after a schema update** (since v0.8.3): a column added after `RAPO_PROCESS_ID`
   swapped values with it (`ORA-01438`, or rows saved under a wrong process ID); REC matches columns by name.
   Schema updates quote mixed-case and reserved column names.
-- **Nullability is no schema drift:** only missing, too narrow or incompatible columns count. Invisible
-  datasource columns no longer show a drift the editor does not.
+- **Nullability is no schema drift:** only missing, too narrow or incompatible columns count. The Controls list
+  confirms what it flags with the editor's exact check, so invisible columns and view expressions typed differently
+  in the dictionary no longer show a drift the editor does not. Synonym datasources are checked.
+- **Datasource missing** badge and filter on Controls for a control whose datasource does not exist
+  (`get-schema-drift` level `source_missing`).
 - **Fix:** the Scheduler's running list names the control of the run in progress (upstream, iteration, cascade).
 - **Active filters** on every list page as a badge and removable chips; filters, sort and search are kept for the
   browser session.

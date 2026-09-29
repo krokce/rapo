@@ -293,17 +293,22 @@ control:
 ```
 
 `level` is `ok`, `update` (added or widened columns; nullability never counts), `recreate` (incompatible columns), `error` (the
-configuration names a column its datasource lacks, see `reason`), `missing` (no written table exists yet),
-`not_checked`, or `rebuilt` (the control drops its tables on every run, so only its `orphans` are reported).
+configuration names a column its datasource lacks, or the exact check below failed, see `reason`), `missing` (no
+written table exists yet), `source_missing` (a datasource does not exist, named in `reason`), `not_checked`, or
+`rebuilt` (the control drops its tables on every run, so only its `orphans` are reported).
 `orphans` are the control's tables its saved configuration no longer writes, with the optimizer statistics
 (`rows`/`rows_analyzed`, `null` without them) and why nothing writes them. `unowned` carries the same statistics.
 Nothing is counted and no table is read here, so a few hundred result tables cost one dictionary query.
 
-Unlike `check-control-schema`, which creates each expected table empty to learn Oracle's types, this reads the
-dictionary only (one pass over `all_tab_columns`), so it is cheap enough for the whole catalogue. The result
-tables are copies of plain datasource columns, so the answer is the same, except where only Oracle can type a
-column: a CMP output column that coalesces A and B, a datasource name with `{variables}`, and a datasource over a
-database link are `not_checked` with the `reason`.
+Unlike `check-control-schema`, which creates each expected table empty to learn Oracle's types, this starts from
+the dictionary (one pass over `all_tab_columns`), so it is cheap enough for the whole catalogue. The result tables
+are copies of datasource columns, but the dictionary type of a view column that is an expression is not always the
+one a CTAS creates (e.g. a length in bytes where the CTAS keeps characters). So each table the dictionary flags as
+`update` or `recreate` is confirmed by the exact check of `check-control-schema`, and only its answer is reported.
+The confirmation is reused until the dictionary rows or the configuration it came from change, so a refresh costs
+no DDL. A datasource that is a synonym is checked as the table or view it names. Where only Oracle can type a
+column, a CMP output column that coalesces A and B, a datasource name with `{variables}`, and a datasource over a
+database link (also through a synonym) are `not_checked` with the `reason`.
 
 #### `GET /api/count-control-table-rows`
 Count the rows of one result table (`table`) exactly: one of a saved control (`name`), its orphans included, or,

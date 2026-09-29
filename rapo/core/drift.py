@@ -9,9 +9,18 @@ Executor._prepare_output_columns and compares with the same diff_column rules.
 Nullability is ignored (is_drift), so the dictionary's NOT NULL of a primary
 key column, which a CTAS does not copy, makes no difference.
 
+The dictionary type of a view column that is an expression is not always the
+type a CTAS gives it (e.g. its length in bytes where the CTAS keeps character
+semantics), so a table this pass flags is confirmed by the editor's exact check
+(Executor.diff_output_table, a CTAS into an empty scratch table). The answer is
+kept until the dictionary rows or the configuration it was built from change,
+so a refresh of the list costs no DDL. A drift the dictionary misses stays
+possible; the editor's check is the reference.
+
 What only a CTAS can type is reported as not checked: CMP output columns that
 coalesce A and B, datasource names with {variables}, and datasources over a
-database link.
+database link. A synonym is checked as the table or view it names; a
+datasource that does not exist at all is reported as source_missing.
 
 It also finds orphaned result tables, which no run writes any more: those of a
 control whose configuration stopped writing them (a reconciliation side whose
@@ -43,6 +52,15 @@ class NotChecked(Exception):
     """The expected schema cannot be told from the dictionary."""
 
 
+class SourceMissing(Exception):
+    """A datasource of the control does not exist."""
+
+
+# {control_id: (signature, drift)}: the drift confirmed by the exact check for
+# the dictionary rows and configuration of the signature.
+_confirmed = {}
+
+
 def schema_drift():
     """Get the schema drift and orphaned tables of all controls.
 
@@ -52,8 +70,9 @@ def schema_drift():
         controls: {control_id: {level, changes, incompatible, tables,
         orphans, reason}}. level is ok, update (safe changes), recreate
         (incompatible columns), error (the configuration names a column the
-        datasource lacks), missing (no result table yet), not_checked, or
-        rebuilt (the control drops its tables on every run). orphans are its
+        datasource lacks, or the exact check failed), missing (no result
+        table yet), source_missing (a datasource does not exist),
+        not_checked, or rebuilt (the control drops its tables on every run). orphans are its
         existing tables runs no longer write, as {table, rows, rows_analyzed,
         reason}: the optimizer statistics, and why nothing writes it.
         unowned: [{table, rows, rows_analyzed}], the result tables of no
@@ -72,7 +91,7 @@ def schema_drift():
     controls = db.execute(select, as_table=True)
     existing = _existing_result_tables()
 
-    wanted = set()
+    wanted, sources = set(), set()
     for control in controls:
         if control['with_drop'] == 'Y':
             continue
@@ -81,10 +100,13 @@ def schema_drift():
         for side in ('', '_a', '_b'):
             key = _table_key(control[f'source_name{side}'])
             if key:
-                wanted.add(key)
+                sources.add(key)
+    wanted |= sources
     columns = reader.read_schema_columns(wanted) if wanted else {}
+    unresolved = _resolve_sources(sources - columns.keys(), columns)
 
     answer = {'controls': {}, 'unowned': []}
+    confirmed = {}
     owned = set()
     for control in controls:
         names = output_table_names(control['control_name'])
@@ -97,24 +119,59 @@ def schema_drift():
             drift = {'level': 'rebuilt', 'changes': 0, 'incompatible': 0,
                      'tables': [], 'reason': None}
         else:
-            drift = _checked_drift(control, columns)
+            drift = _checked_drift(control, columns, unresolved)
+            if drift['level'] in ('update', 'recreate'):
+                drift = _confirmed_drift(control, drift, columns, confirmed)
         drift['orphans'] = orphans
         answer['controls'][str(control['control_id'])] = drift
     for name, stats in sorted(existing.items()):
         if name not in owned:
             answer['unowned'].append({'table': name.upper(), **stats})
+    # Only the controls still flagged keep their confirmation.
+    _confirmed.clear()
+    _confirmed.update(confirmed)
     return answer
 
 
-def _checked_drift(control, columns):
+def _resolve_sources(keys, columns):
+    """Find what datasources without dictionary columns are.
+
+    The columns of a synonym's table or view are added to columns under the
+    synonym's key. Returns {key: 'remote' | 'missing'} for a synonym over a
+    database link and for a name that does not exist; any other name (e.g. an
+    object Rapo's user cannot describe) is left out, i.e. not checked.
+    """
+    if not keys:
+        return {}
+    synonyms, existing = reader.resolve_datasources(keys)
+    unresolved = {key: 'missing' for key in keys
+                  if key not in synonyms and key not in existing}
+    targets = {}
+    for key, (owner, name, link) in synonyms.items():
+        if link:
+            unresolved[key] = 'remote'
+        else:
+            targets[key] = (owner, name)
+    if targets:
+        found = reader.read_schema_columns(set(targets.values()))
+        for key, (owner, name) in targets.items():
+            # read_schema_columns keys the current schema as None.
+            target = found.get((owner, name)) or found.get((None, name))
+            if target:
+                columns[key] = target
+    return unresolved
+
+
+def _checked_drift(control, columns, unresolved):
     # A control that cannot be checked is reported on its own row, so it never
     # blanks out the answer for the whole catalogue.
     failed = {'level': 'error', 'changes': 0, 'incompatible': 0, 'tables': []}
     try:
-        return _control_drift(control, columns)
+        return _control_drift(control, columns, unresolved)
+    except SourceMissing as error:
+        return dict(failed, level='source_missing', reason=str(error))
     except NotChecked as error:
-        return {'level': 'not_checked', 'changes': 0, 'incompatible': 0,
-                'tables': [], 'reason': str(error)}
+        return dict(failed, level='not_checked', reason=str(error))
     except KeyError as error:
         return dict(failed, reason=f'column {str(error).strip(chr(39)).upper()}'
                                    f' is not in the datasource')
@@ -197,13 +254,20 @@ def _table_key(source_name):
     return (parts[0], parts[1]) if len(parts) == 2 else (None, parts[-1])
 
 
-def _source(control, side, columns):
+def _source(control, side, columns, unresolved):
     source_name = control[f'source_name{side}']
     if source_name and '{' in source_name:
         raise NotChecked(f'datasource {source_name} has variables')
     if source_name and '@' in source_name:
         raise NotChecked(f'datasource {source_name.upper()} is remote')
-    source = columns.get(_table_key(source_name))
+    key = _table_key(source_name)
+    if unresolved.get(key) == 'missing':
+        raise SourceMissing(f'datasource {source_name.upper()} does not '
+                            f'exist')
+    if unresolved.get(key) == 'remote':
+        raise NotChecked(f'datasource {source_name.upper()} is a synonym '
+                         f'over a database link')
+    source = columns.get(key)
     if not source:
         raise NotChecked(f'datasource {(source_name or "").upper()} '
                          f'not found in the dictionary')
@@ -232,13 +296,13 @@ def _renamed(column, name):
     return dict(column, name=name, column_name=name.upper())
 
 
-def _expected_columns(control, table_name, columns):
+def _expected_columns(control, table_name, columns, unresolved):
     """Build the columns Executor._prepare_output_columns would create."""
     kind = control['control_type']
     output = []
     date_fields = []
     if kind in ('ANL', 'REP'):
-        source = _source(control, '', columns)
+        source = _source(control, '', columns, unresolved)
         chosen = _output_columns(control['output_table'])
         if chosen:
             output = [source[item['column']] for item in chosen]
@@ -247,7 +311,7 @@ def _expected_columns(control, table_name, columns):
         date_fields = [control['source_date_field']]
     elif kind == 'REC':
         side = '_a' if table_name.startswith('rapo_resa') else '_b'
-        source = _source(control, side, columns)
+        source = _source(control, side, columns, unresolved)
         chosen = _output_columns(control[f'output_table{side}'])
         if chosen:
             output = [source[item['column']] for item in chosen]
@@ -263,8 +327,8 @@ def _expected_columns(control, table_name, columns):
                                'data_scale': None, 'nullable': 'N'})
         date_fields = [control[f'source_date_field{side}']]
     elif kind == 'CMP':
-        source_a = _source(control, '_a', columns)
-        source_b = _source(control, '_b', columns)
+        source_a = _source(control, '_a', columns, unresolved)
+        source_b = _source(control, '_b', columns, unresolved)
         chosen = _output_columns(control['output_table'])
         if not chosen:
             chosen = ([{'column': f'a_{name}', 'column_a': name,
@@ -316,29 +380,76 @@ def _field_column(field):
     return dict(column, data_type='NUMBER', data_length=22, data_scale=0)
 
 
-def _control_drift(control, columns):
-    answer = {'level': 'ok', 'changes': 0, 'incompatible': 0, 'tables': [],
-              'reason': None}
-    existing = 0
+def _control_drift(control, columns, unresolved):
+    answer = _no_drift()
     for table_name in _result_tables(control):
         current = columns.get((None, table_name.upper()))
         if not current:
             continue
-        existing += 1
         expected = {column['name']: column for column
-                    in _expected_columns(control, table_name, columns)}
+                    in _expected_columns(control, table_name, columns,
+                                         unresolved)}
         current = {column['name']: column for column in current}
         diffs = [diff_column(current.get(name), column)
                  for name, column in expected.items()]
         diffs += [diff_column(column, None) for name, column in current.items()
                   if name not in expected]
-        changes = sum(1 for diff in diffs if is_drift(diff))
-        incompatible = sum(1 for diff in diffs
-                           if diff['status'] == 'incompatible')
-        if changes or incompatible:
-            answer['tables'].append(table_name.upper())
-        answer['changes'] += changes
-        answer['incompatible'] += incompatible
+        _tally(answer, table_name, diffs)
+    return _leveled(answer)
+
+
+def _confirmed_drift(control, drift, columns, confirmed):
+    """Confirm the drift of the flagged tables with the editor's exact check.
+
+    The answer is reused while the dictionary rows and the configuration it
+    was built from stay the same; a failed check is not kept.
+    """
+    control_id = control['control_id']
+    keys = [(None, table.upper()) for table in _result_tables(control)]
+    keys += [_table_key(control[f'source_name{side}'])
+             for side in ('', '_a', '_b')]
+    signature = json.dumps([control, drift, [columns.get(key) for key in keys]],
+                           default=str, sort_keys=True)
+    cached = _confirmed.get(control_id)
+    if cached and cached[0] == signature:
+        confirmed[control_id] = cached
+        return dict(cached[1], tables=list(cached[1]['tables']))
+    try:
+        executor = Control(control['control_name']).executor
+        executor._reflect_sources()
+        answer = _no_drift()
+        for table in drift['tables']:
+            diff = executor.diff_output_table(table.lower(), stats=False)
+            _tally(answer, table.lower(), diff['columns'])
+        answer = _leveled(answer)
+    except Exception as error:
+        logger.warning(f'Schema drift of {control["control_name"]} cannot be '
+                       f'confirmed: {type(error).__name__}: {error}')
+        return dict(drift, level='error',
+                    reason=f'{type(error).__name__}: {error}')
+    confirmed[control_id] = (signature, answer)
+    return dict(answer, tables=list(answer['tables']))
+
+
+def _no_drift():
+    return {'level': 'ok', 'changes': 0, 'incompatible': 0, 'tables': [],
+            'reason': None, 'existing': 0}
+
+
+def _tally(answer, table_name, diffs):
+    """Add the diff_column items of an existing result table to a drift."""
+    changes = sum(1 for diff in diffs if is_drift(diff))
+    incompatible = sum(1 for diff in diffs
+                       if diff['status'] == 'incompatible')
+    if changes or incompatible:
+        answer['tables'].append(table_name.upper())
+    answer['changes'] += changes
+    answer['incompatible'] += incompatible
+    answer['existing'] += 1
+
+
+def _leveled(answer):
+    existing = answer.pop('existing')
     if not existing:
         answer['level'] = 'missing'
     elif answer['incompatible']:

@@ -191,6 +191,18 @@
 
               <q-chip
                 clickable
+                v-if="sourceMissingOf(control)"
+                size="sm"
+                color="negative"
+                text-color="white"
+                icon="fas fa-unlink"
+                :title="`${sourceMissingOf(control).reason}. Runs of this control fail. Open the control to fix it.`"
+                @click="addAttributeFilter('Datasource missing')">
+                Datasource missing
+              </q-chip>
+
+              <q-chip
+                clickable
                 v-if="control.prerequisite_sql"
                 size="sm"
                 color="indigo-4"
@@ -512,6 +524,11 @@ export default {
       const drift = (this.schemaDrift.controls || {})[control.control_id];
       return drift && (["update", "recreate", "error"].includes(drift.level) || drift.orphans.length) ? drift : null;
     },
+    // The drift of a control whose datasource does not exist (get-schema-drift), else null; its reason names it.
+    sourceMissingOf(control) {
+      const drift = (this.schemaDrift.controls || {})[control.control_id];
+      return drift && drift.level === "source_missing" ? drift : null;
+    },
     // Amber when Update schema fixes it all, red when it takes Recreate schema, a configuration fix or a drop.
     driftColor(drift) {
       return drift.level === "update" && !drift.orphans.length ? "amber-8" : "red-4";
@@ -657,7 +674,7 @@ export default {
     attributeOptions() {
       const options = ["Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
       if (this.kpiControlIds !== null) options.push("No KPI");
-      return [...options, "Email", "Schema drift"];
+      return [...options, "Email", "Schema drift", "Datasource missing"];
     },
     // Skeleton rows only while nothing is known yet; a catalogue already in the store is shown at once.
     showSkeleton() {
@@ -711,7 +728,8 @@ export default {
             (attr === "No Post-run hook" && item.need_postrun_hook !== "Y") ||
             (attr === "No KPI" && this.lacksKpi(item)) ||
             (attr === "Email" && sendsEmail(item)) ||
-            (attr === "Schema drift" && this.driftOf(item))
+            (attr === "Schema drift" && this.driftOf(item)) ||
+            (attr === "Datasource missing" && this.sourceMissingOf(item))
           );
             })
           : true;

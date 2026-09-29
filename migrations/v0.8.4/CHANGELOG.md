@@ -144,6 +144,15 @@ are in the [migration instructions](README.md).
    whose `NOT NULL` a result table does not copy, nor on invisible datasource columns: the dictionary lists them,
    but runs never copy them, so the Controls list showed e.g. *1 column change(s) for Update schema* for good while
    the editor showed nothing. A slow `get-schema-drift` answer can no longer overwrite a newer one either.
+   - **The list and the editor agree.** The list's check reads column types from the dictionary, but a view column
+     that is an expression can be typed there differently from the table a run creates (e.g. `VARCHAR2(803)` in
+     bytes while a run creates fewer characters), so a control was flagged although the editor offered nothing to
+     update. Every table the list flags is now confirmed by the editor's exact check before it is shown; the
+     confirmation is reused until the datasource, the result table or the control changes.
+   - **Datasource missing.** A control whose datasource does not exist showed no badge at all; it now shows a red
+     *Datasource missing* badge (with the name in its tooltip) and can be filtered by it under *Control attributes*.
+     API: `get-schema-drift` level `source_missing`.
+   - Datasources that are synonyms are now checked as the table or view they name, instead of being skipped.
 
 10. **Fix: reconciliation results after a schema update (since v0.8.3).** *Update schema* and the schema update of a
    run add a column at the end of the result table, after `RAPO_PROCESS_ID`. A reconciliation (REC, both engines)

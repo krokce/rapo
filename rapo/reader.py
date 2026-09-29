@@ -431,6 +431,67 @@ class Reader:
         return {(None if owner == schema else owner, name): columns
                 for (owner, name), columns in found.items()}
 
+    def resolve_datasources(self, tables):
+        """Tell what datasource names without dictionary columns stand for.
+
+        Parameters
+        ----------
+        tables : iterable of tuple
+            (owner, name) pairs, uppercase, as read_schema_columns takes them.
+
+        Returns
+        -------
+        synonyms : dict
+            {(owner, name): (table_owner, table_name, db_link)} for the names
+            that are synonyms: a private one of the owner (the current schema
+            for owner None) first, else a public one for an unqualified name.
+        existing : set
+            The other names that are an object Rapo's user can see, e.g. a
+            view it cannot describe. A name in neither does not exist.
+        """
+        schema = db.execute("select sys_context('userenv', 'current_schema') "
+                            "from dual", as_scalar=True)
+        keys = sorted(set(tables), key=lambda key: (key[0] or '', key[1]))
+        synonyms, existing = {}, set()
+        if not keys:
+            return synonyms, existing
+        pairs = ', '.join(f'(:o{j}, :t{j})' for j in range(len(keys)))
+        params = {}
+        for j, (owner, name) in enumerate(keys):
+            params[f'o{j}'], params[f't{j}'] = owner or schema, name
+        public = ', '.join(f':t{j}' for j, (owner, _) in enumerate(keys)
+                           if not owner) or 'null'
+        query = sa.text(
+            'select owner, synonym_name, table_owner, table_name, db_link '
+            'from all_synonyms '
+            f'where (owner, synonym_name) in ({pairs}) '
+            f"or (owner = 'PUBLIC' and synonym_name in ({public}))"
+        ).bindparams(**params)
+        found = {}
+        for row in db.execute(query, as_table=True):
+            found[(row['owner'], row['synonym_name'])] = (
+                row['table_owner'], row['table_name'], row['db_link'])
+        for owner, name in keys:
+            target = (found.get((owner or schema, name))
+                      or (None if owner else found.get(('PUBLIC', name))))
+            if target:
+                synonyms[(owner, name)] = target
+        rest = [key for key in keys if key not in synonyms]
+        if rest:
+            pairs = ', '.join(f'(:o{j}, :t{j})' for j in range(len(rest)))
+            params = {}
+            for j, (owner, name) in enumerate(rest):
+                params[f'o{j}'], params[f't{j}'] = owner or schema, name
+            query = sa.text(
+                'select distinct owner, object_name from all_objects '
+                f'where (owner, object_name) in ({pairs})'
+            ).bindparams(**params)
+            seen = {(row['owner'], row['object_name'])
+                    for row in db.execute(query, as_table=True)}
+            existing = {(owner, name) for owner, name in rest
+                        if (owner or schema, name) in seen}
+        return synonyms, existing
+
     def save_control(self, data):
         """Create or update control object in the config table with passed control data."""
         config = db.tables.config
