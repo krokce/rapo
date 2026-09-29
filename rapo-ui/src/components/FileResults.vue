@@ -4,9 +4,6 @@
       <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
         <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
-        <div v-if="hasDay && activeFilters.length" class="row items-center">
-          <filter-badge :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" @clear="clearFilters" />
-        </div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -42,7 +39,7 @@
         </div>
       </div>
     </div>
-    <filter-chips :filters="activeFilters" class="q-mb-sm" />
+    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" class="q-mb-sm" @clear="clearFilters" />
 
     <!-- The lanes (core_load schedulers) of PDI Core, as PDI_CORE_STATE says, and the lock of all of them. -->
     <div v-if="stateAvailable" class="row items-center q-gutter-x-sm q-mb-sm">
@@ -306,16 +303,15 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import FileHeatmap from "./FileHeatmap.vue";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { formatAge } from "../utils/datasources";
-import { FILE_ISSUES, compactNumber, datasourceRows, dayStatuses, heatmapRows, hourRange, statusTotals } from "../utils/files";
+import { FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusTotals } from "../utils/files";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { dayTitle, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, formatDuration, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -346,7 +342,7 @@ const TRAILING_COLUMNS = [
 export default {
   name: "FileResults",
   mixins: [persistFilters("files", ["filter", "sort"])],
-  components: { FileHeatmap, FilterBadge, FilterChips, SkeletonRows },
+  components: { FileHeatmap, FilterChips, SkeletonRows },
   data() {
     return {
       refreshing: false,
@@ -536,6 +532,7 @@ export default {
   methods: {
     ...mapActions(["updateFileDay", "updatePdiState", "updateDatasourceCatalogue", "updateDatasourceStatus"]),
     compactNumber,
+    formatDuration,
     fileStatus,
     fillViewportToBottom,
     formatAge,
@@ -564,12 +561,6 @@ export default {
     waitingOf(row) {
       const status = this.datasourceStatus && this.datasourceStatus.datasources ? this.datasourceStatus.datasources[String(row.id)] : null;
       return status && status.waiting !== undefined ? status.waiting : null;
-    },
-    // Seconds as h:mm:ss (hours beyond 24 kept, e.g. 27:04:33).
-    formatDuration(seconds) {
-      const total = Math.round(Number(seconds) || 0);
-      const pad = (value) => String(value).padStart(2, "0");
-      return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
     },
     statusClass(status, count) {
       if (!count) return "";

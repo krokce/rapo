@@ -4,7 +4,6 @@
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Datasources</div>
         <div v-else>{{ countTitle }}</div>
-        <div v-if="!showSkeleton && activeFilters.length" class="row items-center"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
         <div v-if="refreshing && !showSkeleton">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -36,7 +35,7 @@
         </div>
       </div>
     </div>
-    <filter-chips :filters="activeFilters" class="q-mb-md" />
+    <filter-chips v-if="!showSkeleton" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -302,7 +301,6 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import FileListDialog from "./FileListDialog.vue";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
@@ -333,7 +331,7 @@ const COLUMNS = [
 export default {
   name: "DatasourceCatalogue",
   mixins: [persistFilters("datasources", ["filter", "sort"])],
-  components: { FileListDialog, FilterBadge, FilterChips, SkeletonRows },
+  components: { FileListDialog, FilterChips, SkeletonRows },
   data() {
     return {
       columns: COLUMNS,

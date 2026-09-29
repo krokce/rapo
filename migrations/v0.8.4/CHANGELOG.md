@@ -208,17 +208,24 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    appeared. It now shows the control of the run in progress with its type chip, and *for <control>* when that run
    belongs to another control's job. `scheduler-status` reports `control_type` and `job_control_name` too.
 
-15. **Active filters shown on the list pages.** Controls, Results, KPI types, Scheduler, Datasources and Files show an
-   orange *Filter* badge while any filter is set, the header search included, and the active filters under it as
-   light orange chips, each removable with its ✕. The badge's ✕ removes them all (the sort stays), replacing the
-   former *Clear filters* button, which also reset the sort. The count reads "12 of 340 Controls" (Results and
-   Scheduler show "12 of 40" in the badge). On Scheduler each tab has its own badge in its filter row, and the tab
-   label a dot while it is filtered.
+15. **Fix: iterations and cascade skipped when the postrun hook fails.** A failing
+   `rapo_postrun_control_hook` (e.g. an invalid `RACS_KPI_PKG`) ended the run's job process right after the
+   run was *Done*, so its iterations and cascade never ran, and the error was lost with the process. The error is
+   now written to the run log and the run is flagged `Warning: Postrun hook failed: ORA-...` (it stays *Done*);
+   iterations and cascade go on. Likewise an unexpected failure of one run of a job, or of one iteration or
+   cascaded control, is logged and no longer skips the ones after it.
+
+16. **Active filters shown on the list pages.** While any filter is set (the header search included), Controls,
+   Results, KPI types, Scheduler, Datasources, Files and the file log show a row of small chips under the title: first
+   an orange *Filter* badge, then the active filters as light orange chips, each removable with its ✕. The badge's
+   ✕ removes them all (the sort stays), replacing the former *Clear filters* button, which also reset the sort. The
+   count reads "12 of 340 Controls" (Results, Files, the file log and Scheduler show "12 of 40" in the badge). On
+   Scheduler each tab has its own row under its filter fields, and the tab label a dot while it is filtered.
    The filters, the sort and the header search are now **kept for the browser session**: they survive leaving the
    page, a reload and signing in again, until the browser tab is closed. KPI types and Scheduler used to start
    empty on every visit. Each browser tab keeps its own.
 
-16. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
+17. **Switch dataset on the analysis page.** The page title has a switch between the run's datasets: *Source A*,
    *Source B*, *Discrepancies A*, *Discrepancies B* (what the control type has; none for a report), each with the
    run's count. An empty one is disabled. A switch opens the other dataset of the same run, and Back returns. The
    tab, the sampling, the search, and the Data tab's filters, sort and group-by go along; those on a column the other
@@ -227,11 +234,11 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    - API: the dataset `meta` (`analysis-start`, `get-run-dataset-sql`) has `datasets`, `[{dataset, kind, side,
      count}]`.
 
-17. **Lazy-loaded editors.** The control, datasource and KPI type editors and the file log page are separate chunks
+18. **Lazy-loaded editors.** The control, datasource and KPI type editors and the file log page are separate chunks
    loaded on first visit, so CodeMirror and the editor boxes are no longer part of the first page load (the vendor
    bundle drops from about 870 KB to 440 KB).
 
-18. **Accessibility.** Every icon-only button has an accessible name, sortable column headers report `aria-sort`, and
+19. **Accessibility.** Every icon-only button has an accessible name, sortable column headers report `aria-sort`, and
    the Group by toggle reports its state. Clickable elements that were not buttons (sortable headers, run numbers on
    Results and in the editor's run log, analysis rows and cards, heatmap cells, the archive tree, code variables) can
    be reached with Tab and activated with Enter or Space, and every focused element shows a teal ring. The token
@@ -239,19 +246,19 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    amber/orange chips, are darker to be readable; the heatmap's error cells have a corner mark and the trend's
    current run a dark outline, so neither depends on color alone. Column names in analysis chart tooltips are escaped.
 
-19. **Icons, headers and analysis states.** The remaining Material icons (menu, close, add, search, clock) are Font
+20. **Icons, headers and analysis states.** The remaining Material icons (menu, close, add, search, clock) are Font
    Awesome 5 like the rest of the UI and the Material icon font is no longer loaded. The Controls and KPI types titles
    follow the same header layout as the other list pages,.
    Empty states in the analysis panels share one look; a failed run trend, a failed page of rows or a section that
    cannot be computed now says so with a *Retry* button instead of showing a skeleton or "No rows match the filters"
    forever. The SQL filter and Copy SQL buttons are hidden, not disabled, until their data exists.
 
-20. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
+21. **SQL and Data analysis from the editor's run log.** The Fetched, Discrepancies and error-level numbers of the
    run log open the same menu as on Results (click or right-click): *Copy SQL to clipboard* and *Data analysis*.
    The copied SQL is now the server's, as on Results. Before, the editor built the fetched SQL in the browser from
    the form, which left out chain-rule sides and `{variables}` and followed unsaved changes.
 
-21. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
+22. **Hide all columns.** The Data tab's *Columns* menu has *Hide all* beside *Show all*, and a search box. While
    the search is set, the buttons show or hide the found columns only, so you can hide everything and then show the
    few columns you need. With no column shown, the table says so, and Export is disabled. **Key fields** shows only
    the columns the control's criteria use on this side (a REC's match and mismatch fields, a CMP's match and
@@ -259,18 +266,18 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    fields and every `RAPO_` column, and hides the rest. The page's text boxes and drop-down lists now have the
    height of every other form, and its tabs show the icon beside the title.
 
-22. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
+23. **"Checking schema…" in the control editor.** The editor compares the result tables with the datasource when a
    control is opened, after a change of its datasource or output columns, and after Apply, Update schema, Recreate
    schema or dropping an orphan. Over large or complex views this can take a while, and until it answered the footer
    showed nothing, as if the schema matched while the *Schema drift* badge of the Controls list said otherwise. The
    footer now shows *Checking schema…* with a spinner until the answer comes. A re-check after a run keeps the
    notice it has meanwhile.
 
-23. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
+24. **Fix: "The run trend could not be loaded. 422" on leaving the page.** The analysis page stays alive in the
    background, and its run trend reloaded with the parameters of the next page's route as you left it. The trend
    and the SQL filter now follow the page's own dataset.
 
-24. **Shared code and lists.** The copies of small helpers are gone: one `formatBytes`, one download-a-file and one
+25. **Shared code and lists.** The copies of small helpers are gone: one `formatBytes`, one download-a-file and one
    copy-and-notify routine, one run-start call for the Run dialog and Re-run, one day-navigation helper for Results,
    Files and the file log, the KPI statement check shared by the KPI editor and the control's KPI box, one alert-label
    table and one base ECharts option for the analysis charts. Confirmations all use the same Quasar dialog (the
@@ -278,22 +285,27 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    title and have a red action button. The KPI types page is a virtual-scroll list with a sticky header, like Controls,
    and stays fast with thousands of rows.
 
-25. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
+26. **Results and Controls lists.** The day totals of Results read **ANL** (26), **Done** (164): the label bold, the
    count in brackets; the "25 controls · 190 runs" counts are no longer bold. On Controls, the control name is a link
    to its editor, like the datasource names (the version link under it stays). The Controls header also counts the
    controls flagged *Datasource missing*, *Schema drift* and *No KPI* in the whole list (whatever the filters), as
    chips like the Results totals; a click filters the list by that attribute. On the Files page the day's figures
-   (files, read, written, rejected, runtime) are now a line under the status chips, both right-aligned by the title.
+   (files, read, written, rejected, runtime) are now a line under the status chips, both right-aligned by the title;
+   Results does the same, with its type, status and *Warnings* chips above a line of the day's figures:
+   "14 controls · 72 runs · 1 failing · 173k fetched · 0:02:46 runtime". *Failing* (red, only when there are any)
+   counts the controls whose latest run of the day ended in error and names them in its tooltip; *fetched* sums
+   sides A and B of all runs (the exact number in its tooltip); *runtime* sums the runs' runtimes and names the
+   longest run.
 
-26. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
+27. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
    by the type chip and name, smaller.
 
-27. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
+28. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
    the tabs, as the Files page does, and scroll inside the table from there. The *Scheduler* menu item moves up,
    after *KPI types*, spaced from it and from *Files*; the header's clock button still opens the page too.
 
-28. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
+29. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
    misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").
    The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
    the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are

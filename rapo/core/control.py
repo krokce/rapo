@@ -832,7 +832,10 @@ class Control:
                 control.scheduled = self.scheduled
                 control.observer = self.observer
                 control.trigger = 'ITERATION'
-                control.run()
+                try:
+                    control.run()
+                except Exception:
+                    logger.error()
 
     def cascade(self):
         """Run following controls in cascade."""
@@ -851,7 +854,10 @@ class Control:
                 control.trigger = 'CASCADE'
                 logger.info(f'Initiating control {target_label}] '
                             f'from control {source_label}...')
-                control.run()
+                try:
+                    control.run()
+                except Exception:
+                    logger.error()
                 logger.info(f'Control {target_label} performed')
 
     def _pull(self):
@@ -1482,8 +1488,15 @@ class Control:
             logger.error()
 
     def _postrun_hook(self):
+        # The run is already D here, so a failing hook must neither change
+        # its status nor abort the process before iterations and cascade.
         if self.need_hook and self.need_postrun_hook:
-            self.executor.postrun_hook()
+            try:
+                self.executor.postrun_hook()
+            except Exception as error:
+                logger.error()
+                reason = str(getattr(error, 'orig', None) or error)
+                self._warn(f'Postrun hook failed: {reason.splitlines()[0]}')
 
     def _update_process_log(self, **kwargs):
         logger.debug(f'{self} Updating {db.tables.log} with {kwargs}')

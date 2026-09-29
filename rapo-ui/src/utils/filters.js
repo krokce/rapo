@@ -1,4 +1,4 @@
-// Entries of a list page's activeFilters, shown by FilterBadge and FilterChips: {key, label, clear}, one per value.
+// Entries of a list page's activeFilters, shown by FilterChips: {key, label, clear}, one per value.
 // A sort hides no row, so it is not a filter.
 
 // A single value (text, select), when set; `text` quotes a typed text.

@@ -148,13 +148,8 @@
                 <q-icon name="fas fa-exclamation-triangle" color="deep-orange" /> The scheduler is stopped, these fires will not run until it is started.
               </div>
               <q-space v-else />
-              <filter-badge
-                class="q-mx-sm"
-                :filters="upcomingFilters"
-                :shown="`${filteredUpcoming.length} of ${upcoming.length}`"
-                @clear="upcomingFilter = null" />
             </div>
-            <filter-chips :filters="upcomingFilters" class="q-px-sm" />
+            <filter-chips :filters="upcomingFilters" :shown="`${filteredUpcoming.length} of ${upcoming.length}`" class="q-px-sm" @clear="upcomingFilter = null" />
             <q-virtual-scroll
               type="table"
               dense
@@ -243,10 +238,9 @@
                 :options="triggerTypeOptions"
                 label="Trigger" />
               <q-space />
-              <filter-badge class="q-mx-sm" :filters="historyFilters" :shown="`${filteredEvents.length} of ${events.length}`" @clear="clearFilters" />
               <small class="text-grey-7 q-pa-sm">Latest {{ events.length }} events</small>
             </div>
-            <filter-chips :filters="historyFilters" class="q-px-sm" />
+            <filter-chips :filters="historyFilters" :shown="`${filteredEvents.length} of ${events.length}`" class="q-px-sm" @clear="clearFilters" />
             <q-virtual-scroll
               type="table"
               dense
@@ -352,7 +346,6 @@
 <script>
 import { mapActions, mapState } from "vuex";
 import DateTimeText from "./DateTimeText.vue";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
 import SkeletonRows from "./SkeletonRows.vue";
@@ -374,7 +367,6 @@ export default {
   mixins: [persistFilters("scheduler", ["filter", "upcomingFilter"])],
   components: {
     DateTimeText,
-    FilterBadge,
     FilterChips,
     SchedulerToggleButton,
     SkeletonRows,

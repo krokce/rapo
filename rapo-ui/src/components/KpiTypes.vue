@@ -4,10 +4,9 @@
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">KPI types</div>
         <div v-else>{{ countTitle }}</div>
-        <div v-if="loaded && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
       </h2>
     </div>
-    <filter-chips :filters="activeFilters" class="q-mb-md" />
+    <filter-chips v-if="loaded" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -151,7 +150,6 @@
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
@@ -164,7 +162,6 @@ import persistFilters from "../mixins/persistFilters";
 export default {
   mixins: [persistFilters("kpi_types", ["filter", "sort"])],
   components: {
-    FilterBadge,
     FilterChips,
     SkeletonRows,
   },

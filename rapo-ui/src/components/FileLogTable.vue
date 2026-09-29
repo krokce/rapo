@@ -1,15 +1,12 @@
 <template>
   <div class="column no-wrap">
-    <!-- Laid out like Results: the title with the day and the filter badge, the day's totals and status chips on the right,
-         the active filters under it, then the filter row with the day buttons, and the table. -->
+    <!-- Laid out like Results: the title with the day, the day's totals and status chips on the right,
+         the active filters under it (led by the Filter badge), then the filter row with the day buttons, and the table. -->
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
       <component :is="embedded ? 'div' : 'h2'" class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none" :class="{ 'text-h6': embedded }">
         <slot name="title" />
         <div class="text-grey-7" :class="{ 'page-subject': !embedded }">{{ dayTitle }}</div>
         <slot name="after-day" />
-        <div v-if="activeFilters.length" class="row items-center">
-          <filter-badge :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" @clear="clearFilters" />
-        </div>
         <div v-if="loading">
           <q-avatar :size="embedded ? 'md' : 'lg'" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -40,7 +37,7 @@
         </div>
       </div>
     </div>
-    <filter-chips :filters="activeFilters" class="q-mb-md" />
+    <filter-chips :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" class="q-mb-md" @clear="clearFilters" />
 
     <!-- Files per hour, as on the Files page: one row per status and a total, following the other filters. -->
     <file-heatmap v-if="!embedded && files.length" :rows="heatmap" :selected="hour" class="q-mt-sm q-mb-md" @select="(value) => (hour = value)" />
@@ -233,15 +230,14 @@
 <script>
 import { mapGetters } from "vuex";
 import FileHeatmap from "./FileHeatmap.vue";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { api, notifyError } from "../api";
 import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { copyAndNotify } from "../runActions";
-import { compactNumber, hourRange, loadHour, statusHeatmapRows } from "../utils/files";
+import { hourRange, loadHour, statusHeatmapRows } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
-import { dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
@@ -267,7 +263,7 @@ const COLUMNS = [
 export default {
   name: "FileLogTable",
   mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
-  components: { FileHeatmap, FilterBadge, FilterChips },
+  components: { FileHeatmap, FilterChips },
   props: {
     datasourceId: { type: Number, required: true },
     // YYYY-MM-DD to start with; null for the database's today.

@@ -570,9 +570,13 @@ def operate(control, cascade, iterations, current, runs, parent_pid,
     logger.info(f'{control} Performed by process {os.getpid()} of {runner}')
     control.observer = observe
     remember(control.process_id)
-    if control._pull():
-        if control._throttle():
-            control._resume()
+    try:
+        if control._pull():
+            if control._throttle():
+                control._resume()
+    except Exception:
+        # Logged to the run log, which is otherwise lost with the process.
+        logger.error()
     if iterations:
         control.iterate()
     if cascade:

@@ -4,7 +4,6 @@
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Controls</div>
         <div v-else>{{ countTitle }}</div>
-        <div v-if="!showSkeleton && activeFilters.length"><filter-badge :filters="activeFilters" @clear="clearFilters" /></div>
         <div v-if="refreshing && !showSkeleton">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -57,7 +56,7 @@
         </div>
       </div>
     </div>
-    <filter-chips :filters="activeFilters" class="q-mb-md" />
+    <filter-chips v-if="!showSkeleton" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -418,7 +417,6 @@ import { mapActions, mapGetters, mapState } from "vuex";
 import SchedulePresentBox from "./SchedulePresentBox.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import OrphanTablesDialog from "./OrphanTablesDialog.vue";
@@ -441,7 +439,6 @@ export default {
     OrphanTablesDialog,
     TempTablesDialog,
     RunControlDialog,
-    FilterBadge,
     FilterChips,
     SchedulePresentBox,
     SkeletonRows,

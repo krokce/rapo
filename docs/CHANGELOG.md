@@ -24,6 +24,8 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   and *Show error log*; API: `get-temp-tables`/`drop-temp-tables` replace `delete-control-temporary-tables`.
 - **Fix: ORA-30926 in a DB-engine reconciliation** whose key field is not unique. Such rows still get repeated
   results in both engines, so the run is now flagged with a warning: check it and pick a unique key (or `ROWID`).
+- **Fix: iterations and cascade skipped** when the postrun hook (KPI ingest) failed: the error is logged and flags
+  the run with a warning instead of ending the job.
 - **Run warnings:** a key field that is not unique, `correlation_limit` reached, approximate PL matching and an
   output limit that cut the saved rows add a `Warning:` run message; Results shows an icon and a *Warnings* filter
   chip (API: `has_warning` in `get-control-runs`).
@@ -61,9 +63,9 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   styles the pages duplicated moved into one global stylesheet with `--rapo-*` color variables, with dead code and
   typos removed.
 - **Controls header counts** of *Datasource missing*, *Schema drift* and *No KPI* controls, each filtering the list.
-- Smaller: Results totals read **ANL** (26), Controls names link to the editor, the Files day figures sit under its
-  status chips, editor pages are titled, Scheduler tables fill the window, the *Scheduler* menu item follows
-  *KPI types*.
+- Smaller: Results totals read **ANL** (26) and gain failing controls, records fetched and runtime
+  under the chips (as on Files), Controls names link to the editor, editor pages are titled, Scheduler tables fill
+  the window, the *Scheduler* menu item follows *KPI types*.
 
 ## v0.8.3 — 2026-09-24
 

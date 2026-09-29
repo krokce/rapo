@@ -4,9 +4,6 @@
       <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
         <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
-        <div v-if="hasDay && activeFilters.length" class="row items-center">
-          <filter-badge :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" @clear="clearFilters" />
-        </div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -15,35 +12,48 @@
       </h2>
       <q-space />
 
-      <div v-if="hasDay" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
-        <div>
-          {{ summary.controls }} {{ summary.controls === 1 ? "control" : "controls" }} &middot; {{ summary.runs }}
-          {{ summary.runs === 1 ? "run" : "runs" }}
-        </div>
-        <div v-if="summary.types.length">
+      <!-- The day's totals, whatever the filters: chips above (each filters by itself), the counts below, as on Files. -->
+      <div v-if="hasDay" class="column items-end text-blue-grey-8">
+        <div v-if="summary.types.length || summary.statuses.length || summary.warnings" class="row items-center justify-end">
           <q-chip v-for="item in summary.types" :key="item.key" clickable @click="filter.type = item.key">
             <q-avatar :icon="controlType(item.key).icon" :color="controlType(item.key).color" text-color="white" />
             <span class="text-weight-bold q-mr-xs">{{ item.key }}</span>({{ item.count }})
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ controlType(item.key).label }}</q-tooltip>
           </q-chip>
-        </div>
-        <div v-if="summary.statuses.length">
           <q-chip v-for="item in summary.statuses" :key="String(item.key)" clickable @click="addStatusFilter(item.key)">
             <q-avatar :icon="runStatus(item.key).icon" :color="runStatus(item.key).color" text-color="white" />
             <span class="text-weight-bold q-mr-xs">{{ runStatus(item.key).label }}</span>({{ item.count }})
           </q-chip>
-        </div>
-        <div v-if="summary.warnings">
-          <q-chip clickable @click="filter.warnings = true">
+          <q-chip v-if="summary.warnings" clickable @click="filter.warnings = true">
             <q-avatar icon="fas fa-exclamation-triangle" color="amber-9" text-color="white" />
             <span class="text-weight-bold q-mr-xs">Warnings</span>({{ summary.warnings }})
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Runs flagged with a warning about their results</q-tooltip>
           </q-chip>
         </div>
+        <div class="q-mr-xs">
+          {{ summary.controls }} {{ summary.controls === 1 ? "control" : "controls" }} &middot; {{ summary.runs }}
+          {{ summary.runs === 1 ? "run" : "runs" }}
+          <span v-if="summary.failing.length" class="text-red-6">
+            &middot; {{ summary.failing.length }} failing
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
+              Controls whose latest run of the day ended in error: {{ summary.failing.slice(0, 10).join(", ") }}{{ summary.failing.length > 10 ? `, +${summary.failing.length - 10} more` : "" }}
+            </q-tooltip>
+          </span>
+          <span>
+            &middot; {{ compactNumber(summary.fetched) }} fetched
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Records fetched by all runs: {{ formatNumber(summary.fetched) }}</q-tooltip>
+          </span>
+          <span>
+            &middot; {{ formatDuration(summary.runtime) }} runtime
+            <q-tooltip v-if="summary.longest" anchor="top middle" self="bottom middle" :offset="[0, 8]">
+              The runtimes of the runs summed; the longest: {{ summary.longest.control_name }} ({{ formatDuration(summary.longest.duration_minutes * 60) }})
+            </q-tooltip>
+          </span>
+        </div>
       </div>
     </div>
 
-    <filter-chips :filters="activeFilters" class="q-mb-md" />
+    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
@@ -330,7 +340,6 @@
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import FilterBadge from "./FilterBadge.vue";
 import FilterChips from "./FilterChips.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import RunDatasetMenu from "./RunDatasetMenu.vue";
@@ -341,7 +350,7 @@ import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES,
 import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
-import { dayTitle, formatNumber, round, shiftDay, toDateString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, formatDuration, formatNumber, round, shiftDay, toDateString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -352,7 +361,6 @@ export default {
   name: "ControlResults",
   mixins: [persistFilters("results", ["filter", "sort"])],
   components: {
-    FilterBadge,
     FilterChips,
     RunControlDialog,
     RunDatasetMenu,
@@ -386,9 +394,23 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlResults"]),
+    compactNumber,
     controlType,
     controlTypeColor,
+    formatDuration,
     runStatus,
+    // The controls whose latest run of the day (the highest process ID) ended in error, by name.
+    failingControls(rows) {
+      const latest = new Map();
+      rows.forEach((row) => {
+        const seen = latest.get(row.control_id);
+        if (!seen || row.process_id > seen.process_id) latest.set(row.control_id, row);
+      });
+      return [...latest.values()]
+        .filter((row) => row.status === "E")
+        .map((row) => row.control_name)
+        .sort();
+    },
     formatNumber,
     round,
     toDateString,
@@ -496,6 +518,7 @@ export default {
     // Totals of all runs of the day, whatever the filters, in the order of the type and status constants.
     summary() {
       const rows = this.hasDay ? this.controlResults : [];
+      const sum = (list, value) => list.reduce((total, row) => total + (Number(value(row)) || 0), 0);
       const countBy = (field, order) => {
         const counts = new Map();
         rows.forEach((row) => counts.set(row[field], (counts.get(row[field]) || 0) + 1));
@@ -507,6 +530,10 @@ export default {
         types: countBy("control_type", Object.keys(CONTROL_TYPES)),
         statuses: countBy("status", Object.keys(RUN_STATUSES)),
         warnings: rows.filter((row) => row.has_warning).length,
+        failing: this.failingControls(rows),
+        fetched: sum(rows, (row) => row.fetched_number_a + row.fetched_number_b),
+        runtime: sum(rows, (row) => row.duration_minutes) * 60,
+        longest: rows.reduce((longest, row) => (row.duration_minutes > (longest ? longest.duration_minutes : 0) ? row : longest), null),
       };
     },
     ...mapGetters(["getSearch", "controlCatalogueById"]),

@@ -179,20 +179,3 @@ export function statusHeatmapRows(files) {
   const list = [...rows.values()].sort((a, b) => b.cells.reduce((n, c) => n + c.files, 0) - a.cells.reduce((n, c) => n + c.files, 0));
   return list.length > 1 ? [...list, total] : list.length ? list : [total];
 }
-
-// 1234 → 1.2k, 1234567 → 1.2M; the exact number goes to a tooltip.
-export function compactNumber(value) {
-  const number = Number(value || 0);
-  const units = [
-    [1e9, "G"],
-    [1e6, "M"],
-    [1e3, "k"],
-  ];
-  for (const [size, unit] of units) {
-    if (Math.abs(number) >= size) {
-      const scaled = number / size;
-      return `${scaled.toFixed(scaled < 10 ? 1 : 0)}${unit}`;
-    }
-  }
-  return String(Math.round(number));
-}
