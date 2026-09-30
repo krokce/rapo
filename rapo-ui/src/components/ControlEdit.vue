@@ -280,7 +280,22 @@
                     </template>
                   </q-select>
 
-                  <q-input class="col-2" outlined v-model="control.source_type_a" label="System" maxlength="90" />
+                  <q-select
+                    class="col-2"
+                    outlined
+                    label="System"
+                    :model-value="control.source_type_a"
+                    use-input
+                    hide-selected
+                    fill-input
+                    clearable
+                    input-debounce="0"
+                    maxlength="90"
+                    :options="systemOptions"
+                    @filter="filterSystems"
+                    @input-value="(value) => (control.source_type_a = value)"
+                    @update:model-value="(value) => (control.source_type_a = normalizeSystem(value))"
+                    @blur="control.source_type_a = normalizeSystem(control.source_type_a)" />
                 </div>
 
                 <div class="row q-gutter-md" v-if="control.control_type === 'REC' || control.control_type === 'CMP'">
@@ -329,7 +344,22 @@
                     </template>
                   </q-select>
 
-                  <q-input class="col-1" outlined v-model="control.source_type_a" label="System A" maxlength="90" />
+                  <q-select
+                    class="col-2"
+                    outlined
+                    label="System A"
+                    :model-value="control.source_type_a"
+                    use-input
+                    hide-selected
+                    fill-input
+                    clearable
+                    input-debounce="0"
+                    maxlength="90"
+                    :options="systemOptions"
+                    @filter="filterSystems"
+                    @input-value="(value) => (control.source_type_a = value)"
+                    @update:model-value="(value) => (control.source_type_a = normalizeSystem(value))"
+                    @blur="control.source_type_a = normalizeSystem(control.source_type_a)" />
 
                   <q-select
                     class="col"
@@ -376,7 +406,22 @@
                     </template>
                   </q-select>
 
-                  <q-input class="col-1" outlined v-model="control.source_type_b" label="System B" maxlength="90" />
+                  <q-select
+                    class="col-2"
+                    outlined
+                    label="System B"
+                    :model-value="control.source_type_b"
+                    use-input
+                    hide-selected
+                    fill-input
+                    clearable
+                    input-debounce="0"
+                    maxlength="90"
+                    :options="systemOptions"
+                    @filter="filterSystems"
+                    @input-value="(value) => (control.source_type_b = value)"
+                    @update:model-value="(value) => (control.source_type_b = normalizeSystem(value))"
+                    @blur="control.source_type_b = normalizeSystem(control.source_type_b)" />
                 </div>
 
                 <div v-if="chainNote" class="text-caption text-grey-8">
@@ -1086,7 +1131,7 @@ import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTime
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
-import { controlGroups, filterControlGroups, normalizeControlGroup } from "../utils/controlGroups";
+import { controlGroups, controlSystems, filterOptions, normalizeOption } from "../utils/controlGroups";
 import {
   DEFAULT_SQL_SHEET_NAME,
   EMAIL_CONTROL_TYPES,
@@ -1133,6 +1178,8 @@ export default {
     return {
       // The Control group field's options, narrowed to the typed text.
       controlGroupOptions: [],
+      // The System fields' options, narrowed to the typed text.
+      systemOptions: [],
       // The window variables are still completed in the datasource filters, but get no chip: the date column
       // already limits the fetch to the window.
       filterHiddenChips: ["control_date_from", "control_date_to"],
@@ -1232,6 +1279,10 @@ export default {
     // The groups in use, offered by the Control group field.
     controlGroups() {
       return controlGroups(this.controlCatalogue);
+    },
+    // The systems in use (A and B alike), offered by the System fields.
+    controlSystems() {
+      return controlSystems(this.controlCatalogue);
     },
     // A datasource that is the result table of another control makes this a chain-rule (utils/chain.js):
     // said under the datasources, from the form as it is, with every control a run would perform first.
@@ -1765,15 +1816,25 @@ export default {
     },
     filterControlGroups(text, update) {
       update(() => {
-        this.controlGroupOptions = filterControlGroups(this.controlGroups, text);
+        this.controlGroupOptions = filterOptions(this.controlGroups, text);
       });
     },
     normalizeControlGroup(value) {
-      return normalizeControlGroup(value, this.controlGroups);
+      return normalizeOption(value, this.controlGroups);
+    },
+    filterSystems(text, update) {
+      update(() => {
+        this.systemOptions = filterOptions(this.controlSystems, text);
+      });
+    },
+    normalizeSystem(value) {
+      return normalizeOption(value, this.controlSystems);
     },
     buildControlPayload() {
       const control = { ...this.control };
       control.control_group = control.control_group?.trim() || null;
+      control.source_type_a = control.source_type_a?.trim() || null;
+      control.source_type_b = control.source_type_b?.trim() || null;
       // Set by getControlVersions for the version selector only.
       delete control.label;
       // Add new line if last line contains a comment to avoid RAPO SQL builder issue

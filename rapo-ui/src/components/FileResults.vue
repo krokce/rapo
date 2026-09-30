@@ -270,15 +270,16 @@
                 {{ formatNumber(row.duplicates) }}
               </router-link>
             </template>
-            <!-- Incoming files are not in the file log yet: they are listed by the datasource's Input files tab. -->
+            <!-- Incoming files are not in the file log yet: FileListDialog lists them from the input directories. -->
             <template v-else-if="column.key === 'waiting'">
-              <router-link
+              <a
                 v-if="waitingOf(row) && datasources.has(row.id)"
-                :to="{ name: 'edit-datasource', params: { id: row.id }, query: { tab: 'files', list: 'match' } }"
+                href="#"
                 class="status-count text-weight-bold"
-                title="Show the files waiting in the input directories">
+                title="Show the files waiting in the input directories"
+                @click.prevent="$refs.fileDialog.open(datasources.get(row.id), 'match')">
                 {{ formatNumber(waitingOf(row)) }}
-              </router-link>
+              </a>
               <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-7'">{{ formatNumber(waitingOf(row)) }}</span>
             </template>
             <span v-else-if="column.key === 'read'">{{ row.files ? formatNumber(row.read) : "" }}</span>
@@ -308,6 +309,8 @@
         </tbody>
       </template>
     </q-virtual-scroll>
+
+    <file-list-dialog ref="fileDialog" />
   </q-page>
 </template>
 
@@ -320,7 +323,8 @@ import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { ISSUES as DATASOURCE_ISSUES, formatAge, issuesOf as datasourceIssuesOf } from "../utils/datasources";
-import { FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusTotals } from "../utils/files";
+import { ALWAYS_STATUSES, FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusRank, statusTotals } from "../utils/files";
+import FileListDialog from "./FileListDialog.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { compactNumber, dayTitle, formatDuration, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
@@ -339,15 +343,19 @@ const LEADING_COLUMNS = [
   { key: "files", label: "Files", align: "right", width: 80, number: true },
 ];
 
+// Incoming: files in the input directories now, not yet picked up into the file log (unlike its WAITING status), so
+// only for today; it comes first, as the start of the workflow.
+const INCOMING_COLUMN = { key: "waiting", label: "Incoming", align: "right", width: 96, number: true, icon: "fas fa-inbox", iconColor: "blue-grey-6", title: "Files matching the mask in the input directories now, not yet in the file log" };
+
+// Only when the day has any, after the RELOAD column (or the last status before it).
+const DUPLICATES_COLUMN = { key: "duplicates", label: "Duplicates", align: "right", width: 96, number: true, icon: "fas fa-clone", iconColor: "purple-3", title: "Files PDI Core flagged as duplicates" };
+
 const TRAILING_COLUMNS = [
-  // Incoming: files in the input directories now, not yet picked up into the file log (unlike its WAITING status).
-  { key: "waiting", label: "Incoming", align: "right", width: 96, number: true, today: true, icon: "fas fa-inbox", iconColor: "blue-grey-6", title: "Files matching the mask in the input directories now, not yet in the file log" },
-  { key: "duplicates", label: "Duplicates", align: "right", width: 96, number: true, duplicates: true, icon: "fas fa-clone", iconColor: "purple-3", title: "Files PDI Core flagged as duplicates" },
   { key: "read", label: "Read", align: "right", width: 130, number: true },
   { key: "written", label: "Written", align: "right", width: 130, number: true },
   { key: "rejected", label: "Rejected", align: "right", width: 90, number: true },
   { key: "runtime", label: "Runtime", align: "right", width: 100, number: true, title: "The runtimes of the files, summed (h:mm:ss)" },
-  { key: "lastSuccess", label: "Last success", align: "left", width: 100 },
+  { key: "lastSuccess", label: "Last success", align: "right", width: 100 },
   { key: "change", label: "vs. week", align: "right", width: 80 },
 ];
 
@@ -357,7 +365,7 @@ const TRAILING_COLUMNS = [
 export default {
   name: "FileResults",
   mixins: [persistFilters("files", ["filter", "sort"])],
-  components: { FileHeatmap, FilterChips, SkeletonRows },
+  components: { FileHeatmap, FileListDialog, FilterChips, SkeletonRows },
   data() {
     return {
       refreshing: false,
@@ -503,9 +511,10 @@ export default {
       const statuses = this.filter.statuses || [];
       return heatmapRows(this.fileDay, this.datasources, (cell) => shown.has(cell.sourceid) && (!statuses.length || statuses.includes(cell.status)));
     },
-    // The statuses the day has files in, whatever the filters, so the columns stay put while filtering.
+    // The statuses the day has files in, whatever the filters, so the columns stay put while filtering, and always
+    // Waiting, Started and Success.
     statusColumns() {
-      return dayStatuses(this.hasDay ? this.fileDay.cells : []).map((status) => ({
+      return dayStatuses(this.hasDay ? this.fileDay.cells : [], ALWAYS_STATUSES).map((status) => ({
         key: `status:${status}`,
         status,
         label: fileStatus(status).label,
@@ -516,9 +525,13 @@ export default {
       }));
     },
     tableColumns() {
-      // Incoming only for today; Duplicates only when the day has any, like the status columns.
-      const trailing = TRAILING_COLUMNS.filter((column) => (!column.today || this.isToday) && (!column.duplicates || this.totals.duplicates > 0));
-      return [...LEADING_COLUMNS, ...this.statusColumns, ...trailing].map((column) => ({ sort: true, ...column, width: column.key === "sourcename" ? this.nameColumnWidth : column.width }));
+      // Incoming only for today; Duplicates only when the day has any, after Reload, like the status columns.
+      const statuses = [...this.statusColumns];
+      if (this.totals.duplicates > 0) {
+        const after = statuses.filter((column) => statusRank(column.status) <= statusRank("RELOAD")).length;
+        statuses.splice(after, 0, DUPLICATES_COLUMN);
+      }
+      return [...LEADING_COLUMNS, ...(this.isToday ? [INCOMING_COLUMN] : []), ...statuses, ...TRAILING_COLUMNS].map((column) => ({ sort: true, ...column, width: column.key === "sourcename" ? this.nameColumnWidth : column.width }));
     },
     tableWidth() {
       return this.tableColumns.reduce((total, column) => total + (column.width || 0), 0);

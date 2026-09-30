@@ -16,7 +16,8 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   changes. New `[DATASOURCES]` options.
 - **Files page**: one day of the PDI Core file log by datasource, an hourly heatmap, file search and lane locks,
   *Silent* / *Drop* / *Stalled* chips with counts; per datasource the files to Recycle, Reload, Delete or
-  **Download** (one file or a ZIP). Counts open exactly those files and no longer filter the page.
+  **Download** (one file or a ZIP). Counts open exactly those files and no longer filter the page; *Incoming* opens the
+  input files in a dialog. Status columns in workflow order, *Waiting*/*Started*/*Success* always shown.
 - **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
   API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
 - **Temporary tables** left by failed, canceled and debug runs: a Controls header chip lists them by run, with
@@ -31,7 +32,7 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   chip (API: `has_warning` in `get-control-runs`).
 - **Engine chip on Controls:** reconciliations show *DB engine* / *PL engine*, filterable as an attribute.
 - **Control groups:** a *Control group* field in the editor (pick a group in use or type a new one), a group filter
-  and a clickable group chip on Controls.
+  and a clickable group chip on Controls. *System A/B* pick from the systems in use too; the *System* filter suggests them.
 - **One mono font:** paths, code and table numbers use the bundled Roboto Mono. Datasources: a directory opens
   its files, the mask moves under the directories (*Input files*; no *Files mask* column), *Zipped*/*Parallel* columns, *Files 24h* is a count; the editor
   puts the source name beside lane and ID, the scan options under *Processing*, the archive directories in one row.

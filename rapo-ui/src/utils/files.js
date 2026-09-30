@@ -18,14 +18,21 @@ function add(totals, cell) {
   totals.statuses[cell.status] = (totals.statuses[cell.status] || 0) + cell.files;
 }
 
-// The order of the status columns; a status not listed comes after them, alphabetically.
-const STATUS_ORDER = ["SUCCESS", "ERROR", "DUPLICATE", "RECYCLE", "RELOAD", "DELETE", "RECYCLED", "RELOADED", "DELETED", "WAITING", "STARTED", "PROCESSING"];
+// The order of the status columns, as the workflow goes; a status not listed comes after them, alphabetically.
+const STATUS_ORDER = ["WAITING", "STARTED", "PROCESSING", "SUCCESS", "ERROR", "RECYCLE", "RELOAD", "DUPLICATE", "DELETE", "RECYCLED", "RELOADED", "DELETED"];
 
-// The statuses the day has files in, whatever the filters, in column order.
-export function dayStatuses(cells) {
-  const present = [...new Set((cells || []).map((cell) => cell.status))];
-  const rank = (status) => (STATUS_ORDER.includes(status) ? STATUS_ORDER.indexOf(status) : STATUS_ORDER.length);
-  return present.sort((a, b) => rank(a) - rank(b) || String(a).localeCompare(String(b)));
+// The status columns shown on every day, with or without files.
+export const ALWAYS_STATUSES = ["WAITING", "STARTED", "SUCCESS"];
+
+// A status's place in the column order.
+export function statusRank(status) {
+  return STATUS_ORDER.includes(status) ? STATUS_ORDER.indexOf(status) : STATUS_ORDER.length;
+}
+
+// The statuses the day has files in, whatever the filters, plus `always`, in column order.
+export function dayStatuses(cells, always = []) {
+  const present = [...new Set([...always, ...(cells || []).map((cell) => cell.status)])];
+  return present.sort((a, b) => statusRank(a) - statusRank(b) || String(a).localeCompare(String(b)));
 }
 
 // Totals by status over all cells (the header chips count the whole day, like Results).

@@ -94,7 +94,24 @@
         label="Control group">
       </q-select>
 
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.system" label="System" maxlength="45" />
+      <q-select
+        :model-value="filter.system"
+        class="col q-mb-md q-pa-sm"
+        style="min-width: 150px"
+        clearable
+        outlined
+        options-dense
+        use-input
+        hide-selected
+        fill-input
+        input-debounce="0"
+        maxlength="90"
+        :options="systemOptions"
+        label="System"
+        @filter="filterSystems"
+        @input-value="(value) => (filter.system = value || null)"
+        @update:model-value="(value) => (filter.system = value || null)">
+      </q-select>
 
       <q-select
         v-model="filter.status"
@@ -354,7 +371,7 @@
                 text-color="white"
                 size="sm"
                 icon-right="fas fa-plug fa-rotate-270"
-                @click="filter.system = control.source_type_a"
+                @click="filter.system = control.source_type_a.trim()"
                 style="align-items: center">
                 {{ control.source_type_a }}
               </q-chip>
@@ -366,7 +383,7 @@
                 text-color="white"
                 size="sm"
                 icon="fas fa-plug fa-rotate-90"
-                @click="filter.system = control.source_type_b"
+                @click="filter.system = control.source_type_b.trim()"
                 style="align-items: center">
                 {{ control.source_type_b }}
               </q-chip>
@@ -451,7 +468,7 @@ import { api, notifyError } from "../api";
 import { CONTROL_ENGINES, CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
 import { chainIndex } from "../utils/chain";
-import { controlGroups, NO_CONTROL_GROUP } from "../utils/controlGroups";
+import { controlGroups, controlSystems, filterOptions, NO_CONTROL_GROUP } from "../utils/controlGroups";
 import { sendsEmail } from "../utils/email";
 import { formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
@@ -472,6 +489,8 @@ export default {
   },
   data() {
     return {
+      // The System filter's options, narrowed to the typed text.
+      systemOptions: [],
       // The message of a failed get-schema-drift, shown in the header, or null.
       schemaDriftError: null,
       // The answer of get-temp-tables: temporary tables runs left behind, shown as a header chip.
@@ -504,6 +523,11 @@ export default {
   },
   methods: {
     ...mapActions(["updateControlCatalogue", "updateSchemaDrift"]),
+    filterSystems(text, update) {
+      update(() => {
+        this.systemOptions = filterOptions(this.systemFilterOptions, text);
+      });
+    },
     controlType,
     formatNumber,
     toDateTimeString,
@@ -732,7 +756,7 @@ export default {
         ...valueFilter("type", "Type", filter.type, () => (filter.type = null)),
         ...valueFilter("name", "Name", filter.control_name, () => (filter.control_name = null), { text: true }),
         ...valueFilter("group", "Group", filter.group, () => (filter.group = null), { label: filter.group === NO_CONTROL_GROUP ? "No group" : filter.group }),
-        ...valueFilter("system", "System", filter.system, () => (filter.system = null), { text: true }),
+        ...valueFilter("system", "System", filter.system, () => (filter.system = null), { text: !this.systemFilterOptions.includes((filter.system || "").trim()) }),
         ...valueFilter("status", "Scheduler", filter.status, () => (filter.status = null), { label: filter.status === "Y" ? "Active" : "Inactive" }),
         ...listFilter("attribute", "Attribute", filter.other_attributes, (value) => (filter.other_attributes = filter.other_attributes.filter((item) => item !== value))),
         ...searchFilter(this.$store),
@@ -756,6 +780,11 @@ export default {
     // "No group" and the groups in use.
     groupFilterOptions() {
       return [{ label: "No group", value: NO_CONTROL_GROUP }, ...controlGroups(this.controlCatalogue).map((group) => ({ label: group, value: group }))];
+    },
+    // The systems in use, of side A and B alike. A system of the list matches exactly; typed text that is none of them
+    // matches as a substring, ignoring case.
+    systemFilterOptions() {
+      return controlSystems(this.controlCatalogue);
     },
     attributeOptions() {
       const options = ["DB engine", "PL engine", "Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
@@ -789,6 +818,8 @@ export default {
     filteredControlCatalogue() {
       const s = this.getSearch;
       var data = this.controlCatalogue;
+      const system = (this.filter.system || "").trim();
+      const exactSystem = this.systemFilterOptions.includes(system);
       if (s || this.filter.control_name || this.filter.group || this.filter.type || this.filter.status || this.filter.system || (this.filter.other_attributes && this.filter.other_attributes.length > 0)) {
         data = this.controlCatalogue.filter((item) => {
           const matchesSearch = s ? item.control_name?.toUpperCase().includes(s.toUpperCase()) : true;
@@ -797,10 +828,7 @@ export default {
           const matchesGroup = !this.filter.group || (this.filter.group === NO_CONTROL_GROUP ? !group : group === this.filter.group);
           const matchesType = this.filter.type ? item.control_type === this.filter.type : true;
           const matchesStatus = this.filter.status ? item.status === this.filter.status : true;
-          const matchesSystem = this.filter.system
-        ? item.source_type_a?.toUpperCase().includes(this.filter.system.toUpperCase()) ||
-          item.source_type_b?.toUpperCase().includes(this.filter.system.toUpperCase())
-        : true;
+          const matchesSystem = !system || [item.source_type_a, item.source_type_b].some((value) => (exactSystem ? (value || "").trim() === system : (value || "").toLowerCase().includes(system.toLowerCase())));
           const matchesAttributes =
         this.filter.other_attributes && this.filter.other_attributes.length > 0
           ? this.filter.other_attributes.some((attr) => {

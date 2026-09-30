@@ -55,8 +55,9 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 
 2. **Files page (PDI Core file log).** A new *Files* menu item: the file log (`PDI_CORE_FILE_LOG`) of one day, like
    Results is for control runs (`/files?date=`).
-   - **By datasource:** files, a column per status of the day, duplicates, *Incoming* (today), records read / written /
-     rejected, runtime, last success and the change against a week earlier (the table scrolls sideways when wider
+   - **By datasource:** files, then the status columns in workflow order: *Incoming* (today only), *Waiting*,
+     *Started* and *Success* (always shown), then *Error*, *Recycle*, *Reload*, *Duplicates* and the rarer statuses
+     (only when the day has such files); then records read / written / rejected, runtime, last success and the change against a week earlier (the table scrolls sideways when wider
      than the page), with *Silent*, *Drop*, *Errors* and *Log name differs* badges. Header totals and status and duplicate chips filter it;
      an hourly heatmap by lane filters by hour; *Find file* searches the day's file names across all datasources.
    - **Issue chips in the header:** after the status chips, *Silent* and *Drop* with the number of the day's
@@ -82,8 +83,8 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
      numbers (and its name) open its file log filtered to exactly those files: the status clicked, or the page's
      status filter, its hour and, for Duplicates, only duplicates (`/files-log/<id>?status=&hour=&dup=`). Such a link
      replaces the file log's kept filters; the file log's filters are written back into its URL, so a reload or Back
-     keeps them. *Incoming* opens the datasource's editor with the matching files listed
-     (`/edit-datasource/<id>?tab=files&list=match`). **Behavior change:** clicking a status count no longer filters
+     keeps them. *Incoming* opens the datasource's matching input files in a dialog
+     on the Files page (the list the Datasources page opens), without leaving the page. **Behavior change:** clicking a status count no longer filters
      the Files page; the status chips of the header still do.
    - API: `get-files-day`, `search-files`, `set-file-status`, `download-ds-files`, `get-pdi-state`, `remove-lane-lock`,
      `set-global-lock`; `info` reports `datasources_file_actions`, `datasources_file_download` and
@@ -319,6 +320,10 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    becomes "Tests"). The Controls page has a *Control group* filter next to *Control name* listing the groups in use
    and *No group*, and each control with a group shows it as a chip under its description; clicking the chip filters
    by that group. No schema change: the column already existed and is kept in the control's versions.
+   The *System* / *System A* / *System B* fields (`SOURCE_TYPE_A|B`) work the same way, offering the systems in use
+   on either side. The Controls page's *System* filter offers those systems as you type: a system picked (or typed
+   in full) matches controls whose system A or B is exactly it; other text matches as a substring, ignoring case, as
+   before.
 
 30. **Datasources layout and one mono font.** Paths, patterns, code (the SQL editors, the run and file logs,
    Instance details) and the numbers of tables and number inputs now use **Roboto Mono**, bundled with the UI next
