@@ -79,13 +79,27 @@
         label="Control type">
       </q-select>
 
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
+      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" style="min-width: 150px" />
+
+      <q-select
+        v-model="filter.group"
+        class="col q-mb-md q-pa-sm"
+        style="min-width: 180px"
+        clearable
+        outlined
+        options-dense
+        emit-value
+        map-options
+        :options="groupFilterOptions"
+        label="Control group">
+      </q-select>
 
       <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.system" label="System" maxlength="45" />
 
       <q-select
         v-model="filter.status"
         class="col q-mb-md q-pa-sm"
+        style="min-width: 170px"
         clearable
         outlined
         options-dense
@@ -100,7 +114,8 @@
 
       <q-select
         v-model="filter.other_attributes"
-        class="col-3 q-mb-md q-pa-sm"
+        class="col q-mb-md q-pa-sm"
+        style="min-width: 220px"
         outlined
         options-dense
         emit-value
@@ -177,6 +192,17 @@
             </div>
 
             <div class="row justify-start items-center">
+              <q-chip
+                v-if="control.control_group"
+                clickable
+                size="sm"
+                color="blue-grey-5"
+                text-color="white"
+                icon="fas fa-folder"
+                @click="filter.group = control.control_group.trim()">
+                {{ control.control_group }}
+              </q-chip>
+
               <q-chip v-if="control.status !== 'Y'" clickable size="sm" color="red-4" text-color="white" icon="fas fa-clock" @click="filter.status = 'N'">
                 Scheduler inactive
               </q-chip>
@@ -425,6 +451,7 @@ import { api, notifyError } from "../api";
 import { CONTROL_ENGINES, CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
 import { liveRefetch } from "../socket";
 import { chainIndex } from "../utils/chain";
+import { controlGroups, NO_CONTROL_GROUP } from "../utils/controlGroups";
 import { sendsEmail } from "../utils/email";
 import { formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
@@ -463,6 +490,7 @@ export default {
       menuControlId: null,
       filter: {
         control_name: "",
+        group: null,
         type: null,
         status: null,
         other_attributes: [],
@@ -648,6 +676,7 @@ export default {
     // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.control_name = null;
+      this.filter.group = null;
       this.filter.type = null;
       this.filter.status = null;
       this.filter.other_attributes = [];
@@ -702,6 +731,7 @@ export default {
       return [
         ...valueFilter("type", "Type", filter.type, () => (filter.type = null)),
         ...valueFilter("name", "Name", filter.control_name, () => (filter.control_name = null), { text: true }),
+        ...valueFilter("group", "Group", filter.group, () => (filter.group = null), { label: filter.group === NO_CONTROL_GROUP ? "No group" : filter.group }),
         ...valueFilter("system", "System", filter.system, () => (filter.system = null), { text: true }),
         ...valueFilter("status", "Scheduler", filter.status, () => (filter.status = null), { label: filter.status === "Y" ? "Active" : "Inactive" }),
         ...listFilter("attribute", "Attribute", filter.other_attributes, (value) => (filter.other_attributes = filter.other_attributes.filter((item) => item !== value))),
@@ -722,6 +752,10 @@ export default {
         if (this.lacksKpi(control)) counts.noKpi++;
       });
       return counts;
+    },
+    // "No group" and the groups in use.
+    groupFilterOptions() {
+      return [{ label: "No group", value: NO_CONTROL_GROUP }, ...controlGroups(this.controlCatalogue).map((group) => ({ label: group, value: group }))];
     },
     attributeOptions() {
       const options = ["DB engine", "PL engine", "Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
@@ -755,10 +789,12 @@ export default {
     filteredControlCatalogue() {
       const s = this.getSearch;
       var data = this.controlCatalogue;
-      if (s || this.filter.control_name || this.filter.type || this.filter.status || this.filter.system || (this.filter.other_attributes && this.filter.other_attributes.length > 0)) {
+      if (s || this.filter.control_name || this.filter.group || this.filter.type || this.filter.status || this.filter.system || (this.filter.other_attributes && this.filter.other_attributes.length > 0)) {
         data = this.controlCatalogue.filter((item) => {
           const matchesSearch = s ? item.control_name?.toUpperCase().includes(s.toUpperCase()) : true;
           const matchesControlName = this.filter.control_name ? item.control_name?.toUpperCase().includes(this.filter.control_name.toUpperCase()) : true;
+          const group = (item.control_group || "").trim();
+          const matchesGroup = !this.filter.group || (this.filter.group === NO_CONTROL_GROUP ? !group : group === this.filter.group);
           const matchesType = this.filter.type ? item.control_type === this.filter.type : true;
           const matchesStatus = this.filter.status ? item.status === this.filter.status : true;
           const matchesSystem = this.filter.system
@@ -787,7 +823,7 @@ export default {
             })
           : true;
 
-          return matchesSearch && matchesControlName && matchesType && matchesStatus && matchesSystem && matchesAttributes;
+          return matchesSearch && matchesControlName && matchesGroup && matchesType && matchesStatus && matchesSystem && matchesAttributes;
         });
       }
 

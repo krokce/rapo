@@ -68,6 +68,23 @@
                   <q-input class="col" outlined v-model="control.control_alias" label="Control alias" />
 
                   <q-select
+                    class="col"
+                    outlined
+                    label="Control group"
+                    :model-value="control.control_group"
+                    use-input
+                    hide-selected
+                    fill-input
+                    clearable
+                    input-debounce="0"
+                    maxlength="90"
+                    :options="controlGroupOptions"
+                    @filter="filterControlGroups"
+                    @input-value="(value) => (control.control_group = value)"
+                    @update:model-value="(value) => (control.control_group = normalizeControlGroup(value))"
+                    @blur="control.control_group = normalizeControlGroup(control.control_group)" />
+
+                  <q-select
                     v-if="control.control_id"
                     class="col-2"
                     outlined
@@ -1069,6 +1086,7 @@ import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTime
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
+import { controlGroups, filterControlGroups, normalizeControlGroup } from "../utils/controlGroups";
 import {
   DEFAULT_SQL_SHEET_NAME,
   EMAIL_CONTROL_TYPES,
@@ -1113,6 +1131,8 @@ export default {
   },
   data() {
     return {
+      // The Control group field's options, narrowed to the typed text.
+      controlGroupOptions: [],
       // The window variables are still completed in the datasource filters, but get no chip: the date column
       // already limits the fetch to the window.
       filterHiddenChips: ["control_date_from", "control_date_to"],
@@ -1209,6 +1229,10 @@ export default {
       return scheduleType(this.scheduleObject);
     },
     ...mapState(["controlCatalogue"]),
+    // The groups in use, offered by the Control group field.
+    controlGroups() {
+      return controlGroups(this.controlCatalogue);
+    },
     // A datasource that is the result table of another control makes this a chain-rule (utils/chain.js):
     // said under the datasources, from the form as it is, with every control a run would perform first.
     chainNote() {
@@ -1739,8 +1763,17 @@ export default {
     unsavedChanges() {
       return [...diffControl(this.savedControlJson, this.buildControlPayload()), ...diffKpis(this.savedKpiJson, this.kpiConfigObject)];
     },
+    filterControlGroups(text, update) {
+      update(() => {
+        this.controlGroupOptions = filterControlGroups(this.controlGroups, text);
+      });
+    },
+    normalizeControlGroup(value) {
+      return normalizeControlGroup(value, this.controlGroups);
+    },
     buildControlPayload() {
       const control = { ...this.control };
+      control.control_group = control.control_group?.trim() || null;
       // Set by getControlVersions for the version selector only.
       delete control.label;
       // Add new line if last line contains a comment to avoid RAPO SQL builder issue

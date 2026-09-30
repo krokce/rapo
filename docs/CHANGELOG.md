@@ -30,6 +30,8 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   output limit that cut the saved rows add a `Warning:` run message; Results shows an icon and a *Warnings* filter
   chip (API: `has_warning` in `get-control-runs`).
 - **Engine chip on Controls:** reconciliations show *DB engine* / *PL engine*, filterable as an attribute.
+- **Control groups:** a *Control group* field in the editor (pick a group in use or type a new one), a group filter
+  and a clickable group chip on Controls.
 - **Dark mode:** a header button cycles Automatic (follows the system, default) / Light / Dark, remembered by the
   browser; pages, dialogs, charts and SQL editors have dark variants, the light theme is unchanged.
 - **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC

@@ -313,7 +313,14 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    the tabs, as the Files page does, and scroll inside the table from there. The *Scheduler* menu item moves up,
    after *KPI types*, spaced from it and from *Files*; the header's clock button still opens the page too.
 
-29. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
+29. **Control groups.** The control editor's *Main* tab has a *Control group* field (`RAPO_CONFIG.CONTROL_GROUP`)
+   beside the name and alias: type to pick one of the groups already in use, or type a new one. Spaces around it are
+   removed, an empty field clears the group, and a group typed in another case takes the existing spelling ("tests"
+   becomes "Tests"). The Controls page has a *Control group* filter next to *Control name* listing the groups in use
+   and *No group*, and each control with a group shows it as a chip under its description; clicking the chip filters
+   by that group. No schema change: the column already existed and is kept in the control's versions.
+
+30. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
    misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").
    The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
    the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are
