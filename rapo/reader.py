@@ -333,9 +333,21 @@ class Reader:
                     case when dbms_lob.instr(text_message, '{WARNING_PREFIX}') > 0
                          then 1 else 0 end as has_warning,
                     prerequisite_value,
-                    nvl(round((l.end_date - nvl(l.start_date, l.added)) * 1440, 2), 0) duration_minutes
+                    nvl(round((l.end_date - nvl(l.start_date, l.added)) * 1440, 2), 0) duration_minutes,
+                    e.trigger_type,
+                    e.trigger_message,
+                    e.scheduled_time
                 from rapo_log l
                 left join rapo_config c on l.control_id = c.control_id
+                -- What started the run (rapo_scheduler_event, one row per process), null for a run the run
+                -- manager did not start.
+                left join (select process_id,
+                                  max(trigger_type) trigger_type,
+                                  max(message) trigger_message,
+                                  max(scheduled_time) scheduled_time
+                             from rapo_scheduler_event
+                            where process_id is not null
+                            group by process_id) e on e.process_id = l.process_id
                 where 1=1
                     and c.control_name is not null
                     and ((l.start_date >= :day_start and l.start_date < :day_end)

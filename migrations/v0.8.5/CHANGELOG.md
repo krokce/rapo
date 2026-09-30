@@ -1,8 +1,8 @@
 # Rapo v0.8.5 Change Log
 
 ## Annotation
-The email of a control can be sent on the result of an SQL statement, and the Controls page shows when each control
-runs next. There is no change to Rapo's own schema. The
+The email of a control can be sent on the result of an SQL statement, the Controls page shows when each control
+runs next, and Results show what started each run. There is no change to Rapo's own schema. The
 upgrade steps are in the [migration instructions](README.md).
 
 1. **Email: Send when *Evaluate SQL*.** A fourth *Send when* option on the editor's *Email* tab (ANL, REP, REC). The
@@ -43,3 +43,10 @@ upgrade steps are in the [migration instructions](README.md).
    - The next runs refresh on every configuration or scheduler change, and when the earliest one is due.
    - The editor's *Scheduler* tab shows the same description, strip and window live under the schedule fields.
    - New route `GET /api/get-next-fires` (see the API reference).
+
+3. **Results: trigger icon.** The *Start* cell shows a small icon after the start time for what started the run:
+   the schedule, a manual start, a catch-up, an iteration, a cascade or a chain pull (upstream). Hover it for the
+   trigger's name and details, e.g. `Started by: Schedule (scheduled for 2026-09-24 18:15:00)` or `Started by:
+   Upstream (For CHN_B [1000002993])`. A run the run manager did not start (library use, older runs) shows a faint
+   question mark, *Trigger not recorded*. The *Start* column is 18px wider, taken from the *Processname* column.
+   `get-control-runs` answers `trigger_type`, `trigger_message` and `scheduled_time` for each run.

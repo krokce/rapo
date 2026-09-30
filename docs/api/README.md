@@ -141,7 +141,10 @@ list is not capped.
 Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `start_date`, `date_from`, `date_to`,
 `status`, the A/B counters (`fetched_number_a`/`_b`, `success_number_a`/`_b`, `error_number_a`/`_b`,
 `error_level_a`/`_b`, the A column holding the single value of a one-sided control), `text_log`, `text_error`,
-`has_warning`, `prerequisite_value` and `duration_minutes`. `has_warning` is `1` when the run's messages hold a
+`has_warning`, `prerequisite_value`, `duration_minutes`, and what started it from `rapo_scheduler_event`:
+`trigger_type` (`SCHEDULE`, `MANUAL`, `CATCHUP`, `ITERATION`, `CASCADE`, `UPSTREAM`), `trigger_message` (e.g. `For
+CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run the run manager did not start.
+`has_warning` is `1` when the run's messages hold a
 `Warning: ` line (a key field that is not unique, `correlation_limit` reached, approximate matching over
 `max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
 

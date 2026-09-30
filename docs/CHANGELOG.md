@@ -17,6 +17,8 @@ No schema change.
   in how long, the schedule in words (*Weekdays at 08:15*), a frequency-colored avatar, a strip of where the runs
   fall and the data window. Sorted by the next run, hover for the next 5 runs, click for the Scheduler
   tab. New route `get-next-fires`.
+- **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
+  catch-up, iteration, cascade, upstream); hover for details.
 
 ---
 

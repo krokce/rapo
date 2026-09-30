@@ -116,7 +116,7 @@
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="When the run started" class="text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
+            <th title="When the run started, and what started it: hover its icon" class="text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
               Start
               <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -185,9 +185,10 @@
             </q-chip>
           </td>
           <td class="text-left">
-            <div class="text-blue-grey-7">
+            <div class="text-blue-grey-7 no-wrap row items-center">
               <strong>{{ toDateString(control.start_date) }}</strong>
               <small class="text-grey-7 q-px-sm">{{ toTimeString(control.start_date) }}</small>
+              <q-icon :name="triggerOf(control).icon" size="11px" :class="control.trigger_type ? 'text-blue-grey-4' : 'text-grey-4'" :title="triggerTitle(control)" />
             </div>
           </td>
           <td class="text-right number-cell">{{ round(control.duration_minutes, 1) }} min</td>
@@ -346,11 +347,11 @@ import RunDatasetMenu from "./RunDatasetMenu.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { notifyError } from "../api";
-import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
+import { ACTIVE_RUN_STATUSES, CONTROL_TYPES, CONTROL_TYPE_OPTIONS, RUN_STATUSES, RUN_STATUS_OPTIONS, TRIGGER_TYPES, controlType, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { liveRefetch } from "../socket";
-import { compactNumber, dayTitle, formatDuration, formatNumber, round, shiftDay, toDateString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, formatDuration, formatNumber, round, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -393,6 +394,20 @@ export default {
     };
   },
   methods: {
+    // What started the run (rapo_scheduler_event), a faint question mark when the run manager did not start it.
+    triggerOf(run) {
+      return TRIGGER_TYPES[run.trigger_type] || { label: run.trigger_type, icon: "fas fa-question" };
+    },
+    triggerTitle(run) {
+      if (!run.trigger_type) {
+        return "Trigger not recorded";
+      }
+      const details = [
+        run.scheduled_time && (run.trigger_type === "SCHEDULE" || run.trigger_type === "CATCHUP") ? `scheduled for ${toDateTimeString(run.scheduled_time)}` : null,
+        run.trigger_message,
+      ].filter(Boolean);
+      return `Started by: ${this.triggerOf(run).label}${details.length ? ` (${details.join("; ")})` : ""}`;
+    },
     ...mapActions(["updateControlResults"]),
     compactNumber,
     controlType,
@@ -616,13 +631,14 @@ a:visited {
 }
 
 /* Fixed columns, so rows swapped in while scrolling don't resize them. Processname takes the rest, but at least
-   the width of the longest name of the day (nameColumnWidth), else the table scrolls sideways. */
+   the width of the longest name of the day (nameColumnWidth), else the table scrolls sideways. The Start column's
+   trigger icon (18px) is taken from Processname: min-width leaves it out. */
 .results-table :deep(table) {
   table-layout: fixed;
   min-width: calc(1290px + var(--name-column-width));
 }
 .results-table th:nth-child(1) { width: 114px; }
-.results-table th:nth-child(2) { width: 144px; }
+.results-table th:nth-child(2) { width: 162px; }
 .results-table th:nth-child(3) { width: 66px; }
 .results-table th:nth-child(4) { width: 92px; }
 .results-table th:nth-child(6),
