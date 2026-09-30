@@ -58,12 +58,13 @@ upgrade steps are in the [migration instructions](README.md).
 4. **Editor: *Run log* as on Results.** The *Run log* tab shows the runs of the last *Days back* days in the Results
    table: the same formatting, trigger icon, warning flag, number menus (*Copy SQL*, *Data analysis*) and row menu
    (*Re-run*, *Run*, *Revoke run*, *Cancel run*, *Show full log*, *Send email*).
-   - Without *Type* and *Processname* (one control), with an *End* column: the time the run ended, with its day when
-     that differs from the start.
+   - The same columns as Results. The row menu has no *Edit control* (you are in it); the end of a run is in *Show
+     full log*.
    - Sortable by every column (newest first by default, kept for the browser session); a line separates the days
      while sorted by *Start* or *PID*.
    - Above it, the totals of those runs as on Results: status and warning chips, runs by trigger, records fetched and
      runtime. They are not filters.
-   - *Re-run* and *Run* are disabled while the form has unsaved changes. The *#* and *Added* columns are gone.
+   - *Re-run* and *Run* are disabled while the form has unsaved changes. The *#*, *Added* and *End* columns are
+     gone.
    - The table fills the tab down to the *Save* bar and scrolls inside.
    - `get-control-runs` takes `control_name` and `days` for this, and answers `added` and `end_date` for every run.

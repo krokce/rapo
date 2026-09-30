@@ -19,8 +19,8 @@ No schema change.
   tab. Type, Name and Scheduler fit their content; Description takes the rest. New route `get-next-fires`.
 - **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
   catch-up, iteration, cascade, upstream); hover for details. The day's totals count the runs per trigger.
-- **Editor Run log = Results table:** same columns (without Type/Processname, plus End), menus, number menus and
-  totals; sortable, day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
+- **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,
+  day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 
 ---
 

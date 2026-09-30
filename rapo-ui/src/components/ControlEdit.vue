@@ -899,12 +899,13 @@
                   <q-space />
                   <run-summary v-if="logsLoaded" :runs="controlLogs" />
                 </div>
-                <!-- As on Results, without the type and name (one control), with the end of each run. -->
+                <!-- The Results table, without its filters (the runs are this control's) and Edit control. -->
                 <div ref="logTable" class="column no-wrap" :style="{ maxHeight: logTableHeight + 'px' }">
                   <run-table
                     :runs="controlLogs"
                     :sort="logSort"
-                    :columns="{ end: true }"
+                    :columns="{ type: true, name: true }"
+                    :edit-link="false"
                     separators
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
                     :refresh="refreshLogs"
@@ -1046,7 +1047,8 @@ const LOG_SORT_KEY = "rapo_filters_control_runlog";
 function readLogSort() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(LOG_SORT_KEY) || "null");
-    if (saved && typeof saved.key === "string" && ["asc", "desc"].includes(saved.dir)) {
+    // end_date: the End column of an earlier Run log.
+    if (saved && typeof saved.key === "string" && saved.key !== "end_date" && ["asc", "desc"].includes(saved.dir)) {
       return saved;
     }
   } catch (error) {

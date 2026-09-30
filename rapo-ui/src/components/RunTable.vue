@@ -21,10 +21,6 @@
               Start
               <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th v-if="columns.end" title="When the run ended: its time, with the day when it ended on another day than it started" class="col-end text-left sortable" @click="toggleSort(sort, 'end_date')" v-keyboard :aria-sort="ariaSort(sort, 'end_date')">
-              End
-              <q-icon v-if="sort.key === 'end_date'" :name="sortIcon(sort)" size="12px" />
-            </th>
             <th title="How long the run took, in minutes" class="col-runtime text-right sortable" @click="toggleSort(sort, 'duration_minutes')" v-keyboard :aria-sort="ariaSort(sort, 'duration_minutes')">
               Runtime
               <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
@@ -94,12 +90,6 @@
               <strong>{{ toDateString(run.start_date) }}</strong>
               <small class="text-grey-7 q-px-sm">{{ toTimeString(run.start_date) }}</small>
               <q-icon :name="triggerOf(run).icon" size="11px" :class="run.trigger_type ? 'text-blue-grey-4' : 'text-grey-4'" :title="triggerTitle(run)" />
-            </div>
-          </td>
-          <td v-if="columns.end" class="text-left" :title="run.end_date ? toDateTimeString(run.end_date) : 'Not ended'">
-            <div v-if="run.end_date" class="text-blue-grey-7 no-wrap">
-              <strong v-if="toDateString(run.end_date) !== toDateString(run.start_date)" class="q-pr-xs">{{ toDateString(run.end_date).slice(5) }}</strong>
-              <small class="text-grey-7">{{ toTimeString(run.end_date) }}</small>
             </div>
           </td>
           <td class="text-right number-cell">{{ round(run.duration_minutes, 1) }} min</td>
@@ -208,7 +198,7 @@
           <q-item-section> Run </q-item-section>
           <q-tooltip>{{ runDisabled }}</q-tooltip>
         </q-item>
-        <template v-if="columns.name">
+        <template v-if="editLink">
           <q-separator />
           <q-item dense clickable :to="{ name: 'edit-control', params: { controlId: menuRow.control_id } }">
             <q-item-section> Edit control </q-item-section>
@@ -241,7 +231,7 @@ import SkeletonRows from "./SkeletonRows.vue";
 import { ACTIVE_RUN_STATUSES, controlType, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
-import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
 import { textWidth } from "../utils/layout";
 import { runSortValue, startsNewDay, triggerOf, triggerTitle } from "../utils/runs";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -255,8 +245,10 @@ export default {
     runs: { type: Array, required: true },
     // { key, dir }, changed in place by the headers.
     sort: { type: Object, required: true },
-    // Optional columns: the type and the control's name (Results), the end of the run (a control's Run log).
-    columns: { type: Object, default: () => ({ type: true, name: true, end: false }) },
+    // Optional columns: the type and the control's name.
+    columns: { type: Object, default: () => ({ type: true, name: true }) },
+    // The row menu's Edit control (not inside the editor itself).
+    editLink: { type: Boolean, default: true },
     // Type and status chips and the name's magnifier emit filter ({ type } / { status } / { control_name }).
     filterable: { type: Boolean, default: false },
     // A day separator line while the runs are sorted by time.
@@ -287,13 +279,12 @@ export default {
       return this.separators && ["start_date", "process_id"].includes(this.sort.key);
     },
     colspan() {
-      return 14 + ["type", "name", "end"].filter((column) => this.columns[column]).length;
+      return 14 + ["type", "name"].filter((column) => this.columns[column]).length;
     },
     skeletonColumns() {
       return [
         ...(this.columns.type ? ["QChip"] : []),
         "text",
-        ...(this.columns.end ? ["text"] : []),
         "text",
         "text",
         ...(this.columns.name ? ["text"] : []),
@@ -331,7 +322,6 @@ export default {
     sortIcon,
     startsNewDay,
     toDateString,
-    toDateTimeString,
     toTimeString,
     toggleSort,
     triggerOf,
@@ -372,8 +362,8 @@ a:visited {
 
 /* Fixed columns, so rows swapped in while scrolling don't resize them. With Processname (Results) it takes the
    rest, but at least the width of the longest name (nameColumnWidth), else the table scrolls sideways; the Start
-   column's trigger icon (18px) is taken from it, as min-width leaves it out. Without it (a control's Run log) the
-   Status column takes the rest. */
+   column's trigger icon (18px) is taken from it, as min-width leaves it out. Without it the Status column takes the
+   rest. */
 .runs-table :deep(table) {
   table-layout: fixed;
   min-width: 1290px;
@@ -383,7 +373,6 @@ a:visited {
 }
 .runs-table .col-type { width: 114px; }
 .runs-table .col-start { width: 162px; }
-.runs-table .col-end { width: 90px; }
 .runs-table .col-runtime { width: 66px; }
 .runs-table .col-pid { width: 92px; }
 .runs-table .col-date { width: 87px; }
