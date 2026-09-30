@@ -19,7 +19,7 @@
           <table class="cp-table">
             <thead>
               <tr>
-                <th v-for="column in columns" :key="column.name">{{ column.name.toUpperCase() }}</th>
+                <th v-for="column in columns" :key="column.name" :title="`${column.name.toUpperCase()} of the row analysed`">{{ column.name.toUpperCase() }}</th>
               </tr>
             </thead>
             <tbody>
@@ -67,7 +67,7 @@
                 <table class="cp-table">
                   <thead>
                     <tr>
-                      <th v-for="name in part.data.columns" :key="name">{{ name.toUpperCase() }}</th>
+                      <th v-for="name in part.data.columns" :key="name" :title="`${name.toUpperCase()} of the counterpart row`">{{ name.toUpperCase() }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -182,7 +182,9 @@ export default {
 
 .cp-table th {
   background: var(--rapo-header);
-  padding: 5px 8px;
+  padding: 4px 8px;
+  height: 28px;
+  font-size: 12px;
   text-align: left;
   white-space: nowrap;
   font-weight: 600;

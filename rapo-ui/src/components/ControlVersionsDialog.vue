@@ -47,14 +47,14 @@
             </colgroup>
             <thead>
               <tr>
-                <th>
+                <th title="Select two versions to compare them">
                   <q-checkbox :model-value="allSelected" dense :disable="!versions.length" @update:model-value="toggleAll">
                     <q-tooltip>Select or unselect all past versions</q-tooltip>
                   </q-checkbox>
                 </th>
-                <th>Version</th>
-                <th>Action</th>
-                <th>Changed by</th>
+                <th title="The version: when it was saved (saved = the current one)">Version</th>
+                <th title="The change that made the version">Action</th>
+                <th title="Who made the change">Changed by</th>
                 <th></th>
               </tr>
             </thead>

@@ -62,15 +62,15 @@
       <table v-if="result && result.rows.length" class="groups-table">
         <thead>
           <tr>
-            <th v-for="(name, index) in result.by" :key="'k' + index" class="text-left sortable" v-keyboard :aria-sort="ariaSort(name)" @click="toggleSort(name)">
+            <th v-for="(name, index) in result.by" :key="'k' + index" :title="`The value of ${name.toUpperCase()} the rows are grouped by; click a row to show its rows`" class="text-left sortable" v-keyboard :aria-sort="ariaSort(name)" @click="toggleSort(name)">
               {{ name.toUpperCase() }}<span v-if="bucketOf(name)" class="text-grey-7"> ({{ bucketOf(name) }})</span>
               <q-icon v-if="sortIcon(name)" :name="sortIcon(name)" size="12px" />
             </th>
-            <th class="text-right sortable count-col" v-keyboard :aria-sort="ariaSort('count')" @click="toggleSort('count')">
+            <th title="The rows in the group" class="text-right sortable count-col" v-keyboard :aria-sort="ariaSort('count')" @click="toggleSort('count')">
               Count <q-icon v-if="sortIcon('count')" :name="sortIcon('count')" size="12px" />
             </th>
-            <th class="share-col">Share</th>
-            <th v-for="label in result.aggregates" :key="label" class="text-right sortable" v-keyboard :aria-sort="ariaSort(label)" @click="toggleSort(label)">
+            <th title="The group's rows against the largest group" class="share-col">Share</th>
+            <th v-for="label in result.aggregates" :key="label" :title="`${aggregateLabel(label)} over the rows of the group`" class="text-right sortable" v-keyboard :aria-sort="ariaSort(label)" @click="toggleSort(label)">
               {{ aggregateLabel(label) }} <q-icon v-if="sortIcon(label)" :name="sortIcon(label)" size="12px" />
             </th>
           </tr>
@@ -330,7 +330,9 @@ export default {
   position: sticky;
   top: 0;
   background: var(--rapo-header);
-  padding: 6px 8px;
+  padding: 4px 8px;
+  height: 28px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   z-index: 1;

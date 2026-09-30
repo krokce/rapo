@@ -165,18 +165,18 @@ export const DUP_HANDLING_OPTIONS = [
 // File statuses of the PDI Core file log (pdi_core_file_log.filestatus). RECYCLE, RELOAD and DELETE are asked for from
 // the Files page and wait for PDI Core, which then marks them done.
 export const FILE_STATUSES = {
-  WAITING: { label: "Waiting", icon: "fas fa-pause-circle", color: "amber-7" },
-  PROCESSING: { label: "Processing", icon: "fas fa-sync fa-spin", color: "blue" },
-  STARTED: { label: "Started", icon: "fas fa-play-circle", color: "blue" },
-  SUCCESS: { label: "Success", icon: "fas fa-check-circle", color: "green" },
-  ERROR: { label: "Error", icon: "fas fa-exclamation-circle", color: "deep-orange" },
-  DUPLICATE: { label: "Duplicate", icon: "fas fa-clone", color: "purple-3" },
-  RECYCLE: { label: "Recycle", icon: "fas fa-recycle", color: "indigo" },
-  RELOAD: { label: "Reload", icon: "fas fa-redo", color: "indigo-4" },
-  DELETE: { label: "Delete", icon: "fas fa-trash-alt", color: "red" },
-  RECYCLED: { label: "Recycled", icon: "fas fa-recycle", color: "grey-6" },
-  RELOADED: { label: "Reloaded", icon: "fas fa-redo", color: "grey-6" },
-  DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "grey-6" },
+  WAITING: { label: "Waiting", icon: "fas fa-pause-circle", color: "amber-7", hint: "Files in the file log waiting to be loaded" },
+  PROCESSING: { label: "Processing", icon: "fas fa-sync fa-spin", color: "blue", hint: "Files PDI Core is loading" },
+  STARTED: { label: "Started", icon: "fas fa-play-circle", color: "blue", hint: "Files PDI Core started to load and has not finished" },
+  SUCCESS: { label: "Success", icon: "fas fa-check-circle", color: "green", hint: "Files loaded successfully" },
+  ERROR: { label: "Error", icon: "fas fa-exclamation-circle", color: "deep-orange", hint: "Files that failed to load" },
+  DUPLICATE: { label: "Duplicate", icon: "fas fa-clone", color: "purple-3", hint: "Files with the DUPLICATE status" },
+  RECYCLE: { label: "Recycle", icon: "fas fa-recycle", color: "indigo", hint: "Files waiting to be recycled: their records deleted, the file loaded again as a new file" },
+  RELOAD: { label: "Reload", icon: "fas fa-redo", color: "indigo-4", hint: "Files waiting to be reloaded: loaded again as a new file, their records kept" },
+  DELETE: { label: "Delete", icon: "fas fa-trash-alt", color: "red", hint: "Files waiting for their records to be deleted" },
+  RECYCLED: { label: "Recycled", icon: "fas fa-recycle", color: "grey-6", hint: "Files recycled: their records deleted and the file loaded again as a new file" },
+  RELOADED: { label: "Reloaded", icon: "fas fa-redo", color: "grey-6", hint: "Files reloaded as a new file" },
+  DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "grey-6", hint: "Files whose records were deleted" },
 };
 
 // What can be asked of a file (set-file-status). PDI Core does the work. `from`: the statuses a file may have (null: any);

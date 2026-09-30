@@ -119,7 +119,7 @@
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-right row-number" :style="{ width: numberWidth + 'px' }">#</th>
+            <th title="The row's number in the sample" class="text-right row-number" :style="{ width: numberWidth + 'px' }">#</th>
             <th
               v-for="column in shownColumns"
               :key="column.name"

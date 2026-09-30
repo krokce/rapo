@@ -28,12 +28,12 @@
             <template #before>
               <thead>
                 <tr>
-                  <th class="text-left">Run</th>
-                  <th class="text-left">Control</th>
-                  <th class="text-left">Status</th>
-                  <th class="text-left">Started</th>
-                  <th class="text-right">Tables</th>
-                  <th class="text-right">MB</th>
+                  <th title="The process ID of the run that left the tables" class="text-left">Run</th>
+                  <th title="The control of the run; click it to edit the control" class="text-left">Control</th>
+                  <th title="The status of the run" class="text-left">Status</th>
+                  <th title="When the run started" class="text-left">Started</th>
+                  <th title="How many temporary tables the run left; hover a number for their names" class="text-right">Tables</th>
+                  <th title="The space the tables take, in MB" class="text-right">MB</th>
                   <th></th>
                 </tr>
               </thead>

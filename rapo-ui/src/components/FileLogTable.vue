@@ -129,17 +129,17 @@
       :style="{ maxHeight }"
       :items="sortedFiles"
       :virtual-scroll-item-size="41"
-      :virtual-scroll-sticky-size-start="33"
+      :virtual-scroll-sticky-size-start="28"
       :table-colspan="selectable ? 11 : 10">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th v-if="selectable" class="text-center">
+            <th v-if="selectable" title="Select all the files shown" class="text-center">
               <q-checkbox :model-value="allShownSelected" :indeterminate-value="null" :disable="!shownFiles.length" dense @update:model-value="toggleAllShown">
                 <q-tooltip>Select or unselect every file shown ({{ formatNumber(shownFiles.length) }})</q-tooltip>
               </q-checkbox>
             </th>
-            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)" v-keyboard :aria-sort="ariaSort(sort, column.key)">
+            <th v-for="column in columns" :key="column.key" :title="column.title" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)" v-keyboard :aria-sort="ariaSort(sort, column.key)">
               {{ column.label }}
               <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -248,16 +248,16 @@ import persistFilters from "../mixins/persistFilters";
 // changes; `initialFilters` (a link from the Files page) replaces them, and every change is emitted as `filters`.
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
-  { key: "status", label: "Status", align: "left" },
-  { key: "inputfilename", label: "File", align: "left" },
-  { key: "filesize", label: "Size", align: "right" },
-  { key: "filedate", label: "File date", align: "left" },
-  { key: "startloaddate", label: "Load start", align: "left" },
-  { key: "runtime", label: "Runtime", align: "right" },
-  { key: "recordsread", label: "Read", align: "right" },
-  { key: "recordswrite", label: "Written", align: "right" },
-  { key: "recordsreject", label: "Rejected", align: "right" },
-  { key: "duplicate", label: "Duplicate", align: "center" },
+  { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log" },
+  { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it" },
+  { key: "filesize", label: "Size", align: "right", title: "The size of the input file" },
+  { key: "filedate", label: "File date", align: "left", title: "The date of the input file" },
+  { key: "startloaddate", label: "Load start", align: "left", title: "When PDI Core started loading the file" },
+  { key: "runtime", label: "Runtime", align: "right", title: "How long loading the file took (h:mm:ss)" },
+  { key: "recordsread", label: "Read", align: "right", title: "Records read from the file" },
+  { key: "recordswrite", label: "Written", align: "right", title: "Records written to the tables of the datasource" },
+  { key: "recordsreject", label: "Rejected", align: "right", title: "Records rejected while loading" },
+  { key: "duplicate", label: "Duplicate", align: "center", title: "Whether PDI Core flagged the file as a duplicate" },
 ];
 
 export default {

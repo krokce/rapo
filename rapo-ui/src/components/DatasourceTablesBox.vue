@@ -17,11 +17,11 @@
     <q-markup-table flat bordered dense>
       <thead>
         <tr class="bg-blue-grey-2">
-          <th class="text-left" style="width: 30%">Table</th>
-          <th class="text-left" style="width: 22%">Partition key</th>
-          <th class="text-left" style="width: 12%">Days to retain</th>
-          <th class="text-left" style="width: 12%">Days in advance</th>
-          <th class="text-left">In the database</th>
+          <th title="A table the datasource loads into" class="text-left" style="width: 30%">Table</th>
+          <th title="The column the table is partitioned by" class="text-left" style="width: 22%">Partition key</th>
+          <th title="Days of partitions kept before the retention drops them" class="text-left" style="width: 12%">Days to retain</th>
+          <th title="Days of partitions created ahead" class="text-left" style="width: 12%">Days in advance</th>
+          <th title="Whether the table exists in rapo's schema, how it is partitioned and its rows" class="text-left">In the database</th>
           <th style="width: 44px"></th>
         </tr>
       </thead>

@@ -154,6 +154,15 @@ code, pre, kbd, samp
 .state-notice--error .q-icon
   color: #e53935
 
+// Every table header is compact, as Quasar's dense tables (Results): 28px, 4px above and below. The rows keep their
+// own size; a virtual scroll's virtual-scroll-sticky-size-start is this height.
+table.q-table thead tr
+  height: 28px
+
+table.q-table thead th
+  padding-top: 4px
+  padding-bottom: 4px
+
 // Keyboard focus: a visible ring on everything Tab reaches, none for mouse clicks.
 :focus-visible
   outline: 2px solid var(--rapo-teal)

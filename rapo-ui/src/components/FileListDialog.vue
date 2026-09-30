@@ -58,12 +58,12 @@
           class="list-table file-table fit"
           :items="sortedFiles"
           :virtual-scroll-item-size="33"
-          :virtual-scroll-sticky-size-start="33"
+          :virtual-scroll-sticky-size-start="28"
           :table-colspan="8">
           <template #before>
             <thead>
               <tr class="bg-blue-grey-2">
-                <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
+                <th v-for="column in columns" :key="column.key" :title="column.title" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
                   {{ column.label }}
                   <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
                 </th>
@@ -125,13 +125,13 @@ const KINDS = {
 };
 
 const COLUMNS = [
-  { key: "name", label: "Name", align: "left", sort: true },
-  { key: "size", label: "Size", align: "right", sort: true },
-  { key: "modified", label: "Modified", align: "left", sort: true },
-  { key: "age", label: "Age", align: "right", sort: true },
-  { key: "owner", label: "Owner", align: "left", sort: true },
-  { key: "mode", label: "Mode", align: "left", sort: false },
-  { key: "reason", label: "Flags", align: "left", sort: true },
+  { key: "name", label: "Name", align: "left", sort: true, title: "The file's name, under its subdirectory" },
+  { key: "size", label: "Size", align: "right", sort: true, title: "The file's size" },
+  { key: "modified", label: "Modified", align: "left", sort: true, title: "When the file was last modified" },
+  { key: "age", label: "Age", align: "right", sort: true, title: "How long ago the file was last modified" },
+  { key: "owner", label: "Owner", align: "left", sort: true, title: "The file's owner and group" },
+  { key: "mode", label: "Mode", align: "left", sort: false, title: "The file's permissions" },
+  { key: "reason", label: "Flags", align: "left", sort: true, title: "Why PDI Core skips or deletes the file, or why it does not match (All files)" },
 ];
 
 // The files in the input directories of one saved datasource (get-ds-files), read-only: the files FILES_MASK picks

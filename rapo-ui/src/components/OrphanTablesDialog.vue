@@ -17,10 +17,10 @@
         <q-markup-table v-else dense flat bordered separator="horizontal">
           <thead>
             <tr>
-              <th class="text-left">Table</th>
-              <th class="text-left">Control</th>
-              <th class="text-left">Why</th>
-              <th class="text-left">Rows</th>
+              <th title="The result table" class="text-left">Table</th>
+              <th title="The control the table belongs to, if any" class="text-left">Control</th>
+              <th title="Why no control writes the table" class="text-left">Why</th>
+              <th title="The rows in the table (from the statistics; count exactly with the button)" class="text-left">Rows</th>
               <th style="width: 200px"></th>
             </tr>
           </thead>

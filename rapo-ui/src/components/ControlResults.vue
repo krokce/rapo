@@ -112,63 +112,63 @@
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
+            <th title="The control type: ANL analysis, REC reconciliation, CMP comparison, REP report; click a type to filter by it" class="text-left sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
+            <th title="When the run started" class="text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
               Start
               <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'duration_minutes')" v-keyboard :aria-sort="ariaSort(sort, 'duration_minutes')">
+            <th title="How long the run took, in minutes" class="text-right sortable" @click="toggleSort(sort, 'duration_minutes')" v-keyboard :aria-sort="ariaSort(sort, 'duration_minutes')">
               Runtime
               <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
+            <th title="The process ID of the run" class="text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
+            <th title="The control the run belongs to: its name opens the control, the magnifier filters by it" class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Processname
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'date_from')" v-keyboard :aria-sort="ariaSort(sort, 'date_from')">
+            <th title="The start of the data window the run read" class="text-left sortable" @click="toggleSort(sort, 'date_from')" v-keyboard :aria-sort="ariaSort(sort, 'date_from')">
               Run from
               <q-icon v-if="sort.key === 'date_from'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'date_to')" v-keyboard :aria-sort="ariaSort(sort, 'date_to')">
+            <th title="The end of the data window the run read" class="text-left sortable" @click="toggleSort(sort, 'date_to')" v-keyboard :aria-sort="ariaSort(sort, 'date_to')">
               Run to
               <q-icon v-if="sort.key === 'date_to'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_a')">
+            <th title="Records fetched from datasource A; click the number for its SQL or data analysis" class="text-right sortable" @click="toggleSort(sort, 'fetched_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_a')">
               Fetched A
               <q-icon v-if="sort.key === 'fetched_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'fetched_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_b')">
+            <th title="Records fetched from datasource B; click the number for its SQL or data analysis" class="text-right sortable" @click="toggleSort(sort, 'fetched_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_b')">
               Fetched B
               <q-icon v-if="sort.key === 'fetched_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_a')">
+            <th title="Discrepancies found on side A (the result rows of ANL, CMP and REP); click the number for its SQL or data analysis" class="text-right sortable" @click="toggleSort(sort, 'error_number_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_a')">
               Discr. A
               <q-icon v-if="sort.key === 'error_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_b')">
+            <th title="Discrepancies found on side B; click the number for its SQL or data analysis" class="text-right sortable" @click="toggleSort(sort, 'error_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_b')">
               Discr. B
               <q-icon v-if="sort.key === 'error_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_a')">
+            <th title="Discrepancies of side A as a percentage of the records fetched from A" class="text-right sortable" @click="toggleSort(sort, 'error_level_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_a')">
               Err. lvl A [%]
               <q-icon v-if="sort.key === 'error_level_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'error_level_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_b')">
+            <th title="Discrepancies of side B as a percentage of the records fetched from B" class="text-right sortable" @click="toggleSort(sort, 'error_level_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_b')">
               Err. lvl B [%]
               <q-icon v-if="sort.key === 'error_level_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-right sortable" @click="toggleSort(sort, 'prerequisite_value')" v-keyboard :aria-sort="ariaSort(sort, 'prerequisite_value')">
+            <th title="Prerequisite value: what the Prerequisite SQL returned; 0 stops the run" class="text-right sortable" @click="toggleSort(sort, 'prerequisite_value')" v-keyboard :aria-sort="ariaSort(sort, 'prerequisite_value')">
               PV
               <q-icon v-if="sort.key === 'prerequisite_value'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'status')" v-keyboard :aria-sort="ariaSort(sort, 'status')">
+            <th title="The status of the run; click a status to filter by it" class="text-left sortable" @click="toggleSort(sort, 'status')" v-keyboard :aria-sort="ariaSort(sort, 'status')">
               Status
               <q-icon v-if="sort.key === 'status'" :name="sortIcon(sort)" size="12px" />
             </th>

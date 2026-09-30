@@ -18,11 +18,12 @@ function add(totals, cell) {
   totals.statuses[cell.status] = (totals.statuses[cell.status] || 0) + cell.files;
 }
 
-// The order of the status columns, as the workflow goes; a status not listed comes after them, alphabetically.
-const STATUS_ORDER = ["WAITING", "STARTED", "PROCESSING", "SUCCESS", "ERROR", "RECYCLE", "RELOAD", "DUPLICATE", "DELETE", "RECYCLED", "RELOADED", "DELETED"];
+// The order of the status columns: the workflow backwards from SUCCESS, then the files needing attention; a status not
+// listed comes after them, alphabetically.
+const STATUS_ORDER = ["SUCCESS", "PROCESSING", "STARTED", "WAITING", "ERROR", "RECYCLE", "RELOAD", "DUPLICATE", "DELETE", "RECYCLED", "RELOADED", "DELETED"];
 
 // The status columns shown on every day, with or without files.
-export const ALWAYS_STATUSES = ["WAITING", "STARTED", "SUCCESS"];
+export const ALWAYS_STATUSES = ["SUCCESS", "STARTED", "WAITING"];
 
 // A status's place in the column order.
 export function statusRank(status) {

@@ -78,12 +78,12 @@
       :style="{ '--name-column-width': nameColumnWidth + 'px' }"
       :items="sortedDatasources"
       :virtual-scroll-item-size="72"
-      :virtual-scroll-sticky-size-start="48"
+      :virtual-scroll-sticky-size-start="28"
       :table-colspan="11">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th v-for="column in columns" :key="column.key" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
+            <th v-for="column in columns" :key="column.key" :title="column.title" :class="['text-' + column.align, { sortable: column.sort }]" @click="column.sort && toggleSort(sort, column.key)" v-keyboard="column.sort" :aria-sort="column.sort ? ariaSort(sort, column.key) : undefined">
               {{ column.label }}
               <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -287,16 +287,16 @@ import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 const COLUMNS = [
-  { key: "isactive", label: "Lane", align: "center", sort: true },
-  { key: "id", label: "ID", align: "right", sort: true },
-  { key: "sourcename", label: "Name", align: "left", sort: true },
-  { key: "input_directory", label: "Input files", align: "left", sort: true },
-  { key: "files_24h", label: "Files 24h", align: "right", sort: true },
-  { key: "files_retention_days", label: "Ret. days", align: "right", sort: true },
-  { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true },
-  { key: "leave_input_zipped", label: "Zipped", align: "center", sort: true },
-  { key: "files_load_parallel", label: "Parallel", align: "center", sort: true },
-  { key: "input_scan_subdirs", label: "Subdirs", align: "center", sort: true },
+  { key: "isactive", label: "Lane", align: "center", sort: true, title: "The PDI Core lane that loads the datasource; click a lane to filter by it or switch it" },
+  { key: "id", label: "ID", align: "right", sort: true, title: "The ID of the datasource (PDI_CORE_DS_CONFIG)" },
+  { key: "sourcename", label: "Name", align: "left", sort: true, title: "The datasource's name, its description and issues; click the name to edit it" },
+  { key: "input_directory", label: "Input files", align: "left", sort: true, title: "The input directories and, under them, the files mask; click a directory for its files" },
+  { key: "files_24h", label: "Files 24h", align: "right", sort: true, title: "Files loaded in the last 24 hours; hover for records, errors and duplicates" },
+  { key: "files_retention_days", label: "Ret. days", align: "right", sort: true, title: "Days archived files are kept" },
+  { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true, title: "The most files one load cycle picks up" },
+  { key: "leave_input_zipped", label: "Zipped", align: "center", sort: true, title: "Input files are kept gzipped" },
+  { key: "files_load_parallel", label: "Parallel", align: "center", sort: true, title: "Files are loaded in parallel" },
+  { key: "input_scan_subdirs", label: "Subdirs", align: "center", sort: true, title: "Subdirectories of the input directories are scanned too" },
 ];
 
 // The PDI Core datasources (pdi_core_ds_config), flagged by the issues of their setup and of the server's last scan of

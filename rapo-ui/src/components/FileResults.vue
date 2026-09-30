@@ -218,7 +218,7 @@
       </template>
       <template #default="{ item: row }">
         <tr :key="row.id" :class="{ 'row-inactive': row.isactive === 0 }">
-          <td v-for="column in tableColumns" :key="column.key" :class="['text-' + column.align, { 'number-cell': column.number }]">
+          <td v-for="column in tableColumns" :key="column.key" :class="['text-' + column.align, { 'number-cell': column.number, 'name-cell': column.key === 'sourcename' }]">
             <template v-if="column.key === 'isactive'">
               <q-chip v-if="row.isactive !== null" clickable :title="lane(row.isactive).label" @click="addLaneFilter(row.isactive)">
                 <q-avatar :icon="lane(row.isactive).icon" :color="lane(row.isactive).color" text-color="white" />
@@ -254,11 +254,6 @@
                 :class="statusClass(column.status, row.statuses[column.status])"
                 :title="`Show the ${formatNumber(row.statuses[column.status])} ${fileStatus(column.status).label} file(s)`">
                 {{ formatNumber(row.statuses[column.status]) }}
-              </router-link>
-            </template>
-            <template v-else-if="column.key === 'files'">
-              <router-link v-if="row.files" :to="logLink(row)" class="status-count" :title="`Show the ${formatNumber(row.files)} file(s)`">
-                {{ formatNumber(row.files) }}
               </router-link>
             </template>
             <template v-else-if="column.key === 'duplicates'">
@@ -335,28 +330,27 @@ import persistFilters from "../mixins/persistFilters";
 const FILE_DATASOURCE_ISSUES = ["stalled"];
 const HEADER_ISSUES = ["silent", "drop", "ds_stalled"];
 
-// The columns around the status columns (one per status the day has files in): [key, label, align, width, number].
+// The columns around the status columns (one per status the day has files in); `title` is the header's tooltip.
 const LEADING_COLUMNS = [
-  { key: "isactive", label: "Lane", align: "left", width: 84 },
-  { key: "id", label: "ID", align: "right", width: 56 },
-  { key: "sourcename", label: "Datasource", align: "left" },
-  { key: "files", label: "Files", align: "right", width: 80, number: true },
+  { key: "isactive", label: "Lane", align: "left", width: 84, title: "The PDI Core lane that loads the datasource; click a lane to filter by it" },
+  { key: "id", label: "ID", align: "right", width: 56, title: "The ID of the datasource (PDI_CORE_DS_CONFIG)" },
+  { key: "sourcename", label: "Datasource", align: "left", title: "The datasource; click its name to open its files of the day" },
 ];
 
 // Incoming: files in the input directories now, not yet picked up into the file log (unlike its WAITING status), so
-// only for today; it comes first, as the start of the workflow.
-const INCOMING_COLUMN = { key: "waiting", label: "Incoming", align: "right", width: 96, number: true, icon: "fas fa-inbox", iconColor: "blue-grey-6", title: "Files matching the mask in the input directories now, not yet in the file log" };
+// only for today; after the Waiting column, where the workflow (read backwards from Success) starts.
+const INCOMING_COLUMN = { key: "waiting", label: "Incoming", align: "right", width: 96, number: true, icon: "fas fa-inbox", iconColor: "blue-grey-6", title: "Files matching the mask in the input directories now, not yet in the file log (today only)" };
 
 // Only when the day has any, after the RELOAD column (or the last status before it).
 const DUPLICATES_COLUMN = { key: "duplicates", label: "Duplicates", align: "right", width: 96, number: true, icon: "fas fa-clone", iconColor: "purple-3", title: "Files PDI Core flagged as duplicates" };
 
 const TRAILING_COLUMNS = [
-  { key: "read", label: "Read", align: "right", width: 130, number: true },
-  { key: "written", label: "Written", align: "right", width: 130, number: true },
-  { key: "rejected", label: "Rejected", align: "right", width: 90, number: true },
+  { key: "read", label: "Read", align: "right", width: 130, number: true, title: "Records read from the files" },
+  { key: "written", label: "Written", align: "right", width: 130, number: true, title: "Records written to the tables of the datasource" },
+  { key: "rejected", label: "Rejected", align: "right", width: 90, number: true, title: "Records rejected while loading" },
   { key: "runtime", label: "Runtime", align: "right", width: 100, number: true, title: "The runtimes of the files, summed (h:mm:ss)" },
-  { key: "lastSuccess", label: "Last success", align: "right", width: 100 },
-  { key: "change", label: "vs. week", align: "right", width: 80 },
+  { key: "lastSuccess", label: "Last success", align: "right", width: 100, title: "When the last file of the day loaded successfully started loading" },
+  { key: "change", label: "Trend", align: "right", width: 80, title: "The day's files against the same day a week earlier (today: up to this time)" },
 ];
 
 // The PDI Core file log of one day, by datasource, like Results is for control runs: /files?date=YYYY-MM-DD (plain =
@@ -521,24 +515,24 @@ export default {
         align: "right",
         width: 96,
         number: true,
-        title: `Files in ${status}`,
+        title: fileStatus(status).hint || `Files in ${status}`,
       }));
     },
     tableColumns() {
-      // Incoming only for today; Duplicates only when the day has any, after Reload, like the status columns.
+      // Incoming only for today, after Waiting; Duplicates only when the day has any, after Reload.
       const statuses = [...this.statusColumns];
-      if (this.totals.duplicates > 0) {
-        const after = statuses.filter((column) => statusRank(column.status) <= statusRank("RELOAD")).length;
-        statuses.splice(after, 0, DUPLICATES_COLUMN);
-      }
-      return [...LEADING_COLUMNS, ...(this.isToday ? [INCOMING_COLUMN] : []), ...statuses, ...TRAILING_COLUMNS].map((column) => ({ sort: true, ...column, width: column.key === "sourcename" ? this.nameColumnWidth : column.width }));
+      const insertAfter = (last, column) => statuses.splice(statuses.filter((other) => !other.status || statusRank(other.status) <= statusRank(last)).length, 0, column);
+      if (this.isToday) insertAfter("WAITING", INCOMING_COLUMN);
+      if (this.totals.duplicates > 0) insertAfter("RELOAD", DUPLICATES_COLUMN);
+      return [...LEADING_COLUMNS, ...statuses, ...TRAILING_COLUMNS].map((column) => ({ sort: true, ...column, width: column.key === "sourcename" ? this.nameColumnWidth : column.width }));
     },
     tableWidth() {
       return this.tableColumns.reduce((total, column) => total + (column.width || 0), 0);
     },
     sortedRows() {
       const key = this.sort.key;
-      if (!key) {
+      // A kept sort on a column that is not shown (a status the day has none of, the former Files column) is ignored.
+      if (!key || !this.tableColumns.some((column) => column.key === key)) {
         return this.rows;
       }
       const valueOf = key.startsWith("status:")
@@ -846,5 +840,5 @@ export default {
 .status-count:hover {
   text-decoration: underline;
 }
-.files-table td:nth-child(4) { white-space: normal; }
+.files-table td.name-cell { white-space: normal; }
 </style>

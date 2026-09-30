@@ -89,22 +89,22 @@
                 <q-markup-table flat dense>
                   <thead>
                     <tr class="bg-blue-grey-2">
-                      <th class="text-center sortable" style="width: 50px" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
+                      <th title="The control type: ANL analysis, REC reconciliation, CMP comparison, REP report" class="text-center sortable" style="width: 50px" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
                         Type
                         <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
                       </th>
-                      <th class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
+                      <th title="The control using this KPI type; click it to edit the control" class="text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
                         Name
                         <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
                       </th>
-                      <th class="text-left sortable" @click="toggleSort(sort, 'control_description')" v-keyboard :aria-sort="ariaSort(sort, 'control_description')">
+                      <th title="The control's description" class="text-left sortable" @click="toggleSort(sort, 'control_description')" v-keyboard :aria-sort="ariaSort(sort, 'control_description')">
                         Description
                         <q-icon v-if="sort.key === 'control_description'" :name="sortIcon(sort)" size="12px" />
                       </th>
                       <th class="text-left">
-                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span>
+                        <span class="text-left sortable" title="How far back the data window of a run reaches (period number and type)" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span>
                         <q-icon v-if="sort.key === 'schedule_days'" :name="sortIcon(sort)" size="12px" /> /
-                        <span class="text-left sortable" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
+                        <span class="text-left sortable" title="When the scheduler runs the control" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
                         <q-icon v-if="sort.key === 'schedule_time'" :name="sortIcon(sort)" size="12px" />
                       </th>
                     </tr>

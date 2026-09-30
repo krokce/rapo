@@ -55,9 +55,11 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 
 2. **Files page (PDI Core file log).** A new *Files* menu item: the file log (`PDI_CORE_FILE_LOG`) of one day, like
    Results is for control runs (`/files?date=`).
-   - **By datasource:** files, then the status columns in workflow order: *Incoming* (today only), *Waiting*,
-     *Started* and *Success* (always shown), then *Error*, *Recycle*, *Reload*, *Duplicates* and the rarer statuses
-     (only when the day has such files); then records read / written / rejected, runtime, last success and the change against a week earlier (the table scrolls sideways when wider
+   - **By datasource:** the status columns, the workflow read back from its end: *Success*, *Started*, *Waiting*
+     (always shown) and *Incoming* (today only), then *Error*, *Recycle*, *Reload*, *Duplicates* and the rarer
+     statuses (only when the day has such files); then records read / written / rejected, runtime, last success and
+     *Trend* (the day's files against a week earlier); every header explains its column on mouse-over. There is no
+     *Files* column: the datasource's name opens all its files of the day (the table scrolls sideways when wider
      than the page), with *Silent*, *Drop*, *Errors* and *Log name differs* badges. Header totals and status and duplicate chips filter it;
      an hourly heatmap by lane filters by hour; *Find file* searches the day's file names across all datasources.
    - **Issue chips in the header:** after the status chips, *Silent* and *Drop* with the number of the day's
@@ -346,3 +348,8 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
    the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are
    `--rapo-*` CSS variables used by the component styles.
+
+32. **Header tooltips.** Every column header of every table (the list pages, the editors' tables and run log, the
+   dialogs and the data analysis tables) explains its field on mouse-over, e.g. *PV* on Results is the value the
+   Prerequisite SQL returned, *Err. lvl A [%]* the discrepancies of A as a percentage of the records fetched. All
+   table headers are now compact (28px), as on Results: Controls, KPI types, Datasources and the dialogs had 48px.

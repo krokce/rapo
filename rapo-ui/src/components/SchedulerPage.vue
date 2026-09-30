@@ -50,14 +50,14 @@
           <q-markup-table dense flat>
             <thead>
               <tr class="bg-blue-grey-1">
-                <th class="text-left">State</th>
-                <th class="text-left">Type</th>
-                <th class="text-left">Control</th>
-                <th class="text-left">Trigger</th>
-                <th class="text-center">Run PID</th>
-                <th class="text-center">OS PID</th>
-                <th class="text-left">Queued</th>
-                <th class="text-left">Started</th>
+                <th title="Running, or queued for a free slot (control_parallelism)" class="text-left">State</th>
+                <th title="The control type: ANL analysis, REC reconciliation, CMP comparison, REP report" class="text-left">Type</th>
+                <th title="The control running now; &quot;for&quot; names the control whose job it runs in (chain upstream or cascade)" class="text-left">Control</th>
+                <th title="What started the run: schedule, manual, catch-up, iteration, cascade or upstream" class="text-left">Trigger</th>
+                <th title="The process ID of the run (rapo_log)" class="text-center">Run PID</th>
+                <th title="The operating system's process ID of the worker running it" class="text-center">OS PID</th>
+                <th title="When the run was queued" class="text-left">Queued</th>
+                <th title="When the run's worker process started" class="text-left">Started</th>
                 <th></th>
               </tr>
             </thead>
@@ -163,13 +163,13 @@
                 <thead>
                   <tr class="bg-blue-grey-2">
 
-                    <th class="text-left">Type</th>
-                    <th class="text-left">Scheduled for</th>
-                    <th class="text-left">In</th>
-                    <th class="text-left">Control</th>
-                    <th class="text-left">Run from</th>
-                    <th class="text-left">Run to</th>
-                    <th class="text-left">Group</th>
+                    <th title="The control type: ANL analysis, REC reconciliation, CMP comparison, REP report" class="text-left">Type</th>
+                    <th title="The scheduled time of the fire" class="text-left">Scheduled for</th>
+                    <th title="How long until the fire" class="text-left">In</th>
+                    <th title="The control the scheduler will run" class="text-left">Control</th>
+                    <th title="The start of the data window the run will read" class="text-left">Run from</th>
+                    <th title="The end of the data window the run will read" class="text-left">Run to</th>
+                    <th title="The control's group" class="text-left">Group</th>
                   </tr>
                 </thead>
               </template>
@@ -255,17 +255,17 @@
                 <thead>
                   <tr class="bg-blue-grey-2">
 
-                    <th class="text-left">Type</th>
-                    <th class="text-left">Recorded</th>
-                    <th class="text-left">Scheduled for</th>
-                    <th class="text-center">PID</th>
-                    <th class="text-left">Control</th>
-                    <th class="text-left">Run from</th>
-                    <th class="text-left">Run to</th>
-                    <th class="text-left">Trigger</th>
-                    <th class="text-left">Event</th>
-                    <th class="text-left">Run</th>
-                    <th class="text-left">Message</th>
+                    <th title="The control type: ANL analysis, REC reconciliation, CMP comparison, REP report" class="text-left">Type</th>
+                    <th title="When the scheduler recorded the event" class="text-left">Recorded</th>
+                    <th title="The scheduled time the event is for (none for manual runs)" class="text-left">Scheduled for</th>
+                    <th title="The process ID of the run, once it started" class="text-center">PID</th>
+                    <th title="The control; click it to open its schedule" class="text-left">Control</th>
+                    <th title="The start of the run's data window" class="text-left">Run from</th>
+                    <th title="The end of the run's data window" class="text-left">Run to</th>
+                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or upstream" class="text-left">Trigger</th>
+                    <th title="What happened: queued, started, missed, failed or canceled; click to filter by it" class="text-left">Event</th>
+                    <th title="The status of the run the event started" class="text-left">Run</th>
+                    <th title="Details, such as why a fire was missed or failed" class="text-left">Message</th>
                     <th></th>
                   </tr>
                 </thead>

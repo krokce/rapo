@@ -131,13 +131,13 @@
         <q-markup-table dense flat bordered class="ranking q-mb-md">
           <thead>
             <tr class="bg-blue-grey-2">
-              <th class="text-left">Column A</th>
-              <th class="text-left">Column B</th>
-              <th class="text-left">Kind</th>
-              <th class="text-left" style="width: 260px">Divergence</th>
-              <th class="text-right">Missing A / B</th>
-              <th class="text-right">Distinct A / B</th>
-              <th class="text-right">Median A / B</th>
+              <th title="The column of dataset A" class="text-left">Column A</th>
+              <th title="The column of dataset B it is compared with" class="text-left">Column B</th>
+              <th title="How the values are compared: numbers, dates or text" class="text-left">Kind</th>
+              <th title="Population Stability Index: below 0.1 stable, 0.1 to 0.25 moderate, above 0.25 major" class="text-left" style="width: 260px">Divergence</th>
+              <th title="The share of empty values in A and in B" class="text-right">Missing A / B</th>
+              <th title="The number of different values in A and in B" class="text-right">Distinct A / B</th>
+              <th title="The median value in A and in B (numbers and dates)" class="text-right">Median A / B</th>
             </tr>
           </thead>
           <tbody>
@@ -176,10 +176,10 @@
               <q-markup-table dense flat class="lift-table">
                 <thead>
                   <tr>
-                    <th class="text-left">{{ selected.mode === "bins" ? "Range" : "Value" }}</th>
-                    <th class="text-right">A</th>
-                    <th class="text-right">B</th>
-                    <th class="text-right">Lift</th>
+                    <th :title="selected.mode === 'bins' ? 'The range of values' : 'The value'" class="text-left">{{ selected.mode === "bins" ? "Range" : "Value" }}</th>
+                    <th title="The share of the rows of A with these values" class="text-right">A</th>
+                    <th title="The share of the rows of B with these values" class="text-right">B</th>
+                    <th title="How many times more common these values are in A than in B" class="text-right">Lift</th>
                     <th />
                   </tr>
                 </thead>

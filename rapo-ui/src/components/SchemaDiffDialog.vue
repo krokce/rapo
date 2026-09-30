@@ -67,10 +67,10 @@
             <q-markup-table v-if="table.exists && rowsOf(table).length" dense flat bordered separator="horizontal">
               <thead>
                 <tr>
-                  <th class="text-left">Column</th>
-                  <th class="text-left" style="width: 130px">Status</th>
-                  <th class="text-left">In the table</th>
-                  <th class="text-left">Expected</th>
+                  <th title="The column of the result table" class="text-left">Column</th>
+                  <th title="How the column in the table compares with what the control now produces" class="text-left" style="width: 130px">Status</th>
+                  <th title="The column type in the table now" class="text-left">In the table</th>
+                  <th title="The column type the control produces now" class="text-left">Expected</th>
                 </tr>
               </thead>
               <tbody>

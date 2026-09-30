@@ -21,8 +21,8 @@
       <q-markup-table dense flat bordered class="duplicates-table">
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-right">Count</th>
-            <th v-for="name in duplicates.columns" :key="name" class="text-left">{{ name.toUpperCase() }}</th>
+            <th title="How many rows share these values; click a row to show them" class="text-right">Count</th>
+            <th v-for="name in duplicates.columns" :key="name" :title="`The value of ${name.toUpperCase()} the duplicate rows share`" class="text-left">{{ name.toUpperCase() }}</th>
           </tr>
         </thead>
         <tbody>

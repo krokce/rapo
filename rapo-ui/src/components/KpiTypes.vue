@@ -53,33 +53,33 @@
       class="list-table kpi-table"
       :items="sortedKpiTypes"
       :virtual-scroll-item-size="56"
-      :virtual-scroll-sticky-size-start="48"
+      :virtual-scroll-sticky-size-start="28"
       :table-colspan="8">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th class="text-left sortable" @click="toggleSort(sort, 'kpi_type')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type')">
+            <th title="The KPI type's code, used everywhere to identify it; click a row to edit the type" class="text-left sortable" @click="toggleSort(sort, 'kpi_type')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type')">
               Code
               <q-icon v-if="sort.key === 'kpi_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-left sortable" @click="toggleSort(sort, 'kpi_type_desc')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type_desc')">
+            <th title="What the KPI measures" class="text-left sortable" @click="toggleSort(sort, 'kpi_type_desc')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_type_desc')">
               Description
               <q-icon v-if="sort.key === 'kpi_type_desc'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_value_unit')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_value_unit')">
+            <th title="The unit of the KPI's value; click a unit to filter by it" class="text-center sortable" @click="toggleSort(sort, 'kpi_value_unit')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_value_unit')">
               Unit
               <q-icon v-if="sort.key === 'kpi_value_unit'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_priority')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_priority')">
+            <th title="Orders the KPIs of a control, lowest first" class="text-center sortable" @click="toggleSort(sort, 'kpi_priority')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_priority')">
               Priority
               <q-icon v-if="sort.key === 'kpi_priority'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'kpi_decimal_places')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_decimal_places')">
+            <th title="The decimal places the value is rounded to for the dashboard" class="text-center sortable" @click="toggleSort(sort, 'kpi_decimal_places')" v-keyboard :aria-sort="ariaSort(sort, 'kpi_decimal_places')">
               Decimals
               <q-icon v-if="sort.key === 'kpi_decimal_places'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th class="text-center">Default statements</th>
-            <th class="text-center sortable" @click="toggleSort(sort, 'usage_count')" v-keyboard :aria-sort="ariaSort(sort, 'usage_count')">
+            <th title="The default KPI and alarm SQL of the type, used by controls that do not set their own" class="text-center">Default statements</th>
+            <th title="How many controls use the type" class="text-center sortable" @click="toggleSort(sort, 'usage_count')" v-keyboard :aria-sort="ariaSort(sort, 'usage_count')">
               Used by
               <q-icon v-if="sort.key === 'usage_count'" :name="sortIcon(sort)" size="12px" />
             </th>

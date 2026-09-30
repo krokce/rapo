@@ -209,9 +209,9 @@
             <q-markup-table v-if="email.sheets[sheet.key].fields.length" flat dense bordered>
               <thead>
                 <tr class="bg-blue-grey-1">
-                  <th class="text-left" style="width: 40px">#</th>
-                  <th class="text-left">Column</th>
-                  <th class="text-left">Header label</th>
+                  <th title="The order of the column in the sheet" class="text-left" style="width: 40px">#</th>
+                  <th title="The column of the result table" class="text-left">Column</th>
+                  <th title="The header the column gets in the sheet" class="text-left">Header label</th>
                   <th style="width: 120px"></th>
                 </tr>
               </thead>

@@ -17,7 +17,7 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
 - **Files page**: one day of the PDI Core file log by datasource, an hourly heatmap, file search and lane locks,
   *Silent* / *Drop* / *Stalled* chips with counts; per datasource the files to Recycle, Reload, Delete or
   **Download** (one file or a ZIP). Counts open exactly those files and no longer filter the page; *Incoming* opens the
-  input files in a dialog. Status columns in workflow order, *Waiting*/*Started*/*Success* always shown.
+  input files in a dialog. Status columns from *Success* back to *Incoming*, then *Error*/*Recycle*/*Reload*/*Duplicates* when present; header tooltips.
 - **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
   API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
 - **Temporary tables** left by failed, canceled and debug runs: a Controls header chip lists them by run, with
@@ -58,6 +58,7 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   search in the *Columns* menu; the editor's run log opens *Copy SQL* and *Data analysis* with the server's SQL.
 - **UI load time:** the editors and the file log page load on first visit, halving the vendor bundle of the first
   load.
+- **Table headers:** every column header explains its field on mouse-over, and all are compact (28px) as on Results.
 - **UI accessibility:** names on icon-only buttons, keyboard access (Tab, Enter, Space, focus ring) to sortable
   headers, run numbers and analysis rows, `aria-sort`, and darker muted text and chip colors for contrast.
 - **UI icons and states:** Material icons replaced by Font Awesome (the Material font is gone), one look for empty

@@ -889,22 +889,22 @@
                 <q-markup-table flat dense>
                   <thead>
                     <tr class="bg-blue-grey-2">
-                      <th class="text-left">#</th>
-                      <th class="text-left">Added</th>
-                      <th class="text-left">Start</th>
-                      <th class="text-left">End</th>
-                      <th class="text-left">Runtime</th>
-                      <th class="text-left">PID</th>
-                      <th class="text-left">Run from</th>
-                      <th class="text-left">Run to</th>
-                      <th class="text-right">Fetched A</th>
-                      <th class="text-right">Fetched B</th>
-                      <th class="text-right">Discr. A</th>
-                      <th class="text-right">Discr. B</th>
-                      <th class="text-right">Err. lvl A [%]</th>
-                      <th class="text-right">Err. lvl B [%]</th>
-                      <th class="text-right">PV</th>
-                      <th class="text-left">Status</th>
+                      <th title="The run's number in the list" class="text-left">#</th>
+                      <th title="When the run was requested" class="text-left">Added</th>
+                      <th title="When the run started" class="text-left">Start</th>
+                      <th title="When the run ended" class="text-left">End</th>
+                      <th title="How long the run took, in minutes" class="text-left">Runtime</th>
+                      <th title="The process ID of the run" class="text-left">PID</th>
+                      <th title="The start of the data window the run read" class="text-left">Run from</th>
+                      <th title="The end of the data window the run read" class="text-left">Run to</th>
+                      <th title="Records fetched from datasource A; click the number for its SQL or data analysis" class="text-right">Fetched A</th>
+                      <th title="Records fetched from datasource B; click the number for its SQL or data analysis" class="text-right">Fetched B</th>
+                      <th title="Discrepancies found on side A (the result rows of ANL, CMP and REP); click the number for its SQL or data analysis" class="text-right">Discr. A</th>
+                      <th title="Discrepancies found on side B; click the number for its SQL or data analysis" class="text-right">Discr. B</th>
+                      <th title="Discrepancies of side A as a percentage of the records fetched from A" class="text-right">Err. lvl A [%]</th>
+                      <th title="Discrepancies of side B as a percentage of the records fetched from B" class="text-right">Err. lvl B [%]</th>
+                      <th title="Prerequisite value: what the Prerequisite SQL returned; 0 stops the run" class="text-right">PV</th>
+                      <th title="The status of the run" class="text-left">Status</th>
                       <th class="text-left"></th>
                     </tr>
                   </thead>
