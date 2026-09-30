@@ -14,16 +14,27 @@
 
       <!-- The day's totals, whatever the filters, like the day totals of Results; a status chip filters by it. -->
       <div v-if="hasDay" class="column items-end text-blue-grey-8">
-        <div v-if="statusEntries.length || totals.duplicates" class="row items-center justify-end">
-          <q-chip v-for="entry in statusEntries" :key="entry.status" clickable @click="addStatusFilter(entry.status)">
-            <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
-          </q-chip>
-          <q-chip v-if="totals.duplicates" clickable @click="filter.duplicates = true">
-            <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(totals.duplicates) }})
-            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources with duplicate files</q-tooltip>
-          </q-chip>
+        <!-- Three groups: the day's files by status (and duplicates), the datasources Silent or with a Drop this day and, on
+             today, those Stalled now. An issue counts the rows it filters to; the others are on the Datasources page. -->
+        <div v-if="statusEntries.length || totals.duplicates || issueEntries.length" class="row items-center justify-end header-chips">
+          <div v-if="statusEntries.length || totals.duplicates" class="row items-center">
+            <q-chip v-for="entry in statusEntries" :key="entry.status" clickable @click="addStatusFilter(entry.status)">
+              <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
+              <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
+            </q-chip>
+            <q-chip v-if="totals.duplicates" clickable @click="filter.duplicates = true">
+              <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
+              <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(totals.duplicates) }})
+              <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources with duplicate files</q-tooltip>
+            </q-chip>
+          </div>
+          <div v-for="group in issueGroups" :key="group.key" class="row items-center">
+            <q-chip v-for="entry in group.entries" :key="entry.key" clickable @click="addIssueFilter(entry.key)">
+              <q-avatar :icon="entry.icon" :color="entry.color" text-color="white" />
+              <span class="text-weight-bold q-mr-xs">{{ entry.label }}</span>({{ formatNumber(entry.count) }})
+              <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ entry.hint }}</q-tooltip>
+            </q-chip>
+          </div>
         </div>
         <div class="q-mr-xs">
           {{ formatNumber(totals.files) }} files &middot;
@@ -47,11 +58,11 @@
       <q-chip
         v-for="lane in laneStates"
         :key="lane.value"
-        :clickable="lane.running && stateDelete"
+        :clickable="!lane.running || stateDelete"
         :outline="!lane.running"
         :color="lane.stale ? 'red-1' : undefined"
         :text-color="lane.stale ? 'red-9' : lane.running ? undefined : 'grey-7'"
-        @click="lane.running && stateDelete && removeLaneLock(lane)">
+        @click="clickLane(lane)">
         <q-avatar :icon="lane.running ? 'fas fa-sync' : lane.icon" :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'" text-color="white" />
         <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
         <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
@@ -61,7 +72,7 @@
             Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
             <span v-if="stateDelete">Click to remove its lock (LOAD_{{ lane.value }}).</span>
           </template>
-          <template v-else>No core_load run holds LOAD_{{ lane.value }}.</template>
+          <template v-else>No core_load run holds LOAD_{{ lane.value }}. Click to show only its datasources.</template>
         </q-tooltip>
       </q-chip>
       <q-space />
@@ -219,9 +230,9 @@
               <router-link :to="logLink(row)" class="text-weight-bold text-grey-9 datasource-name">
                 {{ row.sourcename }}
               </router-link>
-              <div v-if="row.issues.length" class="row items-center">
+              <div v-if="rowIssues(row).length" class="row items-center">
                 <q-chip
-                  v-for="issue in row.issues"
+                  v-for="issue in rowIssues(row)"
                   :key="issue.key"
                   clickable
                   size="sm"
@@ -308,13 +319,17 @@ import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
-import { formatAge } from "../utils/datasources";
+import { ISSUES as DATASOURCE_ISSUES, formatAge, issuesOf as datasourceIssuesOf } from "../utils/datasources";
 import { FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusTotals } from "../utils/files";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { compactNumber, dayTitle, formatDuration, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+
+// The Datasources page's issues this page shows too (on today), and the issues the header counts.
+const FILE_DATASOURCE_ISSUES = ["stalled"];
+const HEADER_ISSUES = ["silent", "drop", "ds_stalled"];
 
 // The columns around the status columns (one per status the day has files in): [key, label, align, width, number].
 const LEADING_COLUMNS = [
@@ -421,11 +436,63 @@ export default {
         withoutFiles
       );
     },
-    allRowsCount() {
+    // The day's rows whatever the filters: the count of the filter badge and of the issue chips.
+    allRows() {
       if (!this.hasDay) {
-        return 0;
+        return [];
       }
-      return datasourceRows(this.fileDay, this.datasources, () => true, () => true, true).length;
+      return datasourceRows(this.fileDay, this.datasources, () => true, () => true, true);
+    },
+    allRowsCount() {
+      return this.allRows.length;
+    },
+    // Only on today: Stalled, of the Datasources page's issues, describes the datasources now, not a past day; the
+    // others are about a datasource's setup and stay there. Keyed ds_<key>, so that the Issue filter tells them apart.
+    showDatasourceIssues() {
+      return this.hasDay && this.isToday;
+    },
+    stalledMinutes() {
+      return (this.datasourceStatus && this.datasourceStatus.stalled_minutes) || 60;
+    },
+    datasourceIssues() {
+      const byId = new Map();
+      if (!this.showDatasourceIssues) {
+        return byId;
+      }
+      const statuses = (this.datasourceStatus && this.datasourceStatus.datasources) || {};
+      this.datasourceCatalogue.forEach((row) => {
+        const issues = datasourceIssuesOf(row, statuses[String(row.id)], this.stalledMinutes)
+          .filter((issue) => FILE_DATASOURCE_ISSUES.includes(issue.key))
+          .map((issue) => ({ ...issue, key: `ds_${issue.key}` }));
+        if (issues.length) {
+          byId.set(row.id, issues);
+        }
+      });
+      return byId;
+    },
+    // Every issue the filter can pick: the day's, then (on today) the Datasources page's.
+    issueKinds() {
+      const datasourceKinds = this.showDatasourceIssues
+        ? DATASOURCE_ISSUES.filter((issue) => FILE_DATASOURCE_ISSUES.includes(issue.key)).map((issue) => ({
+            ...issue,
+            key: `ds_${issue.key}`,
+            group: "datasource",
+            hint: "Active datasources whose oldest incoming file has waited too long, as they are now",
+          }))
+        : [];
+      return [...FILE_ISSUES.map((issue) => ({ ...issue, group: "day" })), ...datasourceKinds];
+    },
+    // The issue chips of the header (HEADER_ISSUES), by the rows of the day whatever the filters; none with no datasource.
+    issueGroups() {
+      const counts = new Map();
+      this.allRows.forEach((row) => this.rowIssues(row).forEach((issue) => counts.set(issue.key, (counts.get(issue.key) || 0) + 1)));
+      const entries = this.issueKinds.filter((kind) => HEADER_ISSUES.includes(kind.key) && counts.get(kind.key)).map((kind) => ({ ...kind, count: counts.get(kind.key) }));
+      return ["day", "datasource"]
+        .map((key) => ({ key, entries: entries.filter((entry) => entry.group === key) }))
+        .filter((group) => group.entries.length);
+    },
+    issueEntries() {
+      return this.issueGroups.flatMap((group) => group.entries);
     },
     // The heatmap follows the datasources shown and the statuses, but not the hour, which it picks.
     heatmap() {
@@ -484,11 +551,11 @@ export default {
       return statuses.map((value) => ({ label: fileStatus(value).label, value }));
     },
     issueOptions() {
-      return FILE_ISSUES.map((issue) => ({ label: issue.label, value: issue.key }));
+      return this.issueKinds.map((issue) => ({ label: issue.label, value: issue.key }));
     },
     activeFilters() {
       const filter = this.filter;
-      const issueLabel = (key) => (FILE_ISSUES.find((issue) => issue.key === key) || {}).label || key;
+      const issueLabel = (key) => (this.issueKinds.find((issue) => issue.key === key) || {}).label || key;
       const hourLabel = filter.hour === null ? null : hourRange(filter.hour);
       return [
         ...valueFilter("text", "Datasource", filter.text, () => (filter.text = null), { text: true }),
@@ -554,9 +621,14 @@ export default {
       const search = (this.getSearch || "").toUpperCase();
       return (!text || name.includes(text)) && (!search || name.includes(search));
     },
+    // The day's issues of a row, then (on today) those of its datasource.
+    rowIssues(row) {
+      const datasource = this.datasourceIssues.get(row.id);
+      return datasource ? [...row.issues, ...datasource] : row.issues;
+    },
     issuesMatch(row) {
       const issues = this.filter.issues || [];
-      return !issues.length || issues.some((key) => row.issues.some((issue) => issue.key === key));
+      return !issues.length || issues.some((key) => this.rowIssues(row).some((issue) => issue.key === key));
     },
     waitingOf(row) {
       const status = this.datasourceStatus && this.datasourceStatus.datasources ? this.datasourceStatus.datasources[String(row.id)] : null;
@@ -585,6 +657,14 @@ export default {
     addStatusFilter(status) {
       if (!this.filter.statuses.includes(status)) {
         this.filter.statuses.push(status);
+      }
+    },
+    // A running lane's chip removes its lock; an idle one filters the page by the lane.
+    clickLane(lane) {
+      if (!lane.running) {
+        this.addLaneFilter(lane.value);
+      } else if (this.stateDelete) {
+        this.removeLaneLock(lane);
       }
     },
     addLaneFilter(lane) {
@@ -696,6 +776,12 @@ export default {
     },
   },
   watch: {
+    // The Datasources page's issues describe today, so their filters are dropped once another day is shown.
+    hasDay(loaded) {
+      if (loaded && !this.isToday && (this.filter.issues || []).some((key) => key.startsWith("ds_"))) {
+        this.filter.issues = this.filter.issues.filter((key) => !key.startsWith("ds_"));
+      }
+    },
     // Day navigation only changes the query; the filters and the sort are kept.
     "$route.query.date"() {
       if (this.active && this.$route.name === "files") {
@@ -726,6 +812,9 @@ export default {
 </script>
 
 <style scoped>
+.header-chips {
+  column-gap: 16px;
+}
 .datasource-name {
   white-space: nowrap;
 }

@@ -90,11 +90,12 @@ export function datasourceRows(day, datasources, keep, keepRow, withoutFiles) {
 // (from 10 files a week earlier, so that a small datasource is not flagged by chance). Errors: files ended in ERROR.
 // Log name differs: the file log gives the SOURCEID another SOURCENAME than PDI_CORE_DS_CONFIG, so the files shown may
 // belong to another datasource (an ID reused, or the configuration copied from another environment).
+// `hint` says what the header count of an issue counts.
 export const FILE_ISSUES = [
-  { key: "silent", label: "Silent", color: "red-5", icon: "fas fa-volume-mute" },
-  { key: "drop", label: "Drop", color: "orange-8", icon: "fas fa-arrow-down" },
-  { key: "errors", label: "Errors", color: "red-5", icon: "fas fa-exclamation-circle" },
-  { key: "mismatch", label: "Log name differs", color: "orange-8", icon: "fas fa-not-equal" },
+  { key: "silent", label: "Silent", color: "red-5", icon: "fas fa-volume-mute", hint: "Active datasources without a file this day, though with some a week earlier" },
+  { key: "drop", label: "Drop", color: "orange-8", icon: "fas fa-arrow-down", hint: "Datasources with less than half the files of a week earlier" },
+  { key: "errors", label: "Errors", color: "red-5", icon: "fas fa-exclamation-circle", hint: "Datasources with files that ended in ERROR this day" },
+  { key: "mismatch", label: "Log name differs", color: "orange-8", icon: "fas fa-not-equal", hint: "Datasources whose SOURCEID the file log gives another name: their files may belong to another datasource" },
 ];
 
 function issuesOf(row) {

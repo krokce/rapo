@@ -186,7 +186,7 @@
                   </td>
                   <td class="text-grey-8" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">{{ fromNow(fire.scheduled_time) }}</td>
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id } }" :class="'text-' + controlTypeColor(fire.control_type)">
+                    <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id }, query: { tab: 'scheduler' } }" :class="'text-' + controlTypeColor(fire.control_type)">
                       {{ fire.control_name }}
                     </router-link>
                   </td>
@@ -290,7 +290,7 @@
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <router-link
                       v-if="event.control_name"
-                      :to="{ name: 'edit-control', params: { controlId: event.control_id } }"
+                      :to="{ name: 'edit-control', params: { controlId: event.control_id }, query: { tab: 'scheduler' } }"
                       :class="'text-' + controlTypeColor(event.control_type)">
                       {{ event.control_name }}
                     </router-link>

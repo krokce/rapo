@@ -14,12 +14,13 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 1. **Datasources page (PDI Core).** A new *Datasources* menu item lists and edits the datasources of the PDI Core
    file loader (`PDI_CORE_DS_CONFIG`) with their tables (`PDI_CORE_DS_TABLES`). It shows where Rapo's database user
    can read them, in its own schema or through synonyms; without write or delete grants it is read-only.
-   - **List:** ID, name, input directories, lane (`ISACTIVE`), mask, retention, max files per cycle, subdirectory scan,
-     the *Incoming* files (in the input directories, not yet picked up) and the loads of the last 24 hours. The lane
-     chip switches the lane at once, with *Undo*; disabled datasources are dimmed and show lane `0`. Badges under the
-     directories flag *No tables*, *No retention*, missing or unreadable directories, an invalid mask, *Stalled* and
-     *Errors 24h*. The row menu has Edit, Clone, the file lists, *Create input directory*, *Set lane*, and *Delete*
-     for a disabled datasource (links go; file log and tables stay).
+   - **List:** ID, name, input directories, lane (`ISACTIVE`), mask, retention, max files per cycle, subdirectory scan
+     and the loads of the last 24 hours. The lane chip switches the lane at once, with *Undo*; disabled datasources
+     are dimmed and show lane `0`. Badges under the directories flag *No tables*, *No retention*, missing or unreadable
+     directories, an invalid mask, *Stalled* and *Errors 24h*; the header counts the datasources per lane and per
+     issue (whatever the filters; a click filters by it; issues with no datasource are hidden). The incoming files are
+     counted on the Files page (*Incoming*), not here. The row menu has Edit, Clone, the file lists, *Create input
+     directory*, *Set lane*, and *Delete* for a disabled datasource (links go; file log and tables stay).
    - **Editor** (`/edit-datasource/<id>`), like the control editor: tabs *Main*, with the boxes *General*, *Input
      files* (each directory with whether it exists; matched, all and clean-up file lists, searchable and exportable;
      the masks tried on the directories in the background and as you type) and *Processing*; *Retention*, with the
@@ -58,9 +59,14 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
      rejected, runtime, last success and the change against a week earlier (the table scrolls sideways when wider
      than the page), with *Silent*, *Drop*, *Errors* and *Log name differs* badges. Header totals and status and duplicate chips filter it;
      an hourly heatmap by lane filters by hour; *Find file* searches the day's file names across all datasources.
+   - **Issue chips in the header:** after the status chips, *Silent* and *Drop* with the number of the day's
+     datasources that have them and, on today, *Stalled* (the Datasources page's issue, as it is now; also shown under
+     the datasource names and offered by the *Issues* filter). Counted whatever the filters; a click filters by it, so
+     the count is the rows it gives; an issue with no datasource is hidden. On another day *Stalled* is not shown and
+     its filter is dropped. The other datasource issues are counted on the Datasources page.
    - **Lanes** (`PDI_CORE_STATE`): a chip per lane shows whether a core_load run holds it, red when older than
-     `lock_stale_minutes`; clicking removes the lock after a confirmation. *Lock all lanes* / *Unlock all lanes* set
-     and remove the `LOCK` record. When the table cannot be read, the page says why.
+     `lock_stale_minutes`; clicking a held lane removes the lock after a confirmation, clicking an idle one filters the
+     page by that lane. *Lock all lanes* / *Unlock all lanes* set and remove the `LOCK` record. When the table cannot be read, the page says why.
    - **A datasource's files** (`/files-log/<id>`), laid out like Results, with the heatmap, filters and sorting by any
      column. Selected files can be **Recycled** (SUCCESS or ERROR), **Reloaded** (SUCCESS) or **Deleted** (any
      status): Rapo sets the status and PDI Core does the work. Recycle and Reload need the archived file; Delete also
@@ -299,7 +305,9 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 
 27. **Page names on the editors and the file log.** The control, KPI type and datasource editors and a datasource's
    file log are titled *Edit control* / *New control*, *Edit KPI type*, *Edit datasource* and *Files log*, followed
-   by the type chip and name, smaller.
+   by the type chip and name, smaller. A control opened from a KPI type's *Controls* tab shows its *KPIs* tab, and
+   one opened from the Scheduler (*Upcoming*, *History*) its *Scheduler* tab (`/edit-control/<id>?tab=kpi|scheduler`;
+   any tab the control shows can be named).
 
 28. **Scheduler tables reach the bottom of the window.** *Upcoming* and *History* now use the whole height below
    the tabs, as the Files page does, and scroll inside the table from there. The *Scheduler* menu item moves up,

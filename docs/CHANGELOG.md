@@ -10,13 +10,13 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PDI Core pages need grants on its tables.
 
-- **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`): list with incoming files,
-  24h loads, lane switch and issue badges; editor with input-file lists, *Check regex*, retention tables, a
-  directory explorer, the file log and a *Need attention* tab; clone, delete, 409 on concurrent changes. New
-  `[DATASOURCES]` options.
-- **Files page**: one day of the PDI Core file log by datasource, an hourly heatmap, file search and lane locks;
-  per datasource the files to Recycle, Reload, Delete or **Download** (one file or a ZIP). Counts open exactly those
-  files and no longer filter the page.
+- **Datasources page** for the PDI Core file loader (`PDI_CORE_DS_CONFIG`/`_TABLES`): list with 24h loads,
+  lane switch and issue badges (counted in the header); editor with input-file lists, *Check regex*,
+  retention tables, a directory explorer, the file log and a *Need attention* tab; clone, delete, 409 on concurrent
+  changes. New `[DATASOURCES]` options.
+- **Files page**: one day of the PDI Core file log by datasource, an hourly heatmap, file search and lane locks,
+  *Silent* / *Drop* / *Stalled* chips with counts; per datasource the files to Recycle, Reload, Delete or
+  **Download** (one file or a ZIP). Counts open exactly those files and no longer filter the page.
 - **Deleting a control drops its result tables** (orphans included) unless unticked; not while a run is active.
   API callers: `delete-control` drops by default, pass `drop_tables=false` to keep them.
 - **Temporary tables** left by failed, canceled and debug runs: a Controls header chip lists them by run, with
@@ -64,8 +64,9 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   typos removed.
 - **Controls header counts** of *Datasource missing*, *Schema drift* and *No KPI* controls, each filtering the list.
 - Smaller: Results totals read **ANL** (26) and gain failing controls, records fetched and runtime
-  under the chips (as on Files), Controls names link to the editor, editor pages are titled, Scheduler tables fill
-  the window, the *Scheduler* menu item follows *KPI types*.
+  under the chips (as on Files), Controls names link to the editor, editor pages are titled, a control opened from
+  a KPI type or the Scheduler shows its *KPIs* / *Scheduler* tab, Scheduler tables fill the window, the *Scheduler*
+  menu item follows *KPI types*.
 
 ## v0.8.3 — 2026-09-24
 

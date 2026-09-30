@@ -12,8 +12,7 @@
       </h2>
       <q-space />
 
-      <!-- Lane and incoming-file totals, laid out like the day totals of Results. Incoming: files in the input directories, not
-           yet in the file log (whose WAITING status is another thing). -->
+      <!-- Lane and issue totals, laid out like the day totals of Results. -->
       <div v-if="!showSkeleton" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
         <div>
           <q-chip v-for="entry in laneCounts" :key="entry.lane.value" clickable @click="filter.lanes = [entry.lane.value]">
@@ -22,15 +21,12 @@
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources of {{ entry.lane.label }}</q-tooltip>
           </q-chip>
         </div>
-        <div>
-          <q-chip v-if="waitingTotal !== null" clickable @click="filter.waiting = 'Y'">
-            <q-avatar icon="fas fa-inbox" color="blue-grey-6" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">Incoming</span>({{ formatNumber(waitingTotal) }})
-            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]" max-width="400px">{{ scanTitle }}</q-tooltip>
-          </q-chip>
-          <q-chip v-else>
-            <q-avatar icon="fas fa-hourglass-half" color="grey-5" text-color="white" />
-            Counting files...
+        <!-- The datasources by issue, whatever the filters; a click filters by it. None with no datasource. -->
+        <div v-if="issueCounts.length">
+          <q-chip v-for="entry in issueCounts" :key="entry.key" clickable @click="addIssueFilter(entry.key)">
+            <q-avatar :icon="entry.icon" :color="entry.color" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">{{ entry.label }}</span>({{ entry.count }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources flagged {{ entry.label }}</q-tooltip>
           </q-chip>
         </div>
       </div>
@@ -63,21 +59,6 @@
       </q-select>
 
       <q-select
-        v-model="filter.waiting"
-        class="col-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="[
-          { label: 'Files incoming', value: 'Y' },
-          { label: 'No incoming files', value: 'N' },
-        ]"
-        label="Incoming files">
-      </q-select>
-
-      <q-select
         v-model="filter.issues"
         class="col-3 q-mb-md q-pa-sm"
         outlined
@@ -98,7 +79,7 @@
       :items="sortedDatasources"
       :virtual-scroll-item-size="72"
       :virtual-scroll-sticky-size-start="48"
-      :table-colspan="11">
+      :table-colspan="10">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
@@ -144,25 +125,6 @@
             </div>
           </td>
           <td class="text-left mask-cell ellipsis" :title="row.files_mask">{{ row.files_mask }}</td>
-          <td class="text-right">
-            <div v-if="statusOf(row) && missingOf(row).length && !statusOf(row).waiting" class="text-red-5" :title="`Missing on this server: ${missingOf(row).join(', ')}`">
-              missing
-            </div>
-            <template v-else-if="statusOf(row) && statusOf(row).waiting !== undefined">
-              <div :class="waitingClass(row)">
-                {{ formatNumber(statusOf(row).waiting) }}{{ statusOf(row).capped ? "+" : "" }}
-                <q-icon v-if="statusOf(row).stale" name="fas fa-history" size="11px" color="grey-6" title="Not counted in the last scan (its time budget ran out)" />
-              </div>
-              <div v-if="statusOf(row).waiting" class="text-caption text-grey-7">
-                {{ formatBytes(statusOf(row).bytes) }} · {{ formatAge(ageOf(row)) }}
-                <q-tooltip>Oldest incoming file modified {{ toDateTimeString(statusOf(row).oldest_at) }}</q-tooltip>
-              </div>
-            </template>
-            <span v-else-if="row.isactive === 0 && datasourceStatus && !datasourceStatus.pending" class="text-grey-7" title="Not counted: the datasource is disabled">
-              &ndash;
-            </span>
-            <q-skeleton v-else type="text" width="40px" class="float-right" />
-          </td>
           <td class="text-left">
             <template v-if="logOf(row)">
               <div>{{ toDateTimeString(logOf(row).last_load).slice(5, 16) }}</div>
@@ -192,12 +154,12 @@
         <tbody v-if="showSkeleton">
           <skeleton-rows v-if="!loadError" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', null, null]" />
           <tr v-else>
-            <td colspan="11" class="text-center text-grey-7 q-pa-lg">Datasources could not be loaded</td>
+            <td colspan="10" class="text-center text-grey-7 q-pa-lg">Datasources could not be loaded</td>
           </tr>
         </tbody>
         <tbody v-else-if="!sortedDatasources.length">
           <tr>
-            <td colspan="11" class="text-center text-grey-7 q-pa-lg">No datasources match the filters</td>
+            <td colspan="10" class="text-center text-grey-7 q-pa-lg">No datasources match the filters</td>
           </tr>
         </tbody>
       </template>
@@ -306,9 +268,9 @@ import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { DATASOURCE_LANES, datasourceLane } from "../constants";
 import { liveRefetch } from "../socket";
-import { ISSUES, formatAge, issuesOf, splitDirectories } from "../utils/datasources";
+import { ISSUES, issuesOf, splitDirectories } from "../utils/datasources";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { escapeHtml, formatBytes, formatNumber, toDateTimeString } from "../utils/format";
+import { escapeHtml, formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -319,15 +281,14 @@ const COLUMNS = [
   { key: "sourcename", label: "Name", align: "left", sort: true },
   { key: "input_directory", label: "Input directory", align: "left", sort: true },
   { key: "files_mask", label: "Files mask", align: "left", sort: true },
-  { key: "waiting", label: "Incoming", align: "right", sort: true },
   { key: "last_load", label: "Last 24h", align: "left", sort: true },
   { key: "files_retention_days", label: "Ret. days", align: "right", sort: true },
   { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true },
   { key: "input_scan_subdirs", label: "Subdirs", align: "center", sort: true },
 ];
 
-// The PDI Core datasources (pdi_core_ds_config), with the files waiting in their input directories as the server last
-// counted them (get-ds-status). Kept alive (App.vue): activated/deactivated start and stop its live refresh.
+// The PDI Core datasources (pdi_core_ds_config), flagged by the issues of their setup and of the server's last scan of
+// their directories (get-ds-status). Kept alive (App.vue): activated/deactivated start and stop its live refresh.
 export default {
   name: "DatasourceCatalogue",
   mixins: [persistFilters("datasources", ["filter", "sort"])],
@@ -345,7 +306,6 @@ export default {
       filter: {
         text: "",
         lanes: [],
-        waiting: null,
         issues: [],
       },
       sort: {
@@ -396,20 +356,13 @@ export default {
     issueOptions() {
       return ISSUES.map((issue) => ({ label: issue.label, value: issue.key }));
     },
+    issueCounts() {
+      const counts = new Map();
+      this.issueIndex.forEach((issues) => issues.forEach((issue) => counts.set(issue.key, (counts.get(issue.key) || 0) + 1)));
+      return ISSUES.filter((issue) => counts.get(issue.key)).map((issue) => ({ ...issue, count: counts.get(issue.key) }));
+    },
     stalledMinutes() {
       return (this.datasourceStatus && this.datasourceStatus.stalled_minutes) || 60;
-    },
-    waitingTotal() {
-      if (!this.datasourceStatus || this.datasourceStatus.pending) {
-        return null;
-      }
-      return this.datasourceCatalogue.reduce((total, row) => total + ((this.statusOf(row) || {}).waiting || 0), 0);
-    },
-    scanTitle() {
-      const status = this.datasourceStatus;
-      return status && status.scanned_at
-        ? `Counted at ${toDateTimeString(status.scanned_at)} in ${status.duration} s, every ${status.interval} s while this page is open. Show the datasources with incoming files.`
-        : "";
     },
     activeFilters() {
       const filter = this.filter;
@@ -417,7 +370,6 @@ export default {
       return [
         ...valueFilter("text", "Text", filter.text, () => (filter.text = null), { text: true }),
         ...listFilter("lane", "Lane", filter.lanes, (value) => (filter.lanes = filter.lanes.filter((item) => item !== value)), (value) => datasourceLane(value).label),
-        ...valueFilter("waiting", "Incoming", filter.waiting, () => (filter.waiting = null), { label: filter.waiting === "Y" ? "Files incoming" : "No incoming files" }),
         ...listFilter("issue", "Issue", filter.issues, (value) => (filter.issues = filter.issues.filter((item) => item !== value)), issueLabel),
         ...searchFilter(this.$store),
       ];
@@ -433,7 +385,7 @@ export default {
       const text = (this.filter.text || "").toUpperCase();
       const lanes = this.filter.lanes || [];
       const issues = this.filter.issues || [];
-      if (!search && !text && !lanes.length && !this.filter.waiting && !issues.length) {
+      if (!search && !text && !lanes.length && !issues.length) {
         return this.datasourceCatalogue;
       }
       return this.datasourceCatalogue.filter((row) => {
@@ -441,10 +393,6 @@ export default {
         if (search && !haystack.includes(search)) return false;
         if (text && !haystack.includes(text)) return false;
         if (lanes.length && !lanes.includes(row.isactive)) return false;
-        if (this.filter.waiting) {
-          const waiting = ((this.statusOf(row) || {}).waiting || 0) > 0;
-          if (waiting !== (this.filter.waiting === "Y")) return false;
-        }
         if (issues.length) {
           const own = this.issueIndex.get(row.id) || [];
           if (!issues.some((key) => own.some((issue) => issue.key === key))) return false;
@@ -454,11 +402,11 @@ export default {
     },
     sortedDatasources() {
       const key = this.sort.key;
-      if (!key) {
+      // A sort kept from a column that is gone is ignored.
+      if (!key || !COLUMNS.some((column) => column.key === key)) {
         return this.filteredDatasources;
       }
       const valueOf = {
-        waiting: (row) => (this.statusOf(row) || {}).waiting,
         last_load: (row) => (this.logOf(row) || {}).last_load,
       }[key] || ((row) => row[key]);
       return sortRows(this.filteredDatasources, valueOf, this.sort.dir);
@@ -481,8 +429,6 @@ export default {
   methods: {
     ...mapActions(["updateDatasourceCatalogue", "updateDatasourceStatus"]),
     fillViewportToBottom,
-    formatAge,
-    formatBytes,
     formatNumber,
     sortIcon,
     toDateTimeString,
@@ -510,17 +456,6 @@ export default {
     isMissing(row, path) {
       return this.missingOf(row).includes(path);
     },
-    // The oldest waiting file's age when it was counted.
-    ageOf(row) {
-      const status = this.statusOf(row);
-      return status && status.oldest ? this.datasourceStatus.scanned_epoch - status.oldest : null;
-    },
-    waitingClass(row) {
-      const status = this.statusOf(row);
-      if (status.stalled) return "text-red-6 text-weight-bold";
-      if (status.waiting) return "text-weight-bold";
-      return "text-grey-7";
-    },
     addIssueFilter(key) {
       if (!this.filter.issues.includes(key)) {
         this.filter.issues.push(key);
@@ -529,7 +464,6 @@ export default {
     clearFilters() {
       this.filter.text = null;
       this.filter.lanes = [];
-      this.filter.waiting = null;
       this.filter.issues = [];
       this.$store.commit("updateSearch", "");
     },

@@ -1191,6 +1191,20 @@ export default {
     kpiAvailable() {
       return this.kpiTypes.length > 0;
     },
+    // The tabs this control shows, as the q-tab conditions of the template.
+    shownTabs() {
+      const type = this.control.control_type;
+      return [
+        "main",
+        "data",
+        "sql",
+        ...(type !== "REP" && type !== "REC" ? ["case"] : []),
+        "scheduler",
+        ...(this.kpiAvailable ? ["kpi"] : []),
+        ...(this.emailEnabled ? ["email"] : []),
+        ...(this.control.control_id ? ["log"] : []),
+      ];
+    },
     scheduleType() {
       return scheduleType(this.scheduleObject);
     },
@@ -1341,6 +1355,14 @@ export default {
     },
   },
   methods: {
+    // A link may open a tab (?tab=kpi from a KPI type's Controls tab, ?tab=scheduler from the Scheduler page); one the
+    // control does not show is ignored.
+    openRouteTab() {
+      const { tab } = this.$route.query;
+      if (tab && this.shownTabs.includes(tab)) {
+        this.tab = tab;
+      }
+    },
     // The Check of a code box: validate-sql parses the text against the unsaved form (datasource, name, case
     // IDs), so a statement can be checked before it is saved.
     checker(kind, sourceField) {
@@ -2388,6 +2410,7 @@ export default {
         controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
       }
       await this.loadControl(controlData, kpiControlName);
+      this.openRouteTab();
       this.ready = true;
       if (this.control.control_id) {
         this.getControlVersions(this.controlId);
