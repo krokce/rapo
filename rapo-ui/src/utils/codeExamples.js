@@ -377,6 +377,33 @@ const EMAIL_SQL = [
   },
 ];
 
+// The email's Evaluate SQL (send_when 'evaluate_sql'): one number, the email is sent only when it is above 0. The
+// {variables} are the Prerequisite SQL's, formatted strictly.
+const EVALUATE_SQL_NOTE = "The email is sent only when the number is above 0, whatever the run status.";
+const EVALUATE_SQL = [
+  {
+    title: "Results of this run",
+    caption: EVALUATE_SQL_NOTE,
+    text: "select count(*)\nfrom <result_table>\nwhere rapo_process_id = {process_id}",
+  },
+  {
+    title: "Losses above an amount",
+    caption: EVALUATE_SQL_NOTE,
+    text: "select count(*)\nfrom <result_table>\nwhere rapo_process_id = {process_id}\n  and rapo_result_type = 'Loss'\n  and charge > 1000",
+    types: ["REC"],
+  },
+  {
+    title: "Total above a threshold",
+    caption: `Sends when the sum exceeds 10000. ${EVALUATE_SQL_NOTE}`,
+    text: "select case when sum(charge) > 10000 then 1 else 0 end\nfrom <result_table>\nwhere rapo_process_id = {process_id}",
+  },
+  {
+    title: "Source rows of the window",
+    caption: EVALUATE_SQL_NOTE,
+    text: "select count(*)\nfrom ds_calls\n" + `where call_date >= ${WINDOW_FROM}\n` + `  and call_date <= ${WINDOW_TO}`,
+  },
+];
+
 // KPI statements of one control: one number for the run :v_processid. By family, see kpiFamily().
 const KPI = {
   monetary: [
@@ -741,7 +768,7 @@ function filled(menu, context) {
  *
  * @param {object} context
  * @param {string} context.field - filter, error_definition, case_definition, preparation, prerequisite,
- *   completion, email_filter, email_sql, kpi_sql, alarm_sql, default_kpi_sql or default_alarm_sql.
+ *   completion, email_filter, email_sql, evaluate_sql, kpi_sql, alarm_sql, default_kpi_sql or default_alarm_sql.
  * @param {string} [context.controlType] - ANL, REC, CMP or REP; picks the result table and type-bound examples.
  * @param {string} [context.controlName] - fills <control_name> and the result table names.
  * @param {string} [context.kpiType] - the KPI type code, whose family comes first.
@@ -769,6 +796,8 @@ export function examplesFor(context) {
       return plain(EMAIL_FILTER);
     case "email_sql":
       return plain(EMAIL_SQL);
+    case "evaluate_sql":
+      return plain(EVALUATE_SQL);
     case "kpi_sql":
       return filled(grouped(KPI, familyLabels(), family, controlType), context);
     case "default_kpi_sql":

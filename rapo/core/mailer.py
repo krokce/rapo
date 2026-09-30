@@ -24,7 +24,7 @@ from ..logger import logger
 from ..utils import utils
 
 
-SEND_WHEN = ('done_with_results', 'done', 'done_or_error')
+SEND_WHEN = ('done_with_results', 'done', 'done_or_error', 'evaluate_sql')
 DEFAULT_SEND_WHEN = 'done_with_results'
 EMAIL_TYPES = ('ANL', 'REP', 'REC')
 DEFAULT_MAX_ROWS = 100000
@@ -136,8 +136,45 @@ def build_variables(control):
         error_number_a=control.error_number_a,
         error_number_b=control.error_number_b,
         text_error=read_text_error(control),
-        attachment_rows=None)
+        attachment_rows=None,
+        evaluate_value=None)
     return variables
+
+
+def evaluate(control, email_config):
+    """Run the Evaluate SQL of send_when 'evaluate_sql'.
+
+    The statement is prepared as the Prerequisite SQL: strict str.format()
+    with the control variables. The email is sent only when its value is a
+    number above 0.
+
+    Returns
+    -------
+    value : object
+        The first column of the first row, None when it failed.
+    error : str or None
+        Why the value can not be used as a number.
+    """
+    statement = (email_config.get('evaluate_sql') or '').strip()
+    if not statement:
+        return None, 'Evaluate SQL is empty'
+    try:
+        statement = statement.format(**control.variables)
+        statement = db.formatter(statement)
+        value = db.execute(statement, as_scalar=True)
+    except Exception as error:
+        logger.error()
+        message = str(error).splitlines()[0] if str(error) else ''
+        return None, f'Evaluate SQL failed: {type(error).__name__}: {message}'
+    if value is None:
+        return None, 'Evaluate SQL returned no value'
+    if isinstance(value, decimal.Decimal) and value == value.to_integral():
+        value = int(value)
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return value, f'Evaluate SQL returned {value!r}, not a number'
+    return value, None
 
 
 class Sheet:
@@ -547,11 +584,35 @@ def send_run_email(control, trigger='run', override_to=None):
     send_when = email_config.get('send_when') or DEFAULT_SEND_WHEN
     if send_when not in SEND_WHEN:
         send_when = DEFAULT_SEND_WHEN
-    if control.status == 'E':
-        if send_when != 'done_or_error' and not manual:
-            return False
-    elif control.status != 'D':
+    if control.status not in ('D', 'E'):
         return skip(f'run status is {control.status}, not D')
+    if control.status == 'E' and not manual and \
+            send_when not in ('done_or_error', 'evaluate_sql'):
+        return False
+
+    # Evaluated before the sheets are built, so that nothing is fetched for
+    # an email that is not sent. A resend or a test is sent anyway.
+    evaluate_value = None
+    evaluate_note = None
+    if send_when == 'evaluate_sql':
+        evaluate_value, evaluate_error = evaluate(control, email_config)
+        if evaluate_error:
+            evaluate_note = f'{evaluate_error}, so a run would not send ' \
+                            'this email.'
+            if not manual:
+                logger.warning(f'{control} Email not sent: {evaluate_error}')
+                return False
+            logger.warning(f'{control} Email: {evaluate_error}')
+        else:
+            logger.info(f'{control} Email: Evaluate SQL returned '
+                        f'{evaluate_value}')
+            if float(evaluate_value) <= 0:
+                evaluate_note = f'Evaluate SQL returned {evaluate_value}, ' \
+                                'so a run would not send this email.'
+                if not manual:
+                    logger.info(f'{control} Email not sent: Evaluate SQL '
+                                f'returned {evaluate_value}')
+                    return False
 
     logger.info(f'{control} Preparing email ({trigger}, '
                 f'send when {send_when})...')
@@ -565,6 +626,7 @@ def send_run_email(control, trigger='run', override_to=None):
             return skip('no recipients')
 
         variables = build_variables(control)
+        variables['evaluate_value'] = evaluate_value
         note = None
         content = None
         name = None
@@ -618,6 +680,8 @@ def send_run_email(control, trigger='run', override_to=None):
             body += f'\n\n{note}'
         if trigger == 'test':
             subject = f'[TEST] {subject}'
+            if evaluate_note:
+                body += f'\n\n{evaluate_note}'
 
         params = settings()
         sender = params.get('sender')

@@ -6,6 +6,16 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
+## v0.8.5 — unreleased
+
+No schema change.
+
+- **Email *Send when: Evaluate SQL*:** sent only when a Prerequisite-style SQL returns a number above 0, whatever the
+  run status or result rows; its value is `{evaluate_value}`. A failing or non-numeric statement sends nothing and
+  warns in the run log; *Resend* and *Send test* always send.
+
+---
+
 ## v0.8.4 — 2026-09-28
 
 No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PDI Core pages need grants on its tables.

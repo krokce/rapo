@@ -5,7 +5,8 @@
         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
           'Done, with results': only runs that end Done and have rows in the attachment (after its filter).<br />
           'Done, always': every run that ends Done, empty ones with a note instead of a file.<br />
-          'Done or error': as 'Done, always', plus runs that end in Error, with the error and no file.
+          'Done or error': as 'Done, always', plus runs that end in Error, with the error and no file.<br />
+          'Evaluate SQL': only when the Evaluate SQL returns a number above 0, whatever the run status or result rows.
         </q-tooltip>
       </q-select>
       <q-input
@@ -33,6 +34,16 @@
       </q-toggle>
       <q-toggle class="col" v-model="email.attach" label="Attach Excel file" />
     </div>
+
+    <template v-if="email.send_when === 'evaluate_sql'">
+      <code-box label="Evaluate SQL" :template-vars="true" v-model="email.evaluate_sql" :tables="sqlTables" :examples="evaluateExamples" :check="evaluateChecker">
+      </code-box>
+      <div class="text-grey-7 text-caption">
+        A query returning one number, run when the run ends Done or Error. The email is sent only when the number is above 0; 0, a negative number or
+        a failed query sends nothing. Variables as in the Prerequisite SQL, e.g. <span class="text-mono">{process_id}</span>. Its value is
+        <span class="text-mono">{evaluate_value}</span> in the subject, the body and the file name.
+      </div>
+    </template>
 
     <div v-for="field in recipientFields" :key="field.key" class="row">
       <q-select
@@ -374,7 +385,7 @@ export default {
       return this.controlType === "REC";
     },
     variables() {
-      return emailVariables(this.controlType);
+      return emailVariables(this.controlType, this.email.send_when);
     },
     // The variables of the filters and the Free SQL: listed under the box and completed after "{".
     sheetVariables() {
@@ -387,6 +398,9 @@ export default {
     },
     sqlExamples() {
       return examplesFor({ field: "email_sql", controlType: this.controlType, controlName: this.controlName, side: "a" });
+    },
+    evaluateExamples() {
+      return examplesFor({ field: "evaluate_sql", controlType: this.controlType, controlName: this.controlName, side: "a" });
     },
     anySheetIncluded() {
       const included = this.sheets.some((sheet) => this.email.sheets[sheet.key].enabled && (!sheet.rec || sheet.available.length));
@@ -459,6 +473,14 @@ export default {
         method: "POST",
         loadingBar: false,
         body: { kind: "email_sql", statement, control_name: this.controlName, control_type: this.controlType },
+      });
+    },
+    // Checked as a Prerequisite SQL: a select returning one number.
+    evaluateChecker(statement) {
+      return api("validate-sql", {
+        method: "POST",
+        loadingBar: false,
+        body: { kind: "prerequisite", statement, control_name: this.controlName, control_type: this.controlType },
       });
     },
     isEmailAddress,

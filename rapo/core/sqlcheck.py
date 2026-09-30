@@ -112,7 +112,8 @@ def sample_variables(control_name=None, email=False):
                          fetched_number_a=0, fetched_number_b=0,
                          success_number_a=0, success_number_b=0,
                          error_number_a=0, error_number_b=0,
-                         text_error='', attachment_rows=0)
+                         text_error='', attachment_rows=0,
+                         evaluate_value=0)
     return variables
 
 

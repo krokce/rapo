@@ -7,6 +7,7 @@ export const SEND_WHEN_OPTIONS = [
   { label: "Done, with results", value: "done_with_results" },
   { label: "Done, always", value: "done" },
   { label: "Done or error", value: "done_or_error" },
+  { label: "Evaluate SQL", value: "evaluate_sql" },
 ];
 
 // Result types a REC side can export: Loss and Discrepancy when its issues are saved, Match when its matches are.
@@ -37,12 +38,14 @@ export const EMAIL_VARIABLES = [
   { token: "{error_number_a}", label: "Errors A", rec: true },
   { token: "{error_number_b}", label: "Errors B", rec: true },
   { token: "{attachment_rows}", label: "Attachment rows", sheets: false },
+  { token: "{evaluate_value}", label: "Evaluate SQL value", evaluate: true },
 ];
 
-// The variables of a control type's subject, body and attachment name.
-export function emailVariables(controlType) {
+// The variables of a control type's subject, body and attachment name; {evaluate_value} only with send_when
+// 'evaluate_sql'.
+export function emailVariables(controlType, sendWhen) {
   const rec = controlType === "REC";
-  return EMAIL_VARIABLES.filter((variable) => (rec ? !variable.single : !variable.rec));
+  return EMAIL_VARIABLES.filter((variable) => (rec ? !variable.single : !variable.rec) && (!variable.evaluate || sendWhen === "evaluate_sql"));
 }
 
 // The variables of the sheet filters and the Free SQL, as CodeBox `templateVars`: one entry per variable, dates with

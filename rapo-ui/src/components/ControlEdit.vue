@@ -1971,6 +1971,9 @@ export default {
       if (!email.subject || !email.subject.trim()) {
         return "Please enter an email subject.";
       }
+      if (email.send_when === "evaluate_sql" && !(email.evaluate_sql || "").trim()) {
+        return "Please enter the Evaluate SQL of the email, or choose another 'Send when'.";
+      }
       if (email.max_records != null && !(Number.isInteger(email.max_records) && email.max_records > 0)) {
         return "Max records must be a whole number greater than 0.";
       }
