@@ -57,8 +57,8 @@
                   </q-chip>
                 </td>
                 <td class="text-grey-8">{{ toDateTimeString(run.started) }}</td>
-                <td class="text-right" :title="run.tables.join('\n')">{{ run.tables.length }}</td>
-                <td class="text-right text-grey-8">{{ formatNumber(run.mb, 1) }}</td>
+                <td class="text-right number-cell" :title="run.tables.join('\n')">{{ run.tables.length }}</td>
+                <td class="text-right text-grey-8 number-cell">{{ formatNumber(run.mb, 1) }}</td>
                 <td class="text-right">
                   <q-btn flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropRun(run)" />
                 </td>
@@ -74,7 +74,7 @@
               <tr v-for="table in scratch" :key="table.table">
                 <td>{{ table.table }}</td>
                 <td class="text-grey-8">created {{ toDateTimeString(table.created) }}</td>
-                <td class="text-right text-grey-8">{{ formatNumber(table.mb, 1) }} MB</td>
+                <td class="text-right text-grey-8 number-cell">{{ formatNumber(table.mb, 1) }} MB</td>
                 <td class="text-right" style="width: 80px">
                   <q-btn flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropScratch(table)" />
                 </td>
@@ -92,7 +92,7 @@
                 <td>{{ table.table }}</td>
                 <td class="text-grey-8">{{ table.type }}</td>
                 <td class="text-grey-8">created {{ toDateTimeString(table.created) }}</td>
-                <td class="text-right text-grey-8">{{ formatNumber(table.mb, 1) }} MB</td>
+                <td class="text-right text-grey-8 number-cell">{{ formatNumber(table.mb, 1) }} MB</td>
                 <td class="text-right" style="width: 80px">
                   <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-copy" aria-label="Copy name" @click="copyName(table)">
                     <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Copy name</q-tooltip>

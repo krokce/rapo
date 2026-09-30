@@ -80,14 +80,14 @@
             <td v-for="(key, position) in row.keys" :key="position" :class="{ 'text-grey-7 text-italic': key === null }">
               {{ key === null ? "(missing)" : formatKey(key, position) }}
             </td>
-            <td class="text-right text-weight-medium">{{ formatNumber(row.count) }}</td>
+            <td class="text-right text-weight-medium number-cell">{{ formatNumber(row.count) }}</td>
             <td>
               <div class="row no-wrap items-center">
                 <div class="share-bar" :style="{ width: Math.max((row.count * 100) / maxCount, 0.5) + '%' }" />
                 <span class="text-caption text-grey-7 q-ml-xs">{{ formatPct((row.count * 100) / result.total_rows) }}</span>
               </div>
             </td>
-            <td v-for="(value, position) in row.values" :key="'v' + position" class="text-right">{{ formatStat(value) }}</td>
+            <td v-for="(value, position) in row.values" :key="'v' + position" class="text-right number-cell">{{ formatStat(value) }}</td>
           </tr>
         </tbody>
       </table>

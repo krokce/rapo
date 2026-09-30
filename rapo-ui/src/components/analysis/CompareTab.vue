@@ -153,9 +153,9 @@
                   <span class="q-ml-xs text-caption text-grey-7">{{ column.level }}</span>
                 </div>
               </td>
-              <td class="text-right">{{ formatPct(column.missing_pct[0]) }} / {{ formatPct(column.missing_pct[1]) }}</td>
-              <td class="text-right">{{ formatNumber(column.distinct[0]) }} / {{ formatNumber(column.distinct[1]) }}</td>
-              <td class="text-right">{{ medianText(column) }}</td>
+              <td class="text-right number-cell">{{ formatPct(column.missing_pct[0]) }} / {{ formatPct(column.missing_pct[1]) }}</td>
+              <td class="text-right number-cell">{{ formatNumber(column.distinct[0]) }} / {{ formatNumber(column.distinct[1]) }}</td>
+              <td class="text-right number-cell">{{ medianText(column) }}</td>
             </tr>
           </tbody>
         </q-markup-table>
@@ -186,8 +186,8 @@
                 <tbody>
                   <tr v-for="item in liftRows" :key="item.index">
                     <td class="ellipsis lift-label" :title="bucketLabel(item)" :class="{ 'text-italic text-grey-7': item.missing || item.other }">{{ bucketLabel(item) }}</td>
-                    <td class="text-right">{{ formatPct(item.share_a) }}</td>
-                    <td class="text-right">{{ formatPct(item.share_b) }}</td>
+                    <td class="text-right number-cell">{{ formatPct(item.share_a) }}</td>
+                    <td class="text-right number-cell">{{ formatPct(item.share_b) }}</td>
                     <td class="text-right">
                       <q-chip dense square size="sm" :color="liftColor(item)" :text-color="chipTextColor(liftColor(item))" class="text-weight-bold">{{ liftText(item) }}</q-chip>
                     </td>

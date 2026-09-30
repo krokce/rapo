@@ -32,6 +32,9 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
 - **Engine chip on Controls:** reconciliations show *DB engine* / *PL engine*, filterable as an attribute.
 - **Control groups:** a *Control group* field in the editor (pick a group in use or type a new one), a group filter
   and a clickable group chip on Controls.
+- **One mono font:** paths, code and table numbers use the bundled Roboto Mono. Datasources: a directory opens
+  its files, the mask moves under the directories (*Input files*; no *Files mask* column), *Zipped*/*Parallel* columns, *Files 24h* is a count; the editor
+  puts the source name beside lane and ID, the scan options under *Processing*, the archive directories in one row.
 - **Dark mode:** a header button cycles Automatic (follows the system, default) / Light / Dark, remembered by the
   browser; pages, dialogs, charts and SQL editors have dark variants, the light theme is unchanged.
 - **Formula mode in CMP criteria:** *Match* and *Mismatch* rows take SQL expressions over `a.`/`b.`, as in REC

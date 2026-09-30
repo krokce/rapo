@@ -32,11 +32,11 @@
             <span v-else class="chevron" />
             <q-spinner v-if="item.kind === 'loading'" size="14px" color="grey-6" class="q-mr-sm" />
             <q-icon v-else-if="item.icon" :name="item.icon" :color="item.color" size="14px" class="q-mr-sm" />
-            <span :class="item.class" class="ellipsis" :title="item.title">{{ item.label }}</span>
+            <span :class="item.class" class="ellipsis text-mono" :title="item.title">{{ item.label }}</span>
             <span v-if="item.detail" class="text-mono text-grey-8 q-ml-md ellipsis" :title="item.detail">{{ item.detail }}</span>
             <span v-if="item.summary" class="text-grey-7 q-ml-sm text-no-wrap">{{ item.summary }}</span>
           </div>
-          <div class="cell-size text-right">
+          <div class="cell-size text-right number-cell">
             {{ item.size != null ? formatBytes(item.size) : "" }}
           </div>
           <div class="cell-modified">{{ toDateTimeString(item.modified) }}</div>

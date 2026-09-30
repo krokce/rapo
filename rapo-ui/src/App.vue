@@ -465,7 +465,7 @@ export default {
   font-weight: 500
 
 .instance-paths
-  font-family: Monospace, sans-serif
+  font-family: var(--rapo-font-mono)
   font-size: 12px
   line-height: 1.5
   word-break: break-all
@@ -478,7 +478,7 @@ export default {
   border-collapse: collapse
   width: 100%
   table-layout: fixed
-  font-family: Monospace, sans-serif
+  font-family: var(--rapo-font-mono)
   font-size: 12px
   line-height: 1.25
 

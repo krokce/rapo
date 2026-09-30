@@ -27,7 +27,7 @@
         </thead>
         <tbody>
           <tr v-for="(row, index) in duplicates.rows" :key="index" class="cursor-pointer" title="Show these rows" v-keyboard @click="showRow(row)">
-            <td class="text-right text-weight-bold">{{ formatNumber(row.count) }}</td>
+            <td class="text-right text-weight-bold number-cell">{{ formatNumber(row.count) }}</td>
             <td v-for="(value, position) in row.values" :key="position" :class="{ 'text-grey-7': value === null }">
               {{ value === null ? "–" : formatValue(value, kinds[duplicates.columns[position]]) }}
             </td>

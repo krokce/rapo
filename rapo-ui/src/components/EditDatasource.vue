@@ -53,7 +53,7 @@
                     <q-item-label>General</q-item-label>
                   </q-item-section>
                   <q-card-section class="q-gutter-y-md">
-                    <div class="row no-wrap general-input general-row">
+                    <div class="row items-start general-row">
                         <q-select class="lane-input" outlined v-model="datasource.isactive" emit-value map-options :options="laneOptions" label="Scheduler lane">
                           <template #prepend>
                             <q-avatar size="26px" :icon="lane(datasource.isactive).icon" :color="lane(datasource.isactive).color" text-color="white" />
@@ -79,24 +79,24 @@
                             <q-icon name="fas fa-hashtag" @click.stop.prevent />
                           </template>
                         </q-input>
+                        <q-input
+                          class="name-input"
+                          outlined
+                          v-model="datasource.sourcename"
+                          label="Source name"
+                          maxlength="50"
+                          counter
+                          :rules="[(value) => !!value || 'Required', (value) => /^[A-Z0-9_]+$/.test(value) || 'Letters, digits and underscores']"
+                          @update:model-value="(value) => (datasource.sourcename = (value || '').toUpperCase())">
+                          <template #prepend>
+                            <q-icon name="fas fa-file-import" @click.stop.prevent />
+                          </template>
+                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                            The name of the PDI transformation in /public/core/load_file/datasources that loads the files, <br />
+                            and the default table a RECYCLE or DELETE cleans. The file log holds 50 characters of it.
+                          </q-tooltip>
+                        </q-input>
                     </div>
-                    <q-input
-                      class="general-input"
-                      outlined
-                      v-model="datasource.sourcename"
-                      label="Source name"
-                      maxlength="50"
-                      counter
-                      :rules="[(value) => !!value || 'Required', (value) => /^[A-Z0-9_]+$/.test(value) || 'Letters, digits and underscores']"
-                      @update:model-value="(value) => (datasource.sourcename = (value || '').toUpperCase())">
-                      <template #prepend>
-                        <q-icon name="fas fa-file-import" @click.stop.prevent />
-                      </template>
-                      <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                        The name of the PDI transformation in /public/core/load_file/datasources that loads the files, <br />
-                        and the default table a RECYCLE or DELETE cleans. The file log holds 50 characters of it.
-                      </q-tooltip>
-                    </q-input>
                     <div v-if="cloneNotice" class="text-caption text-orange-9">
                       <q-icon name="fas fa-info-circle" /> {{ cloneNotice }}
                     </div>
@@ -173,37 +173,6 @@
                       </q-btn>
                     </div>
 
-                    <div class="row q-gutter-md items-start">
-                      <q-select
-                        class="field-240"
-                        outlined
-                        emit-value
-                        map-options
-                        v-model="datasource.input_scan_subdirs"
-                        :options="yesNoOptions"
-                        label="Scan subdirectories"
-                        @update:model-value="scheduleMaskCheck">
-                        <template #prepend>
-                          <q-icon name="fas fa-sitemap" @click.stop.prevent />
-                        </template>
-                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Whether the subdirectories of the input directories are scanned too</q-tooltip>
-                      </q-select>
-                      <q-input
-                        class="field-200"
-                        outlined
-                        type="number"
-                        v-model.number="datasource.files_max_per_cycle"
-                        label="Max files per cycle"
-                        :rules="[(value) => (Number.isInteger(value) && value >= 1) || '1 or more']">
-                        <template #prepend>
-                          <q-icon name="fas fa-layer-group" @click.stop.prevent />
-                        </template>
-                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                          Bounds one run of core_load, which typically runs every minute
-                        </q-tooltip>
-                      </q-input>
-                    </div>
-                    <div class="text-caption text-grey-7">A file modified in the last 60 s waits for the next cycle.</div>
 
                     <template v-if="saved">
                       <q-separator />
@@ -241,6 +210,66 @@
                   <q-card-section class="q-gutter-y-md">
                     <div class="row q-gutter-md items-start">
                       <q-select
+                        class="field-240"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="datasource.input_scan_subdirs"
+                        :options="yesNoOptions"
+                        label="Scan subdirectories"
+                        @update:model-value="scheduleMaskCheck">
+                        <template #prepend>
+                          <q-icon name="fas fa-sitemap" @click.stop.prevent />
+                        </template>
+                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Whether the subdirectories of the input directories are scanned too</q-tooltip>
+                      </q-select>
+                      <q-input
+                        class="field-200"
+                        outlined
+                        type="number"
+                        v-model.number="datasource.files_max_per_cycle"
+                        label="Max files per cycle"
+                        :rules="[(value) => (Number.isInteger(value) && value >= 1) || '1 or more']">
+                        <template #prepend>
+                          <q-icon name="fas fa-layer-group" @click.stop.prevent />
+                        </template>
+                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                          Bounds one run of core_load, which typically runs every minute
+                        </q-tooltip>
+                      </q-input>
+                      <q-select
+                        class="field-200"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="datasource.files_load_parallel"
+                        :options="yesNoOptions"
+                        label="Load in parallel">
+                        <template #prepend>
+                          <q-icon name="fas fa-stream" @click.stop.prevent />
+                        </template>
+                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                          Yes unless the transformation truncates a table or similar. <br />
+                          The number of parallel files is set in core_load_file_process.
+                        </q-tooltip>
+                      </q-select>
+                    </div>
+                    <div class="text-caption text-grey-7">A file modified in the last 60 s waits for the next cycle.</div>
+                    <div class="row q-gutter-md items-start">
+                      <q-select
+                        class="field-200"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="datasource.leave_input_zipped"
+                        :options="yesNoOptions"
+                        label="Keep files gzipped">
+                        <template #prepend>
+                          <q-icon name="fas fa-file-archive" @click.stop.prevent />
+                        </template>
+                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Yes when the transformation expects gzipped files</q-tooltip>
+                      </q-select>
+                      <q-select
                         class="field-320"
                         outlined
                         emit-value
@@ -260,35 +289,6 @@
                           </q-item>
                         </template>
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">{{ dupDescription }}</q-tooltip>
-                      </q-select>
-                      <q-select
-                        class="field-200"
-                        outlined
-                        emit-value
-                        map-options
-                        v-model="datasource.leave_input_zipped"
-                        :options="yesNoOptions"
-                        label="Keep files gzipped">
-                        <template #prepend>
-                          <q-icon name="fas fa-file-archive" @click.stop.prevent />
-                        </template>
-                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Yes when the transformation expects gzipped files</q-tooltip>
-                      </q-select>
-                      <q-select
-                        class="field-200"
-                        outlined
-                        emit-value
-                        map-options
-                        v-model="datasource.files_load_parallel"
-                        :options="yesNoOptions"
-                        label="Load in parallel">
-                        <template #prepend>
-                          <q-icon name="fas fa-stream" @click.stop.prevent />
-                        </template>
-                        <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                          Yes unless the transformation truncates a table or similar. <br />
-                          The number of parallel files is set in core_load_file_process.
-                        </q-tooltip>
                       </q-select>
                       <q-input
                         class="field-200"
@@ -317,14 +317,17 @@
                     <q-item-label>Files</q-item-label>
                   </q-item-section>
                   <q-card-section class="q-gutter-y-md">
-                    <directory-list-box
-                      v-for="field in archiveFields"
-                      :key="field.name"
-                      v-model="datasource"
-                      :field="field.name"
-                      :label="field.label"
-                      :states="directoryStates"
-                      @attention="tab = 'attention'" />
+                    <div class="row items-start archive-row">
+                      <directory-list-box
+                        v-for="field in archiveFields"
+                        :key="field.name"
+                        v-model="datasource"
+                        :field="field.name"
+                        :label="field.label"
+                        :states="directoryStates"
+                        width="360px"
+                        @attention="tab = 'attention'" />
+                    </div>
                     <q-input
                       class="field-240"
                       outlined
@@ -1026,21 +1029,24 @@ export default {
   font-size: 1.2em;
 }
 
-/* The General box: lane and ID (4:2) as wide as the source name, and the directories of Input files. */
-.general-input {
-  width: 600px;
-  max-width: 100%;
-}
+/* The General box: lane, ID and source name in one row, wrapping on a narrow window. */
 .general-row {
   gap: 16px;
 }
 .lane-input {
-  flex: 2 1 0;
-  min-width: 0;
+  width: 280px;
 }
 .id-input {
-  flex: 1 1 0;
-  min-width: 0;
+  width: 120px;
+}
+.name-input {
+  width: 600px;
+  max-width: 100%;
+}
+
+/* The archive, error and duplicate directories side by side. */
+.archive-row {
+  gap: 16px;
 }
 
 /* The tab of the datasource's issues stands out. */

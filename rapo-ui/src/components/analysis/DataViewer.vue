@@ -147,7 +147,7 @@
       </template>
       <template #default="{ item, index }">
         <tr :key="index">
-          <td class="text-right text-grey-7 row-number">
+          <td class="text-right text-grey-7 row-number number-cell">
             <q-btn v-if="rowAction && item" :aria-label="rowAction.label" flat dense round size="xs" color="primary" :icon="rowAction.icon" class="row-action" @click="$emit('row', item)">
               <q-tooltip>{{ rowAction.label }}</q-tooltip>
             </q-btn>
@@ -157,7 +157,7 @@
             <td
               v-for="column in shownColumns"
               :key="column.name"
-              :class="[column.kind === 'numeric' ? 'text-right' : 'text-left', item[column.position] === null ? 'null-cell' : '']"
+              :class="[column.kind === 'numeric' ? 'text-right number-cell' : 'text-left', item[column.position] === null ? 'null-cell' : '']"
               :title="cellTitle(item[column.position], column)">
               {{ item[column.position] === null ? "∅" : formatValue(item[column.position], column.kind, column.dateOnly) }}
             </td>

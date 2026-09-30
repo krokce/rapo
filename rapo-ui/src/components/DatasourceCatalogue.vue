@@ -79,7 +79,7 @@
       :items="sortedDatasources"
       :virtual-scroll-item-size="72"
       :virtual-scroll-sticky-size-start="48"
-      :table-colspan="10">
+      :table-colspan="11">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
@@ -99,15 +99,25 @@
               <span class="text-weight-bold">{{ lane(row.isactive).short }}</span>
             </q-chip>
           </td>
-          <td class="text-right text-grey-8">{{ row.id }}</td>
+          <td class="text-right text-grey-8 number-cell">{{ row.id }}</td>
           <td class="text-left">
             <router-link :to="{ name: 'edit-datasource', params: { id: row.id } }" class="datasource-name text-weight-bold text-grey-9">
               {{ row.sourcename }}
             </router-link>
           </td>
           <td class="text-left path-cell">
-            <div v-for="path in directoriesOf(row)" :key="path" class="ellipsis" :title="path">
+            <!-- A path opens the files of the datasource's input directories, the "All files" of the row menu. -->
+            <div
+              v-for="path in directoriesOf(row)"
+              :key="path"
+              class="ellipsis path-link"
+              :title="`${path}\nShow all files in Input`"
+              v-keyboard:button
+              @click="$refs.fileDialog.open(row, 'all')">
               <q-icon v-if="isMissing(row, path)" name="fas fa-folder-minus" color="red-5" size="12px" class="q-mr-xs" />{{ path }}
+            </div>
+            <div class="ellipsis mask-line" :title="`FILES_MASK: ${row.files_mask}`">
+              <q-icon name="fas fa-filter" size="10px" class="q-mr-xs" />{{ row.files_mask }}
             </div>
             <div class="row items-center issue-chips">
               <q-chip
@@ -124,24 +134,25 @@
               </q-chip>
             </div>
           </td>
-          <td class="text-left mask-cell ellipsis" :title="row.files_mask">{{ row.files_mask }}</td>
-          <td class="text-left">
+          <td class="text-right number-cell">
             <template v-if="logOf(row)">
-              <div>{{ toDateTimeString(logOf(row).last_load).slice(5, 16) }}</div>
-              <div class="text-caption text-grey-7">
-                {{ formatNumber(logOf(row).files) }} file(s)
-                <span v-if="logOf(row).errors" class="text-red-6 text-weight-bold"> · {{ logOf(row).errors }} error(s)</span>
-                <span v-if="logOf(row).rejected" class="text-orange-9"> · {{ formatNumber(logOf(row).rejected) }} rej.</span>
-                <q-tooltip>
-                  In the last 24 hours: {{ formatNumber(logOf(row).files) }} file(s), {{ formatNumber(logOf(row).records || 0) }} record(s) written,
-                  {{ formatNumber(logOf(row).rejected || 0) }} rejected, {{ logOf(row).errors }} error(s), {{ logOf(row).duplicates }} duplicate(s)
-                </q-tooltip>
-              </div>
+              {{ formatNumber(logOf(row).files) }}
+              <q-tooltip>
+                Last load {{ toDateTimeString(logOf(row).last_load).slice(5, 16) }}. In the last 24 hours: {{ formatNumber(logOf(row).files) }} file(s),
+                {{ formatNumber(logOf(row).records || 0) }} record(s) written, {{ formatNumber(logOf(row).rejected || 0) }} rejected, {{ logOf(row).errors }} error(s),
+                {{ logOf(row).duplicates }} duplicate(s)
+              </q-tooltip>
             </template>
             <span v-else-if="datasourceStatus && !datasourceStatus.pending" class="text-grey-7" title="Nothing loaded in the last 24 hours">&ndash;</span>
           </td>
-          <td class="text-right">{{ row.files_retention_days }}</td>
-          <td class="text-right">{{ row.files_max_per_cycle }}</td>
+          <td class="text-right number-cell">{{ row.files_retention_days }}</td>
+          <td class="text-right number-cell">{{ row.files_max_per_cycle }}</td>
+          <td class="text-center">
+            <q-icon v-if="row.leave_input_zipped" name="fas fa-file-archive" color="grey-7" size="14px" title="Input files are kept gzipped" />
+          </td>
+          <td class="text-center">
+            <q-icon v-if="row.files_load_parallel" name="fas fa-stream" color="grey-7" size="14px" title="Files are loaded in parallel" />
+          </td>
           <td class="text-center">
             <q-icon v-if="row.input_scan_subdirs" name="fas fa-sitemap" color="grey-7" size="14px" title="Subdirectories are scanned" />
           </td>
@@ -152,14 +163,14 @@
       </template>
       <template #after>
         <tbody v-if="showSkeleton">
-          <skeleton-rows v-if="!loadError" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', null, null]" />
+          <skeleton-rows v-if="!loadError" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', null, null, null, null]" />
           <tr v-else>
-            <td colspan="10" class="text-center text-grey-7 q-pa-lg">Datasources could not be loaded</td>
+            <td colspan="11" class="text-center text-grey-7 q-pa-lg">Datasources could not be loaded</td>
           </tr>
         </tbody>
         <tbody v-else-if="!sortedDatasources.length">
           <tr>
-            <td colspan="10" class="text-center text-grey-7 q-pa-lg">No datasources match the filters</td>
+            <td colspan="11" class="text-center text-grey-7 q-pa-lg">No datasources match the filters</td>
           </tr>
         </tbody>
       </template>
@@ -279,11 +290,12 @@ const COLUMNS = [
   { key: "isactive", label: "Lane", align: "center", sort: true },
   { key: "id", label: "ID", align: "right", sort: true },
   { key: "sourcename", label: "Name", align: "left", sort: true },
-  { key: "input_directory", label: "Input directory", align: "left", sort: true },
-  { key: "files_mask", label: "Files mask", align: "left", sort: true },
-  { key: "last_load", label: "Last 24h", align: "left", sort: true },
+  { key: "input_directory", label: "Input files", align: "left", sort: true },
+  { key: "files_24h", label: "Files 24h", align: "right", sort: true },
   { key: "files_retention_days", label: "Ret. days", align: "right", sort: true },
   { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true },
+  { key: "leave_input_zipped", label: "Zipped", align: "center", sort: true },
+  { key: "files_load_parallel", label: "Parallel", align: "center", sort: true },
   { key: "input_scan_subdirs", label: "Subdirs", align: "center", sort: true },
 ];
 
@@ -407,7 +419,7 @@ export default {
         return this.filteredDatasources;
       }
       const valueOf = {
-        last_load: (row) => (this.logOf(row) || {}).last_load,
+        files_24h: (row) => (this.logOf(row) || {}).files,
       }[key] || ((row) => row[key]);
       return sortRows(this.filteredDatasources, valueOf, this.sort.dir);
     },
@@ -569,37 +581,47 @@ export default {
 </script>
 
 <style scoped>
-/* Fixed columns, so rows swapped in while scrolling don't resize them; the input directory takes the rest. */
+/* Fixed columns, so rows swapped in while scrolling don't resize them; the input directory (with the mask under the
+   paths) takes the rest. */
 .datasource-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(1100px + var(--name-column-width));
+  min-width: calc(900px + var(--name-column-width));
 }
 .datasource-table th:nth-child(1) { width: 84px; }
 .datasource-table th:nth-child(2) { width: 56px; }
 .datasource-table th:nth-child(3) { width: var(--name-column-width); }
-.datasource-table th:nth-child(5) { width: 200px; }
-.datasource-table th:nth-child(6) { width: 110px; }
-.datasource-table th:nth-child(7) { width: 150px; }
-.datasource-table th:nth-child(8) { width: 80px; }
-.datasource-table th:nth-child(9) { width: 84px; }
-.datasource-table th:nth-child(10) { width: 70px; }
-.datasource-table th:nth-child(11) { width: 50px; }
-.datasource-table td:nth-child(3),
-.datasource-table td:nth-child(4) { white-space: normal; }
+.datasource-table th:nth-child(5) { width: 80px; }
+.datasource-table th:nth-child(6) { width: 70px; }
+.datasource-table th:nth-child(7) { width: 80px; }
+.datasource-table th:nth-child(8) { width: 64px; }
+.datasource-table th:nth-child(9) { width: 64px; }
+.datasource-table th:nth-child(10) { width: 64px; }
+.datasource-table th:nth-child(11) { width: 44px; }
+.datasource-table td:nth-child(3) { white-space: normal; }
 
 /* The same as the control names of the Controls page. */
 .datasource-name {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-/* The issue chips under the directories keep the page's font. */
-.issue-chips {
-  font-family: Roboto, sans-serif;
-}
-.path-cell,
-.mask-cell {
-  font-family: monospace;
+.path-cell {
+  font-family: var(--rapo-font-mono);
   font-size: 12px;
+}
+/* The issue chips under the directories keep the page's font. */
+.path-cell .issue-chips {
+  font-family: Roboto, sans-serif;
+  font-size: 13px;
+}
+/* The files mask under the directories, light blue in both themes. */
+.mask-line {
+  color: var(--rapo-mask);
+}
+.path-link {
+  cursor: pointer;
+}
+.path-link:hover {
+  text-decoration: underline;
 }
 
 /* A disabled datasource (ISACTIVE=0) is dimmed, its name still readable and a link. */

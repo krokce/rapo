@@ -320,7 +320,22 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
    and *No group*, and each control with a group shows it as a chip under its description; clicking the chip filters
    by that group. No schema change: the column already existed and is kept in the control's versions.
 
-30. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
+30. **Datasources layout and one mono font.** Paths, patterns, code (the SQL editors, the run and file logs,
+   Instance details) and the numbers of tables and number inputs now use **Roboto Mono**, bundled with the UI next
+   to Roboto (the app font), so every browser shows the same fixed-width font instead of the system's `monospace`;
+   numbers in text, chips, titles and tooltips, and dates, keep the page font.
+   - **Datasources page:** clicking an input directory opens the datasource's *All files* list. The *Files mask*
+     column is gone: the mask is shown in light blue under the input directories, above the issue chips, in the
+     column now named *Input files* (a longer one ends in an ellipsis, the whole mask in its tooltip). New *Zipped*
+     and *Parallel* columns before *Subdirs* show an icon where the flag is set. *Last 24h* is now *Files 24h*: only
+     the number of files loaded, sorted by it; the last load time and the other counts are in its tooltip.
+   - **Datasource editor:** *Source name* sits in one row with the lane and the ID. *Scan subdirectories* and *Max
+     files per cycle* move from *Input files* to *Processing*, which now has two rows: scan, files per cycle, load
+     in parallel; then gzipped, duplicate handling, rejected records. On *Retention* the archive, error and
+     duplicate directories share one row. The *Check file name pattern* dialog is wider (1100px) and keeps sample
+     names on one line.
+
+31. **Cleanup and shared styles.** Unused exports, props and empty style blocks are removed and a few typos and
    misnamed methods fixed ("Mis-match" is now "Mismatch"; the analysis header reads "Fetched" instead of "Source").
    The classes the list pages duplicated (`.sortable`, `.text-mono`, `.day-btn`, `.name-filter`, `.row-inactive`,
    the sticky editor action bar and others) now live in `src/styles/app.sass`, and the brand colors are

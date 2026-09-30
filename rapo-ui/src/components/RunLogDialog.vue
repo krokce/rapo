@@ -298,7 +298,7 @@ export default {
 }
 
 .log-record {
-  font-family: Monospace, monospace;
+  font-family: var(--rapo-font-mono);
   font-size: 12px;
   line-height: 18px;
   white-space: pre-wrap;

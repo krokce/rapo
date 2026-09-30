@@ -190,8 +190,8 @@
               <small class="text-grey-7 q-px-sm">{{ toTimeString(control.start_date) }}</small>
             </div>
           </td>
-          <td class="text-right">{{ round(control.duration_minutes, 1) }} min</td>
-          <td class="text-center text-weight-bold text-blue-grey-7">{{ control.process_id }}</td>
+          <td class="text-right number-cell">{{ round(control.duration_minutes, 1) }} min</td>
+          <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ control.process_id }}</td>
           <td class="text-left text-weight-bold text-teal-8 ellipsis" :title="control.control_name">
             <q-btn aria-label="Filter by this control"
               v-if="!getSearch"
@@ -220,37 +220,37 @@
           <td class="text-left text-weight-bold text-blue-grey-7">
             {{ toDateString(control.date_to) }}
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.fetched_number_a > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, control, 'fetched_a')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_a')">
               {{ formatNumber(control.fetched_number_a) }}
             </span>
             <span v-else>{{ formatNumber(control.fetched_number_a) }}</span>
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.fetched_number_b > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, control, 'fetched_b')" @contextmenu.prevent="openNumberMenu($event, control, 'fetched_b')">
               {{ formatNumber(control.fetched_number_b) }}
             </span>
             <span v-else>{{ formatNumber(control.fetched_number_b) }}</span>
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.error_number_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_number_a) }}
             </span>
             <span v-else>{{ formatNumber(control.error_number_a) }}</span>
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.error_number_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_number_b) }}
             </span>
             <span v-else>{{ formatNumber(control.error_number_b) }}</span>
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.error_level_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_a')" @contextmenu.prevent="openNumberMenu($event, control, 'result_a')">
               {{ formatNumber(control.error_level_a, 2) }}%
             </span>
             <span v-else> {{ formatNumber(control.error_level_a, 2) }}% </span>
           </td>
-          <td class="text-right">
+          <td class="text-right number-cell">
             <span v-if="control.error_level_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, control, 'result_b')" @contextmenu.prevent="openNumberMenu($event, control, 'result_b')">
               {{ formatNumber(control.error_level_b, 2) }}%
             </span>

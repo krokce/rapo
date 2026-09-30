@@ -26,7 +26,7 @@
           <tbody>
             <tr v-for="item in summaryStats" :key="item.label" :class="{ 'cursor-pointer link-row': item.filters }" v-keyboard="!!item.filters" @click="item.filters && $emit('show-rows', item.filters)">
               <td class="text-grey-7">{{ item.label }}</td>
-              <td class="text-right text-weight-medium" :class="item.warn ? 'text-orange-9' : 'text-blue-grey-9'">{{ item.value }}</td>
+              <td class="text-right text-weight-medium number-cell" :class="item.warn ? 'text-orange-9' : 'text-blue-grey-9'">{{ item.value }}</td>
             </tr>
           </tbody>
         </table>
@@ -67,7 +67,7 @@
               <tbody>
                 <tr v-for="item in quantiles" :key="item.label">
                   <td class="text-grey-7">{{ item.label }}</td>
-                  <td class="text-right">{{ formatStat(item.value, 4) }}</td>
+                  <td class="text-right number-cell">{{ formatStat(item.value, 4) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -78,7 +78,7 @@
               <tbody>
                 <tr v-for="item in descriptive" :key="item.label">
                   <td class="text-grey-7">{{ item.label }}</td>
-                  <td class="text-right">{{ formatStat(item.value, 4) }}</td>
+                  <td class="text-right number-cell">{{ formatStat(item.value, 4) }}</td>
                 </tr>
               </tbody>
             </table>

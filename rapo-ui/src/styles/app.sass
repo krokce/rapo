@@ -26,6 +26,9 @@
   --rapo-label: #78909c
   --rapo-strong: #455a64
   --rapo-selected-row: #b2dfdb
+  --rapo-mask: #0288d1
+  // The one fixed-width font (bundled, see quasar-user-options.js) of paths, code, patterns and numbers in tables.
+  --rapo-font-mono: "Roboto Mono", monospace
 
 // The dark theme (Quasar's Dark plugin sets body--dark): the same tokens, so components need no dark rules of their own.
 body.body--dark
@@ -54,13 +57,24 @@ body.body--dark
   --rapo-label: #90a4ae
   --rapo-strong: #cfd8dc
   --rapo-selected-row: rgba(77, 182, 172, 0.3)
+  --rapo-mask: #4fc3f7
 
 .sortable
   cursor: pointer
   user-select: none
 
+code, pre, kbd, samp
+  font-family: var(--rapo-font-mono)
+
+// The SQL and text editors of CodeBox. CodeMirror injects its own "monospace" at runtime, after this sheet, with the
+// same specificity, hence !important.
+.cm-editor .cm-scroller
+  font-family: var(--rapo-font-mono) !important
+
 .text-mono
-  font-family: monospace
+  font-family: var(--rapo-font-mono)
+  // Roboto Mono is larger than Roboto at the same size.
+  font-size: 0.93em
 
 .clickable-row
   cursor: pointer
@@ -68,10 +82,17 @@ body.body--dark
   &:hover
     background: var(--rapo-row-hover)
 
-// Whole numbers in a monospace font, right-aligned, so their digits line up (Files tables).
+// Numbers of a table or data view (counts, IDs, sizes, durations) in the mono font, so their digits line up. Not for
+// numbers in running text, chips, titles or tooltips, nor for dates and times.
 .number-cell
-  font-family: "Roboto Mono", Menlo, Consolas, monospace
-  font-size: 13px
+  font-family: var(--rapo-font-mono)
+  font-size: 0.93em
+  font-variant-numeric: tabular-nums
+
+// Every number input, in the same font.
+.q-field input[type="number"]
+  font-family: var(--rapo-font-mono)
+  font-size: 0.93em
 
 // The day buttons (as tall as the inputs beside them, and no wider than their icon) and the name filter of Results, Files and a datasource file log.
 .day-btn

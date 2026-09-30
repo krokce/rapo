@@ -346,7 +346,7 @@ export default {
 }
 
 .code-variable {
-  font-family: monospace;
+  font-family: var(--rapo-font-mono);
   padding: 0 4px;
   border-radius: 3px;
   background: var(--rapo-grid);

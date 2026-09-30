@@ -82,8 +82,8 @@
                   </span>
                 </td>
                 <td><q-icon :name="triggerType(job.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(job.trigger_type).label }}</td>
-                <td class="text-center text-blue-grey-7">{{ job.process_id }}</td>
-                <td class="text-center text-blue-grey-7">{{ job.pid }}</td>
+                <td class="text-center text-blue-grey-7 number-cell">{{ job.process_id }}</td>
+                <td class="text-center text-blue-grey-7 number-cell">{{ job.pid }}</td>
                 <td>{{ toTimeString(job.queued) }}</td>
                 <td>{{ toTimeString(job.started) }}</td>
                 <td style="width: 50px">
@@ -284,7 +284,7 @@
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <date-time-text :value="event.scheduled_time" />
                   </td>
-                  <td class="text-center text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
+                  <td class="text-center text-weight-bold text-blue-grey-7 number-cell" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     {{ event.process_id }}
                   </td>
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">

@@ -102,8 +102,8 @@
               {{ kpiType.kpi_value_unit }}
             </q-chip>
           </td>
-          <td class="text-center">{{ kpiType.kpi_priority }}</td>
-          <td class="text-center">{{ kpiType.kpi_decimal_places }}</td>
+          <td class="text-center number-cell">{{ kpiType.kpi_priority }}</td>
+          <td class="text-center number-cell">{{ kpiType.kpi_decimal_places }}</td>
           <td class="text-center">
             <!-- A type without a default leaves that half to the controls, which is worth seeing at a glance. -->
             <q-chip v-if="kpiType.default_kpi_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-calculator"> KPI </q-chip>

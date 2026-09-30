@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="visible">
-    <q-card style="width: 700px; max-width: 95vw">
+    <q-card style="width: 1100px; max-width: 95vw">
       <q-card-section class="row items-center q-py-sm">
         <div class="text-h6">Check {{ label.toLowerCase() }}</div>
         <q-space />
@@ -22,15 +22,16 @@
           v-model="samples"
           label="Sample file names, one per line"
           input-class="text-mono"
-          input-style="min-height: 100px"
+          input-style="min-height: 100px; white-space: pre; overflow-x: auto"
+          wrap="off"
           @update:model-value="scheduleCheck" />
         <q-list v-if="result && !result.error && result.names.length" dense bordered separator class="rounded-borders">
           <q-item v-for="(item, index) in result.names" :key="index">
             <q-item-section avatar>
               <q-icon :name="item.matches ? 'fas fa-check' : 'fas fa-times'" :color="item.matches ? 'teal' : 'red-5'" size="16px" />
             </q-item-section>
-            <q-item-section class="text-mono">{{ item.name }}</q-item-section>
-            <q-item-section side>{{ item.matches ? "Matches" : "Does not match" }}</q-item-section>
+            <q-item-section class="text-mono sample-name">{{ item.name }}</q-item-section>
+            <q-item-section side class="text-no-wrap">{{ item.matches ? "Matches" : "Does not match" }}</q-item-section>
           </q-item>
         </q-list>
       </q-card-section>
@@ -129,5 +130,8 @@ export default {
 .mask {
   font-size: 15px;
   word-break: break-all;
+}
+.sample-name {
+  overflow-wrap: anywhere;
 }
 </style>

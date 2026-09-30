@@ -865,20 +865,20 @@
                   </thead>
                   <tbody>
                     <tr v-for="(log, index) in controlLogs" :key="log.process_id" :class="{ 'new-day-separator': newDayLogRows.has(index) }">
-                      <td class="text-left">{{ index + 1 }}. &nbsp;</td>
+                      <td class="text-left number-cell">{{ index + 1 }}. &nbsp;</td>
                       <td v-for="field in ['added', 'start_date', 'end_date']" :key="field" class="text-left">
                         <div class="text-blue-grey-7">
                           <strong>{{ toDateString(log[field]) }}</strong>
                           <small class="text-grey-7 q-px-sm">{{ toTimeString(log[field]) }}</small>
                         </div>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         {{ log.end_date && log.start_date ? round((new Date(log.end_date) - new Date(log.start_date)) / 60000, 1) : "0" }} min
                       </td>
-                      <td class="text-left text-weight-bold text-blue-grey-7">{{ log.process_id }}</td>
+                      <td class="text-left text-weight-bold text-blue-grey-7 number-cell">{{ log.process_id }}</td>
                       <td class="text-left">{{ toDateString(log.date_from) }}</td>
                       <td class="text-left">{{ toDateString(log.date_to) }}</td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer': logSum(log, 'fetched_number') > 0, 'text-red': control.control_type === 'REP' && logSum(log, 'fetched_number') > 0 }"
                           v-keyboard:button="logSum(log, 'fetched_number') > 0"
@@ -887,7 +887,7 @@
                           {{ formatNumber(logSum(log, "fetched_number")) }}
                         </span>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer': log.fetched_number_b > 0 }"
                           v-keyboard:button="log.fetched_number_b > 0"
@@ -896,7 +896,7 @@
                           {{ formatNumber(log.fetched_number_b) }}
                         </span>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }"
                           v-keyboard:button="logSum(log, 'error_number') > 0"
@@ -905,7 +905,7 @@
                           {{ formatNumber(logSum(log, "error_number")) }}
                         </span>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }"
                           v-keyboard:button="log.error_number_b > 0"
@@ -914,7 +914,7 @@
                           {{ formatNumber(log.error_number_b) }}
                         </span>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }"
                           v-keyboard:button="logSum(log, 'error_level') > 0"
@@ -923,7 +923,7 @@
                           {{ formatNumber(logSum(log, "error_level"), 2) }}%
                         </span>
                       </td>
-                      <td class="text-right">
+                      <td class="text-right number-cell">
                         <span
                           :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }"
                           v-keyboard:button="log.error_level_b > 0"

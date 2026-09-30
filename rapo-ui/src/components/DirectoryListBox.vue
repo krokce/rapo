@@ -3,7 +3,9 @@
     <div v-for="(part, index) in parts" :key="index" class="row items-center no-wrap q-gutter-x-sm">
       <q-input
         class="directory-input"
+        :style="{ width }"
         outlined
+        input-class="text-mono"
         :model-value="part"
         :label="index === 0 ? label : `Another ${label.toLowerCase()}`"
         placeholder="/data_in/SOURCE"
@@ -53,6 +55,8 @@ export default {
     multiple: { type: Boolean, default: false },
     // [{field, path, exists, writable}] of the saved datasource.
     states: { type: Array, default: () => [] },
+    // The width of an input, e.g. narrower for the three archive directories side by side.
+    width: { type: String, default: "600px" },
   },
   emits: ["attention"],
   data() {
@@ -135,7 +139,6 @@ export default {
 
 <style scoped>
 .directory-input {
-  width: 600px;
   max-width: 100%;
   flex: 0 1 auto;
 }

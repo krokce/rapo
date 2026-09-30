@@ -157,10 +157,10 @@
               {{ fileStatus(file.filestatus).label }}
             </q-chip>
           </td>
-          <td class="text-left ellipsis" :title="file.inputfullfilename">
+          <td class="text-left ellipsis text-mono" :title="file.inputfullfilename">
             <q-icon v-if="file.outfiledeleted" name="fas fa-archive" color="grey-5" size="12px" class="q-mr-xs" title="The archived file is deleted" />{{ file.inputfilename }}
           </td>
-          <td class="text-right">{{ formatBytes(file.filesize) }}</td>
+          <td class="text-right number-cell">{{ formatBytes(file.filesize) }}</td>
           <!-- Dates like the Start column of Results: the day bold, the time small beside it. -->
           <td class="text-left">
             <div v-if="file.filedate" class="text-blue-grey-7">
@@ -174,7 +174,7 @@
               <small class="text-grey-7 q-px-sm">{{ toTimeString(file.startloaddate) }}</small>
             </div>
           </td>
-          <td class="text-right">{{ file.runtime != null ? `${file.runtime} s` : "" }}</td>
+          <td class="text-right number-cell">{{ file.runtime != null ? `${file.runtime} s` : "" }}</td>
           <td class="text-right number-cell">{{ formatNumber(file.recordsread || 0) }}</td>
           <td class="text-right number-cell">{{ formatNumber(file.recordswrite || 0) }}</td>
           <td class="text-right number-cell" :class="{ 'text-red-6 text-weight-bold': file.recordsreject > 0 }">{{ formatNumber(file.recordsreject || 0) }}</td>
@@ -682,7 +682,7 @@ export default {
   margin: 0;
 }
 .file-facts {
-  font-family: monospace;
+  font-family: var(--rapo-font-mono);
   word-break: break-all;
 }
 .file-facts span {

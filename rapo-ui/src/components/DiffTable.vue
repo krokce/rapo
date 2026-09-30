@@ -58,7 +58,7 @@ export default {
 .diff-table
   border-collapse: collapse
   width: 100%
-  font-family: Monospace, sans-serif
+  font-family: var(--rapo-font-mono)
   font-size: 12px
 
   td

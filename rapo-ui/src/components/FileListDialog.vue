@@ -73,12 +73,12 @@
           </template>
           <template #default="{ item: file }">
             <tr :key="file.path" :class="{ 'text-grey-7': kind === 'all' && !file.matches }">
-              <td class="text-left ellipsis" :title="file.path">
+              <td class="text-left ellipsis text-mono" :title="file.path">
                 <span v-if="file.subdir" class="text-grey-7">{{ file.subdir }}/</span>{{ file.name }}
               </td>
-              <td class="text-right">{{ formatBytes(file.size) }}</td>
+              <td class="text-right number-cell">{{ formatBytes(file.size) }}</td>
               <td class="text-left">{{ toDateTimeString(file.modified) }}</td>
-              <td class="text-right">{{ formatAge(file.age) }}</td>
+              <td class="text-right number-cell">{{ formatAge(file.age) }}</td>
               <td class="text-left ellipsis">{{ file.owner }}:{{ file.group }}</td>
               <td class="text-left text-mono">{{ file.mode }}</td>
               <td class="text-left ellipsis">
