@@ -101,11 +101,9 @@
                         Description
                         <q-icon v-if="sort.key === 'control_description'" :name="sortIcon(sort)" size="12px" />
                       </th>
-                      <th class="text-left">
-                        <span class="text-left sortable" title="How far back the data window of a run reaches (period number and type)" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span>
-                        <q-icon v-if="sort.key === 'schedule_days'" :name="sortIcon(sort)" size="12px" /> /
-                        <span class="text-left sortable" title="When the scheduler runs the control" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
-                        <q-icon v-if="sort.key === 'schedule_time'" :name="sortIcon(sort)" size="12px" />
+                      <th title="When the control runs next, scheduled, after the control it cascades from or pulled by a control reading its results, and in how long; then the schedule in words, where its runs fall (hours, week days or month days) and the data window of a run. Hover a row for its next runs and their data windows; sorted by the next run" class="text-left sortable" style="width: 320px" @click="toggleSort(sort, 'next_fire')" v-keyboard :aria-sort="ariaSort(sort, 'next_fire')">
+                        Scheduler
+                        <q-icon v-if="sort.key === 'next_fire'" :name="sortIcon(sort)" size="12px" />
                       </th>
                     </tr>
                   </thead>
@@ -195,13 +193,15 @@
                           </q-chip>
                         </div>
                       </td>
-                      <td style="width: 100px">
-                        <div v-if="!row.missing" class="row justify-start items-center">
-                          <schedule-present-box
-                            :schedule="row.control.schedule_config"
-                            :period_back="row.control.period_back"
-                            :period_type="row.control.period_type"></schedule-present-box>
-                        </div>
+                      <td>
+                        <schedule-summary
+                          v-if="!row.missing"
+                          compact
+                          :control="row.control"
+                          :next="nextFires.controls[row.control.control_id]"
+                          :now="serverNow"
+                          :scheduler-active="nextFires.scheduler_active"
+                          :trigger-name="triggerNameOf(row.control)" />
                       </td>
                     </tr>
                   </tbody>
@@ -225,10 +225,11 @@ import { mapActions, mapState } from "vuex";
 import CodeBox from "./CodeBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import EditorSkeleton from "./EditorSkeleton.vue";
-import SchedulePresentBox from "./SchedulePresentBox.vue";
+import ScheduleSummary from "./ScheduleSummary.vue";
 import { api, notifyError } from "../api";
 import { controlType, KPI_ICON, kpiUnitColor } from "../constants";
-import { toDateTimeString } from "../utils/format";
+import { toDateTimeString, toMillis } from "../utils/format";
+import { scheduleUnits } from "../utils/schedule";
 import { checkKpiStatement } from "../utils/kpi";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
@@ -270,7 +271,7 @@ function emptyKpiType() {
 // One row of racs_kpi_type. The code is the primary key, so an edit that changes it is a rename: the controls
 // that use the type are moved over by the server, which is what the confirmation before saving is about.
 export default {
-  components: { CodeBox, EditorSkeleton, SchedulePresentBox },
+  components: { CodeBox, EditorSkeleton, ScheduleSummary },
   props: ["kpiCode"],
   data() {
     return {
@@ -282,6 +283,9 @@ export default {
       previousKpiType: null,
       kpiIcon: KPI_ICON,
       usage: [],
+      // get-next-fires for the Controls tab, read once, and the server time its countdowns are counted from.
+      nextFires: { controls: {}, scheduler_active: true },
+      serverNow: Date.now(),
       saving: false,
       sort: {
         key: null,
@@ -335,26 +339,15 @@ export default {
         return 0;
       }
     },
-    // Periods back in days, and the scheduled time of day in seconds, as the catalogue page sorts them.
+    // The next run, as the catalogue page sorts it.
     sortValue(row, key) {
       if (row.missing) {
         return key === "control_name" ? row.control.control_name : null;
       }
       const control = row.control;
-      if (key === "schedule_days") {
-        return control.period_back == null ? null : control.period_back * ({ W: 7, M: 30 }[control.period_type] || 1);
-      }
-      if (key === "schedule_time") {
-        try {
-          const schedule = JSON.parse(control.schedule_config);
-          const [hour, min, sec] = [schedule.hour, schedule.min, schedule.sec].map((value) => {
-            const match = String(value ?? "").match(/\d+/);
-            return match ? Number(match[0]) : null;
-          });
-          return hour != null && min != null ? hour * 3600 + min * 60 + (sec || 0) : null;
-        } catch (err) {
-          return null;
-        }
+      if (key === "next_fire") {
+        const entry = this.nextFires.controls[control.control_id];
+        return entry && entry.fires.length ? toMillis(entry.fires[0].time) : null;
       }
       return control[key];
     },
@@ -443,11 +436,26 @@ export default {
       return examplesFor({ field: statement.examples, kpiType: this.kpiType.kpi_type });
     },
     checkStatement: checkKpiStatement,
+    triggerNameOf(control) {
+      const units = scheduleUnits(control.schedule_config);
+      const trigger = units && units.trigger_id ? this.controlCatalogue.find((item) => item.control_id === Number(units.trigger_id)) : null;
+      return trigger ? trigger.control_name : null;
+    },
+    async loadNextFires() {
+      try {
+        const answer = await api("get-next-fires", { loadingBar: false });
+        this.serverNow = toMillis(answer.server_time);
+        this.nextFires = Object.freeze(answer);
+      } catch (error) {
+        // The Controls tab then shows no next runs; the schedules are still described.
+      }
+    },
   },
   async mounted() {
     try {
       // Forced, because this page is where the catalogue is edited and the store caches it for the session.
-      // The control catalogue feeds the Controls tab, and SchedulePresentBox reads it to name a cascade trigger.
+      // The control catalogue feeds the Controls tab and names the control a cascade follows.
+      this.loadNextFires();
       const [types, , usage] = await Promise.all([
         this.updateKpiTypes({ force: true }),
         this.updateControlCatalogue(),

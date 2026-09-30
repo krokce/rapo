@@ -33,6 +33,11 @@ export function toDateTimeString(value) {
   return value ? String(value).substring(0, 19).replace("T", " ") : "";
 }
 
+// Naive server datetime string as milliseconds, read as local time like the server wrote it.
+export function toMillis(value) {
+  return new Date(String(value).substring(0, 19)).getTime();
+}
+
 export function round(value, places) {
   return Math.round(value * Math.pow(10, places)) / Math.pow(10, places);
 }

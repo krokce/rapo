@@ -821,6 +821,22 @@ Future fires of all enabled schedules, ordered by time.
 Each fire is `{scheduled_time, control_id, control_name, control_type, control_group}`. It is computed from the
 database, so any server answers it, even one whose scheduler is stopped.
 
+#### `GET /api/get-next-fires`
+The next runs of every control, for the Controls page. A scheduled fire runs the control, then cascades into the
+active controls whose `trigger_id` it is (one level: a cascaded run does not cascade), and every run first pulls
+the controls whose results it reads (chain-rules), whatever their status.
+
+| Parameter | Type | Default | Meaning                                |
+|-----------|------|---------|-----------------------------------------|
+| `count`   | int  | 5       | Runs per control, 1 .. 20.              |
+
+Answers `{server_time, scheduler_state, scheduler_active, controls}`. `controls` maps every control ID to
+`{fires: [{time, source, via, date_from, date_to}]}`, sorted by time: `source` is `schedule`, `cascade` (`via` the
+control it follows) or `chain` (`via` the control that pulls it), and `date_from`/`date_to` the run's data window
+(the puller's window for a chain run, null for an invalid period). A control whose `schedule_config` cannot be read
+has `invalid: true`. `scheduler_active` is false while the scheduler is stopped, or off here with no other server
+holding it; the runs are then still listed. Computed from the database, so any server answers it.
+
 #### `GET /api/scheduler-events`
 The run request history, latest first.
 

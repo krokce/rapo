@@ -353,15 +353,10 @@ import { api, notifyError } from "../api";
 import { SCHEDULER_EVENT_TYPE_OPTIONS, TRIGGER_TYPES, TRIGGER_TYPE_OPTIONS, controlType, controlTypeColor, runStatus, schedulerEventType, schedulerState } from "../constants";
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
-import { toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { toDateString, toDateTimeString, toMillis, toTimeString } from "../utils/format";
 import { valueFilter } from "../utils/filters";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import persistFilters from "../mixins/persistFilters";
-
-// Naive server datetime string as milliseconds, read as local time like the server wrote it.
-function toMillis(value) {
-  return new Date(String(value).substring(0, 19)).getTime();
-}
 
 export default {
   mixins: [persistFilters("scheduler", ["filter", "upcomingFilter"])],

@@ -1,6 +1,7 @@
 """Contains RAPO scheduler interface."""
 
 import datetime as dt
+import json
 import getpass
 import os
 import platform
@@ -16,6 +17,7 @@ from ..config import config
 from ..logger import logger
 from ..reader import reader
 
+from . import chain
 from . import journal
 from . import schedule
 from .control import Control, Parser
@@ -494,6 +496,99 @@ def upcoming(hours=24, control_name=None, limit=1000):
     fires.sort(key=lambda fire: (fire['scheduled_time'],
                                  fire['control_name']))
     return fires[:limit]
+
+
+def next_fires(count=5):
+    """Get the next runs of every control the scheduler causes.
+
+    A scheduled fire runs the control itself, then cascades into the active
+    controls triggered by it (one level: a cascaded run does not cascade).
+    Every run, cascaded or not, first pulls the controls whose results it
+    reads, whatever their status, for its own window.
+
+    Returns
+    -------
+    fires : dict
+        The server time, whether the scheduler fires at all, and by control
+        ID its first `count` runs (time, source `schedule`/`cascade`/`chain`,
+        the control it runs `via`, the data window), or an invalid flag.
+    """
+    now = dt.datetime.now().replace(microsecond=0)
+    table = db.tables.config
+    columns = [table.c.control_id, table.c.control_name,
+               table.c.control_type, table.c.status, table.c.schedule_config,
+               table.c.source_name, table.c.source_name_a,
+               table.c.source_name_b, table.c.period_back,
+               table.c.period_number, table.c.period_type]
+    rows = db.execute(sa.select(*columns), as_table=True)
+    names = [row['control_name'] for row in rows]
+    by_name = {row['control_name']: row for row in rows}
+    controls = {row['control_id']: {'fires': []} for row in rows}
+    cascades = {}
+    fired = []
+    for row in rows:
+        try:
+            config = row['schedule_config']
+            item = schedule.parse(config)
+            trigger_id = (json.loads(config) or {}).get('trigger_id') \
+                if config else None
+        except Exception:
+            controls[row['control_id']]['invalid'] = True
+            continue
+        if row['status'] != 'Y':
+            continue
+        # Compared as Parser.parse_cascade_config does.
+        if trigger_id:
+            cascades.setdefault(trigger_id, []).append(row)
+        if item:
+            for moment in schedule.next_fire(item, now, limit=count):
+                fired.append((row, moment))
+
+    upstreams = {}
+
+    def upstreams_of(name, path=()):
+        """Get every control a run of the named one pulls, each once."""
+        if name not in upstreams:
+            found = []
+            for upstream in chain.upstreams(by_name[name], names):
+                other = upstream['control_name']
+                if other in path or other == name:
+                    continue
+                for pulled in [other]+upstreams_of(other, path+(name,)):
+                    if pulled not in found:
+                        found.append(pulled)
+            upstreams[name] = found
+        return upstreams[name]
+
+    def add(row, moment, source, via, window):
+        date_from, date_to = window
+        controls[row['control_id']]['fires'].append({
+            'time': moment, 'source': source, 'via': via,
+            'date_from': date_from, 'date_to': date_to
+        })
+        for name in upstreams_of(row['control_name']):
+            controls[by_name[name]['control_id']]['fires'].append({
+                'time': moment, 'source': 'chain',
+                'via': row['control_name'],
+                'date_from': date_from, 'date_to': date_to
+            })
+
+    for row, moment in fired:
+        add(row, moment, 'schedule', None, _fire_dates(row, moment))
+        for child in cascades.get(row['control_id'], []):
+            add(child, moment, 'cascade', row['control_name'],
+                _fire_dates(child, moment))
+
+    for control in controls.values():
+        control['fires'].sort(key=lambda fire: fire['time'])
+        del control['fires'][count:]
+    state = scheduler.status()
+    holder = state['holder']
+    active = (state['state'] in ('running', 'standby', 'starting')
+              or (state['state'] == 'off' and not state['disabled']
+                  and holder['alive']))
+    return {'server_time': now, 'scheduler_state': state['state'],
+            'scheduler_active': active, 'controls': controls}
 
 
 def _fire_dates(item, moment):

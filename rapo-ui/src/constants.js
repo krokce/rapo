@@ -132,6 +132,31 @@ export function schedulerState(state) {
   return SCHEDULER_STATES[state] || { label: state || "Unknown", color: "grey", description: "" };
 }
 
+// How often a control runs (utils/schedule.js scheduleFrequency, plus chain for a control only pulled by the
+// controls reading its results): the avatar color of the Controls schedule column. Its icon is the source of the next
+// run (FIRE_SOURCES).
+export const SCHEDULE_FREQUENCIES = {
+  subdaily: { label: "Several times a day", color: "deep-orange-7" },
+  daily: { label: "Daily", color: "teal-7" },
+  weekly: { label: "Weekly", color: "indigo-5" },
+  monthly: { label: "Monthly", color: "purple-6" },
+  complex: { label: "Month and week days", color: "blue-grey-6" },
+  cascade: { label: "Cascade", color: "deep-purple-4" },
+  chain: { label: "Chain", color: "cyan-8" },
+  none: { label: "Not scheduled", color: "grey-5" },
+};
+
+export function scheduleFrequencyStyle(frequency) {
+  return SCHEDULE_FREQUENCIES[frequency] || SCHEDULE_FREQUENCIES.none;
+}
+
+// What starts the next run of a control (get-next-fires `source`).
+export const FIRE_SOURCES = {
+  schedule: { label: "Scheduled", icon: "far fa-clock" },
+  cascade: { label: "Cascade after", icon: "fas fa-sitemap" },
+  chain: { label: "Pulled by", icon: "fas fa-link" },
+};
+
 // PDI Core datasources (pdi_core_ds_config). ISACTIVE is the scheduler lane: the SCHEDULER_ID of the core_load job
 // that processes the datasource, 1-9; 0 disables it. Each lane has a color of its own, the same everywhere.
 export const DATASOURCE_ICON = "fas fa-database";

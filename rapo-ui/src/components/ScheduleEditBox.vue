@@ -245,14 +245,20 @@
       </q-input>
     </div>
 
-    <div class="row items-center q-mt-xs text-grey-8" v-if="scheduleType !== 'C'">
-      <q-icon name="fas fa-calendar-alt" color="blue-grey-4" class="q-mr-sm" />
-      <span class="q-mr-sm">Next fires:</span>
-      <span v-if="previewError" class="text-deep-orange">{{ previewError }}</span>
-      <span v-else-if="preview && !preview.length" class="text-deep-orange">never</span>
-      <q-chip v-for="fire in preview" :key="fire" dense square color="blue-grey-1" text-color="blue-grey-9">
-        {{ toDateTimeString(fire) }}
-      </q-chip>
+    <!-- The default slot (the schedule in words) and the next fires side by side, both following the fields above. -->
+    <div class="row no-wrap items-start q-mt-xs schedule-footer">
+      <div v-if="$slots.default" class="col-auto schedule-words">
+        <slot />
+      </div>
+      <div class="col row items-center text-grey-8" v-if="scheduleType !== 'C'">
+        <q-icon name="fas fa-calendar-alt" color="blue-grey-4" class="q-mr-sm" />
+        <span class="q-mr-sm">Next fires:</span>
+        <span v-if="previewError" class="text-deep-orange">{{ previewError }}</span>
+        <span v-else-if="preview && !preview.length" class="text-deep-orange">never</span>
+        <q-chip v-for="fire in preview" :key="fire" dense square color="blue-grey-1" text-color="blue-grey-9">
+          {{ toDateTimeString(fire) }}
+        </q-chip>
+      </div>
     </div>
   </div>
 </template>
@@ -397,3 +403,14 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.schedule-footer {
+  gap: 16px;
+}
+.schedule-words {
+  /* Its first line level with the first line of chips (24px, 4px margins). */
+  padding-top: 6px;
+  min-width: 220px;
+}
+</style>

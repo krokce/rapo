@@ -34,7 +34,7 @@ from ...core import temp
 from ...core import chain
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
-from ...core.scheduler import scheduler, upcoming
+from ...core.scheduler import scheduler, upcoming, next_fires
 from ...analysis import compare
 from ...analysis import datasets
 from ...analysis.sessions import sessions, SessionError
@@ -1212,6 +1212,12 @@ def run_missed(event_id: int):
     journal.update(event_id, message=f'Run as event {caught}.')
     events.poke()
     return {'status': 200}
+
+
+@api.get('/get-next-fires')
+def get_next_fires(count: int = fastapi.Query(5, ge=1, le=20)):
+    """Get the next runs of every control: scheduled, cascaded or pulled."""
+    return next_fires(count)
 
 
 @api.get('/schedule-preview')

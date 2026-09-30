@@ -818,7 +818,18 @@
                     ]"
                     label="Scheduler status" />
 
-                  <schedule-edit-box class="col" v-model="scheduleObject"></schedule-edit-box>
+                  <schedule-edit-box class="col" v-model="scheduleObject">
+                    <div class="row no-wrap items-start q-gutter-x-sm">
+                      <q-icon name="fas fa-comment-alt" color="grey-6" size="14px" />
+                      <schedule-description
+                        :schedule-config="scheduleConfigText"
+                        :trigger-name="scheduleTriggerName"
+                        :period-back="control.period_back"
+                        :period-number="control.period_number"
+                        :period-type="control.period_type"
+                        color="teal-7" />
+                    </div>
+                  </schedule-edit-box>
                 </div>
                 <div class="row q-gutter-md">
                   <q-input outlined class="col-2" v-model.number="control.period_back" type="number" label="Periods back">
@@ -1116,6 +1127,7 @@ import ControlDiffDialog from "./ControlDiffDialog.vue";
 import ControlVersionsDialog from "./ControlVersionsDialog.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import ScheduleEditBox from "./ScheduleEditBox.vue";
+import ScheduleDescription from "./ScheduleDescription.vue";
 import ReconciliationDiscrepancyCheckboxes from "./ReconciliationDiscrepancyCheckboxes.vue";
 import ReconciliationMatchCriteriaBox from "./ReconciliationMatchCriteriaBox.vue";
 import ReconciliationMisMatchCriteriaBox from "./ReconciliationMisMatchCriteriaBox.vue";
@@ -1158,6 +1170,7 @@ export default {
     ControlDiffDialog,
     ControlVersionsDialog,
     ScheduleEditBox,
+    ScheduleDescription,
     ReconciliationDiscrepancyCheckboxes,
     ReconciliationMatchCriteriaBox,
     ReconciliationMisMatchCriteriaBox,
@@ -1271,6 +1284,15 @@ export default {
         ...(this.emailEnabled ? ["email"] : []),
         ...(this.control.control_id ? ["log"] : []),
       ];
+    },
+    // The schedule being edited as it would be saved, described live under the fields.
+    scheduleConfigText() {
+      return this.scheduleObject ? serializeSchedule(this.scheduleObject) : null;
+    },
+    scheduleTriggerName() {
+      const id = this.scheduleObject && this.scheduleObject.trigger_id;
+      const trigger = id ? this.controlCatalogue.find((row) => row.control_id === Number(id)) : null;
+      return trigger ? trigger.control_name : null;
     },
     scheduleType() {
       return scheduleType(this.scheduleObject);

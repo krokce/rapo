@@ -169,11 +169,9 @@
               <q-icon v-if="sort.key === 'control_description'" :name="sortIcon(sort)" size="12px" />
             </th>
 
-            <th class="text-left">
-              <span class="text-left sortable" title="How far back the data window of a run reaches (period number and type)" @click="toggleSort(sort, 'schedule_days')" v-keyboard> Periods back</span> 
-              <q-icon v-if="sort.key === 'schedule_days'" :name="sortIcon(sort)" size="12px" /> / 
-              <span class="text-left sortable" title="When the scheduler runs the control" @click="toggleSort(sort, 'schedule_time')" v-keyboard> Schedule</span>
-              <q-icon v-if="sort.key === 'schedule_time'" :name="sortIcon(sort)" size="12px" />
+            <th title="When the control runs next, scheduled, after the control it cascades from or pulled by a control reading its results, and in how long; then the schedule in words, where its runs fall (hours, week days or month days) and the data window of a run. Hover a row for its next runs and their data windows; sorted by the next run" class="text-left sortable" @click="toggleSort(sort, 'next_fire')" v-keyboard :aria-sort="ariaSort(sort, 'next_fire')">
+              Scheduler
+              <q-icon v-if="sort.key === 'next_fire'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th class="text-left"></th>
           </tr>
@@ -392,7 +390,13 @@
           </td>
           <td>
             <div class="row justify-start items-center">
-              <schedule-present-box :schedule="control.schedule_config" :period_back="control.period_back" :period_type="control.period_type"></schedule-present-box>
+              <schedule-summary
+                class="col"
+                :control="control"
+                :next="nextFires.controls[control.control_id]"
+                :now="serverNow"
+                :scheduler-active="nextFires.scheduler_active"
+                :trigger-name="triggerNameOf(control)" />
             </div>
           </td>
 
@@ -457,7 +461,7 @@
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import SchedulePresentBox from "./SchedulePresentBox.vue";
+import ScheduleSummary from "./ScheduleSummary.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import FilterChips from "./FilterChips.vue";
@@ -470,7 +474,8 @@ import { liveRefetch } from "../socket";
 import { chainIndex } from "../utils/chain";
 import { controlGroups, controlSystems, filterOptions, NO_CONTROL_GROUP } from "../utils/controlGroups";
 import { sendsEmail } from "../utils/email";
-import { formatNumber, toDateTimeString } from "../utils/format";
+import { formatNumber, toDateTimeString, toMillis } from "../utils/format";
+import { scheduleUnits } from "../utils/schedule";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -484,7 +489,7 @@ export default {
     TempTablesDialog,
     RunControlDialog,
     FilterChips,
-    SchedulePresentBox,
+    ScheduleSummary,
     SkeletonRows,
   },
   data() {
@@ -507,6 +512,11 @@ export default {
       // The one row menu of the table, opened at the kebab button of the row it acts on.
       menuTarget: false,
       menuControlId: null,
+      // The answer of get-next-fires ({ controls: { id: { fires, invalid } }, scheduler_active }), and the server
+      // time the countdowns read: the browser clock corrected by the offset of the server's, advanced by a ticker.
+      nextFires: { controls: {}, scheduler_active: true },
+      clockOffset: 0,
+      clock: Date.now(),
       filter: {
         control_name: "",
         group: null,
@@ -707,21 +717,34 @@ export default {
       this.filter.system = null;
       this.$store.commit("updateSearch", "");
     },
-    // Periods back in days, and the scheduled time of day in seconds (first value of lists/steps like "8,15").
-    scheduleSortValue(item, key) {
-      if (key === "schedule_days") {
-        return item.period_back == null ? null : item.period_back * ({ W: 7, M: 30 }[item.period_type] || 1);
-      }
+    // The time of the next run in milliseconds, null when none.
+    nextFireValue(item) {
+      const entry = this.nextFires.controls[item.control_id];
+      return entry && entry.fires.length ? toMillis(entry.fires[0].time) : null;
+    },
+    triggerNameOf(control) {
+      const units = scheduleUnits(control.schedule_config);
+      return units && units.trigger_id ? this.controlNames.get(Number(units.trigger_id)) || null : null;
+    },
+    async refreshNextFires() {
       try {
-        const schedule = JSON.parse(item.schedule_config);
-        const [hour, min, sec] = [schedule.hour, schedule.min, schedule.sec].map((value) => {
-          const match = String(value ?? "").match(/\d+/);
-          return match ? Number(match[0]) : null;
-        });
-        return hour != null && min != null ? hour * 3600 + min * 60 + (sec || 0) : null;
-      } catch (err) {
-        return null;
+        const answer = await api("get-next-fires", { loadingBar: false });
+        this.clockOffset = toMillis(answer.server_time) - Date.now();
+        this.clock = Date.now();
+        this.nextFires = Object.freeze(answer);
+      } catch (error) {
+        // Kept as it was: the countdowns go on, and the next change or fire tries again.
       }
+      this.scheduleNextFiresRefresh();
+    },
+    // Refetch when the earliest run is due (it moves on to the next one), at the latest every 5 minutes.
+    scheduleNextFiresRefresh() {
+      clearTimeout(this.nextFiresTimer);
+      const times = Object.values(this.nextFires.controls)
+        .filter((entry) => entry.fires.length)
+        .map((entry) => toMillis(entry.fires[0].time) - this.clockOffset - Date.now());
+      const wait = Math.min(Math.max(Math.min(...times, Infinity) + 2000, 5000), 300000);
+      this.nextFiresTimer = setTimeout(this.refreshNextFires, wait);
     },
   },
   computed: {
@@ -803,6 +826,13 @@ export default {
       );
       return Math.min(Math.max(width + 36, 200), 360);
     },
+    serverNow() {
+      return this.clock + this.clockOffset;
+    },
+    // Control names by ID, naming the control a cascade follows.
+    controlNames() {
+      return new Map(this.controlCatalogue.map((control) => [control.control_id, control.control_name]));
+    },
     // Looked up by ID, so an open menu follows live updates of its control.
     menuRow() {
       return this.controlCatalogue.find((control) => control.control_id === this.menuControlId) || null;
@@ -812,7 +842,8 @@ export default {
       if (!key) {
         return this.filteredControlCatalogue;
       }
-      const valueOf = key.startsWith("schedule_") ? (item) => this.scheduleSortValue(item, key) : (item) => item[key];
+      const valueOf =
+        key === "next_fire" ? (item) => this.nextFireValue(item) : (item) => item[key];
       return sortRows(this.filteredControlCatalogue, valueOf, this.sort.dir);
     },
     filteredControlCatalogue() {
@@ -867,6 +898,12 @@ export default {
       this.refreshKpiControls();
     },
   },
+  created() {
+    // A sort kept from before the Scheduler column (Periods back, Schedule time).
+    if (["schedule_days", "schedule_time", "schedule"].includes(this.sort.key)) {
+      this.sort.key = "next_fire";
+    }
+  },
   // Also runs after the first mount.
   activated() {
     const stopCatalogue = liveRefetch("controls:changed", this.updateControlCatalogue);
@@ -877,7 +914,15 @@ export default {
     const stopTempRuns = liveRefetch("runs:changed", this.refreshTempTables, { interval: 30000 });
     // save-control writes the KPIs of a control; nothing watches racs_kpi_config itself.
     const stopKpis = liveRefetch("controls:changed", this.refreshKpiControls);
+    // A schedule change moves the next runs; a scheduler stop or start greys or ungreys them.
+    const stopNextFires = liveRefetch("controls:changed", this.refreshNextFires);
+    const stopNextFiresScheduler = liveRefetch("scheduler:changed", this.refreshNextFires);
+    const ticker = setInterval(() => (this.clock = Date.now()), 30000);
     this.stopLiveUpdates = () => {
+      stopNextFires();
+      stopNextFiresScheduler();
+      clearInterval(ticker);
+      clearTimeout(this.nextFiresTimer);
       stopKpis();
       stopCatalogue();
       stopDriftConfig();
@@ -888,6 +933,7 @@ export default {
     this.refreshSchemaDrift();
     this.refreshTempTables();
     this.refreshKpiControls();
+    this.refreshNextFires();
   },
   deactivated() {
     this.stopLiveUpdates();
@@ -899,11 +945,11 @@ export default {
 /* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
 .catalogue-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(586px + var(--name-column-width));
+  min-width: calc(606px + var(--name-column-width));
 }
 .catalogue-table th:nth-child(1) { width: 114px; }
 .catalogue-table th:nth-child(2) { width: var(--name-column-width); }
-.catalogue-table th:nth-child(4) { width: 320px; }
+.catalogue-table th:nth-child(4) { width: 340px; }
 .catalogue-table th:nth-child(5) { width: 62px; }
 .catalogue-table td:nth-child(4) { white-space: normal; }
 .control-name {

@@ -13,6 +13,10 @@ No schema change.
 - **Email *Send when: Evaluate SQL*:** sent only when a Prerequisite-style SQL returns a number above 0, whatever the
   run status or result rows; its value is `{evaluate_value}`. A failing or non-numeric statement sends nothing and
   warns in the run log; *Resend* and *Send test* always send.
+- **Controls *Scheduler* column:** when each control runs next (own schedule, cascade or chain pull) and
+  in how long, the schedule in words (*Weekdays at 08:15*), a frequency-colored avatar, a strip of where the runs
+  fall and the data window. Sorted by the next run, hover for the next 5 runs, click for the Scheduler
+  tab. New route `get-next-fires`.
 
 ---
 

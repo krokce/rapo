@@ -1,7 +1,8 @@
 # Rapo v0.8.5 Change Log
 
 ## Annotation
-The email of a control can be sent on the result of an SQL statement. There is no change to Rapo's own schema. The
+The email of a control can be sent on the result of an SQL statement, and the Controls page shows when each control
+runs next. There is no change to Rapo's own schema. The
 upgrade steps are in the [migration instructions](README.md).
 
 1. **Email: Send when *Evaluate SQL*.** A fourth *Send when* option on the editor's *Email* tab (ANL, REP, REC). The
@@ -19,3 +20,26 @@ upgrade steps are in the [migration instructions](README.md).
      body notes when a run would not send (`Evaluate SQL returned 0, so a run would not send this email.`).
    - Stored as `rule_config.email.send_when = "evaluate_sql"` with `rule_config.email.evaluate_sql`. The statement is
      kept, and ignored, when another option is chosen. Save is refused while the option is chosen without a statement.
+
+2. **Controls: *Scheduler* column.** Replaces *Periods back / Schedule* on the Controls page and on a KPI
+   type's *Controls* tab.
+   - Line 1 is the next run, `Today 14:20`, `Tomorrow 08:15`, `Thu 02.10 08:15` or `01.11 18:15`, followed by the
+     time left (`(in 2h 5m)`, updated every 30 s). It is the earliest run of any kind: the control's own schedule, a
+     cascade after the control it is triggered by, or a chain pull by a control reading its results (marked `≈`,
+     since it starts once that run gets there). Otherwise the line reads *Inactive*, *Not scheduled*, *No run ahead*
+     (a cascade whose trigger does not run) or *Invalid schedule*.
+   - Line 2 describes the schedule in words, e.g. *Every day at 08:15*, *Weekdays at 08:15*, *Twice a month (1st,
+     2nd) at 08:15:01*, *Every hour at :05:12*, *Every 15 min, 08:00–18:45*, *After CHN_B finishes* or *Pulled by
+     CHN_C*. Line 3 carries a chip with the data window (*1 day back*, *7 days, 1 back*).
+   - The round avatar is colored by how often the control runs (several times a day, daily, weekly, monthly, month
+     and week days, cascade, chain, not scheduled). Its icon shows what starts the next run: a clock, a cascade
+     tree, a chain link, or a pause sign while the scheduler is stopped (the times are then greyed). Line 3 shows
+     a strip of where the runs fall (the hours of a day, the days of a week or the days of a month), the same width
+     for every schedule, next to the data window chip.
+   - Hovering a row lists its next 5 runs with their data windows. A click on the avatar or the next run opens the
+     control's *Scheduler* tab.
+   - A click on the header sorts by the next run (controls without one last). A sort kept from the old column
+     becomes this one.
+   - The next runs refresh on every configuration or scheduler change, and when the earliest one is due.
+   - The editor's *Scheduler* tab shows the same description, strip and window live under the schedule fields.
+   - New route `GET /api/get-next-fires` (see the API reference).
