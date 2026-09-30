@@ -73,8 +73,8 @@ code, pre, kbd, samp
 
 .text-mono
   font-family: var(--rapo-font-mono)
-  // Roboto Mono is larger than Roboto at the same size.
-  font-size: 0.93em
+  // Roboto Mono is wider and larger than Roboto at the same size.
+  font-size: 0.85em
 
 .clickable-row
   cursor: pointer
@@ -86,13 +86,17 @@ code, pre, kbd, samp
 // numbers in running text, chips, titles or tooltips, nor for dates and times.
 .number-cell
   font-family: var(--rapo-font-mono)
-  font-size: 0.93em
+  font-size: 0.85em
   font-variant-numeric: tabular-nums
+
+// Quasar sets 13px on table cells (.q-table tbody td), which outranks the em size above: numbers in a table are 12px.
+.q-table tbody td.number-cell
+  font-size: 12px
 
 // Every number input, in the same font.
 .q-field input[type="number"]
   font-family: var(--rapo-font-mono)
-  font-size: 0.93em
+  font-size: 0.85em
 
 // The day buttons (as tall as the inputs beside them, and no wider than their icon) and the name filter of Results, Files and a datasource file log.
 .day-btn

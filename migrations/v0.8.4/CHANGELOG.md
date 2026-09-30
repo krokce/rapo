@@ -323,7 +323,8 @@ the `PL` engine's procedure must be redeployed. The upgrade steps are in the [mi
 30. **Datasources layout and one mono font.** Paths, patterns, code (the SQL editors, the run and file logs,
    Instance details) and the numbers of tables and number inputs now use **Roboto Mono**, bundled with the UI next
    to Roboto (the app font), so every browser shows the same fixed-width font instead of the system's `monospace`;
-   numbers in text, chips, titles and tooltips, and dates, keep the page font.
+   numbers in text, chips, titles and tooltips, and dates, keep the page font. Table numbers are 12px, and the
+   *Fetched* and *Discr.* columns of Results are wider, so 10-digit process IDs and counts in the millions fit.
    - **Datasources page:** clicking an input directory opens the datasource's *All files* list. The *Files mask*
      column is gone: the mask is shown in light blue under the input directories, above the issue chips, in the
      column now named *Input files* (a longer one ends in an ellipsis, the whole mask in its tooltip). New *Zipped*

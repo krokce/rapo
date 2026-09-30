@@ -619,7 +619,7 @@ a:visited {
    the width of the longest name of the day (nameColumnWidth), else the table scrolls sideways. */
 .results-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(1198px + var(--name-column-width));
+  min-width: calc(1290px + var(--name-column-width));
 }
 .results-table th:nth-child(1) { width: 114px; }
 .results-table th:nth-child(2) { width: 144px; }
@@ -628,9 +628,9 @@ a:visited {
 .results-table th:nth-child(6),
 .results-table th:nth-child(7) { width: 87px; }
 .results-table th:nth-child(8),
-.results-table th:nth-child(9) { width: 72px; }
+.results-table th:nth-child(9) { width: 92px; }
 .results-table th:nth-child(10),
-.results-table th:nth-child(11) { width: 58px; }
+.results-table th:nth-child(11) { width: 84px; }
 .results-table th:nth-child(12),
 .results-table th:nth-child(13) { width: 80px; }
 .results-table th:nth-child(14) { width: 34px; }
