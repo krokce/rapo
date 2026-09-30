@@ -572,12 +572,19 @@ def delete_control_versions(
 
 
 @api.get('/get-control-runs')
-def get_control_runs(date: dt.date | None = None):
-    """Get all control runs started on the passed day (default: the server's today) in JSON."""
+def get_control_runs(date: dt.date | None = None,
+                     control_name: str | None = None,
+                     days: int = fastapi.Query(7, ge=1, le=366)):
+    """Get all control runs started on the passed day (default: the server's today), or those of one control of the
+    last days, in JSON."""
     today = dt.date.today()
+    if control_name:
+        return {'date': None, 'today': today.isoformat(),
+                'runs': reader.read_control_runs(control_name=control_name,
+                                                 days=days)}
     day = date or today
     return {'date': day.isoformat(), 'today': today.isoformat(),
-            'runs': reader.read_control_results_for_day(day)}
+            'runs': reader.read_control_runs(day=day)}
 
 
 @api.get('/read-control-logs')

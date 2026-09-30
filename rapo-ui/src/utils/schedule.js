@@ -253,6 +253,31 @@ export function describeSchedule(config, triggerName = null) {
   return time.count <= 4 ? `${days} ${time.text}` : `${days}, ${time.text}`;
 }
 
+// The schedule in words as the Controls Scheduler column shows it: a control with no schedule of its own that other
+// controls pull (chain-rules) reads "Pulled by X".
+export function scheduleText(config, triggerName = null, pulledBy = []) {
+  const text = describeSchedule(config, triggerName);
+  if (pulledBy.length && ["Not scheduled", "Never fires"].includes(text)) {
+    return `Pulled by ${pulledBy.join(", ")}`;
+  }
+  return text;
+}
+
+const PERIOD_NAMES = { D: "day", W: "week", M: "month" };
+
+// The data window of a run: "1 day back", or "7 days, 1 back" for a window of several periods; null without a
+// known period type.
+export function windowLabel(periodBack, periodNumber, periodType) {
+  const name = PERIOD_NAMES[periodType];
+  if (!name) {
+    return null;
+  }
+  const back = Number(periodBack) || 0;
+  const number = periodNumber == null || periodNumber === "" ? 1 : Number(periodNumber);
+  const plural = (count) => `${count} ${name}${count === 1 ? "" : "s"}`;
+  return number > 1 ? `${plural(number)}, ${back} back` : `${plural(back)} back`;
+}
+
 // How often a schedule fires, for the avatar color: subdaily, daily, weekly, monthly,
 // complex (month and week days), cascade, none.
 export function scheduleFrequency(config) {

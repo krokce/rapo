@@ -16,9 +16,11 @@ No schema change.
 - **Controls *Scheduler* column:** when each control runs next (own schedule, cascade or chain pull) and
   in how long, the schedule in words (*Weekdays at 08:15*), a frequency-colored avatar, a strip of where the runs
   fall and the data window. Sorted by the next run, hover for the next 5 runs, click for the Scheduler
-  tab. New route `get-next-fires`.
+  tab. Type, Name and Scheduler fit their content; Description takes the rest. New route `get-next-fires`.
 - **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
-  catch-up, iteration, cascade, upstream); hover for details.
+  catch-up, iteration, cascade, upstream); hover for details. The day's totals count the runs per trigger.
+- **Editor Run log = Results table:** same columns (without Type/Processname, plus End), menus, number menus and
+  totals; sortable, day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 
 ---
 

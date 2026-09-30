@@ -128,17 +128,20 @@ or its file does not exist.
 ### Reads
 
 #### `GET /api/get-control-runs`
-Every run **started** on one day, newest first.
+Every run **started** on one day, newest first, or the runs of one control over the last days.
 
-| Parameter | Type | Default           | Meaning        |
-|-----------|------|-------------------|-----------------|
-| `date`    | date | the server's today | Day to report. |
+| Parameter      | Type | Default            | Meaning                                                        |
+|----------------|------|--------------------|-----------------------------------------------------------------|
+| `date`         | date | the server's today | Day to report.                                                  |
+| `control_name` | str  | -                  | One control's runs instead (the editor's *Run log*); `date` is then ignored and answered as null. |
+| `days`         | int  | 7                  | With `control_name`: how many days back from now, 1 .. 366.     |
 
 Answers `{date, today, runs}`, where `today` is the server's current day, so a caller can tell whether it is
 looking at today without a clock of its own. A run that never started is reported on the day it was added. The
 list is not capped.
 
-Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `start_date`, `date_from`, `date_to`,
+Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `added`, `start_date`, `end_date`,
+`date_from`, `date_to`,
 `status`, the A/B counters (`fetched_number_a`/`_b`, `success_number_a`/`_b`, `error_number_a`/`_b`,
 `error_level_a`/`_b`, the A column holding the single value of a one-sided control), `text_log`, `text_error`,
 `has_warning`, `prerequisite_value`, `duration_minutes`, and what started it from `rapo_scheduler_event`:

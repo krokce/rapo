@@ -880,10 +880,10 @@
               </div>
             </q-tab-panel>
             <q-tab-panel name="log">
-              <div class="q-ma-lg q-gutter-y-md">
-                <div class="row q-my-lg">
+              <div class="q-mt-md">
+                <div class="row items-end q-mb-md">
                   <q-input
-                    class="col-1"
+                    style="width: 140px"
                     v-model.number="log_days_back"
                     type="number"
                     outlined
@@ -896,137 +896,21 @@
                       <q-icon name="fas fa-history" @click.stop.prevent />
                     </template>
                   </q-input>
+                  <q-space />
+                  <run-summary v-if="logsLoaded" :runs="controlLogs" />
                 </div>
-                <q-markup-table flat dense>
-                  <thead>
-                    <tr class="bg-blue-grey-2">
-                      <th title="The run's number in the list" class="text-left">#</th>
-                      <th title="When the run was requested" class="text-left">Added</th>
-                      <th title="When the run started" class="text-left">Start</th>
-                      <th title="When the run ended" class="text-left">End</th>
-                      <th title="How long the run took, in minutes" class="text-left">Runtime</th>
-                      <th title="The process ID of the run" class="text-left">PID</th>
-                      <th title="The start of the data window the run read" class="text-left">Run from</th>
-                      <th title="The end of the data window the run read" class="text-left">Run to</th>
-                      <th title="Records fetched from datasource A; click the number for its SQL or data analysis" class="text-right">Fetched A</th>
-                      <th title="Records fetched from datasource B; click the number for its SQL or data analysis" class="text-right">Fetched B</th>
-                      <th title="Discrepancies found on side A (the result rows of ANL, CMP and REP); click the number for its SQL or data analysis" class="text-right">Discr. A</th>
-                      <th title="Discrepancies found on side B; click the number for its SQL or data analysis" class="text-right">Discr. B</th>
-                      <th title="Discrepancies of side A as a percentage of the records fetched from A" class="text-right">Err. lvl A [%]</th>
-                      <th title="Discrepancies of side B as a percentage of the records fetched from B" class="text-right">Err. lvl B [%]</th>
-                      <th title="Prerequisite value: what the Prerequisite SQL returned; 0 stops the run" class="text-right">PV</th>
-                      <th title="The status of the run" class="text-left">Status</th>
-                      <th class="text-left"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(log, index) in controlLogs" :key="log.process_id" :class="{ 'new-day-separator': newDayLogRows.has(index) }">
-                      <td class="text-left number-cell">{{ index + 1 }}. &nbsp;</td>
-                      <td v-for="field in ['added', 'start_date', 'end_date']" :key="field" class="text-left">
-                        <div class="text-blue-grey-7">
-                          <strong>{{ toDateString(log[field]) }}</strong>
-                          <small class="text-grey-7 q-px-sm">{{ toTimeString(log[field]) }}</small>
-                        </div>
-                      </td>
-                      <td class="text-right number-cell">
-                        {{ log.end_date && log.start_date ? round((new Date(log.end_date) - new Date(log.start_date)) / 60000, 1) : "0" }} min
-                      </td>
-                      <td class="text-left text-weight-bold text-blue-grey-7 number-cell">{{ log.process_id }}</td>
-                      <td class="text-left">{{ toDateString(log.date_from) }}</td>
-                      <td class="text-left">{{ toDateString(log.date_to) }}</td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer': logSum(log, 'fetched_number') > 0, 'text-red': control.control_type === 'REP' && logSum(log, 'fetched_number') > 0 }"
-                          v-keyboard:button="logSum(log, 'fetched_number') > 0"
-                          @click="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_a', logSum(log, 'fetched_number'))">
-                          {{ formatNumber(logSum(log, "fetched_number")) }}
-                        </span>
-                      </td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer': log.fetched_number_b > 0 }"
-                          v-keyboard:button="log.fetched_number_b > 0"
-                          @click="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'fetched_b', log.fetched_number_b)">
-                          {{ formatNumber(log.fetched_number_b) }}
-                        </span>
-                      </td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer text-red': logSum(log, 'error_number') > 0 }"
-                          v-keyboard:button="logSum(log, 'error_number') > 0"
-                          @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_number'))">
-                          {{ formatNumber(logSum(log, "error_number")) }}
-                        </span>
-                      </td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer text-red': log.error_number_b > 0 }"
-                          v-keyboard:button="log.error_number_b > 0"
-                          @click="openDatasetMenu($event, log, 'result_b', log.error_number_b)"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_number_b)">
-                          {{ formatNumber(log.error_number_b) }}
-                        </span>
-                      </td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer text-red': logSum(log, 'error_level') > 0 }"
-                          v-keyboard:button="logSum(log, 'error_level') > 0"
-                          @click="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_a', logSum(log, 'error_level'))">
-                          {{ formatNumber(logSum(log, "error_level"), 2) }}%
-                        </span>
-                      </td>
-                      <td class="text-right number-cell">
-                        <span
-                          :class="{ 'cursor-pointer text-red': log.error_level_b > 0 }"
-                          v-keyboard:button="log.error_level_b > 0"
-                          @click="openDatasetMenu($event, log, 'result_b', log.error_level_b)"
-                          @contextmenu.prevent="openDatasetMenu($event, log, 'result_b', log.error_level_b)">
-                          {{ formatNumber(log.error_level_b, 2) }}%
-                        </span>
-                      </td>
-                      <td class="text-right">
-                        <q-icon v-if="log.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop">
-                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is 0 </q-tooltip>
-                        </q-icon>
-                        <q-icon v-if="log.prerequisite_value" class="cursor-pointer text-green" name="fas fa-play">
-                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Prerequisite SQL value is {{ log.prerequisite_value }} </q-tooltip>
-                        </q-icon>
-                      </td>
-                      <td class="text-left">
-                        <q-chip>
-                          <q-avatar :icon="runStatus(log.status).icon" :color="runStatus(log.status).color" text-color="white" />
-                          {{ runStatus(log.status).label }}
-                        </q-chip>
-                      </td>
-                      <td class="text-left" style="width: 50px">
-                        <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v">
-                          <q-menu>
-                            <q-list dense class="text-no-wrap">
-                              <q-item dense clickable :disable="dirty" @click="reRun(logRun(log), refreshLogs)" v-close-popup>
-                                <q-item-section> Re-run </q-item-section>
-                                <q-tooltip v-if="dirty">Apply your changes first: a run uses the saved configuration</q-tooltip>
-                              </q-item>
-                              <q-separator />
-                              <q-item v-if="activeRunStatuses.includes(log.status)" dense clickable @click="cancelRun(logRun(log), refreshLogs)" v-close-popup>
-                                <q-item-section> Cancel run </q-item-section>
-                              </q-item>
-                              <q-item v-if="log.status != 'X'" dense clickable @click="revokeRun(logRun(log), refreshLogs)" v-close-popup>
-                                <q-item-section> Revoke run </q-item-section>
-                              </q-item>
-                              <q-item dense clickable @click="$refs.runLogDialog.open({ process_id: log.process_id, control_name: control.control_name })" v-close-popup>
-                                <q-item-section> Show full log </q-item-section>
-                              </q-item>
-                            </q-list>
-                          </q-menu>
-                        </q-btn>
-                      </td>
-                    </tr>
-                  </tbody>
-                </q-markup-table>
+                <!-- As on Results, without the type and name (one control), with the end of each run. -->
+                <div ref="logTable" class="column no-wrap" :style="{ maxHeight: logTableHeight + 'px' }">
+                  <run-table
+                    :runs="controlLogs"
+                    :sort="logSort"
+                    :columns="{ end: true }"
+                    separators
+                    :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
+                    :refresh="refreshLogs"
+                    :loading="!logsLoaded"
+                    :empty-text="`No runs in the last ${log_days_back} days`" />
+                </div>
               </div>
             </q-tab-panel>
           </q-tab-panels>
@@ -1088,8 +972,6 @@
       </q-card>
     </div>
 
-    <run-log-dialog ref="runLogDialog" />
-    <run-dataset-menu ref="datasetMenu" />
     <schema-diff-dialog
       ref="schemaDialog"
       :check="schemaCheck"
@@ -1115,13 +997,12 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
-import { ACTIVE_RUN_STATUSES, CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, reRun, revokeRun } from "../runActions";
+import { CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor } from "../constants";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
-import RunDatasetMenu from "./RunDatasetMenu.vue";
-import RunLogDialog from "./RunLogDialog.vue";
+import RunSummary from "./RunSummary.vue";
+import RunTable from "./RunTable.vue";
 import SchemaDiffDialog from "./SchemaDiffDialog.vue";
 import ControlDiffDialog from "./ControlDiffDialog.vue";
 import ControlVersionsDialog from "./ControlVersionsDialog.vue";
@@ -1139,7 +1020,7 @@ import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { diffControl, diffKpis } from "../utils/controlDiff";
-import { escapeHtml, formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { escapeHtml, toDateTimeString } from "../utils/format";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
@@ -1159,12 +1040,27 @@ function versionLabel(version) {
   return "v." + toDateTimeString(version.updated_date ? version.updated_date : version.created_date);
 }
 
+// The Run log's sort, kept for the browser session like a list page's (mixins/persistFilters).
+const LOG_SORT_KEY = "rapo_filters_control_runlog";
+
+function readLogSort() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(LOG_SORT_KEY) || "null");
+    if (saved && typeof saved.key === "string" && ["asc", "desc"].includes(saved.dir)) {
+      return saved;
+    }
+  } catch (error) {
+    // The default then.
+  }
+  return { key: "start_date", dir: "desc" };
+}
+
 export default {
   components: {
     CodeBox,
     EditorSkeleton,
-    RunDatasetMenu,
-    RunLogDialog,
+    RunSummary,
+    RunTable,
     RunControlDialog,
     SchemaDiffDialog,
     ControlDiffDialog,
@@ -1221,7 +1117,13 @@ export default {
       caseConfigObject: [],
       iterationConfigObject: [],
       kpiConfigObject: [],
+      // The runs of the last log_days_back days (get-control-runs), shown by the Run log's RunTable.
       controlLogs: [],
+      logsLoaded: false,
+      // The Run log's sort, kept for the browser session (LOG_SORT_KEY), and the table's height down to the
+      // Save/Apply bar.
+      logSort: readLogSort(),
+      logTableHeight: 600,
       versionChanges: [],
       saving: false,
       // The saved state as JSON (buildControlPayload / kpiConfigObject), compared with the form for dirty.
@@ -1236,7 +1138,6 @@ export default {
       controlTypeOptions: CONTROL_TYPE_OPTIONS,
       yesNoOptions: YES_NO_OPTIONS,
       periodTypeOptions: PERIOD_TYPE_OPTIONS,
-      activeRunStatuses: ACTIVE_RUN_STATUSES,
       // The answer of check-control-schema for the form as it is, null until the first one.
       schemaCheck: null,
       // A check-control-schema request is running, and the schemaKey the current schemaCheck answers.
@@ -1253,6 +1154,7 @@ export default {
     this.columnRequests = {};
     window.addEventListener("keydown", this.onKeydown);
     window.addEventListener("beforeunload", this.onBeforeUnload);
+    window.addEventListener("resize", this.sizeLogTable);
   },
   computed: {
     // The Example menus of the code boxes, for this control's type and name.
@@ -1445,11 +1347,6 @@ export default {
       }
       return null;
     },
-    // Indexes of run log rows added on another day than the previous row, drawn with a separator line.
-    newDayLogRows() {
-      const logs = this.controlLogs;
-      return new Set(logs.map((log, index) => index).filter((index) => index > 0 && toDateString(logs[index - 1].added) !== toDateString(logs[index].added)));
-    },
   },
   methods: {
     // A link may open a tab (?tab=kpi from a KPI type's Controls tab, ?tab=scheduler from the Scheduler page); one the
@@ -1483,14 +1380,6 @@ export default {
     },
     controlType,
     controlTypeColor,
-    formatNumber,
-    round,
-    runStatus,
-    toDateString,
-    toTimeString,
-    reRun,
-    cancelRun,
-    revokeRun,
     filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();
@@ -1655,21 +1544,25 @@ export default {
     },
     async getControlLogs(controlName, numberDays) {
       try {
-        this.controlLogs = await api("read-control-logs", { params: { control_name: controlName, days: numberDays } });
+        const answer = await api("get-control-runs", { params: { control_name: controlName, days: numberDays }, loadingBar: false });
+        this.controlLogs = Object.freeze(answer.runs);
+        this.logsLoaded = true;
       } catch (error) {
         notifyError("Failed to load run log.", error);
       }
     },
+    // The Run log table runs from where it starts down to the sticky Save/Apply bar, and scrolls inside.
+    sizeLogTable() {
+      const table = this.$refs.logTable;
+      if (!table || this.tab !== "log") {
+        return;
+      }
+      const bar = document.querySelector(".editor-actions");
+      const top = table.getBoundingClientRect().top + window.scrollY;
+      this.logTableHeight = Math.max(window.innerHeight - top - (bar ? bar.offsetHeight : 0) - 24, 300);
+    },
     refreshLogs() {
       return this.getControlLogs(this.control.control_name, this.log_days_back);
-    },
-    // Log rows lack the control's name and type, which the run actions need.
-    logRun(log) {
-      return { ...log, control_name: this.control.control_name, control_type: this.control.control_type };
-    },
-    // Single-source controls log counts without a side suffix (fetched_number), A/B controls with one.
-    logSum(log, field) {
-      return Number(log[field + "_a"]) + Number(log[field]);
     },
     ReconciliationTimeFromToleranceChanged() {
       if (!isNaN(Number(this.ruleConfigObject.time_tolerance_from))) {
@@ -2380,13 +2273,6 @@ export default {
           }
         });
     },
-    // SQL selecting the source records a run fetched: side "T" for single-source controls, "A"/"B" otherwise.
-    // A number of the run log opens the menu of its dataset (SQL, data analysis), as on Results.
-    openDatasetMenu(event, log, dataset, value) {
-      if (Number(value) > 0) {
-        this.$refs.datasetMenu.open(event, this.logRun(log), dataset);
-      }
-    },
     startLiveUpdates() {
       const stopLogs = liveRefetch("runs:changed", this.onRunsChanged, {
         filter: (payload) => payload.control_names.includes(this.control.control_name),
@@ -2442,6 +2328,22 @@ export default {
     },
   },
   watch: {
+    logSort: {
+      deep: true,
+      handler(sort) {
+        try {
+          sessionStorage.setItem(LOG_SORT_KEY, JSON.stringify(sort));
+        } catch (error) {
+          // Not remembered, which is all a failure costs.
+        }
+      },
+    },
+    // The Run log's table is measured once its tab is shown (the tab panel animates in).
+    tab(tab) {
+      if (tab === "log") {
+        this.$nextTick(() => setTimeout(this.sizeLogTable, 350));
+      }
+    },
     schemaKey(key, previous) {
       if (key !== previous) {
         this.checkSchema(previous === null ? 0 : 800);
@@ -2568,6 +2470,7 @@ export default {
   unmounted() {
     window.removeEventListener("keydown", this.onKeydown);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
+    window.removeEventListener("resize", this.sizeLogTable);
     clearTimeout(this.schemaTimer);
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();

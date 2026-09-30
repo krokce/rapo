@@ -148,7 +148,7 @@
     <q-virtual-scroll
       type="table"
       class="list-table catalogue-table"
-      :style="{ '--name-column-width': nameColumnWidth + 'px' }"
+      :style="{ '--name-column-width': nameColumnWidth + 'px', '--scheduler-column-width': schedulerColumnWidth + 'px' }"
       :items="sortedControlCatalogue"
       :virtual-scroll-item-size="90"
       :virtual-scroll-sticky-size-start="28"
@@ -475,7 +475,7 @@ import { chainIndex } from "../utils/chain";
 import { controlGroups, controlSystems, filterOptions, NO_CONTROL_GROUP } from "../utils/controlGroups";
 import { sendsEmail } from "../utils/email";
 import { formatNumber, toDateTimeString, toMillis } from "../utils/format";
-import { scheduleUnits } from "../utils/schedule";
+import { scheduleText, scheduleUnits, windowLabel } from "../utils/schedule";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -722,6 +722,11 @@ export default {
       const entry = this.nextFires.controls[item.control_id];
       return entry && entry.fires.length ? toMillis(entry.fires[0].time) : null;
     },
+    // The controls pulling this one (chain-rules), from its next runs.
+    pulledByOf(control) {
+      const entry = this.nextFires.controls[control.control_id];
+      return entry ? [...new Set(entry.fires.filter((fire) => fire.source === "chain").map((fire) => fire.via))] : [];
+    },
     triggerNameOf(control) {
       const units = scheduleUnits(control.schedule_config);
       return units && units.trigger_id ? this.controlNames.get(Number(units.trigger_id)) || null : null;
@@ -818,13 +823,31 @@ export default {
     showSkeleton() {
       return !this.loaded && !this.controlCatalogue.length;
     },
-    // The Name column fits the longest control name (bold 16px, plus padding), within limits.
+    // The Name column fits the longest control name (bold 16px) or its version line (12px), plus the 16px cell
+    // paddings; a longer name wraps.
     nameColumnWidth() {
-      const width = textWidth(
+      const names = textWidth(
         this.controlCatalogue.map((control) => control.control_name),
         "bold 16px Roboto, sans-serif"
       );
-      return Math.min(Math.max(width + 36, 200), 360);
+      const version = textWidth(["v.2026-09-30 10:27:09"], "12px Roboto, sans-serif");
+      return Math.min(Math.max(names, version) + 36, 360);
+    },
+    // The Scheduler column fits its widest content, plus the cell paddings: the avatar (28px, 8px gap), then the
+    // widest of the next run (a fixed worst case, since the countdown moves), the schedule in words, and the strip
+    // (72px, 6px gap) with the window chip (icon, 5px paddings, border). Past the cap the words are cut short.
+    schedulerColumnWidth() {
+      const nextRun = textWidth(["≈ Tomorrow 17:28:05"], "500 13px Roboto, sans-serif") + 6 + textWidth(["(in 23h 59m)"], "13px Roboto, sans-serif");
+      const words = textWidth(
+        this.controlCatalogue.map((control) => scheduleText(control.schedule_config, this.triggerNameOf(control), this.pulledByOf(control))),
+        "12px Roboto, sans-serif"
+      );
+      const windows = textWidth(
+        this.controlCatalogue.map((control) => windowLabel(control.period_back, control.period_number, control.period_type)),
+        "11px Roboto, sans-serif"
+      );
+      const details = 72 + 6 + (windows ? windows + 26 : 0);
+      return Math.min(28 + 8 + Math.max(nextRun, words, details) + 34, 400);
     },
     serverNow() {
       return this.clock + this.clockOffset;
@@ -942,14 +965,16 @@ export default {
 </script>
 
 <style scoped>
-/* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
+/* Fixed columns, so rows swapped in while scrolling don't resize them. Type, Name and Scheduler fit their content
+   (the type chip, nameColumnWidth, schedulerColumnWidth); Description takes the rest, at least 300px before the
+   table scrolls sideways. */
 .catalogue-table :deep(table) {
   table-layout: fixed;
-  min-width: calc(606px + var(--name-column-width));
+  min-width: calc(110px + var(--name-column-width) + 300px + var(--scheduler-column-width) + 62px);
 }
-.catalogue-table th:nth-child(1) { width: 114px; }
+.catalogue-table th:nth-child(1) { width: 110px; }
 .catalogue-table th:nth-child(2) { width: var(--name-column-width); }
-.catalogue-table th:nth-child(4) { width: 340px; }
+.catalogue-table th:nth-child(4) { width: var(--scheduler-column-width); }
 .catalogue-table th:nth-child(5) { width: 62px; }
 .catalogue-table td:nth-child(4) { white-space: normal; }
 .control-name {

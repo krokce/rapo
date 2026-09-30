@@ -2,7 +2,7 @@
 
 ## Annotation
 The email of a control can be sent on the result of an SQL statement, the Controls page shows when each control
-runs next, and Results show what started each run. There is no change to Rapo's own schema. The
+runs next, Results show what started each run, and the editor's Run log is the Results table. There is no change to Rapo's own schema. The
 upgrade steps are in the [migration instructions](README.md).
 
 1. **Email: Send when *Evaluate SQL*.** A fourth *Send when* option on the editor's *Email* tab (ANL, REP, REC). The
@@ -40,6 +40,8 @@ upgrade steps are in the [migration instructions](README.md).
      control's *Scheduler* tab.
    - A click on the header sorts by the next run (controls without one last). A sort kept from the old column
      becomes this one.
+   - The *Type*, *Name* and *Scheduler* columns are as wide as their content (the longest control name, the widest
+     schedule in words, up to 360 and 400px), and *Description* takes the rest of the page.
    - The next runs refresh on every configuration or scheduler change, and when the earliest one is due.
    - The editor's *Scheduler* tab shows the same description, strip and window live under the schedule fields.
    - New route `GET /api/get-next-fires` (see the API reference).
@@ -50,3 +52,18 @@ upgrade steps are in the [migration instructions](README.md).
    Upstream (For CHN_B [1000002993])`. A run the run manager did not start (library use, older runs) shows a faint
    question mark, *Trigger not recorded*. The *Start* column is 18px wider, taken from the *Processname* column.
    `get-control-runs` answers `trigger_type`, `trigger_message` and `scheduled_time` for each run.
+   - The day's totals under the header chips count the runs by trigger, each an icon with its number (hover it for
+     the trigger's name), not recorded last.
+
+4. **Editor: *Run log* as on Results.** The *Run log* tab shows the runs of the last *Days back* days in the Results
+   table: the same formatting, trigger icon, warning flag, number menus (*Copy SQL*, *Data analysis*) and row menu
+   (*Re-run*, *Run*, *Revoke run*, *Cancel run*, *Show full log*, *Send email*).
+   - Without *Type* and *Processname* (one control), with an *End* column: the time the run ended, with its day when
+     that differs from the start.
+   - Sortable by every column (newest first by default, kept for the browser session); a line separates the days
+     while sorted by *Start* or *PID*.
+   - Above it, the totals of those runs as on Results: status and warning chips, runs by trigger, records fetched and
+     runtime. They are not filters.
+   - *Re-run* and *Run* are disabled while the form has unsaved changes. The *#* and *Added* columns are gone.
+   - The table fills the tab down to the *Save* bar and scrolls inside.
+   - `get-control-runs` takes `control_name` and `days` for this, and answers `added` and `end_date` for every run.

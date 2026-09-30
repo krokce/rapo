@@ -10,9 +10,7 @@
 
 <script>
 import ScheduleRhythm from "./ScheduleRhythm.vue";
-import { describeSchedule, scheduleRhythm } from "../utils/schedule";
-
-const PERIOD_NAMES = { D: "day", W: "week", M: "month" };
+import { scheduleRhythm, scheduleText, windowLabel } from "../utils/schedule";
 
 // A schedule in words, then the strip of where its fires fall and the data window of a run. Lines 2 and 3 of
 // ScheduleSummary; the control editor shows it live under the schedule fields.
@@ -35,22 +33,10 @@ export default {
       return !!scheduleRhythm(this.scheduleConfig);
     },
     text() {
-      const text = describeSchedule(this.scheduleConfig, this.triggerName);
-      if (this.pulledBy.length && ["Not scheduled", "Never fires"].includes(text)) {
-        return `Pulled by ${this.pulledBy.join(", ")}`;
-      }
-      return text;
+      return scheduleText(this.scheduleConfig, this.triggerName, this.pulledBy);
     },
-    // "1 day back", or "7 days, 1 back" for a window of several periods; null without a period type.
     window() {
-      const name = PERIOD_NAMES[this.periodType];
-      if (!name) {
-        return null;
-      }
-      const back = Number(this.periodBack) || 0;
-      const number = this.periodNumber == null || this.periodNumber === "" ? 1 : Number(this.periodNumber);
-      const plural = (count) => `${count} ${name}${count === 1 ? "" : "s"}`;
-      return number > 1 ? `${plural(number)}, ${back} back` : `${plural(back)} back`;
+      return windowLabel(this.periodBack, this.periodNumber, this.periodType);
     },
     windowTitle() {
       return `Data window of a run: periods back ${this.periodBack ?? 0}, number of periods ${this.periodNumber ?? 1}, period type ${this.periodType}`;

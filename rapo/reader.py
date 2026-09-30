@@ -310,13 +310,35 @@ class Reader:
 
     def read_control_results_for_day(self, day):
         """Get list of all control runs started on the passed day."""
+        return self.read_control_runs(day=day)
+
+    def read_control_runs(self, day=None, control_name=None, days=None):
+        """Get the runs started on a day, or those of one control.
+
+        Parameters
+        ----------
+        day : date or None
+            Day the runs started on (a run that never started counts on the
+            day it was added).
+        control_name : str or None
+            One control's runs of the last `days` days instead.
+        days : int or None
+            Days back, counted from now, for `control_name`.
+
+        Returns
+        -------
+        runs : list
+            Rows with the control, counters, trigger and dates, newest first.
+        """
         select = f"""
                 select
                     c.control_name,
                     c.control_id,
                     c.control_type,
                     l.process_id,
+                    l.added,
                     nvl(l.start_date, l.added) start_date,
+                    l.end_date,
                     l.date_from,
                     l.date_to,
                     l.status,
@@ -350,13 +372,22 @@ class Reader:
                             group by process_id) e on e.process_id = l.process_id
                 where 1=1
                     and c.control_name is not null
+                    and {'c.control_name = :control_name' if control_name else '1=1'}
                     and ((l.start_date >= :day_start and l.start_date < :day_end)
                          or (l.start_date is null and l.added >= :day_start and l.added < :day_end))
                 order by process_id desc
         """
-        day_start = dt.datetime.combine(day, dt.time())
-        day_end = day_start + dt.timedelta(days=1)
-        select = sa.text(select).bindparams(day_start=day_start, day_end=day_end)
+        if control_name:
+            # As read_control_logs counts days back: from now, on the app clock.
+            day_end = dt.datetime.now()+dt.timedelta(days=1)
+            day_start = dt.datetime.now()-dt.timedelta(days=days or 7)
+            params = {'control_name': control_name}
+        else:
+            day_start = dt.datetime.combine(day, dt.time())
+            day_end = day_start + dt.timedelta(days=1)
+            params = {}
+        select = sa.text(select).bindparams(day_start=day_start, day_end=day_end,
+                                            **params)
         answerset = db.execute(select, as_table=True)
         return answerset
 
