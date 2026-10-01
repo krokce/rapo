@@ -30,6 +30,14 @@
       </template>
     </q-banner>
 
+    <q-banner v-if="meta && (meta.stopped || meta.refine_error)" dense class="bg-amber-1 text-brown-9 q-mb-md" rounded>
+      <template #avatar><q-icon name="fas fa-hourglass-half" color="amber-9" /></template>
+      {{ meta.stopped ? "Refining was stopped" : `Refining failed: ${meta.refine_error}` }}. These are the preliminary results of the quick look.
+      <template #action>
+        <q-btn flat color="brown-9" label="Refine again" @click="start(true)" />
+      </template>
+    </q-banner>
+
     <q-banner v-if="meta && meta.stale" dense class="bg-orange-1 text-orange-10 q-mb-md" rounded>
       <template #avatar><q-icon name="fas fa-history" color="orange-8" /></template>
       The control was changed after this run. The fetched records are selected with its current configuration for the run's window, so they may
@@ -60,11 +68,17 @@
           title="Analyse every discrepancy, or the records of one result type"
           :options="typeOptions"
           @update:model-value="setResultType" />
-        <q-chip v-if="meta && meta.sample" dense color="amber-1" text-color="brown-9" icon="fas fa-percentage">
+        <q-chip v-if="meta && meta.stage === 'quick'" dense color="amber-1" text-color="brown-9" icon="fas fa-bolt">
+          Preliminary: {{ formatNumber(meta.sample_rows) }} records read{{ meta.sample_method === "first" ? ", not a random sample" : "" }}
+          <q-tooltip anchor="top middle" self="bottom middle">
+            A quick look at {{ sampleText(meta.sample_method) }} of the fetched records, scaled to the run's totals. Refining counts the bins
+            again with all records, or a random sample of [ANALYSIS] discrepancy_exact_rows, and replaces these results.
+          </q-tooltip>
+        </q-chip>
+        <q-chip v-else-if="meta && meta.sample" dense color="amber-1" text-color="brown-9" icon="fas fa-percentage">
           Fetched records counted on a {{ formatPct(meta.sample * 100) }} sample
           <q-tooltip anchor="top middle" self="bottom middle">
-            The fetched records exceed [ANALYSIS] discrepancy_exact_rows, so they were counted on a random sample and scaled up; the discrepancies
-            are counted whole.
+            The fetched records exceed [ANALYSIS] discrepancy_exact_rows, so they were counted on a random sample and scaled up.
           </q-tooltip>
         </q-chip>
         <q-chip v-if="meta && meta.drift" dense color="amber-1" text-color="brown-9" icon="fas fa-exchange-alt">
@@ -72,13 +86,17 @@
         </q-chip>
         <div v-if="busy" class="col row items-center no-wrap q-gutter-x-sm busy-step">
           <q-spinner-dots color="primary" size="20px" />
-          <div class="text-grey-8 text-no-wrap">{{ (job && job.progress && job.progress.step) || (job && job.state === "queued" ? "Waiting for another analysis to end" : "Starting") }}</div>
+          <div class="text-grey-8 ellipsis" :title="job && job.progress ? job.progress.step : ''">{{ (job && job.progress && job.progress.step) || (job && job.state === "queued" ? "Waiting for another analysis to end" : "Starting") }}</div>
           <q-linear-progress v-if="progressValue !== null" class="col" rounded size="6px" :value="progressValue" color="primary" />
         </div>
         <q-space v-else />
-        <div v-if="job && job.finished && !busy" class="text-caption text-grey-7">Analysed {{ toDateTimeString(job.finished) }}</div>
+        <q-btn v-if="busy && report" flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Stop refining" @click="stop">
+          <q-tooltip anchor="top middle" self="bottom middle">Keep the preliminary results and free the database</q-tooltip>
+        </q-btn>
         <q-btn v-if="!busy" outline dense no-caps class="q-px-sm" color="primary" icon="fas fa-redo" label="Recompute" :disable="!job" @click="start(true)">
-          <q-tooltip anchor="top middle" self="bottom middle">Count the records again, e.g. after the source data changed</q-tooltip>
+          <q-tooltip anchor="top middle" self="bottom middle">
+            Count the records again, e.g. after the source data changed<template v-if="job && job.finished"> (analysed {{ toDateTimeString(job.finished) }})</template>
+          </q-tooltip>
         </q-btn>
       </q-card-section>
     </q-card>
@@ -93,7 +111,6 @@
           <q-badge v-if="report.combinations.length" color="red-7" floating>{{ report.combinations.length }}</q-badge>
         </q-tab>
         <q-tab v-if="report.heatmaps.length" name="time" icon="fas fa-clock" label="Time bands" />
-        <q-tab name="history" icon="fas fa-history" label="History" />
         <q-tab v-if="report.magnitude" name="differences" icon="fas fa-ruler-horizontal" label="Differences" />
         <q-tab name="records" icon="fas fa-table" label="Records" />
         <q-tab name="excluded" icon="fas fa-eye-slash" label="Not analysed">
@@ -113,9 +130,6 @@
         </q-tab-panel>
         <q-tab-panel v-if="report.heatmaps.length" name="time" class="scroll-panel">
           <discrepancy-time-bands :report="report" />
-        </q-tab-panel>
-        <q-tab-panel name="history" class="scroll-panel">
-          <discrepancy-history :report="report" @show-attribute="showAttribute" @open-run="openRun" />
         </q-tab-panel>
         <q-tab-panel v-if="report.magnitude" name="differences" class="scroll-panel">
           <discrepancy-magnitude :magnitude="report.magnitude" />
@@ -158,7 +172,7 @@
 
 <script>
 import socket from "../../socket";
-import { api } from "../../api";
+import { api, notifyError } from "../../api";
 import { copyAndNotify } from "../../runActions";
 import { formatNumber, toDateTimeString } from "../../utils/format";
 import { fillViewportToBottom } from "../../utils/layout";
@@ -166,19 +180,19 @@ import { formatPct } from "../../utils/analysis";
 import AnalysisHeader from "./AnalysisHeader.vue";
 import DiscrepancyCombinations from "./DiscrepancyCombinations.vue";
 import DiscrepancyDrivers from "./DiscrepancyDrivers.vue";
-import DiscrepancyHistory from "./DiscrepancyHistory.vue";
 import DiscrepancyMagnitude from "./DiscrepancyMagnitude.vue";
 import DiscrepancyRecords from "./DiscrepancyRecords.vue";
 import DiscrepancySummary from "./DiscrepancySummary.vue";
 import DiscrepancyTimeBands from "./DiscrepancyTimeBands.vue";
 
-const TABS = ["summary", "drivers", "combinations", "time", "history", "differences", "records", "excluded"];
+const TABS = ["summary", "drivers", "combinations", "time", "differences", "records", "excluded"];
 const RESULT_TYPES = ["Loss", "Discrepancy", "Duplicate"];
 
 // What sets the discrepancies of one side of a run apart from its normal records (fetched less discrepancies). The
 // server counts every attribute's bins in both datasets and scores them in a job of its own; the report is kept in its
-// memory, so reopening is instant until Recompute or a restart. Besides single attributes it shows pairs of them, the
-// findings over previous runs, the differences of REC value discrepancies and example records. Kept alive (App.vue);
+// memory, so reopening is instant until Recompute or a restart. A quick look at a sample is shown as soon as it is
+// ready, marked preliminary, while refining counts the bins again. Besides single attributes it shows pairs of them, the
+// differences of REC value discrepancies and example records. Kept alive (App.vue);
 // the tab, the result type and the chosen attribute are kept in the URL query (`tab`, `t`, `attr`).
 export default {
   name: "DiscrepancyAnalysis",
@@ -186,7 +200,6 @@ export default {
     AnalysisHeader,
     DiscrepancyCombinations,
     DiscrepancyDrivers,
-    DiscrepancyHistory,
     DiscrepancyMagnitude,
     DiscrepancyRecords,
     DiscrepancySummary,
@@ -211,8 +224,9 @@ export default {
     routeKey() {
       return `${this.$route.params.processId}/${this.$route.params.side}|${this.$route.query.t || ""}`;
     },
+    // The refined report, or the quick look's while refining.
     report() {
-      return this.job && this.job.state === "done" ? this.job.report : null;
+      return this.job && ["running", "done"].includes(this.job.state) ? this.job.report || null : null;
     },
     meta() {
       return this.report ? this.report.meta : null;
@@ -282,7 +296,8 @@ export default {
       if (!this.job || !this.matches(payload)) {
         return;
       }
-      if (payload.state === "done") {
+      const stage = this.job.report ? this.job.report.meta.stage : null;
+      if (payload.state === "done" || payload.state === "error" || (payload.has_report && payload.stage !== stage)) {
         this.refresh();
       } else {
         this.job = { ...this.job, ...payload };
@@ -404,9 +419,16 @@ export default {
       this.attribute = id;
       this.tab = "drivers";
     },
-    // The analysis of another run of the control, same side and result type.
-    openRun(processId) {
-      this.$router.push({ name: "discrepancy-analysis", params: { processId, side: this.$route.params.side }, query: { ...this.viewQuery, tab: "history" } });
+    // Ends refining; the job finishes with the preliminary report.
+    async stop() {
+      try {
+        await api("stop-discrepancy-analysis", { method: "POST", params: this.params() });
+      } catch (error) {
+        notifyError("The analysis could not be stopped", error);
+      }
+    },
+    sampleText(method) {
+      return { block: "random blocks", first: "the first records" }[method] || "all";
     },
     selectAttribute(id) {
       this.attribute = id;
@@ -448,6 +470,7 @@ export default {
 
 .busy-step {
   min-width: 200px;
+  overflow: hidden;
 }
 
 .analysis-panels {

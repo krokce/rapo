@@ -778,28 +778,40 @@ holds that limit.
 `process_id`, `side` (`a` or `b`), optional `result_type` (REC only: `Loss`, `Discrepancy` or `Duplicate`; all of
 them by default), `recompute` (default false). Explains what sets the discrepancies of one side of a run apart from
 its **normal records**, the side's fetched records less the discrepancies. Nothing is joined: every attribute is
-binned the same way on both datasets and counted by Oracle over the whole data, and a bin's normal count is its
-fetched count less its discrepancy count (never below 0). The datasource is scanned about four times (profile,
-bins, pairs of bins, examples). The fetched records are the `fetched_a|b` dataset (the
-control's current configuration); above `[ANALYSIS] discrepancy_exact_rows` they are counted on a random sample
-scaled back up, the discrepancies always whole. ANL has side `a` only; a CMP's discrepancies are one table, side `a`
+binned the same way on both datasets and counted by Oracle, and a bin's normal count is its fetched count less
+its discrepancy count (never below 0). The fetched records are the `fetched_a|b` dataset (the control's current
+configuration).
+
+It runs in **two stages**. The *quick look* reads about `[ANALYSIS] discrepancy_quick_rows` (100,000) records of
+each dataset: a `SAMPLE BLOCK` of the datasource table (only that share of its blocks is read), or, where Oracle
+refuses a sample (a join view, a database link), the first records the select returns; the counts are scaled to the
+run's logged totals. It chooses the bins and the pairs, and its report is published at once as preliminary
+(`meta.stage = 'quick'`). *Refine* then counts the same bins and pairs in one scan of each dataset: whole up to
+`[ANALYSIS] discrepancy_exact_rows` (1,000,000) records, else a row sample (`SAMPLE`, random, every block read) of
+about that many, else a Bernoulli sample; with `/*+ PARALLEL(n) */` from `[ANALYSIS] discrepancy_parallel` (4, 0
+for none). Its report replaces the preliminary one (`meta.stage = 'final'`). ANL has side `a` only; a CMP's discrepancies are one table, side `a`
 analysing its `a_` (or side-A output) columns and side `b` the others. A result column is analysed when it holds a
 fetched column (same name, or the output column configuration names it); coalesced columns and `RAPO_*` metadata are
 not.
 
 Runs as a job in a process of its own, one at a time per server (others queued, `[ANALYSIS]
 discrepancy_timeout_minutes` at most). Answers the job, `{process_id, side, result_type, state, progress, error,
-queued, started, finished, report}`, `state` being `queued`, `running`, `done` or `error`, `progress` `{step, done,
-total}`. A job of the same run, side and type is reused (its report too) unless `recompute`; the latest 20 finished
+queued, started, finished, has_report, stage, report}`, `state` being `queued`, `running`, `done` or `error`,
+`progress` `{step, done, total}`. A `running` job holds the preliminary `report` once the quick look is done. A stop,
+a refine failure or a timeout after the quick look ends the job `done` with the preliminary report and
+`meta.stopped` or `meta.refine_error`. A job of the same run, side and type is reused (its report too) unless `recompute`; the latest 20 finished
 jobs are kept in the server's memory until it stops. State changes are pushed as `discrepancy:progress` (the job
-without `report`). 400 for a report, side `b` of an analysis or an unknown result type, 404 for an unknown run, 503
+without `report`; `has_report` and `stage` tell when to fetch it). 400 for a report, side `b` of an analysis or an unknown result type, 404 for an unknown run, 503
 while the server starts or stops.
 
-The **report** (`state` = `done`):
+The **report**:
 - `meta`: the run (as `get-run-dataset-sql`), `side`, `dataset` / `fetched_dataset` (the Data analysis datasets),
-  `result_type`, `discrepancies`, `normal`, `fetched_total` (counted now) and `fetched_logged` (at run time),
-  `sample` (the sampled share, or null), `drift` (the two totals differ), `stale`, `clamped` (columns whose bins
-  hold more discrepancies than fetched records), `excluded` (`[{column, reason}]`), `datasets` (`[{side, count}]`).
+  `result_type`, `stage` (`quick` or `final`), `sample_method` / `result_sample_method` (`none`, `block`, `row`,
+  `first` or `bernoulli`), `sample_rows` (records read by the quick look), `discrepancies`, `normal`,
+  `fetched_total` and `fetched_logged` (at run time), `disc_logged`, `sample` (refine's sampled share, or null),
+  `drift` (a whole or random count differs from the logged total), `stale`, `clamped` (columns whose bins hold more
+  discrepancies than fetched records), `excluded` (`[{column, reason}]`), `datasets` (`[{side, count}]`),
+  `stopped` / `refine_error` (see above).
 - `type_split`: REC `[{type, count}]` of the side's discrepancies, else null.
 - `attributes`: strongest first, one per binning of a column: `{id, column, source, kind, feature, feature_label,
   ordered, score, phik, bins, special, under, bands}`. `feature` is `value`, `decile` (ranges by the fetched
@@ -809,34 +821,33 @@ The **report** (`state` = `done`):
   label, disc, normal, disc_share, normal_share, lift, rate, z, flag, filter}`: `lift` = `disc_share /
   normal_share` (null with `only_disc` when no normal record has it), `rate` the share of the bin's records that are
   discrepancies, `z` a two-proportion z, `flag` `over` (at least 10 discrepancies and 1% of them, lift ≥ 2, z ≥ 4),
-  `under` or null, and `filter` `{result, fetched}`: a condition selecting the bin's records, usable as
+  `under` or null (a sampled bin with fewer fetched records than discrepancies is `uncertain` and never `over`; z is
+  taken over the records read, a block sample's as if 25 times fewer), and `filter` `{result, fetched}`: a condition selecting the bin's records, usable as
   `analysis-start`'s `where` on the discrepancy and the fetched dataset. `bands` merges adjacent `over` bins of an
   ordered feature (`02:00 – 04:59`).
 - `heatmaps`: per date column `{column, cells}`, each cell `{weekday (0 = Monday), hour, disc, normal, rate,
-  lift}`.
+  lift}`; from the quick look.
 - `combinations`: up to 8 pairs of bins of two attributes stronger together than alone (over-represented, and a
   discrepancy rate 1.5 times the better of the two bins'): `{id, attributes, parts, disc, normal, disc_share,
   normal_share, lift, rate, z, wracc, filter}`, each part `{attribute, what, label, phrase, codes, lift}` (the bin's
   lift alone). The strongest attribute of up to 6 columns takes part, each reduced to at most 5 groups of its bins
   (bands, a common prefix, the bins with the most discrepancies). Ranked by `wracc`, coverage × (rate − base rate).
-- `findings`: what the history and the examples follow, `[{id, kind (driver|combination), attribute, label, codes,
-  filter, disc_share, normal_share}]`.
-- `history`: null without a previous run, else `{runs, findings, error?}`: `runs` the previous finished runs of the
-  control (up to `[ANALYSIS] discrepancy_history_runs`) whose results are still in the result table, plus this one,
-  oldest first, `[{process_id, date_from, date_to, total}]`; per finding `{finding, label, attribute, counts, shares,
-  status, since, before}`, `shares` its share of each run's discrepancies, `status` `new` (it stands out from
-  `since`; before, under a quarter of its share now), `growing`, `chronic` or `single`, `before` the average share
-  in the previous runs.
+- `findings`: what the examples follow, `[{id, kind (driver|combination), attribute, label, codes, filter,
+  disc_share, normal_share}]`.
 - `magnitude`: REC with all types or `Discrepancy` only, else null: `{total, fields, cut}` from
   `RAPO_DISCREPANCY_DESCRIPTION` of the value discrepancies, per field `{field, records, share, distinct, values
   (top 10 {value, count, share}), numeric, min, median, max, histogram}`; `cut` when more than 2,000 different
   descriptions exist (the most frequent are read).
 - `excerpts`: per finding (up to 4) `{finding, label, columns, result, fetched}`: up to 10 discrepancies and 10
-  fetched records of its bins, rows as lists in `columns` order (`result_error`/`fetched_error` when one could not
+  fetched records (of the quick look's sample) of its bins; from the quick look, rows as lists in `columns` order (`result_error`/`fetched_error` when one could not
   be read).
 - `story`: `[{kind, text, attribute?, codes?, finding?}]`, the findings in sentences: `headline`, `types`,
-  `driver`, `time`, `combination`, `history`, `magnitude`, `unrelated`, `none`, `note`; a driver names its
-  attribute `id` and bin codes, a combination or history sentence its finding.
+  `driver`, `time`, `combination`, `magnitude`, `unrelated`, `none`, `note`; a driver names its attribute `id`
+  and bin codes, a combination sentence its finding.
+
+#### `POST /api/stop-discrepancy-analysis`
+`process_id`, `side`, optional `result_type`. Stops the job: a queued one ends `error`, a refining one ends `done`
+with its preliminary report (`meta.stopped`). 404 when there is none.
 
 #### `GET /api/get-discrepancy-analysis`
 `process_id`, `side`, optional `result_type`. Answers the job as `start-discrepancy-analysis` does; 404 when none

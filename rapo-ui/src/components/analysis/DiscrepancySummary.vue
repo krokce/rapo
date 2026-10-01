@@ -88,7 +88,6 @@ const STORY_ICONS = {
   none: { icon: "fas fa-question-circle", color: "blue-grey-6" },
   note: { icon: "fas fa-exclamation-triangle", color: "orange-8" },
   combination: { icon: "fas fa-link", color: "deep-orange-6" },
-  history: { icon: "fas fa-history", color: "indigo-6" },
   magnitude: { icon: "fas fa-ruler-horizontal", color: "orange-8" },
 };
 // As ResultBreakdown.
@@ -154,7 +153,7 @@ formatter: (points) => {
       }
       return attribute.bins.filter((bin) => (item.codes || []).includes(bin.code) && bin.filter && bin.filter.result).map((bin) => bin.filter);
     },
-    // The filter of the finding (a combination, a history line) a sentence is about.
+    // The filter of the finding (a combination) a sentence is about.
     findingFilter(item) {
       if (!item.finding) {
         return null;

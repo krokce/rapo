@@ -1556,7 +1556,8 @@ def start_discrepancy_analysis(process_id: int, side: str,
     """Explain what sets the discrepancies of a side of a run apart.
 
     Queues a job unless one exists (`recompute` replaces a finished one);
-    its progress is pushed as `discrepancy:progress`.
+    its progress is pushed as `discrepancy:progress`. A running job already
+    answers the quick look's preliminary report while it refines.
     """
     discrepancy_key(process_id, side, result_type)
     try:
@@ -1564,6 +1565,18 @@ def start_discrepancy_analysis(process_id: int, side: str,
     except explain.ExplainError as error:
         raise fastapi.HTTPException(status_code=503, detail=str(error))
     return job.describe()
+
+
+@api.post('/stop-discrepancy-analysis')
+def stop_discrepancy_analysis(process_id: int, side: str,
+                              result_type: str | None = None):
+    """Stop a discrepancy analysis job; a refining one keeps its preliminary
+    report. 404 when there is none."""
+    job = explainer.stop_job(process_id, side, result_type)
+    if job is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No discrepancy analysis of this run')
+    return {'status': 200}
 
 
 @api.get('/get-discrepancy-analysis')

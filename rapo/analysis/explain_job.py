@@ -1,9 +1,12 @@
 """Contains the discrepancy analysis jobs of the web server.
 
 A job explains one side of a run (`explain.analyze`) in a spawned process,
-one at a time per server, the rest queued. Its progress goes to the listeners
-(the live events) and its report is kept in memory, the latest `CACHED` ones,
-until the server stops; a recompute replaces it.
+one at a time per server, the rest queued. The quick look's preliminary report
+is kept while refine runs (still `running`); refine's report replaces it. A
+stop, a refine failure or a timeout after the quick look ends the job `done`
+with the preliminary report (`meta.stopped` / `meta.refine_error`). Progress
+goes to the listeners (the live events) and reports are kept in memory, the
+latest `CACHED` ones, until the server stops; a recompute replaces one.
 """
 
 import collections
@@ -20,9 +23,10 @@ from . import explain
 
 
 DEFAULTS = {
-    'discrepancy_exact_rows': 5000000,
+    'discrepancy_quick_rows': 100000,
+    'discrepancy_exact_rows': 1000000,
+    'discrepancy_parallel': 4,
     'discrepancy_timeout_minutes': 20,
-    'discrepancy_history_runs': 10,
 }
 CACHED = 20
 
@@ -40,20 +44,24 @@ def options():
     return result
 
 
-def work(conn, process_id, side, result_type, exact_rows, history_runs,
-         parent_pid):
+def work(conn, process_id, side, result_type, settings, parent_pid):
     """Run one job in the spawned process, reporting through `conn`."""
     from ..core.runner import watch
     th.Thread(target=watch, args=(parent_pid,), daemon=True).start()
 
     def progress(step, done, total):
         conn.send(('progress', {'step': step, 'done': done, 'total': total}))
+
+    def publish(report):
+        conn.send(('preliminary', explain.to_json(_public(report))))
     try:
-        report = explain.analyze(process_id, side, result_type,
-                                 exact_rows=exact_rows,
-                                 history_runs=history_runs,
-                                 progress=progress)
-        conn.send(('done', explain.to_json(report)))
+        report = explain.analyze(
+            process_id, side, result_type,
+            quick_rows=settings['discrepancy_quick_rows'],
+            exact_rows=settings['discrepancy_exact_rows'],
+            parallel=settings['discrepancy_parallel'],
+            progress=progress, publish=publish)
+        conn.send(('done', explain.to_json(_public(report))))
     except explain.ExplainError as error:
         conn.send(('error', str(error)))
     except Exception as error:
@@ -61,6 +69,12 @@ def work(conn, process_id, side, result_type, exact_rows, history_runs,
         conn.send(('error', f'{type(error).__name__}: {message}'))
     conn.close()
     os._exit(0)
+
+
+def _public(report):
+    """Get a report without the engine's own keys (features, pairs)."""
+    return {key: value for key, value in report.items()
+            if not key.startswith('_')}
 
 
 def _iso(moment):
@@ -79,6 +93,7 @@ class Job:
         self.queued = dt.datetime.now()
         self.started = None
         self.finished = None
+        self.stop_requested = False
 
     def describe(self, report=True):
         """Get the job as the API answers it."""
@@ -87,7 +102,10 @@ class Job:
                   'result_type': result_type, 'state': self.state,
                   'progress': self.progress, 'error': self.error,
                   'queued': _iso(self.queued), 'started': _iso(self.started),
-                  'finished': _iso(self.finished)}
+                  'finished': _iso(self.finished),
+                  'has_report': self.report is not None,
+                  'stage': self.report['meta'].get('stage')
+                  if self.report else None}
         if report:
             result['report'] = self.report
         return result
@@ -141,6 +159,24 @@ class Explainer:
         self.notify(job)
         return job
 
+    def stop_job(self, process_id, side, result_type=None):
+        """Stop a job: a queued one ends at once, a running one keeps its
+        preliminary report. Returns the job, or None.
+        """
+        with self.lock:
+            job = self.jobs.get((int(process_id), side, result_type or None))
+            if job is None:
+                return None
+            if job.state == 'queued':
+                if job in self.queue:
+                    self.queue.remove(job)
+                job.state, job.error = 'error', 'Stopped before it started'
+                job.finished = dt.datetime.now()
+            elif job.state == 'running':
+                job.stop_requested = True
+        self.notify(job)
+        return job
+
     def get(self, process_id, side, result_type=None):
         """Get the job of a side of a run, or None."""
         with self.lock:
@@ -189,9 +225,8 @@ class Explainer:
         conn, child = context.Pipe(duplex=False)
         process = context.Process(
             name=f'rapo-explain-{process_id}', target=work,
-            args=(child, process_id, side, result_type,
-                  settings['discrepancy_exact_rows'],
-                  settings['discrepancy_history_runs'], os.getpid()),
+            args=(child, process_id, side, result_type, settings,
+                  os.getpid()),
             daemon=True)
         process.start()
         child.close()
@@ -206,35 +241,40 @@ class Explainer:
                 left = deadline - time.monotonic()
                 if left <= 0:
                     process.kill()
-                    job.state = 'error'
-                    job.error = (
+                    _settle(job, 'refine_error', (
                         'The analysis took longer than '
                         f"{settings['discrepancy_timeout_minutes']} minutes "
-                        'and was stopped')
+                        'and was stopped'))
+                    break
+                if job.stop_requested:
+                    process.kill()
+                    _settle(job, 'stopped', 'Stopped')
                     break
                 if not self.active:
-                    job.state, job.error = 'error', 'The server stopped'
+                    _settle(job, 'refine_error', 'The server stopped')
                     break
                 if not conn.poll(min(left, 1)):
                     if not process.is_alive() and not conn.poll(0):
-                        job.state = 'error'
-                        job.error = 'The analysis worker stopped'
+                        _settle(job, 'refine_error',
+                                'The analysis worker stopped')
                         break
                     continue
                 try:
                     kind, payload = conn.recv()
                 except (EOFError, OSError):
-                    job.state = 'error'
-                    job.error = 'The analysis worker stopped'
+                    _settle(job, 'refine_error', 'The analysis worker stopped')
                     break
                 if kind == 'progress':
                     job.progress = payload
+                    self.notify(job)
+                elif kind == 'preliminary':
+                    job.report = payload
                     self.notify(job)
                 elif kind == 'done':
                     job.report, job.state = payload, 'done'
                     break
                 elif kind == 'error':
-                    job.state, job.error = 'error', payload
+                    _settle(job, 'refine_error', payload)
                     break
         finally:
             self.current = None
@@ -247,6 +287,18 @@ class Explainer:
         logger.info(f'Discrepancy analysis of PID {process_id} side '
                     f'{side.upper()} ended {job.state} in {seconds:.1f}s'
                     + (f': {job.error}' if job.error else ''))
+
+
+def _settle(job, reason, message):
+    """End a job that did not finish: `done` with its preliminary report,
+    noting why (`stopped` or `refine_error`), else `error`.
+    """
+    if job.report is not None:
+        job.state = 'done'
+        job.report = {**job.report,
+                      'meta': {**job.report['meta'], reason: message}}
+    else:
+        job.state, job.error = 'error', message
 
 
 explainer = Explainer()

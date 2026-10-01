@@ -2,10 +2,11 @@
 
 The discrepancies of one side of a run are contrasted with its normal records,
 the side's fetched records less the discrepancies. Nothing joins them: every
-attribute is binned the same way on both datasets and counted by Oracle over
-the whole data, so the normal count of a bin is the fetched count less the
-discrepancy count (`analyze`).
+attribute is binned the same way on both datasets and counted by Oracle, so
+the normal count of a bin is the fetched count less the discrepancy count
+(`analyze`). It runs in two stages, so a large datasource answers at once:
 
+Quick look, on a sample of `quick_rows` records of each dataset (`_quick`):
 1. Profile the fetched records (`_profile`): non-null and distinct counts,
    min/max, deciles, digit-only share and prefix distinct counts per column.
 2. Plan the features (`_plan`): the bins of each column (values, deciles,
@@ -15,15 +16,19 @@ discrepancy count (`analyze`).
 4. Score (`_score`): per feature the uncertainty coefficient (mutual
    information over the entropy of the discrepancy flag) and phik, per bin
    the lift, coverage and a two-proportion z.
-5. Combine the strongest attributes in pairs (`_combinations`, one more scan
-   each), look the findings up in previous runs' discrepancies
-   (`_history`), read the differences of REC value discrepancies
+5. Combine the strongest attributes in pairs (`_pair_features`,
+   `_score_pairs`), read the differences of REC value discrepancies
    (`_magnitude`), take example records (`_excerpts`), and tell the story
-   (`_story`).
+   (`_story`). The report is published as preliminary.
 
-A fetched dataset above `discrepancy_exact_rows` is counted on a Bernoulli
-sample (`_sampled`) scaled back by 1/p; the discrepancies are always counted
-whole.
+Refine: the same bins and pairs counted together in one scan of each dataset
+(`_refine`), whole up to `exact_rows` records, else on a sample of about that
+many, with a parallel hint; it replaces the preliminary report.
+
+A sample is a `SAMPLE BLOCK` of the datasource table (`_block`), reading only
+part of it; where Oracle refuses one (a join view, a database link) the quick
+look takes the first records and refine a Bernoulli sample (`_sampled`).
+Counts of a sample are scaled to the run's logged totals.
 """
 
 import datetime as dt
@@ -61,7 +66,14 @@ UNDER_SHARE = 0.05
 RELATED = 0.02             # uncertainty coefficient of a driver
 UNRELATED = 0.005          # below it an attribute is "not related"
 DRIVERS = 3
-STEPS = 9
+STEPS = 6
+SEED = 42                  # the same blocks for every statement of a stage
+MIN_BLOCK_SHARE = 0.2      # a block sample this much smaller is replaced
+SAMPLE_METHODS = ('none', 'block', 'row', 'first', 'bernoulli')
+# A block sample of clustered data (records loaded in time or key order) varies
+# far more than a random one: its z is taken as if this many times fewer
+# records were read.
+BLOCK_EFFECT = 25
 COMBINED = 6               # attributes combined in pairs
 GROUPS = 5                 # groups of an attribute in a combination
 COMBINATIONS = 8
@@ -69,7 +81,6 @@ INTERACTION = 1.5          # a pair's rate over the better of its parts
 FINDINGS = 5
 EXCERPT_ROWS = 10
 EXCERPT_FINDINGS = 4
-NEW_SHARE = 0.25           # a finding is new below this share of now before
 DESCRIPTIONS = 2000
 DRIFT = 0.01
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
@@ -87,8 +98,8 @@ class ExplainError(ValueError):
     """The run's discrepancies can not be analysed."""
 
 
-def analyze(process_id, side, result_type=None, exact_rows=5000000,
-            history_runs=10, progress=None):
+def analyze(process_id, side, result_type=None, quick_rows=100000,
+            exact_rows=1000000, parallel=4, progress=None, publish=None):
     """Explain the discrepancies of one side of a run.
 
     Parameters
@@ -98,17 +109,21 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
         `a` or `b`.
     result_type : str, optional
         REC only: one of `RESULT_TYPES`; all of them by default.
+    quick_rows : int
+        Records of each dataset the quick look reads.
     exact_rows : int
-        Fetched records counted whole; a larger dataset is sampled.
-    history_runs : int
-        Previous runs the findings are looked up in.
+        Records counted whole by refine; a larger dataset is sampled.
+    parallel : int
+        Degree of the parallel hint of the refine scans; 0 for none.
     progress : callable, optional
         progress(step, done, total) as the analysis goes.
+    publish : callable, optional
+        publish(report) with the preliminary report of the quick look.
 
     Returns
     -------
     report : dict
-        JSON-safe.
+        The refined report.
     """
     step = progress or (lambda *args: None)
     step('Reading the run', 0, STEPS)
@@ -120,38 +135,138 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
             f"fetched records of side {meta['side']} (output columns that "
             'coalesce both sides or are of a type that can not be grouped '
             'are left out)')
+    quick = _quick(source, quick_rows, step)
+    if publish:
+        publish(quick)
+    return _refine(source, quick, exact_rows, parallel, step)
 
-    step('Profiling the fetched records', 1, STEPS)
-    logged = meta['fetched_logged'] or 0
-    sample = (min(1.0, exact_rows / logged)
-              if exact_rows and logged > exact_rows else 1.0)
-    profile = _profile(source['fetched_sql'], source['columns'], sample)
-    meta['sample'] = sample if sample < 1 else None
-    meta['fetched_scanned'] = round(profile['rows'] / sample)
 
-    step('Choosing the bins', 2, STEPS)
+def _quick(source, quick_rows, step):
+    """Get the preliminary report from a sample of each dataset."""
+    meta = dict(source['meta'])
+    step('Quick look: sampling', 1, STEPS)
+    fetched = _quick_sample(source['fetched_sql'], source['fetched_from'],
+                            meta['fetched_logged'], quick_rows)
+    profile = _profile(fetched['sql'], source['columns'])
+    if (fetched['method'] == 'block' and profile['rows']
+            < MIN_BLOCK_SHARE * min(quick_rows, meta['fetched_logged'] or 0)):
+        fetched = _first(source['fetched_sql'], quick_rows)
+        profile = _profile(fetched['sql'], source['columns'])
+    found = _quick_sample(source['result_sql'], source['result_from'],
+                          meta['disc_logged'], quick_rows)
+    _widen_dates(profile, found['sql'], source['columns'])
     features, excluded = _plan(source['columns'], profile)
     meta['excluded'] = source['excluded'] + excluded
 
-    step('Counting the fetched records', 3, STEPS)
-    fetched = _count(source['fetched_sql'], features, 'fetched', sample)
-    step('Counting the discrepancies', 4, STEPS)
-    found = _count(source['result_sql'], features, 'result', 1.0)
-
-    report = _score(meta, features, fetched, found)
+    step('Quick look: counting', 2, STEPS)
+    fetched, fetched_raw = _counted(
+        fetched, features, 'fetched', meta['fetched_logged'], quick_rows,
+        lambda: _first(source['fetched_sql'], quick_rows))
+    found, found_raw = _counted(
+        found, features, 'result', meta['disc_logged'], quick_rows,
+        lambda: _first(source['result_sql'], quick_rows))
+    fetched['factor'] = _factor(fetched_raw[1], meta['fetched_logged'],
+                                fetched)
+    found['factor'] = _factor(found_raw[1], meta['disc_logged'], found)
+    meta.update({'stage': 'quick', 'sample_method': fetched['method'],
+                 'result_sample_method': found['method'],
+                 'sample_rows': fetched_raw[1],
+                 'weights': [_weight(found), _weight(fetched)]})
+    fetched_counts = _scaled(fetched_raw, fetched['factor'])
+    found_counts = _scaled(found_raw, found['factor'])
+    report = _score(meta, features, fetched_counts, found_counts)
     report['type_split'] = source['type_split']
-    report['combinations'] = _combinations(source, features, report, sample,
-                                           lambda name, done: step(
-                                               name, done, STEPS))
+
+    step('Quick look: combining', 3, STEPS)
+    pairs = _pair_features(features, report)
+    if pairs:
+        report['combinations'] = _score_pairs(
+            pairs, report,
+            _scaled(_count(fetched['sql'], pairs, 'fetched'),
+                    fetched['factor'])[0],
+            _scaled(_count(found['sql'], pairs, 'result'),
+                    found['factor'])[0])
+    else:
+        report['combinations'] = []
     report['findings'] = _findings(report)
-    step('Looking at previous runs', 7, STEPS)
-    report['history'] = _history(source, report, history_runs)
-    step('Reading the differences and examples', 8, STEPS)
     report['magnitude'] = _magnitude(source)
-    report['excerpts'] = _excerpts(source, report)
+    report['excerpts'] = _excerpts(source, report, fetched['sql'])
+    report['story'] = _story(report)
+    report['_features'] = features
+    report['_pairs'] = pairs
+    return report
+
+
+def _refine(source, quick, exact_rows, parallel, step):
+    """Get the final report: the quick look's bins and pairs counted in one
+    scan of each dataset, whole up to `exact_rows` records.
+    """
+    meta = dict(source['meta'])
+    meta['excluded'] = quick['meta']['excluded']
+    features = _refined_features(quick['_features'], quick)
+    pairs = quick['_pairs']
+    hint = f'/*+ PARALLEL({int(parallel)}) */ ' if parallel else ''
+    fetched = _refine_sample(source['fetched_sql'], source['fetched_from'],
+                             meta['fetched_logged'], exact_rows)
+    found = _refine_sample(source['result_sql'], source['result_from'],
+                           meta['disc_logged'], exact_rows)
+    share = fetched.get('share')
+    what = ('all records' if fetched['method'] == 'none'
+            else f'a {_pct(share)} sample' if share else 'a sample')
+    step(f'Refining ({what}): fetched records', 4, STEPS)
+    fetched, fetched_raw = _counted(
+        fetched, features + pairs, 'fetched', meta['fetched_logged'],
+        exact_rows, lambda: _bernoulli(source['fetched_sql'],
+                                       meta['fetched_logged'], exact_rows),
+        hint)
+    step(f'Refining ({what}): discrepancies', 5, STEPS)
+    found, found_raw = _counted(
+        found, features + pairs, 'result', meta['disc_logged'], exact_rows,
+        lambda: _bernoulli(source['result_sql'], meta['disc_logged'],
+                           exact_rows), hint)
+    fetched['factor'] = _factor(fetched_raw[1], meta['fetched_logged'],
+                                fetched)
+    found['factor'] = _factor(found_raw[1], meta['disc_logged'], found)
+    fetched_counts = _scaled(fetched_raw, fetched['factor'])
+    found_counts = _scaled(found_raw, found['factor'])
+    meta.update({'stage': 'final', 'sample_method': fetched['method'],
+                 'result_sample_method': found['method'],
+                 'sample': fetched.get('share')
+                 if fetched['method'] != 'none' else None,
+                 'weights': [_weight(found), _weight(fetched)]})
+    report = _score(meta, features, fetched_counts, found_counts)
+    report['type_split'] = source['type_split']
+    report['heatmaps'] = quick['heatmaps']
+    report['combinations'] = (_score_pairs(pairs, report, fetched_counts[0],
+                                           found_counts[0]) if pairs else [])
+    report['findings'] = _findings(report)
+    report['magnitude'] = quick['magnitude']
+    report['excerpts'] = quick['excerpts']
     report['story'] = _story(report)
     step('Done', STEPS, STEPS)
     return report
+
+
+def _refined_features(features, quick):
+    """Get the features refine counts: not the weekday × hour heatmaps (kept
+    from the quick look), and of a column's prefixes the best scored one and
+    the next shorter one.
+    """
+    scores = {item['id']: item['score'] for item in quick['attributes']}
+    kept = set()
+    by_column = {}
+    for feature in features:
+        if feature['kind'] == 'prefix':
+            by_column.setdefault(feature['column'], []).append(feature)
+    for prefixes in by_column.values():
+        prefixes.sort(key=lambda feature: feature['digits'])
+        best = max(prefixes, key=lambda feature: scores.get(feature['id'], 0))
+        index = prefixes.index(best)
+        kept.update(feature['id'] for feature in prefixes[max(index - 1, 0):
+                                                          index + 1])
+    return [feature for feature in features
+            if not feature.get('heatmap')
+            and (feature['kind'] != 'prefix' or feature['id'] in kept)]
 
 
 def _source(process_id, side, result_type):
@@ -188,6 +303,12 @@ def _source(process_id, side, result_type):
         if result_type:
             result_sql += f" and RAPO_RESULT_TYPE = '{result_type}'"
 
+    if type_split is not None:
+        disc_logged = sum(item['count'] for item in type_split
+                          if not result_type or item['type'] == result_type)
+    else:
+        disc_logged = datasets.count(result_sql)
+    alias = 's' if control.is_analysis else side
     found_columns = _describe(result_sql)
     fetched_columns = _describe(fetched_sql)
     columns = _shared_columns(control, side, found_columns, fetched_columns)
@@ -221,11 +342,14 @@ def _source(process_id, side, result_type):
         'table_name': table_name.upper(),
         'source_name': (source_name or '').upper() or None,
         'fetched_logged': logged,
+        'disc_logged': disc_logged,
         'stale': datasets._changed_since(control, run),
         'datasets': _sides(control),
     }
     return {'meta': meta, 'columns': columns, 'excluded': excluded,
             'result_sql': result_sql, 'fetched_sql': fetched_sql,
+            'fetched_from': _from_pattern(fetched_sql, alias),
+            'result_from': _from_pattern(result_sql, None),
             'type_split': type_split}
 
 
@@ -311,7 +435,137 @@ def _sampled(sql, sample):
             f'rapo_sample from ({sql}) s) where rapo_sample < {sample!r}')
 
 
-def _profile(sql, columns, sample):
+def _from_pattern(sql, alias):
+    """Get the span of the table of a select's first FROM where a sample
+    clause goes: before the alias, or before the WHERE of an unaliased one.
+    """
+    name = r'(?:"[^"]+"|[A-Za-z_][\w$#]*)(?:\.(?:"[^"]+"|[A-Za-z_][\w$#]*))?'
+    follow = rf'\s+{alias}\b' if alias else r'\s+where\b'
+    match = re.search(rf'\bfrom\s+({name})(?={follow})', sql, re.I)
+    if not match or '@' in match.group(1):
+        return None
+    return match.span(1)
+
+
+def _block(sql, span, share, block=True):
+    """Get a select reading a sample of its table, or None when Oracle refuses
+    one (a join view, a database link). A block sample reads only that share
+    of the table's blocks; a row sample (`block=False`) reads every block but
+    keeps that share of the records, at random.
+    """
+    if not span or share >= 1:
+        return None
+    percent = min(max(share * 100, 0.000001), 99.99)
+    start, end = span
+    clause = 'sample block' if block else 'sample'
+    statement = (f'{sql[:end]} {clause} ({percent:.6f}) seed ({SEED})'
+                 f'{sql[end:]}')
+    check = sqlcheck.parse(f'select * from ({statement}) q where 1 = 0')
+    return statement if check['valid'] else None
+
+
+def _first(sql, rows):
+    return {'sql': f'select * from ({sql}) where rownum <= {int(rows)}',
+            'method': 'first'}
+
+
+def _quick_sample(sql, span, logged, rows):
+    """Get the quick look's select of a dataset: whole when small, else a
+    block sample of about `rows` records, else its first `rows` records.
+    """
+    if logged is not None and logged <= rows:
+        return {'sql': sql, 'method': 'none'}
+    if logged:
+        statement = _block(sql, span, rows / logged)
+        if statement:
+            return {'sql': statement, 'method': 'block',
+                    'share': rows / logged}
+    return _first(sql, rows)
+
+
+def _refine_sample(sql, span, logged, rows):
+    """Get refine's select of a dataset: whole up to `rows` records, else a
+    row sample of about `rows` (unbiased, unlike a block sample of clustered
+    data; the scan is whole but the bins are computed for the sample only),
+    else a Bernoulli sample.
+    """
+    if not logged or logged <= rows:
+        return {'sql': sql, 'method': 'none'}
+    share = rows / logged
+    statement = _block(sql, span, share, block=False)
+    if statement:
+        return {'sql': statement, 'method': 'row', 'share': share}
+    return {'sql': _sampled(sql, share), 'method': 'bernoulli',
+            'share': share}
+
+
+def _bernoulli(sql, logged, rows):
+    share = min(1.0, rows / logged) if logged else 1.0
+    return {'sql': _sampled(sql, share), 'method': 'bernoulli',
+            'share': share}
+
+
+def _counted(sample, features, which, logged, rows, fallback, hint=''):
+    """Count a sample's bins; a block sample far smaller than expected (a
+    small or clustered table) is replaced by the `fallback` sample.
+    """
+    counted = _count(sample['sql'], features, which, hint)
+    expected = min(rows, logged or 0)
+    if (sample['method'] in ('block', 'row')
+            and counted[1] < MIN_BLOCK_SHARE * expected):
+        sample = fallback()
+        counted = _count(sample['sql'], features, which, hint)
+    return sample, counted
+
+
+def _factor(total, logged, sample):
+    """Get the factor scaling a sample's counts to its dataset: 1/share of a
+    Bernoulli sample, the logged total over the counted one of a block or
+    first-records sample, 1 for a whole count.
+    """
+    if sample['method'] == 'none' or not total:
+        return 1.0
+    if sample['method'] in ('bernoulli', 'row'):
+        return 1 / sample['share']
+    return logged / total if logged else 1.0
+
+
+def _weight(sample):
+    """Get the weight z is computed with: the scale factor, times
+    `BLOCK_EFFECT` for a block or first-records sample (clustered)."""
+    effect = BLOCK_EFFECT if sample['method'] in ('block', 'first') else 1
+    return sample['factor'] * effect
+
+
+def _scaled(counted, factor):
+    counts, total = counted
+    if factor == 1:
+        return counts, total
+    return ({key: {code: value * factor for code, value in bins.items()}
+             for key, bins in counts.items()}, total * factor)
+
+
+def _widen_dates(profile, sql, columns):
+    """Widen the fetched sample's date ranges to the discrepancies', so the
+    timeline covers both (a sample may miss the first and last records).
+    """
+    dates = [column for column in columns if column['kind'] == DATETIME]
+    if not dates:
+        return
+    items = ', '.join(f'min(cast({_quoted(column["name"])} as date)) mn{i}, '
+                      f'max(cast({_quoted(column["name"])} as date)) mx{i}'
+                      for i, column in enumerate(dates))
+    row = db.execute(sa.text(f'select {items} from ({sql}) q'), as_dict=True)
+    row = {key.lower(): value for key, value in (row or {}).items()}
+    for i, column in enumerate(dates):
+        facts = profile['columns'][column['name']]
+        for key, pick in (('mn', min), ('mx', max)):
+            values = [value for value in (facts.get(key), row.get(f'{key}{i}'))
+                      if value is not None]
+            facts[key] = pick(values) if values else None
+
+
+def _profile(sql, columns):
     """Get the facts the bins are chosen from, per fetched column."""
     result = {'rows': 0, 'columns': {}}
     for start in range(0, len(columns), PROFILE_COLUMNS):
@@ -343,7 +597,7 @@ def _profile(sql, columns, sample):
                           f'x{i}_{k}' for k in sorted(set(PREFIXES
                                                           + TEXT_PREFIXES))]
         statement = (f'select {", ".join(items)} '
-                     f'from ({_sampled(sql, sample)}) q')
+                     f'from ({sql}) q')
         row = db.execute(sa.text(statement), as_dict=True)
         row = {key.lower(): value for key, value in row.items()}
         result['rows'] = int(row['n'] or 0)
@@ -477,9 +731,10 @@ def _date_features(column, facts):
         end += (end - start) * 1e-6
         features.append(_feature(
             column, 'timeline', 'timeline', 'Time',
-            lambda name: f'to_char(width_bucket(cast({name} as date) - '
-            f'{DAY_ZERO}, {start!r}, {end!r}, {TIMELINE_BUCKETS}), '
-            "'FM00')", ordered=True, start=start, end=end))
+            lambda name: f'to_char(greatest(1, least({TIMELINE_BUCKETS}, '
+            f'width_bucket(cast({name} as date) - {DAY_ZERO}, {start!r}, '
+            f"{end!r}, {TIMELINE_BUCKETS}))), 'FM00')", ordered=True,
+            start=start, end=end))
     return features
 
 
@@ -503,37 +758,37 @@ def _text_features(column, facts, present, distinct):
     return features
 
 
-def _count(sql, features, which, sample):
+def _count(sql, features, which, hint=''):
     """Count every feature's bins in one dataset.
 
     Returns
     -------
     counts : dict
-        {feature id: {code: count}}, scaled by 1/sample; NULL is code None.
+        {feature id: {code: count}}; NULL is code None.
+    total : int
+        The records counted.
     """
     counts = {feature['id']: {} for feature in features}
-    total = 0
+    name_of = 'source' if which == 'fetched' else 'column'
     for start in range(0, len(features), COUNT_FEATURES):
         chunk = features[start:start + COUNT_FEATURES]
-        name_of = 'source' if which == 'fetched' else 'column'
         items = [f"cast({_render(feature, which, name_of)} "
                  f"as varchar2(200)) {feature['id']}" for feature in chunk]
         aliases = ', '.join(f"{feature['id']} as '{feature['id']}'"
                             for feature in chunk)
-        inner = (f'select {", ".join(items)} '
-                 f'from ({_sampled(sql, sample)}) q')
+        inner = f'select {", ".join(items)} from ({sql}) q'
         statement = (
-            'select feature, code, count(*) n from '
+            f'select {hint}feature, code, count(*) n from '
             f'({inner}) unpivot include nulls (code for feature in '
             f'({aliases})) group by feature, code')
         rows = db.execute(sa.text(statement), as_table=True)
         for row in rows:
-            counts[row['feature']][row['code']] = int(row['n']) / sample
+            counts[row['feature']][row['code']] = int(row['n'])
     if features:
         total = sum(counts[features[0]['id']].values())
     else:
-        total = db.execute(sa.text(f'select count(*) from ({_sampled(sql, sample)})'),
-                           as_scalar=True) / sample
+        total = db.execute(sa.text(f'select count(*) from ({sql})'),
+                           as_scalar=True)
     return counts, total
 
 
@@ -554,11 +809,17 @@ def _score(meta, features, fetched, found):
     meta['fetched_total'] = round(fetched_total)
     logged = meta.get('fetched_logged')
     sample = meta.get('sample')
-    # A sampled total is off by chance too: 3 standard deviations allowed.
+    # Only a whole or a Bernoulli count measures the total (a block or
+    # first-records sample is scaled to the logged one); a Bernoulli total is
+    # off by chance too: 3 standard deviations allowed.
     noise = (3 * math.sqrt(logged * (1 - sample) / sample)
              if logged and sample else 0)
-    meta['drift'] = bool(logged and abs(fetched_total - logged)
+    measured = meta.get('sample_method') in ('none', 'bernoulli', 'row')
+    meta['drift'] = bool(logged and measured
+                         and abs(fetched_total - logged)
                          > max(DRIFT * logged, noise))
+    meta['sampled'] = (meta.get('sample_method') != 'none'
+                       or meta.get('result_sample_method') != 'none')
     meta['clamped'] = []
     report = {'meta': meta, 'attributes': [], 'heatmaps': []}
     if not features or found_total == 0:
@@ -602,10 +863,13 @@ def _bins(feature, fetched, found, found_total, normal_total, meta):
     for code in codes:
         disc = found.get(code, 0)
         normal = fetched.get(code, 0) - disc
-        if normal < -0.5 and not meta.get('sample'):
+        uncertain = normal < -0.5 and bool(meta.get('sampled'))
+        if normal < -0.5 and not uncertain:
             meta['clamped'].append(feature['column'].upper())
         items.append({'code': code, 'disc': round(disc),
                       'normal': max(round(normal), 0)})
+        if uncertain:
+            items[-1]['uncertain'] = True
     if feature['kind'] in ('value', 'prefix') and len(items) > SHOWN_BINS:
         def weight(item):
             return max(item['disc'] / max(found_total, 1),
@@ -617,7 +881,7 @@ def _bins(feature, fetched, found, found_total, normal_total, meta):
                  'values': len(rest)}
         items = kept + [other]
     for item in items:
-        _measure(item, found_total, normal_total)
+        _measure(item, found_total, normal_total, meta.get('weights'))
         item['label'] = _label(feature, item)
         item['filter'] = _filter(feature, item['code'])
         item['code'] = None if item['code'] is None else str(item['code'])
@@ -625,7 +889,14 @@ def _bins(feature, fetched, found, found_total, normal_total, meta):
     return items
 
 
-def _measure(item, found_total, normal_total):
+def _measure(item, found_total, normal_total, weights=None):
+    """Measure a bin: shares, lift, rate, z and its flag.
+
+    `weights` are the factors the discrepancy and fetched counts were scaled
+    by from a sample; z is taken over the records actually read, and a bin
+    whose sample held fewer fetched records than discrepancies is
+    `uncertain`, never over-represented.
+    """
     disc, normal = item['disc'], item['normal']
     disc_share = disc / found_total if found_total else 0
     normal_share = normal / normal_total if normal_total else 0
@@ -634,10 +905,14 @@ def _measure(item, found_total, normal_total):
     item['lift'] = (disc_share / normal_share if normal_share
                     else (None if disc_share == 0 else math.inf))
     item['rate'] = disc / (disc + normal) if disc + normal else None
-    item['z'] = _z(disc, normal, found_total, normal_total)
+    disc_weight, normal_weight = weights or (1, 1)
+    item['z'] = _z(disc / disc_weight, normal / normal_weight,
+                   found_total / disc_weight, normal_total / normal_weight)
     flag = None
     lift = item['lift']
-    if (disc >= max(MIN_SUPPORT, MIN_COVERAGE * found_total)
+    if item.get('uncertain'):
+        pass
+    elif (disc >= max(MIN_SUPPORT, MIN_COVERAGE * found_total)
             and lift is not None and lift >= MIN_LIFT
             and (item['z'] is None or item['z'] >= MIN_Z)):
         flag = 'over'
@@ -930,7 +1205,7 @@ def _story(report):
     -------
     story : list of dict
         {kind, text, attribute?, codes?, finding?}: `headline`, `types`,
-        `driver`, `time`, `combination`, `history`, `magnitude`,
+        `driver`, `time`, `combination`, `magnitude`,
         `unrelated`, `none`, `note`.
     """
     meta = report['meta']
@@ -950,11 +1225,18 @@ def _story(report):
         parts = ', '.join(f"{_pct(item['count'] / total)} {item['type']}"
                           for item in split)
         story.append({'kind': 'types', 'text': f'By result type: {parts}.'})
-    if meta.get('sample'):
+    if meta.get('stage') == 'quick':
+        how = ('the first records the datasource returned, not a random '
+               'sample' if meta.get('sample_method') == 'first'
+               else 'random blocks of the table' if meta.get(
+                   'sample_method') == 'block' else 'all records')
+        story.append({'kind': 'note', 'text': (
+            f"Preliminary: {meta.get('sample_rows', 0):,} fetched records "
+            f'were read ({how}) and scaled to the run\'s totals.')})
+    elif meta.get('sample'):
         story.append({'kind': 'note', 'text': (
             f"The fetched records were counted on a {_pct(meta['sample'])} "
-            'random sample and scaled up; the discrepancies are counted '
-            'whole.')})
+            'random sample and scaled up.')})
     if found == 0:
         story.append({'kind': 'none', 'text': 'There are no discrepancies '
                       'to explain.'})
@@ -976,17 +1258,6 @@ def _story(report):
             'rules or the timing of the data load.')})
     for item in (report.get('combinations') or [])[:2]:
         story.append(_combination_sentence(item))
-    history = report.get('history') or {}
-    for finding in history.get('findings', []):
-        if finding['status'] in ('new', 'growing'):
-            story.append(_history_sentence(finding, history))
-    chronic = [finding['label'] for finding in history.get('findings', [])
-               if finding['status'] == 'chronic']
-    if chronic:
-        previous = len(history['runs']) - 1
-        story.append({'kind': 'history', 'text': (
-            f"Not new: {_listed(chronic)} set the discrepancies apart in the "
-            f'previous {previous} run{"s" if previous > 1 else ""} as well.')})
     if report.get('magnitude'):
         story.extend(_magnitude_sentences(report['magnitude']))
     best = {}
@@ -1045,7 +1316,7 @@ def _leading(attribute):
     if not groups:
         groups = [item for item in attribute['bins']
                   if item['code'] != '\x00other'
-                  and item['disc'] >= MIN_SUPPORT
+                  and item['disc'] >= MIN_SUPPORT and not item.get('uncertain')
                   and item['disc_share'] - item['normal_share'] >= 0.05]
         groups.sort(key=lambda item: item['normal_share'] - item['disc_share'])
         return groups[:2]
@@ -1178,19 +1449,14 @@ def _group_case(feature, attribute, groups, which):
     return f"case {' '.join(branches)} else '~' end"
 
 
-def _combinations(source, features, report, sample, step):
-    """Find pairs of bins of two attributes that together set the
-    discrepancies apart more than either alone (depth-2 subgroups).
+def _pair_features(features, report):
+    """Get the pairs of the strongest attributes, counted like features.
 
     The strongest attribute of up to `COMBINED` columns is reduced to a few
-    groups of bins (`_groups`), every pair of them counted in both datasets
-    like a feature, and a cell kept when it is over-represented and its
-    discrepancy rate is `INTERACTION` times the better of its two groups'.
-    Ranked by weighted relative accuracy, coverage × (rate − base rate).
+    groups of bins (`_groups`); a pair's code is the two groups' keys.
     """
     meta = report['meta']
-    found_total, normal_total = meta['discrepancies'], meta['normal']
-    if not found_total or not normal_total:
+    if not meta['discrepancies'] or not meta['normal']:
         return []
     by_id = {feature['id']: feature for feature in features}
     chosen = []
@@ -1219,26 +1485,45 @@ def _combinations(source, features, report, sample, step):
                                       second[1], which))
             pair['render'] = render
             pairs.append(pair)
-    step('Combining the strongest attributes', 5)
-    fetched, _ = _count(source['fetched_sql'], pairs, 'fetched', sample)
-    step('Combining the strongest attributes', 6)
-    found, _ = _count(source['result_sql'], pairs, 'result', 1.0)
+    return pairs
+
+
+def _score_pairs(pairs, report, fetched, found):
+    """Find pairs of bins of two attributes that together set the
+    discrepancies apart more than either alone (depth-2 subgroups).
+
+    A cell is kept when it is over-represented and its discrepancy rate is
+    `INTERACTION` times the better of its two groups' (counted again from the
+    report's own bins). Ranked by weighted relative accuracy, coverage ×
+    (rate − base rate).
+    """
+    meta = report['meta']
+    found_total, normal_total = meta['discrepancies'], meta['normal']
+    if not found_total or not normal_total:
+        return []
+    attributes = {item['id']: item for item in report['attributes']}
     base = found_total / (found_total + normal_total)
     cells = []
     for pair in pairs:
         (first, first_groups), (second, second_groups) = (pair['first'],
                                                           pair['second'])
+        first = attributes.get(first['id'], first)
+        second = attributes.get(second['id'], second)
         codes = set(fetched[pair['id']]) | set(found[pair['id']])
         for code in codes:
             if not code or '~' in code:
                 continue
             key_a, key_b = code.split('|')
-            group_a = next(g for g in first_groups if g['key'] == key_a)
-            group_b = next(g for g in second_groups if g['key'] == key_b)
+            group_a = _regroup(first, next(
+                g for g in first_groups if g['key'] == key_a))
+            group_b = _regroup(second, next(
+                g for g in second_groups if g['key'] == key_b))
             disc = round(found[pair['id']].get(code, 0))
-            normal = max(round(fetched[pair['id']].get(code, 0) - disc), 0)
-            item = {'disc': disc, 'normal': normal}
-            _measure(item, found_total, normal_total)
+            normal = round(fetched[pair['id']].get(code, 0) - disc)
+            if normal < 0 and meta.get('sampled'):
+                continue
+            item = {'disc': disc, 'normal': max(normal, 0)}
+            _measure(item, found_total, normal_total, meta.get('weights'))
             if item['flag'] != 'over':
                 continue
             parents = [_rate(group_a), _rate(group_b)]
@@ -1280,6 +1565,15 @@ def _combinations(source, features, report, sample, step):
     return result
 
 
+def _regroup(attribute, group):
+    """Get a group's counts from an attribute's (refined) bins."""
+    bins = [item for item in attribute['bins'] if item['code'] in group['codes']]
+    if not bins:
+        return group
+    return {**group, 'disc': sum(item['disc'] for item in bins),
+            'normal': sum(item['normal'] for item in bins)}
+
+
 def _rate(group):
     total = group['disc'] + group['normal']
     return group['disc'] / total if total else 0
@@ -1303,8 +1597,8 @@ def _combination_sentence(item):
 
 
 def _findings(report):
-    """Get the findings the history and the examples follow: the leading
-    group of each driver, then the strongest combinations.
+    """Get the findings the examples follow: the leading group of each
+    driver, then the strongest combinations.
     """
     findings = []
     for attribute in _drivers(report):
@@ -1329,104 +1623,6 @@ def _findings(report):
             'disc_share': item['disc_share'],
             'normal_share': item['normal_share']})
     return [item for item in findings if item['filter']]
-
-
-def _history(source, report, runs):
-    """Get the share of the discrepancies each finding held in the previous
-    runs of the control, from its result table (the fetched records are not
-    read again). A run whose results are gone is not listed.
-    """
-    findings = report['findings']
-    meta = source['meta']
-    if not findings or not runs:
-        return None
-    log = sa.text(
-        'select process_id, date_from, date_to from rapo_log '
-        "where control_id = :id and status = 'D' and process_id <= :pid "
-        'order by process_id desc fetch first :n rows only')
-    pids = db.execute(log.bindparams(id=meta['control_id'],
-                                     pid=meta['process_id'], n=runs + 1),
-                      as_table=True)
-    if len(pids) < 2:
-        return None
-    sums = ', '.join(f"sum(case when {item['filter']['result']} then 1 "
-                     f"else 0 end) c{i}" for i, item in enumerate(findings))
-    where = [f"rapo_process_id in ({', '.join(str(int(row['process_id'])) for row in pids)})"]
-    if meta['control_type'] == 'REC':
-        where.append("rapo_result_type != 'Match'")
-    if meta.get('result_type'):
-        where.append(f"rapo_result_type = '{meta['result_type']}'")
-    statement = (f'select rapo_process_id pid, count(*) total, {sums} '
-                 f"from {meta['table_name']} where {' and '.join(where)} "
-                 'group by rapo_process_id')
-    try:
-        rows = db.execute(sa.text(statement), as_table=True)
-    except Exception as error:
-        return {'runs': [], 'findings': [], 'error': str(error).strip()
-                .splitlines()[0]}
-    counts = {int(row['pid']): row for row in rows}
-    ordered = [row for row in reversed(pids)
-               if int(row['process_id']) in counts]
-    result = {'runs': [{'process_id': int(row['process_id']),
-                        'date_from': row['date_from'],
-                        'date_to': row['date_to'],
-                        'total': int(counts[int(row['process_id'])]['total'])}
-                       for row in ordered], 'findings': []}
-    for i, finding in enumerate(findings):
-        values = [int(counts[int(row['process_id'])][f'c{i}'] or 0)
-                  for row in ordered]
-        shares = [value / run['total'] if run['total'] else 0
-                  for value, run in zip(values, result['runs'])]
-        result['findings'].append({
-            'finding': finding['id'], 'label': finding['label'],
-            'attribute': finding['attribute'], 'counts': values,
-            'shares': shares, **_novelty(shares, result['runs'])})
-    return result
-
-
-def _novelty(shares, runs):
-    """Tell whether a finding is new, growing or long-standing."""
-    if len(shares) < 2:
-        return {'status': 'single', 'since': None, 'before': None}
-    now, previous = shares[-1], shares[:-1]
-    before = sum(previous) / len(previous)
-    if now and before < NEW_SHARE * now:
-        since = len(shares) - 1
-        while since > 0 and shares[since - 1] >= now / 2:
-            since -= 1
-        return {'status': 'new', 'since': runs[since]['process_id'],
-                'before': before}
-    if before >= now / 2:
-        return {'status': 'chronic', 'since': None, 'before': before}
-    return {'status': 'growing', 'since': None, 'before': before}
-
-
-def _listed(items):
-    return items[0] if len(items) == 1 else \
-        ', '.join(items[:-1]) + f' and {items[-1]}'
-
-
-def _history_sentence(finding, history):
-    runs = history['runs']
-    previous = len(runs) - 1
-    if finding['status'] == 'new':
-        since = next(run for run in runs
-                     if run['process_id'] == finding['since'])
-        when = since['date_from']
-        when = f' ({when:%Y-%m-%d})' if isinstance(when, dt.datetime) else ''
-        first = ('this run' if since is runs[-1]
-                 else f"run {since['process_id']}{when}")
-        text = (f"{finding['label']} is new: it first stands out in {first}; "
-                f'in the {previous} run{"s" if previous > 1 else ""} before '
-                f"it held {_pct(finding['before'])} of the discrepancies on "
-                'average.')
-    elif finding['status'] == 'growing':
-        text = (f"{finding['label']} is growing: {_pct(finding['shares'][-1])}"
-                f" of the discrepancies now against {_pct(finding['before'])}"
-                f' in the previous {previous} runs.')
-    else:
-        return None
-    return {'kind': 'history', 'text': text, 'finding': finding['finding']}
 
 
 def _magnitude(source):
@@ -1524,9 +1720,10 @@ def _magnitude_sentences(magnitude):
     return sentences
 
 
-def _excerpts(source, report):
+def _excerpts(source, report, fetched_sql):
     """Get example records of the strongest findings: discrepancies, and
-    fetched records of the same bins (which hold the discrepancies too).
+    fetched records of the same bins (which hold the discrepancies too), from
+    the quick look's sample of the fetched records.
     """
     columns = source['columns']
     result = []
@@ -1536,7 +1733,7 @@ def _excerpts(source, report):
         for which, sql, names in (
                 ('result', source['result_sql'],
                  [column['name'] for column in columns]),
-                ('fetched', source['fetched_sql'],
+                ('fetched', fetched_sql,
                  [column['source'] for column in columns])):
             select = ', '.join(_quoted(name) for name in names)
             statement = (f'select {select} from ({sql}) q '

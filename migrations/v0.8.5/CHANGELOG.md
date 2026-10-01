@@ -34,23 +34,29 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - **Combinations tab:** pairs of bins of two attributes that together set the discrepancies apart more than
      either alone (*Together, MSC = MSC07 and EVENT_TIME (hour of day) 02:00 – 04:59 hold 64% of the discrepancies
      against 0.84% of the normal records (76× as often), more than either alone (6.8×, 5.6×)*).
-   - **History tab:** the share of the discrepancies each finding held in up to `[ANALYSIS]
-     discrepancy_history_runs` (default 10) previous runs of the control, read from its result table (runs whose
-     results were cleaned are left out), with *New*, *Growing* or *Not new*; a click on a run opens its analysis.
    - **Differences tab** (REC value discrepancies): by field, how much the values differ, read from
      RAPO_DISCREPANCY_DESCRIPTION (*AMOUNT differs in 100% of the 86 value discrepancies, always by -7*).
    - **Records tab:** up to 10 discrepancies and 10 fetched records of each of the strongest findings, the
      finding's columns first.
    - A REC analyses all its discrepancies or one result type (*All / Loss / Discrepancy / Duplicate*).
+   - **Fast on large datasources: two stages.** A *quick look* reads about `[ANALYSIS] discrepancy_quick_rows`
+     (default 100,000) records of each dataset, a block sample of the table (only that share of its blocks is
+     read), and shows its results at once, marked *Preliminary*. Where Oracle can not sample (a join view, a
+     database link) it reads the first records instead, noted as not random. *Refining* then counts the same bins
+     and pairs in a single scan of each dataset, every record up to `[ANALYSIS] discrepancy_exact_rows` (default
+     1,000,000), else a random row sample of about that size, with a parallel hint of `[ANALYSIS]
+     discrepancy_parallel` (default 4, 0 for none), and replaces the preliminary results. *Stop refining* keeps
+     the preliminary ones and frees the database, as does a failure or the timeout.
+   - A block sample of a table whose records are stored in time or key order is uneven, so the quick look flags
+     only strong differences, and never a bin where it read fewer fetched records than there are discrepancies.
+     Heatmaps and example records come from the quick look.
    - The analysis runs in the background on the server, one at a time (others wait), with its progress shown; the
      result is kept in the server's memory (the latest 20), so reopening is instant until *Recompute* or a restart.
    - The fetched records are selected with the control's **current** configuration, as in *Data analysis*, and
-     counted **now**: a control changed after the run or source data changed since are noted. Above
-     `[ANALYSIS] discrepancy_exact_rows` (default 5,000,000) fetched records, they are counted on a random sample of
-     about that size and scaled up; `[ANALYSIS] discrepancy_timeout_minutes` (default 20) stops a long analysis. Each
-     analysis scans the datasource about four times; check these limits for large datasources.
-   - New routes `start-discrepancy-analysis` and `get-discrepancy-analysis`, live event `discrepancy:progress`. New
-     Python dependency `phik` (with `scipy`), installed by `install.sh`.
+     counted **now**: a control changed after the run or source data changed since are noted.
+     `[ANALYSIS] discrepancy_timeout_minutes` (default 20) stops a long analysis.
+   - New routes `start-discrepancy-analysis`, `get-discrepancy-analysis` and `stop-discrepancy-analysis`, live
+     event `discrepancy:progress`. New Python dependency `phik` (with `scipy`), installed by `install.sh`.
 
 2. **Email: Send when *Evaluate SQL*.** A fourth *Send when* option on the editor's *Email* tab (ANL, REP, REC). The
    email is sent only when the *Evaluate SQL* returns a number above 0, whatever the run's status (Done or Error) or
