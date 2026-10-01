@@ -14,7 +14,12 @@ discrepancy count (`analyze`).
    features unpivoted into (feature, code, count) rows.
 4. Score (`_score`): per feature the uncertainty coefficient (mutual
    information over the entropy of the discrepancy flag) and phik, per bin
-   the lift, coverage and a two-proportion z, then the story (`_story`).
+   the lift, coverage and a two-proportion z.
+5. Combine the strongest attributes in pairs (`_combinations`, one more scan
+   each), look the findings up in previous runs' discrepancies
+   (`_history`), read the differences of REC value discrepancies
+   (`_magnitude`), take example records (`_excerpts`), and tell the story
+   (`_story`).
 
 A fetched dataset above `discrepancy_exact_rows` is counted on a Bernoulli
 sample (`_sampled`) scaled back by 1/p; the discrepancies are always counted
@@ -56,6 +61,16 @@ UNDER_SHARE = 0.05
 RELATED = 0.02             # uncertainty coefficient of a driver
 UNRELATED = 0.005          # below it an attribute is "not related"
 DRIVERS = 3
+STEPS = 9
+COMBINED = 6               # attributes combined in pairs
+GROUPS = 5                 # groups of an attribute in a combination
+COMBINATIONS = 8
+INTERACTION = 1.5          # a pair's rate over the better of its parts
+FINDINGS = 5
+EXCERPT_ROWS = 10
+EXCERPT_FINDINGS = 4
+NEW_SHARE = 0.25           # a finding is new below this share of now before
+DESCRIPTIONS = 2000
 DRIFT = 0.01
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 ORDERED = ('decile', 'hour', 'weekday', 'timeline', 'length')
@@ -73,7 +88,7 @@ class ExplainError(ValueError):
 
 
 def analyze(process_id, side, result_type=None, exact_rows=5000000,
-            progress=None):
+            history_runs=10, progress=None):
     """Explain the discrepancies of one side of a run.
 
     Parameters
@@ -85,6 +100,8 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
         REC only: one of `RESULT_TYPES`; all of them by default.
     exact_rows : int
         Fetched records counted whole; a larger dataset is sampled.
+    history_runs : int
+        Previous runs the findings are looked up in.
     progress : callable, optional
         progress(step, done, total) as the analysis goes.
 
@@ -94,7 +111,7 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
         JSON-safe.
     """
     step = progress or (lambda *args: None)
-    step('Reading the run', 0, 5)
+    step('Reading the run', 0, STEPS)
     source = _source(process_id, side, result_type)
     meta = source['meta']
     if not source['columns']:
@@ -104,7 +121,7 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
             'coalesce both sides or are of a type that can not be grouped '
             'are left out)')
 
-    step('Profiling the fetched records', 1, 5)
+    step('Profiling the fetched records', 1, STEPS)
     logged = meta['fetched_logged'] or 0
     sample = (min(1.0, exact_rows / logged)
               if exact_rows and logged > exact_rows else 1.0)
@@ -112,19 +129,28 @@ def analyze(process_id, side, result_type=None, exact_rows=5000000,
     meta['sample'] = sample if sample < 1 else None
     meta['fetched_scanned'] = round(profile['rows'] / sample)
 
-    step('Choosing the bins', 2, 5)
+    step('Choosing the bins', 2, STEPS)
     features, excluded = _plan(source['columns'], profile)
     meta['excluded'] = source['excluded'] + excluded
 
-    step('Counting the fetched records', 3, 5)
+    step('Counting the fetched records', 3, STEPS)
     fetched = _count(source['fetched_sql'], features, 'fetched', sample)
-    step('Counting the discrepancies', 4, 5)
+    step('Counting the discrepancies', 4, STEPS)
     found = _count(source['result_sql'], features, 'result', 1.0)
 
     report = _score(meta, features, fetched, found)
     report['type_split'] = source['type_split']
+    report['combinations'] = _combinations(source, features, report, sample,
+                                           lambda name, done: step(
+                                               name, done, STEPS))
+    report['findings'] = _findings(report)
+    step('Looking at previous runs', 7, STEPS)
+    report['history'] = _history(source, report, history_runs)
+    step('Reading the differences and examples', 8, STEPS)
+    report['magnitude'] = _magnitude(source)
+    report['excerpts'] = _excerpts(source, report)
     report['story'] = _story(report)
-    step('Done', 5, 5)
+    step('Done', STEPS, STEPS)
     return report
 
 
@@ -490,7 +516,7 @@ def _count(sql, features, which, sample):
     for start in range(0, len(features), COUNT_FEATURES):
         chunk = features[start:start + COUNT_FEATURES]
         name_of = 'source' if which == 'fetched' else 'column'
-        items = [f"cast({feature['expression'](_quoted(feature[name_of]))} "
+        items = [f"cast({_render(feature, which, name_of)} "
                  f"as varchar2(200)) {feature['id']}" for feature in chunk]
         aliases = ', '.join(f"{feature['id']} as '{feature['id']}'"
                             for feature in chunk)
@@ -509,6 +535,12 @@ def _count(sql, features, which, sample):
         total = db.execute(sa.text(f'select count(*) from ({_sampled(sql, sample)})'),
                            as_scalar=True) / sample
     return counts, total
+
+
+def _render(feature, which, name_of):
+    if 'render' in feature:
+        return feature['render'](which)
+    return feature['expression'](_quoted(feature[name_of]))
 
 
 def _score(meta, features, fetched, found):
@@ -761,7 +793,8 @@ def _label(feature, item):
         width = (feature['end'] - feature['start']) / TIMELINE_BUCKETS
         start = EPOCH + dt.timedelta(days=feature['start'] + width * (index - 1))
         end = start + dt.timedelta(days=width)
-        return f'{_moment(start)} – {_moment(end)}'
+        seconds = width * 86400 < 120
+        return f'{_moment(start, seconds)} – {_moment(end, seconds)}'
     if kind == 'prefix':
         return f'{code}…'
     if kind == 'length':
@@ -861,7 +894,9 @@ def _short(value):
     return str(value)
 
 
-def _moment(value):
+def _moment(value, seconds=False):
+    if seconds:
+        return f'{value:%Y-%m-%d %H:%M:%S}'
     value = value.replace(microsecond=0)
     if value.second >= 30:
         value += dt.timedelta(seconds=60 - value.second)
@@ -894,8 +929,9 @@ def _story(report):
     Returns
     -------
     story : list of dict
-        {kind, text, attribute?, codes?}: `headline`, `types`, `driver`,
-        `time`, `unrelated`, `none`, `note`.
+        {kind, text, attribute?, codes?, finding?}: `headline`, `types`,
+        `driver`, `time`, `combination`, `history`, `magnitude`,
+        `unrelated`, `none`, `note`.
     """
     meta = report['meta']
     story = []
@@ -929,16 +965,7 @@ def _story(report):
             'records to contrast them with.')})
         return story
 
-    drivers = []
-    seen = set()
-    for attribute in report['attributes']:
-        if attribute['column'] in seen:
-            continue
-        if attribute['score'] >= RELATED and _leading(attribute):
-            drivers.append(attribute)
-            seen.add(attribute['column'])
-        if len(drivers) == DRIVERS:
-            break
+    drivers = _drivers(report)
     for rank, attribute in enumerate(drivers):
         story.append(_driver_sentence(attribute, rank))
     if not drivers:
@@ -947,6 +974,21 @@ def _story(report):
             'they are spread like the normal records. The cause is likely '
             'outside these attributes, e.g. in the other side, the matching '
             'rules or the timing of the data load.')})
+    for item in (report.get('combinations') or [])[:2]:
+        story.append(_combination_sentence(item))
+    history = report.get('history') or {}
+    for finding in history.get('findings', []):
+        if finding['status'] in ('new', 'growing'):
+            story.append(_history_sentence(finding, history))
+    chronic = [finding['label'] for finding in history.get('findings', [])
+               if finding['status'] == 'chronic']
+    if chronic:
+        previous = len(history['runs']) - 1
+        story.append({'kind': 'history', 'text': (
+            f"Not new: {_listed(chronic)} set the discrepancies apart in the "
+            f'previous {previous} run{"s" if previous > 1 else ""} as well.')})
+    if report.get('magnitude'):
+        story.extend(_magnitude_sentences(report['magnitude']))
     best = {}
     for attribute in report['attributes']:
         best.setdefault(attribute['column'], attribute['score'])
@@ -975,6 +1017,21 @@ def _story(report):
     return story
 
 
+def _drivers(report):
+    """Get the attributes the story names, a column at most once."""
+    drivers = []
+    seen = set()
+    for attribute in report['attributes']:
+        if attribute['column'] in seen:
+            continue
+        if attribute['score'] >= RELATED and _leading(attribute):
+            drivers.append(attribute)
+            seen.add(attribute['column'])
+        if len(drivers) == DRIVERS:
+            break
+    return drivers
+
+
 def _leading(attribute):
     """Get up to 3 bins or bands of an attribute that tell its story.
 
@@ -988,6 +1045,7 @@ def _leading(attribute):
     if not groups:
         groups = [item for item in attribute['bins']
                   if item['code'] != '\x00other'
+                  and item['disc'] >= MIN_SUPPORT
                   and item['disc_share'] - item['normal_share'] >= 0.05]
         groups.sort(key=lambda item: item['normal_share'] - item['disc_share'])
         return groups[:2]
@@ -1022,10 +1080,7 @@ def _prefix_group(attribute):
 
 
 def _driver_sentence(attribute, rank):
-    column = attribute['column']
-    what = (column if attribute['feature'] in ('value', 'decile')
-            else f'{column} (prefix)' if attribute['feature'] == 'prefix'
-            else f"{column} ({attribute['feature_label'].lower()})")
+    what = _what(attribute)
     groups = _leading(attribute)
     parts = []
     for group in groups:
@@ -1041,6 +1096,470 @@ def _driver_sentence(attribute, rank):
              for code in (group.get('codes') or [group['code']])]
     return {'kind': 'time' if attribute['kind'] == DATETIME else 'driver',
             'text': text, 'attribute': attribute['id'], 'codes': codes}
+
+
+def _what(attribute):
+    """Get the name of an attribute in a sentence."""
+    column = attribute['column']
+    if attribute['feature'] in ('value', 'decile'):
+        return column
+    if attribute['feature'] == 'prefix':
+        return f'{column} (prefix)'
+    return f"{column} ({attribute['feature_label'].lower()})"
+
+
+def _phrase(attribute, label):
+    """Get a bin of an attribute in a sentence: `MSC = MSC07`, `AMOUNT
+    100 – 104`, `EVENT_TIME (hour of day) 02:00 – 04:59`."""
+    if attribute['feature'] == 'value':
+        return f"{attribute['column']} = {label}"
+    return f'{_what(attribute)} {label}'
+
+
+def _group_filter(attribute, codes):
+    """Get the filter of a group of an attribute's bins: any of them."""
+    filters = [item['filter'] for item in attribute['bins']
+               if item['code'] in codes]
+    if not filters or any(item is None or not item['result']
+                          or not item['fetched'] for item in filters):
+        return None
+    if len(filters) == 1:
+        return filters[0]
+    return {key: '(' + ' or '.join(f'({item[key]})' for item in filters) + ')'
+            for key in ('result', 'fetched')}
+
+
+def _groups(attribute):
+    """Get up to `GROUPS` groups of an attribute's bins for combinations.
+
+    Bands, a common prefix and over-represented bins first, then the bins
+    holding the most discrepancies; the rest of the bins form no group.
+    """
+    groups = []
+    taken = set()
+
+    def add(codes, label):
+        codes = [code for code in codes if code not in taken]
+        if not codes or len(groups) == GROUPS:
+            return
+        taken.update(codes)
+        bins = [item for item in attribute['bins'] if item['code'] in codes]
+        groups.append({'key': f'g{len(groups)}', 'codes': codes,
+                       'label': label,
+                       'disc': sum(item['disc'] for item in bins),
+                       'normal': sum(item['normal'] for item in bins)})
+    for band in attribute['bands']:
+        add(band['codes'], band['label'])
+    for group in _prefix_group(attribute):
+        add(group['codes'], group['label'])
+    ranked = sorted((item for item in attribute['bins']
+                     if item['code'] != '\x00other'),
+                    key=lambda item: (item['flag'] != 'over',
+                                      -item['disc_share']))
+    for item in ranked:
+        if item['disc']:
+            add([item['code']], item['label'])
+    return groups
+
+
+def _group_case(feature, attribute, groups, which):
+    name = feature['source'] if which == 'fetched' else feature['column']
+    expression = feature['expression'](_quoted(name))
+    branches = []
+    for group in groups:
+        present = [code for code in group['codes'] if code is not None]
+        parts = []
+        if present:
+            parts.append(f'{expression} in ('
+                         + ', '.join(_text(code) for code in present) + ')')
+        if None in group['codes']:
+            parts.append(f'{expression} is null')
+        branches.append(f"when {' or '.join(parts)} then '{group['key']}'")
+    return f"case {' '.join(branches)} else '~' end"
+
+
+def _combinations(source, features, report, sample, step):
+    """Find pairs of bins of two attributes that together set the
+    discrepancies apart more than either alone (depth-2 subgroups).
+
+    The strongest attribute of up to `COMBINED` columns is reduced to a few
+    groups of bins (`_groups`), every pair of them counted in both datasets
+    like a feature, and a cell kept when it is over-represented and its
+    discrepancy rate is `INTERACTION` times the better of its two groups'.
+    Ranked by weighted relative accuracy, coverage × (rate − base rate).
+    """
+    meta = report['meta']
+    found_total, normal_total = meta['discrepancies'], meta['normal']
+    if not found_total or not normal_total:
+        return []
+    by_id = {feature['id']: feature for feature in features}
+    chosen = []
+    seen = set()
+    for attribute in report['attributes']:
+        if attribute['column'] in seen or attribute['score'] < UNRELATED * 2:
+            continue
+        groups = _groups(attribute)
+        if groups:
+            chosen.append((attribute, groups))
+            seen.add(attribute['column'])
+        if len(chosen) == COMBINED:
+            break
+    if len(chosen) < 2:
+        return []
+    pairs = []
+    for i in range(len(chosen)):
+        for j in range(i + 1, len(chosen)):
+            first, second = chosen[i], chosen[j]
+            pair = {'id': f'p{len(pairs)}', 'first': first, 'second': second}
+
+            def render(which, first=first, second=second):
+                return (_group_case(by_id[first[0]['id']], first[0],
+                                    first[1], which) + " || '|' || "
+                        + _group_case(by_id[second[0]['id']], second[0],
+                                      second[1], which))
+            pair['render'] = render
+            pairs.append(pair)
+    step('Combining the strongest attributes', 5)
+    fetched, _ = _count(source['fetched_sql'], pairs, 'fetched', sample)
+    step('Combining the strongest attributes', 6)
+    found, _ = _count(source['result_sql'], pairs, 'result', 1.0)
+    base = found_total / (found_total + normal_total)
+    cells = []
+    for pair in pairs:
+        (first, first_groups), (second, second_groups) = (pair['first'],
+                                                          pair['second'])
+        codes = set(fetched[pair['id']]) | set(found[pair['id']])
+        for code in codes:
+            if not code or '~' in code:
+                continue
+            key_a, key_b = code.split('|')
+            group_a = next(g for g in first_groups if g['key'] == key_a)
+            group_b = next(g for g in second_groups if g['key'] == key_b)
+            disc = round(found[pair['id']].get(code, 0))
+            normal = max(round(fetched[pair['id']].get(code, 0) - disc), 0)
+            item = {'disc': disc, 'normal': normal}
+            _measure(item, found_total, normal_total)
+            if item['flag'] != 'over':
+                continue
+            parents = [_rate(group_a), _rate(group_b)]
+            if item['rate'] < INTERACTION * max(parents):
+                continue
+            filters = [_group_filter(first, group_a['codes']),
+                       _group_filter(second, group_b['codes'])]
+            item.update({
+                'attributes': [first['id'], second['id']],
+                'parts': [{'attribute': first['id'], 'what': _what(first),
+                           'label': group_a['label'],
+                           'phrase': _phrase(first, group_a['label']),
+                           'codes': group_a['codes'],
+                           'lift': _lift(group_a, found_total, normal_total)},
+                          {'attribute': second['id'], 'what': _what(second),
+                           'label': group_b['label'],
+                           'phrase': _phrase(second, group_b['label']),
+                           'codes': group_b['codes'],
+                           'lift': _lift(group_b, found_total, normal_total)}],
+                'wracc': round((disc + normal) / (found_total + normal_total)
+                               * (item['rate'] - base), 6),
+                'filter': None if None in filters else {
+                    key: f'({filters[0][key]}) and ({filters[1][key]})'
+                    for key in ('result', 'fetched')},
+            })
+            cells.append(item)
+    cells.sort(key=lambda item: -item['wracc'])
+    result = []
+    per_pair = {}
+    for item in cells:
+        key = tuple(item['attributes'])
+        if per_pair.get(key, 0) >= 2:
+            continue
+        per_pair[key] = per_pair.get(key, 0) + 1
+        item['id'] = f'c{len(result)}'
+        result.append(item)
+        if len(result) == COMBINATIONS:
+            break
+    return result
+
+
+def _rate(group):
+    total = group['disc'] + group['normal']
+    return group['disc'] / total if total else 0
+
+
+def _lift(group, found_total, normal_total):
+    disc_share = group['disc'] / found_total if found_total else 0
+    normal_share = group['normal'] / normal_total if normal_total else 0
+    return disc_share / normal_share if normal_share else None
+
+
+def _combination_sentence(item):
+    first, second = item['parts']
+    lifts = ', '.join('only there' if part['lift'] is None
+                      else f"{part['lift']:.1f}×" for part in item['parts'])
+    lift = item['lift']
+    return {'kind': 'combination', 'finding': item['id'], 'text': (
+        f"Together, {first['phrase']} and {second['phrase']} hold {_pct(item['disc_share'])} of the "
+        f"discrepancies against {_pct(item['normal_share'])} of the normal "
+        f'records ({_times(lift)}), more than either alone ({lifts}).')}
+
+
+def _findings(report):
+    """Get the findings the history and the examples follow: the leading
+    group of each driver, then the strongest combinations.
+    """
+    findings = []
+    for attribute in _drivers(report):
+        group = _leading(attribute)[0]
+        codes = group.get('codes') or [group['code']]
+        findings.append({
+            'id': f'd{len(findings)}', 'kind': 'driver',
+            'attribute': attribute['id'],
+            'label': _phrase(attribute, group['label']),
+            'codes': codes, 'filter': _group_filter(attribute, codes),
+            'disc_share': group['disc_share'],
+            'normal_share': group['normal_share']})
+    for item in report.get('combinations') or []:
+        if len(findings) >= FINDINGS:
+            break
+        first, second = item['parts']
+        findings.append({
+            'id': item['id'], 'kind': 'combination',
+            'attribute': first['attribute'],
+            'label': f"{first['phrase']} and {second['phrase']}",
+            'codes': None, 'filter': item['filter'],
+            'disc_share': item['disc_share'],
+            'normal_share': item['normal_share']})
+    return [item for item in findings if item['filter']]
+
+
+def _history(source, report, runs):
+    """Get the share of the discrepancies each finding held in the previous
+    runs of the control, from its result table (the fetched records are not
+    read again). A run whose results are gone is not listed.
+    """
+    findings = report['findings']
+    meta = source['meta']
+    if not findings or not runs:
+        return None
+    log = sa.text(
+        'select process_id, date_from, date_to from rapo_log '
+        "where control_id = :id and status = 'D' and process_id <= :pid "
+        'order by process_id desc fetch first :n rows only')
+    pids = db.execute(log.bindparams(id=meta['control_id'],
+                                     pid=meta['process_id'], n=runs + 1),
+                      as_table=True)
+    if len(pids) < 2:
+        return None
+    sums = ', '.join(f"sum(case when {item['filter']['result']} then 1 "
+                     f"else 0 end) c{i}" for i, item in enumerate(findings))
+    where = [f"rapo_process_id in ({', '.join(str(int(row['process_id'])) for row in pids)})"]
+    if meta['control_type'] == 'REC':
+        where.append("rapo_result_type != 'Match'")
+    if meta.get('result_type'):
+        where.append(f"rapo_result_type = '{meta['result_type']}'")
+    statement = (f'select rapo_process_id pid, count(*) total, {sums} '
+                 f"from {meta['table_name']} where {' and '.join(where)} "
+                 'group by rapo_process_id')
+    try:
+        rows = db.execute(sa.text(statement), as_table=True)
+    except Exception as error:
+        return {'runs': [], 'findings': [], 'error': str(error).strip()
+                .splitlines()[0]}
+    counts = {int(row['pid']): row for row in rows}
+    ordered = [row for row in reversed(pids)
+               if int(row['process_id']) in counts]
+    result = {'runs': [{'process_id': int(row['process_id']),
+                        'date_from': row['date_from'],
+                        'date_to': row['date_to'],
+                        'total': int(counts[int(row['process_id'])]['total'])}
+                       for row in ordered], 'findings': []}
+    for i, finding in enumerate(findings):
+        values = [int(counts[int(row['process_id'])][f'c{i}'] or 0)
+                  for row in ordered]
+        shares = [value / run['total'] if run['total'] else 0
+                  for value, run in zip(values, result['runs'])]
+        result['findings'].append({
+            'finding': finding['id'], 'label': finding['label'],
+            'attribute': finding['attribute'], 'counts': values,
+            'shares': shares, **_novelty(shares, result['runs'])})
+    return result
+
+
+def _novelty(shares, runs):
+    """Tell whether a finding is new, growing or long-standing."""
+    if len(shares) < 2:
+        return {'status': 'single', 'since': None, 'before': None}
+    now, previous = shares[-1], shares[:-1]
+    before = sum(previous) / len(previous)
+    if now and before < NEW_SHARE * now:
+        since = len(shares) - 1
+        while since > 0 and shares[since - 1] >= now / 2:
+            since -= 1
+        return {'status': 'new', 'since': runs[since]['process_id'],
+                'before': before}
+    if before >= now / 2:
+        return {'status': 'chronic', 'since': None, 'before': before}
+    return {'status': 'growing', 'since': None, 'before': before}
+
+
+def _listed(items):
+    return items[0] if len(items) == 1 else \
+        ', '.join(items[:-1]) + f' and {items[-1]}'
+
+
+def _history_sentence(finding, history):
+    runs = history['runs']
+    previous = len(runs) - 1
+    if finding['status'] == 'new':
+        since = next(run for run in runs
+                     if run['process_id'] == finding['since'])
+        when = since['date_from']
+        when = f' ({when:%Y-%m-%d})' if isinstance(when, dt.datetime) else ''
+        first = ('this run' if since is runs[-1]
+                 else f"run {since['process_id']}{when}")
+        text = (f"{finding['label']} is new: it first stands out in {first}; "
+                f'in the {previous} run{"s" if previous > 1 else ""} before '
+                f"it held {_pct(finding['before'])} of the discrepancies on "
+                'average.')
+    elif finding['status'] == 'growing':
+        text = (f"{finding['label']} is growing: {_pct(finding['shares'][-1])}"
+                f" of the discrepancies now against {_pct(finding['before'])}"
+                f' in the previous {previous} runs.')
+    else:
+        return None
+    return {'kind': 'history', 'text': text, 'finding': finding['finding']}
+
+
+def _magnitude(source):
+    """Get the differences of a REC's value discrepancies by field, read from
+    RAPO_DISCREPANCY_DESCRIPTION (`FIELD|difference;` per field that
+    differs).
+    """
+    meta = source['meta']
+    if (meta['control_type'] != 'REC'
+            or meta.get('result_type') not in (None, 'Discrepancy')):
+        return None
+    statement = (
+        'select rapo_discrepancy_description d, count(*) n '
+        f"from ({source['result_sql']}) where rapo_result_type = "
+        "'Discrepancy' group by rapo_discrepancy_description "
+        f'order by 2 desc fetch first {DESCRIPTIONS} rows only')
+    rows = db.execute(sa.text(statement), as_table=True)
+    total = sum(int(row['n']) for row in rows)
+    if not total:
+        return None
+    fields = {}
+    for row in rows:
+        count = int(row['n'])
+        for part in str(row['d'] or '').split(';'):
+            if '|' not in part:
+                continue
+            field, value = part.rsplit('|', 1)
+            values = fields.setdefault(field.strip().upper(), {})
+            values[value.strip()] = values.get(value.strip(), 0) + count
+    result = []
+    for field, values in fields.items():
+        records = sum(values.values())
+        ranked = sorted(values.items(), key=lambda item: -item[1])
+        numbers = []
+        for value, count in values.items():
+            try:
+                numbers.append((float(value), count))
+            except ValueError:
+                numbers = None
+                break
+        item = {'field': field, 'records': records, 'share': records / total,
+                'distinct': len(values),
+                'values': [{'value': value, 'count': count,
+                            'share': count / records}
+                           for value, count in ranked[:10]],
+                'numeric': bool(numbers)}
+        if numbers:
+            numbers.sort()
+            item['min'] = _plain(numbers[0][0])
+            item['max'] = _plain(numbers[-1][0])
+            half, running = records / 2, 0
+            for number, count in numbers:
+                running += count
+                if running >= half:
+                    item['median'] = _plain(number)
+                    break
+            item['histogram'] = _magnitude_histogram(numbers)
+        result.append(item)
+    result.sort(key=lambda item: -item['records'])
+    return {'total': total, 'fields': result,
+            'cut': len(rows) == DESCRIPTIONS}
+
+
+def _magnitude_histogram(numbers, buckets=20):
+    low, high = numbers[0][0], numbers[-1][0]
+    if low == high or len(numbers) <= buckets:
+        return [{'low': _plain(value), 'high': _plain(value), 'count': count}
+                for value, count in numbers]
+    width = (high - low) / buckets
+    counts = [0] * buckets
+    for value, count in numbers:
+        counts[min(int((value - low) / width), buckets - 1)] += count
+    return [{'low': _plain(round(low + i * width, 6)),
+             'high': _plain(round(low + (i + 1) * width, 6)),
+             'count': count} for i, count in enumerate(counts)]
+
+
+def _magnitude_sentences(magnitude):
+    total = magnitude['total']
+    sentences = []
+    for item in magnitude['fields'][:3]:
+        top = item['values'][0]
+        if item['distinct'] == 1:
+            how = f"always by {top['value']}"
+        elif top['share'] >= 0.5:
+            how = f"mostly by {top['value']} ({_pct(top['share'])})"
+        elif item['numeric']:
+            how = (f"by {_short(item['min'])} to {_short(item['max'])} "
+                   f"(median {_short(item['median'])})")
+        else:
+            how = f'in {item["distinct"]} different ways'
+        sentences.append({'kind': 'magnitude', 'text': (
+            f"{item['field']} differs in {_pct(item['share'])} of the "
+            f'{total:,} value discrepancies, {how}.')})
+    return sentences
+
+
+def _excerpts(source, report):
+    """Get example records of the strongest findings: discrepancies, and
+    fetched records of the same bins (which hold the discrepancies too).
+    """
+    columns = source['columns']
+    result = []
+    for finding in report['findings'][:EXCERPT_FINDINGS]:
+        item = {'finding': finding['id'], 'label': finding['label'],
+                'columns': [column['name'].upper() for column in columns]}
+        for which, sql, names in (
+                ('result', source['result_sql'],
+                 [column['name'] for column in columns]),
+                ('fetched', source['fetched_sql'],
+                 [column['source'] for column in columns])):
+            select = ', '.join(_quoted(name) for name in names)
+            statement = (f'select {select} from ({sql}) q '
+                         f"where {finding['filter'][which]} "
+                         f'and rownum <= {EXCERPT_ROWS}')
+            try:
+                rows = db.execute(sa.text(statement), as_records=True)
+                item[which] = [[_cell(value) for value in row]
+                               for row in rows]
+            except Exception as error:
+                item[which] = []
+                item[f'{which}_error'] = str(error).strip().splitlines()[0]
+        result.append(item)
+    return result
+
+
+def _cell(value):
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return None
+    if isinstance(value, (dt.datetime, dt.date, str, int, float)) \
+            or value is None:
+        return value
+    return _plain(value)
 
 
 def to_json(report):

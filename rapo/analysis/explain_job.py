@@ -22,6 +22,7 @@ from . import explain
 DEFAULTS = {
     'discrepancy_exact_rows': 5000000,
     'discrepancy_timeout_minutes': 20,
+    'discrepancy_history_runs': 10,
 }
 CACHED = 20
 
@@ -39,7 +40,8 @@ def options():
     return result
 
 
-def work(conn, process_id, side, result_type, exact_rows, parent_pid):
+def work(conn, process_id, side, result_type, exact_rows, history_runs,
+         parent_pid):
     """Run one job in the spawned process, reporting through `conn`."""
     from ..core.runner import watch
     th.Thread(target=watch, args=(parent_pid,), daemon=True).start()
@@ -48,7 +50,9 @@ def work(conn, process_id, side, result_type, exact_rows, parent_pid):
         conn.send(('progress', {'step': step, 'done': done, 'total': total}))
     try:
         report = explain.analyze(process_id, side, result_type,
-                                 exact_rows=exact_rows, progress=progress)
+                                 exact_rows=exact_rows,
+                                 history_runs=history_runs,
+                                 progress=progress)
         conn.send(('done', explain.to_json(report)))
     except explain.ExplainError as error:
         conn.send(('error', str(error)))
@@ -178,14 +182,16 @@ class Explainer:
         process_id, side, result_type = job.key
         job.state = 'running'
         job.started = dt.datetime.now()
-        job.progress = {'step': 'Starting', 'done': 0, 'total': 5}
+        job.progress = {'step': 'Starting', 'done': 0,
+                        'total': explain.STEPS}
         self.notify(job)
         context = mp.get_context('spawn')
         conn, child = context.Pipe(duplex=False)
         process = context.Process(
             name=f'rapo-explain-{process_id}', target=work,
             args=(child, process_id, side, result_type,
-                  settings['discrepancy_exact_rows'], os.getpid()),
+                  settings['discrepancy_exact_rows'],
+                  settings['discrepancy_history_runs'], os.getpid()),
             daemon=True)
         process.start()
         child.close()

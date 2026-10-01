@@ -779,7 +779,8 @@ holds that limit.
 them by default), `recompute` (default false). Explains what sets the discrepancies of one side of a run apart from
 its **normal records**, the side's fetched records less the discrepancies. Nothing is joined: every attribute is
 binned the same way on both datasets and counted by Oracle over the whole data, and a bin's normal count is its
-fetched count less its discrepancy count (never below 0). The fetched records are the `fetched_a|b` dataset (the
+fetched count less its discrepancy count (never below 0). The datasource is scanned about four times (profile,
+bins, pairs of bins, examples). The fetched records are the `fetched_a|b` dataset (the
 control's current configuration); above `[ANALYSIS] discrepancy_exact_rows` they are counted on a random sample
 scaled back up, the discrepancies always whole. ANL has side `a` only; a CMP's discrepancies are one table, side `a`
 analysing its `a_` (or side-A output) columns and side `b` the others. A result column is analysed when it holds a
@@ -813,8 +814,29 @@ The **report** (`state` = `done`):
   ordered feature (`02:00 – 04:59`).
 - `heatmaps`: per date column `{column, cells}`, each cell `{weekday (0 = Monday), hour, disc, normal, rate,
   lift}`.
-- `story`: `[{kind, text, attribute?, codes?}]`, the findings in sentences: `headline`, `types`, `driver`, `time`,
-  `unrelated`, `none`, `note`; a driver names its attribute `id` and bin codes.
+- `combinations`: up to 8 pairs of bins of two attributes stronger together than alone (over-represented, and a
+  discrepancy rate 1.5 times the better of the two bins'): `{id, attributes, parts, disc, normal, disc_share,
+  normal_share, lift, rate, z, wracc, filter}`, each part `{attribute, what, label, phrase, codes, lift}` (the bin's
+  lift alone). The strongest attribute of up to 6 columns takes part, each reduced to at most 5 groups of its bins
+  (bands, a common prefix, the bins with the most discrepancies). Ranked by `wracc`, coverage × (rate − base rate).
+- `findings`: what the history and the examples follow, `[{id, kind (driver|combination), attribute, label, codes,
+  filter, disc_share, normal_share}]`.
+- `history`: null without a previous run, else `{runs, findings, error?}`: `runs` the previous finished runs of the
+  control (up to `[ANALYSIS] discrepancy_history_runs`) whose results are still in the result table, plus this one,
+  oldest first, `[{process_id, date_from, date_to, total}]`; per finding `{finding, label, attribute, counts, shares,
+  status, since, before}`, `shares` its share of each run's discrepancies, `status` `new` (it stands out from
+  `since`; before, under a quarter of its share now), `growing`, `chronic` or `single`, `before` the average share
+  in the previous runs.
+- `magnitude`: REC with all types or `Discrepancy` only, else null: `{total, fields, cut}` from
+  `RAPO_DISCREPANCY_DESCRIPTION` of the value discrepancies, per field `{field, records, share, distinct, values
+  (top 10 {value, count, share}), numeric, min, median, max, histogram}`; `cut` when more than 2,000 different
+  descriptions exist (the most frequent are read).
+- `excerpts`: per finding (up to 4) `{finding, label, columns, result, fetched}`: up to 10 discrepancies and 10
+  fetched records of its bins, rows as lists in `columns` order (`result_error`/`fetched_error` when one could not
+  be read).
+- `story`: `[{kind, text, attribute?, codes?, finding?}]`, the findings in sentences: `headline`, `types`,
+  `driver`, `time`, `combination`, `history`, `magnitude`, `unrelated`, `none`, `note`; a driver names its
+  attribute `id` and bin codes, a combination or history sentence its finding.
 
 #### `GET /api/get-discrepancy-analysis`
 `process_id`, `side`, optional `result_type`. Answers the job as `start-discrepancy-analysis` does; 404 when none

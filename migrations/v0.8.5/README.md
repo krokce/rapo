@@ -17,7 +17,8 @@ by `install.sh` from the package index; on a host without access to it, provide 
     git checkout v0.8.5
     ./install.sh
     ```
-1. Optionally set the new `[ANALYSIS]` options `discrepancy_exact_rows` and `discrepancy_timeout_minutes` in
+1. Optionally set the new `[ANALYSIS]` options `discrepancy_exact_rows`, `discrepancy_timeout_minutes` and
+   `discrepancy_history_runs` in
    `rapo.ini` (see `rapo.ini.example`); the defaults apply otherwise.
 1. Start the web server.
     ```bash

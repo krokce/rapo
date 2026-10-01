@@ -89,7 +89,13 @@
         <q-tab name="drivers" icon="fas fa-bullseye" label="Attributes">
           <q-badge v-if="driverCount" color="red-7" floating>{{ driverCount }}</q-badge>
         </q-tab>
+        <q-tab name="combinations" icon="fas fa-link" label="Combinations">
+          <q-badge v-if="report.combinations.length" color="red-7" floating>{{ report.combinations.length }}</q-badge>
+        </q-tab>
         <q-tab v-if="report.heatmaps.length" name="time" icon="fas fa-clock" label="Time bands" />
+        <q-tab name="history" icon="fas fa-history" label="History" />
+        <q-tab v-if="report.magnitude" name="differences" icon="fas fa-ruler-horizontal" label="Differences" />
+        <q-tab name="records" icon="fas fa-table" label="Records" />
         <q-tab name="excluded" icon="fas fa-eye-slash" label="Not analysed">
           <q-badge v-if="meta.excluded.length" color="blue-grey-5" floating>{{ meta.excluded.length }}</q-badge>
         </q-tab>
@@ -102,8 +108,20 @@
         <q-tab-panel name="drivers" class="scroll-panel">
           <discrepancy-drivers :report="report" :selected-id="attribute" @select="selectAttribute" @show-rows="showRows" />
         </q-tab-panel>
+        <q-tab-panel name="combinations" class="scroll-panel">
+          <discrepancy-combinations :report="report" @show-attribute="showAttribute" @show-rows="showRows" />
+        </q-tab-panel>
         <q-tab-panel v-if="report.heatmaps.length" name="time" class="scroll-panel">
           <discrepancy-time-bands :report="report" />
+        </q-tab-panel>
+        <q-tab-panel name="history" class="scroll-panel">
+          <discrepancy-history :report="report" @show-attribute="showAttribute" @open-run="openRun" />
+        </q-tab-panel>
+        <q-tab-panel v-if="report.magnitude" name="differences" class="scroll-panel">
+          <discrepancy-magnitude :magnitude="report.magnitude" />
+        </q-tab-panel>
+        <q-tab-panel name="records" class="scroll-panel">
+          <discrepancy-records :report="report" @show-rows="showRows" />
         </q-tab-panel>
         <q-tab-panel name="excluded" class="scroll-panel">
           <div class="text-caption text-grey-7 q-mb-sm">
@@ -146,20 +164,34 @@ import { formatNumber, toDateTimeString } from "../../utils/format";
 import { fillViewportToBottom } from "../../utils/layout";
 import { formatPct } from "../../utils/analysis";
 import AnalysisHeader from "./AnalysisHeader.vue";
+import DiscrepancyCombinations from "./DiscrepancyCombinations.vue";
 import DiscrepancyDrivers from "./DiscrepancyDrivers.vue";
+import DiscrepancyHistory from "./DiscrepancyHistory.vue";
+import DiscrepancyMagnitude from "./DiscrepancyMagnitude.vue";
+import DiscrepancyRecords from "./DiscrepancyRecords.vue";
 import DiscrepancySummary from "./DiscrepancySummary.vue";
 import DiscrepancyTimeBands from "./DiscrepancyTimeBands.vue";
 
-const TABS = ["summary", "drivers", "time", "excluded"];
+const TABS = ["summary", "drivers", "combinations", "time", "history", "differences", "records", "excluded"];
 const RESULT_TYPES = ["Loss", "Discrepancy", "Duplicate"];
 
 // What sets the discrepancies of one side of a run apart from its normal records (fetched less discrepancies). The
 // server counts every attribute's bins in both datasets and scores them in a job of its own; the report is kept in its
-// memory, so reopening is instant until Recompute or a restart. Kept alive (App.vue); the tab, the result type and the
-// chosen attribute are kept in the URL query (`tab`, `t`, `attr`).
+// memory, so reopening is instant until Recompute or a restart. Besides single attributes it shows pairs of them, the
+// findings over previous runs, the differences of REC value discrepancies and example records. Kept alive (App.vue);
+// the tab, the result type and the chosen attribute are kept in the URL query (`tab`, `t`, `attr`).
 export default {
   name: "DiscrepancyAnalysis",
-  components: { AnalysisHeader, DiscrepancyDrivers, DiscrepancySummary, DiscrepancyTimeBands },
+  components: {
+    AnalysisHeader,
+    DiscrepancyCombinations,
+    DiscrepancyDrivers,
+    DiscrepancyHistory,
+    DiscrepancyMagnitude,
+    DiscrepancyRecords,
+    DiscrepancySummary,
+    DiscrepancyTimeBands,
+  },
   data() {
     return {
       job: null,
@@ -349,7 +381,7 @@ export default {
         if (this.attribute && !report.attributes.some((item) => item.id === this.attribute)) {
           this.attribute = null;
         }
-        if (this.tab === "time" && !report.heatmaps.length) {
+        if ((this.tab === "time" && !report.heatmaps.length) || (this.tab === "differences" && !report.magnitude)) {
           this.tab = "summary";
         }
       }
@@ -371,6 +403,10 @@ export default {
     showAttribute(id) {
       this.attribute = id;
       this.tab = "drivers";
+    },
+    // The analysis of another run of the control, same side and result type.
+    openRun(processId) {
+      this.$router.push({ name: "discrepancy-analysis", params: { processId, side: this.$route.params.side }, query: { ...this.viewQuery, tab: "history" } });
     },
     selectAttribute(id) {
       this.attribute = id;

@@ -13,8 +13,9 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
 - **Discrepancy analysis page** (run number menu, Data analysis button): what sets a run's discrepancies apart from
   its normal records (fetched less discrepancies), per side, for ANL/REC/CMP. Every column binned (values, deciles,
   hour/weekday/period, identifier prefixes and length), counted by Oracle over the whole data; ranked by Theil's U
-  and φK, per-bin lift, rate and z. Findings as sentences, butterfly charts, weekday × hour heatmaps; every bin opens
-  its records in Data analysis. REC per result type; large datasources sampled (`[ANALYSIS] discrepancy_*`). New
+  and φK, per-bin lift, rate and z; pairs of bins stronger together, the findings over previous runs (new or not),
+  REC value differences and example records. Findings as sentences, butterfly charts, weekday × hour heatmaps; every
+  bin opens its records in Data analysis. REC per result type; large datasources sampled (`[ANALYSIS] discrepancy_*`). New
   routes `start-|get-discrepancy-analysis`.
 
 - **Email *Send when: Evaluate SQL*:** sent only when a Prerequisite-style SQL returns a number above 0, whatever the

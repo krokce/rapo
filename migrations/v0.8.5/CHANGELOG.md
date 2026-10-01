@@ -31,6 +31,16 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
      discrepancies right) with a table of shares, lift and rate; each bin opens its discrepancies or its fetched
      records in *Data analysis*, filtered in the database. **Time bands tab:** a weekday × hour heatmap of the
      discrepancy rate per date column.
+   - **Combinations tab:** pairs of bins of two attributes that together set the discrepancies apart more than
+     either alone (*Together, MSC = MSC07 and EVENT_TIME (hour of day) 02:00 – 04:59 hold 64% of the discrepancies
+     against 0.84% of the normal records (76× as often), more than either alone (6.8×, 5.6×)*).
+   - **History tab:** the share of the discrepancies each finding held in up to `[ANALYSIS]
+     discrepancy_history_runs` (default 10) previous runs of the control, read from its result table (runs whose
+     results were cleaned are left out), with *New*, *Growing* or *Not new*; a click on a run opens its analysis.
+   - **Differences tab** (REC value discrepancies): by field, how much the values differ, read from
+     RAPO_DISCREPANCY_DESCRIPTION (*AMOUNT differs in 100% of the 86 value discrepancies, always by -7*).
+   - **Records tab:** up to 10 discrepancies and 10 fetched records of each of the strongest findings, the
+     finding's columns first.
    - A REC analyses all its discrepancies or one result type (*All / Loss / Discrepancy / Duplicate*).
    - The analysis runs in the background on the server, one at a time (others wait), with its progress shown; the
      result is kept in the server's memory (the latest 20), so reopening is instant until *Recompute* or a restart.
@@ -38,7 +48,7 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
      counted **now**: a control changed after the run or source data changed since are noted. Above
      `[ANALYSIS] discrepancy_exact_rows` (default 5,000,000) fetched records, they are counted on a random sample of
      about that size and scaled up; `[ANALYSIS] discrepancy_timeout_minutes` (default 20) stops a long analysis. Each
-     analysis scans the datasource about three times; check these limits for large datasources.
+     analysis scans the datasource about four times; check these limits for large datasources.
    - New routes `start-discrepancy-analysis` and `get-discrepancy-analysis`, live event `discrepancy:progress`. New
      Python dependency `phik` (with `scipy`), installed by `install.sh`.
 
