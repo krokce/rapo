@@ -237,6 +237,20 @@ def emit_analysis(payload):
         pass
 
 
+def emit_discrepancy(payload):
+    """Push a discrepancy analysis job's state to the clients, from any
+    thread; a page picks its own by process_id, side and result_type.
+    """
+    loop = main_loop
+    if loop is None or watcher.clients <= 0:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            sio.emit('discrepancy:progress', payload), loop)
+    except RuntimeError:
+        pass
+
+
 def emit_datasources(kind='status'):
     """Tell the clients that the datasources changed, from any thread.
 

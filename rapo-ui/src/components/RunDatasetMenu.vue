@@ -10,6 +10,10 @@
         <q-item-section avatar class="menu-icon"><q-icon name="fas fa-chart-bar" size="14px" color="primary" /></q-item-section>
         <q-item-section> Data analysis </q-item-section>
       </q-item>
+      <q-item v-if="discrepancyLink" dense clickable v-close-popup :to="discrepancyLink">
+        <q-item-section avatar class="menu-icon"><q-icon name="fas fa-search-plus" size="14px" color="red-7" /></q-item-section>
+        <q-item-section> Discrepancy analysis </q-item-section>
+      </q-item>
     </q-list>
   </q-menu>
 </template>
@@ -18,8 +22,9 @@
 import { copyDatasetSql } from "../runActions";
 import { datasetLabel } from "../utils/analysis";
 
-// The menu of a run's number (fetched, discrepancies, error level): its dataset's SQL and its data analysis. One per
-// table, opened with open(event, run, dataset) on a click or a right-click of the number.
+// The menu of a run's number (fetched, discrepancies, error level): its dataset's SQL and its data analysis, and for
+// discrepancies (not a report's rows) what sets them apart. One per table, opened with open(event, run, dataset) on a
+// click or a right-click of the number.
 export default {
   name: "RunDatasetMenu",
   data() {
@@ -33,6 +38,14 @@ export default {
       }
       const [kind, side] = this.dataset.split("_");
       return datasetLabel({ control_type: this.run.control_type, kind, side: side.toUpperCase() });
+    },
+    // A CMP's discrepancies are one table holding both sides; its analysis starts with side A.
+    discrepancyLink() {
+      if (!this.run || !this.dataset.startsWith("result_") || this.run.control_type === "REP") {
+        return null;
+      }
+      const side = this.run.control_type === "REC" ? this.dataset.split("_")[1] : "a";
+      return { name: "discrepancy-analysis", params: { processId: this.run.process_id, side } };
     },
   },
   methods: {

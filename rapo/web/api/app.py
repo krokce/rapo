@@ -37,6 +37,8 @@ from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming, next_fires
 from ...analysis import compare
 from ...analysis import datasets
+from ...analysis import explain
+from ...analysis.explain_job import explainer
 from ...analysis.sessions import sessions, SessionError
 from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
@@ -68,6 +70,7 @@ async def lifespan(app):
     runner.listeners.append(events.poke_scheduler)
     scheduler.listeners.append(events.poke_scheduler)
     sessions.listeners.append(events.emit_analysis)
+    explainer.listeners.append(events.emit_discrepancy)
     # The waiting files are counted only while someone looks at them.
     scanner.active = lambda: events.watcher.clients > 0
     scanner.listeners.append(events.emit_datasources)
@@ -76,8 +79,10 @@ async def lifespan(app):
     await asyncio.to_thread(runner.start)
     scheduler.start()
     sessions.start()
+    explainer.start()
     scanner.start()
     yield
+    await asyncio.to_thread(explainer.stop)
     await asyncio.to_thread(scanner.stop)
     await asyncio.to_thread(sessions.stop)
     await asyncio.to_thread(scheduler.stop)
@@ -1524,6 +1529,53 @@ def analysis_export(session_id: str, format: str = 'xlsx',
         result['path'], media_type=media_type, filename=f'{name}.{format}',
         headers=headers, background=BackgroundTask(remove_file,
                                                    result['path']))
+
+
+def discrepancy_key(process_id, side, result_type):
+    """Check a side of a run can be explained, or answer 400/404."""
+    control = find_control(process_id)
+    if side not in ('a', 'b'):
+        raise fastapi.HTTPException(status_code=422,
+                                    detail='side must be a or b')
+    if control.is_report:
+        raise fastapi.HTTPException(
+            status_code=400, detail='A report has no discrepancies to explain')
+    if side == 'b' and control.is_analysis:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='An analysis has no side B')
+    if result_type and (not control.is_reconciliation
+                        or result_type not in explain.RESULT_TYPES):
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'Unknown result type {result_type}')
+
+
+@api.post('/start-discrepancy-analysis')
+def start_discrepancy_analysis(process_id: int, side: str,
+                               result_type: str | None = None,
+                               recompute: bool = False):
+    """Explain what sets the discrepancies of a side of a run apart.
+
+    Queues a job unless one exists (`recompute` replaces a finished one);
+    its progress is pushed as `discrepancy:progress`.
+    """
+    discrepancy_key(process_id, side, result_type)
+    try:
+        job = explainer.submit(process_id, side, result_type, recompute)
+    except explain.ExplainError as error:
+        raise fastapi.HTTPException(status_code=503, detail=str(error))
+    return job.describe()
+
+
+@api.get('/get-discrepancy-analysis')
+def get_discrepancy_analysis(process_id: int, side: str,
+                             result_type: str | None = None):
+    """Get the discrepancy analysis job of a side of a run, with its report
+    once done; 404 when none was started on this server."""
+    job = explainer.get(process_id, side, result_type)
+    if job is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail='No discrepancy analysis of this run')
+    return job.describe()
 
 
 def remove_file(path):

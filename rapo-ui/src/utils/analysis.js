@@ -212,6 +212,29 @@ export const HOURS = Array.from({ length: 24 }, (item, index) => String(index).p
 
 const LIGHT_CHIP_COLORS = new Set(["orange-8", "amber-8", "blue-grey-4"]);
 
+// The chip color of a lift (a share over another share; null when the other share is 0): red over-represented, blue
+// under-represented.
+export function liftColor(lift) {
+  if (lift === null || lift === undefined || lift >= 2) {
+    return "red-7";
+  }
+  if (lift >= 1.25) {
+    return "orange-8";
+  }
+  if (lift <= 0.5) {
+    return "blue-7";
+  }
+  return "blue-grey-4";
+}
+
+// "×2.35", "×12", "×99+"; `only` when the other share is 0.
+export function liftText(lift, only) {
+  if (lift === null || lift === undefined) {
+    return only;
+  }
+  return lift >= 100 ? "×99+" : `×${formatNumber(lift, lift >= 10 ? 0 : 2)}`;
+}
+
 // Text color that stays readable on a Quasar chip color from the strength/lift scales.
 export function chipTextColor(color) {
   return LIGHT_CHIP_COLORS.has(color) ? "grey-10" : "white";

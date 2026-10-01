@@ -1,50 +1,17 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end q-mb-md">
-      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-md q-mb-none">
-        <div>Data analysis</div>
-        <div v-if="!datasetOptions.length" class="text-grey-7 page-subject">{{ datasetLabel(meta) || datasetTitle }}</div>
-        <div v-if="datasetOptions.length">
-          <q-btn-toggle
-            :model-value="$route.params.dataset"
-            no-caps
-            unelevated
-            toggle-color="blue-grey-7"
-            color="grey-3"
-            text-color="grey-8"
-            :options="datasetOptions"
-            @update:model-value="switchDataset">
-            <template v-for="option in datasetOptions" :key="option.value" #[option.slot]>
-              {{ option.text }}<span v-if="option.count" class="dataset-count">({{ option.count }})</span>
-            </template>
-          </q-btn-toggle>
-        </div>
-      </h2>
-      <q-space />
-      <div v-if="meta" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
-        <q-chip>
-          <q-avatar :icon="controlType(meta.control_type).icon" :color="controlType(meta.control_type).color" text-color="white" />
-          {{ meta.control_type }}
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ controlType(meta.control_type).label }}</q-tooltip>
-        </q-chip>
-        <router-link class="control-link text-weight-bold" :to="{ name: 'edit-control', params: { controlId: meta.control_id } }">
-          {{ meta.control_name }}
-        </router-link>
-        <div>
-          PID <strong>{{ meta.process_id }}</strong>
-        </div>
-        <div>
-          {{ windowText }}
-        </div>
-        <q-chip>
-          <q-avatar :icon="runStatus(meta.status).icon" :color="runStatus(meta.status).color" text-color="white" />
-          {{ runStatus(meta.status).label }}
-        </q-chip>
-        <q-btn aria-label="Copy a link to this view" flat dense round size="sm" color="blue-grey-7" icon="fas fa-link" @click="copyLink">
-          <q-tooltip anchor="top middle" self="bottom middle">Copy a link to this view</q-tooltip>
-        </q-btn>
-      </div>
-    </div>
+    <analysis-header
+      title="Data analysis"
+      :subject="datasetLabel(meta) || datasetTitle"
+      :options="datasetOptions"
+      :model-value="$route.params.dataset"
+      :meta="meta"
+      @update:model-value="switchDataset"
+      @copy-link="copyLink">
+      <q-btn v-if="discrepancyLink" flat dense no-caps color="primary" icon="fas fa-search-plus" label="Discrepancy analysis" :to="discrepancyLink">
+        <q-tooltip anchor="top middle" self="bottom middle">What sets these discrepancies apart from the normal records</q-tooltip>
+      </q-btn>
+    </analysis-header>
 
     <q-banner v-if="startError" class="bg-red-1 text-red-9 q-mb-md" rounded>
       <template #avatar><q-icon name="fas fa-exclamation-triangle" color="red-7" /></template>
@@ -242,12 +209,12 @@
 import socket from "../../socket";
 import { api, notifyError } from "../../api";
 import store from "../../store";
-import { controlType, runStatus } from "../../constants";
 import { copyAndNotify } from "../../runActions";
-import { formatNumber, toDateTimeString } from "../../utils/format";
+import { formatNumber } from "../../utils/format";
 import { fillViewportToBottom } from "../../utils/layout";
 import { DATASETS, datasetLabel, describeFilter } from "../../utils/analysis";
 import AnalysisColumns from "./AnalysisColumns.vue";
+import AnalysisHeader from "./AnalysisHeader.vue";
 import AnalysisCorrelations from "./AnalysisCorrelations.vue";
 import AnalysisDuplicates from "./AnalysisDuplicates.vue";
 import AnalysisMissing from "./AnalysisMissing.vue";
@@ -291,6 +258,7 @@ export default {
   name: "DataAnalysis",
   components: {
     AnalysisColumns,
+    AnalysisHeader,
     AnalysisCorrelations,
     AnalysisDuplicates,
     AnalysisMissing,
@@ -359,13 +327,14 @@ export default {
       const dataset = DATASETS[this.$route.params.dataset];
       return dataset ? `${dataset.kind === "fetched" ? "Fetched" : "Discrepancies"} ${dataset.side}` : "";
     },
-    windowText() {
-      if (!this.meta) {
-        return "";
+    // The discrepancy analysis of the same side, from a discrepancies dataset (not a report's rows).
+    discrepancyLink() {
+      const meta = this.meta;
+      if (!meta || meta.kind !== "result" || meta.control_type === "REP") {
+        return null;
       }
-      const from = toDateTimeString(this.meta.date_from);
-      const to = toDateTimeString(this.meta.date_to);
-      return from.substring(0, 10) === to.substring(0, 10) && from.endsWith("00:00:00") && to.endsWith("23:59:59") ? from.substring(0, 10) : `${from} – ${to}`;
+      const side = meta.control_type === "REC" ? meta.dataset.split("_")[1] : "a";
+      return { name: "discrepancy-analysis", params: { processId: meta.process_id, side } };
     },
     // Once the cursor is exhausted the sample is the whole dataset, whatever the run counted.
     totalRows() {
@@ -538,8 +507,6 @@ export default {
     this.onUnload();
   },
   methods: {
-    controlType,
-    runStatus,
     formatNumber,
     datasetLabel,
     describeFilter,
@@ -836,20 +803,6 @@ export default {
 </script>
 
 <style scoped>
-.dataset-count {
-  font-weight: 400;
-  margin-left: 4px;
-}
-
-.control-link {
-  color: var(--rapo-teal);
-  text-decoration: none;
-}
-
-.control-link:hover {
-  text-decoration: underline;
-}
-
 .sample-bar {
   flex: 0 0 auto;
 }

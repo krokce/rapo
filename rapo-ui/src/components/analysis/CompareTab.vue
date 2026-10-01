@@ -211,7 +211,7 @@
 import EChart from "./EChart.vue";
 import { api, notifyError } from "../../api";
 import { formatNumber, toDateTimeString } from "../../utils/format";
-import { DATASETS, KIND_ICONS, baseOption, chipTextColor, datasetLabel, formatPct, formatStat, formatValue, valueAxis } from "../../utils/analysis";
+import { DATASETS, KIND_ICONS, baseOption, chipTextColor, datasetLabel, formatPct, formatStat, formatValue, liftColor, liftText, valueAxis } from "../../utils/analysis";
 
 const LEVEL_COLORS = { stable: "#43a047", moderate: "#fb8c00", major: "#e53935" };
 const TARGET_ICONS = { source: "fas fa-database", previous: "fas fa-history", other_side: "fas fa-exchange-alt" };
@@ -504,23 +504,11 @@ export default {
       return label === "" ? "(blank)" : formatValue(label, this.selected.kind === "datetime" ? "text" : this.selected.kind);
     },
     liftText(item) {
-      if (item.lift === null) {
-        return "A only";
-      }
-      return item.lift >= 100 ? "×99+" : `×${formatNumber(item.lift, item.lift >= 10 ? 0 : 2)}`;
+      return liftText(item.lift, "A only");
     },
     chipTextColor,
     liftColor(item) {
-      if (item.lift === null || item.lift >= 2) {
-        return "red-7";
-      }
-      if (item.lift >= 1.25) {
-        return "orange-8";
-      }
-      if (item.lift <= 0.5) {
-        return "blue-7";
-      }
-      return "blue-grey-4";
+      return liftColor(item.lift);
     },
     // The rows of A in a value or a range, in the viewer.
     showRowsA(item) {

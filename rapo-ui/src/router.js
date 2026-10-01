@@ -43,6 +43,13 @@ const router = createRouter({
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
     },
     {
+      // What sets a run's discrepancies apart from its normal records; in the analysis chunk.
+      name: "discrepancy-analysis",
+      path: "/discrepancy-analysis/:processId/:side",
+      meta: { hideSearch: true },
+      component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DiscrepancyAnalysis.vue"),
+    },
+    {
       name: "scheduler",
       path: "/scheduler",
       meta: { hideSearch: true },

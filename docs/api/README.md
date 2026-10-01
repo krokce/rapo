@@ -52,7 +52,7 @@ section and answer 404 otherwise. Redoc is disabled.
   | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, or an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
   | 500  | An unexpected error in the route. `detail` is `<ErrorType>: <message>`, and the traceback is written to the server log (`rapo-server_YYYYMMDD.log`). |
-  | 503  | The run manager is not running, so no run can be accepted.                          |
+  | 503  | The run manager is not running, so no run can be accepted (likewise analysis sessions and jobs while the server starts or stops). |
 
 * **Datetimes are naive ISO wall-clock strings** in the server's local time, e.g. `2026-09-19T10:05:07`. There is
   no timezone suffix and none is accepted. Dates are `YYYY-MM-DD`.
@@ -774,6 +774,52 @@ the run itself is shown by that run.
 the order wanted). Downloads the matching rows. Excel is cut at 1,048,575 rows, and the header `X-Rapo-Cut` then
 holds that limit.
 
+#### `POST /api/start-discrepancy-analysis`
+`process_id`, `side` (`a` or `b`), optional `result_type` (REC only: `Loss`, `Discrepancy` or `Duplicate`; all of
+them by default), `recompute` (default false). Explains what sets the discrepancies of one side of a run apart from
+its **normal records**, the side's fetched records less the discrepancies. Nothing is joined: every attribute is
+binned the same way on both datasets and counted by Oracle over the whole data, and a bin's normal count is its
+fetched count less its discrepancy count (never below 0). The fetched records are the `fetched_a|b` dataset (the
+control's current configuration); above `[ANALYSIS] discrepancy_exact_rows` they are counted on a random sample
+scaled back up, the discrepancies always whole. ANL has side `a` only; a CMP's discrepancies are one table, side `a`
+analysing its `a_` (or side-A output) columns and side `b` the others. A result column is analysed when it holds a
+fetched column (same name, or the output column configuration names it); coalesced columns and `RAPO_*` metadata are
+not.
+
+Runs as a job in a process of its own, one at a time per server (others queued, `[ANALYSIS]
+discrepancy_timeout_minutes` at most). Answers the job, `{process_id, side, result_type, state, progress, error,
+queued, started, finished, report}`, `state` being `queued`, `running`, `done` or `error`, `progress` `{step, done,
+total}`. A job of the same run, side and type is reused (its report too) unless `recompute`; the latest 20 finished
+jobs are kept in the server's memory until it stops. State changes are pushed as `discrepancy:progress` (the job
+without `report`). 400 for a report, side `b` of an analysis or an unknown result type, 404 for an unknown run, 503
+while the server starts or stops.
+
+The **report** (`state` = `done`):
+- `meta`: the run (as `get-run-dataset-sql`), `side`, `dataset` / `fetched_dataset` (the Data analysis datasets),
+  `result_type`, `discrepancies`, `normal`, `fetched_total` (counted now) and `fetched_logged` (at run time),
+  `sample` (the sampled share, or null), `drift` (the two totals differ), `stale`, `clamped` (columns whose bins
+  hold more discrepancies than fetched records), `excluded` (`[{column, reason}]`), `datasets` (`[{side, count}]`).
+- `type_split`: REC `[{type, count}]` of the side's discrepancies, else null.
+- `attributes`: strongest first, one per binning of a column: `{id, column, source, kind, feature, feature_label,
+  ordered, score, phik, bins, special, under, bands}`. `feature` is `value`, `decile` (ranges by the fetched
+  deciles), `prefix` (first 3/5/6/8 digits or 2/4/6 characters of an identifier-like column), `length`, `hour`,
+  `weekday` or `timeline` (20 equal periods). `score` is Theil's U of being a discrepancy given the bins (0..1,
+  the share of the uncertainty removed, less a small-sample bias), `phik` the phik correlation. Each bin is `{code,
+  label, disc, normal, disc_share, normal_share, lift, rate, z, flag, filter}`: `lift` = `disc_share /
+  normal_share` (null with `only_disc` when no normal record has it), `rate` the share of the bin's records that are
+  discrepancies, `z` a two-proportion z, `flag` `over` (at least 10 discrepancies and 1% of them, lift ≥ 2, z ≥ 4),
+  `under` or null, and `filter` `{result, fetched}`: a condition selecting the bin's records, usable as
+  `analysis-start`'s `where` on the discrepancy and the fetched dataset. `bands` merges adjacent `over` bins of an
+  ordered feature (`02:00 – 04:59`).
+- `heatmaps`: per date column `{column, cells}`, each cell `{weekday (0 = Monday), hour, disc, normal, rate,
+  lift}`.
+- `story`: `[{kind, text, attribute?, codes?}]`, the findings in sentences: `headline`, `types`, `driver`, `time`,
+  `unrelated`, `none`, `note`; a driver names its attribute `id` and bin codes.
+
+#### `GET /api/get-discrepancy-analysis`
+`process_id`, `side`, optional `result_type`. Answers the job as `start-discrepancy-analysis` does; 404 when none
+was started on this server since it started.
+
 ### PDI Core files
 
 #### `POST /api/download-ds-files`
@@ -934,6 +980,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `controls:changed`  | `{resync, control_ids}`                           |
 | `scheduler:changed` | `{event_ids}`                                     |
 | `analysis:progress` | `{session_id, state}` - see Data analysis         |
+| `discrepancy:progress` | A discrepancy analysis job without its `report` - see `start-discrepancy-analysis` |
 | `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything

@@ -118,6 +118,13 @@ max_sessions=4
 idle_minutes=15
 # A sample stops growing when its process uses more memory than this.
 max_memory_mb=2048
+# Discrepancy analysis (what sets a run's discrepancies apart from its normal
+# records) counts every fetched record up to this many; a larger datasource is
+# counted on a random sample of about this size, the discrepancies always
+# whole. Each analysis scans the datasource about three times.
+discrepancy_exact_rows=5000000
+# An analysis running longer is stopped. One runs at a time on a server.
+discrepancy_timeout_minutes=20
 
 [DATASOURCES]
 # The Datasources page edits the PDI Core datasources (PDI_CORE_DS_CONFIG and
