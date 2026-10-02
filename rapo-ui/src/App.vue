@@ -48,8 +48,10 @@
           <q-tooltip>Scheduler: {{ schedulerStateInfo.label }} &mdash; {{ schedulerStateInfo.description }}</q-tooltip>
         </q-btn>
         <!-- The color of the plug is the only sign of the connection: teal connected, red disconnected. -->
+        <!-- A dot on it tells that a metric of the instance health reached its warning (amber) or critical (red) level. -->
         <q-btn aria-label="Instance details" v-if="getTokenIsValid" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
-          <q-tooltip>Connected &mdash; instance details</q-tooltip>
+          <span v-if="healthLevel" class="health-dot" :class="`health-dot-${healthLevel}`" />
+          <q-tooltip>Connected &mdash; instance details{{ healthText }}</q-tooltip>
         </q-btn>
         <q-icon v-else name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="red">
           <q-tooltip>Disconnected</q-tooltip>
@@ -108,10 +110,6 @@
       <q-card style="width: 900px; max-width: 95vw">
         <q-card-section class="q-pb-none">
           <div class="text-h6">Instance details</div>
-          <div class="text-grey-7 instance-paths" v-if="getEnvInfo">
-            <div v-if="getEnvInfo.config_path"><span>Configuration</span>{{ getEnvInfo.config_path }}</div>
-            <div v-if="getEnvInfo.log_directory"><span>Logs</span>{{ getEnvInfo.log_directory }}</div>
-          </div>
           <q-banner v-if="configBanner" dense rounded inline-actions class="q-mt-sm" :class="configBanner.class">
             <template #avatar>
               <q-icon name="fas fa-exclamation-triangle" size="16px" />
@@ -125,7 +123,21 @@
           </q-banner>
         </q-card-section>
 
-        <q-card-section class="scroll" style="max-height: 65vh">
+        <q-tabs v-model="instanceTab" dense align="left" no-caps active-color="teal" indicator-color="teal" class="q-px-md text-grey-7">
+          <q-tab name="configuration" label="Configuration" />
+          <q-tab name="health" label="Health" />
+        </q-tabs>
+        <q-separator />
+
+        <q-card-section v-if="instanceTab === 'health'" class="scroll" style="max-height: 70vh">
+          <instance-health v-if="instanceDialog" @navigate="instanceDialog = false" />
+        </q-card-section>
+
+        <q-card-section v-else class="scroll" style="max-height: 65vh">
+          <div class="text-grey-7 instance-paths" v-if="getEnvInfo">
+            <div v-if="getEnvInfo.config_path"><span>Configuration</span>{{ getEnvInfo.config_path }}</div>
+            <div v-if="getEnvInfo.log_directory"><span>Logs</span>{{ getEnvInfo.log_directory }}</div>
+          </div>
           <div v-for="section in envSections" :key="section.title" class="q-mt-sm">
             <div class="text-weight-bold q-mb-xs">{{ section.title }}</div>
             <table class="env-table">
@@ -174,6 +186,8 @@ import { api, notifyError, signOut } from "./api";
 import { DATASOURCE_ICON, FILES_ICON, schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
 import { THEMES, applyTheme, readTheme, saveTheme } from "./utils/theme";
+import { HEALTH_TILES, LEVEL_TEXT, tileLevel } from "./utils/health";
+import InstanceHealth from "./components/health/InstanceHealth.vue";
 
 const THEME_INFO = {
   auto: { icon: "fas fa-adjust", label: "Automatic" },
@@ -193,13 +207,17 @@ function readMiniDrawer() {
 }
 
 export default {
+  components: { InstanceHealth },
   data() {
     return {
       leftDrawerOpen: false,
       miniDrawer: readMiniDrawer(),
       theme: readTheme(),
       instanceDialog: false,
+      instanceTab: "configuration",
       reloadingConfig: false,
+      // get-instance-health without history: the worst level and the level of each rule, for the header dot.
+      health: null,
     };
   },
   methods: {
@@ -315,6 +333,26 @@ export default {
         this.stopLiveUpdates = null;
       }
     },
+    // The header dot follows the worst level of the instance health, pushed only when it changes ("health:level").
+    startHealthUpdates() {
+      const refresh = async () => {
+        try {
+          this.health = await api("get-instance-health", { params: { history: false }, loadingBar: false });
+        } catch (error) {
+          this.health = null;
+        }
+      };
+      this.stopHealthUpdates();
+      this.stopHealthLive = liveRefetch("health:level", refresh, { interval: 2000 });
+      refresh();
+    },
+    stopHealthUpdates() {
+      if (this.stopHealthLive) {
+        this.stopHealthLive();
+        this.stopHealthLive = null;
+      }
+      this.health = null;
+    },
     disconnect() {
       signOut();
     },
@@ -353,6 +391,17 @@ export default {
         links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
       return links;
+    },
+    healthLevel() {
+      return this.health && this.health.enabled ? this.health.level : null;
+    },
+    // The tiles at their warning or critical level, named in the tooltip of the button.
+    healthText() {
+      if (!this.healthLevel) {
+        return "";
+      }
+      const tiles = HEALTH_TILES.filter((tile) => tileLevel(tile, this.health.levels)).map((tile) => tile.title);
+      return ` · ${LEVEL_TEXT[this.healthLevel]}: ${tiles.join(", ")}`;
     },
     schedulerStateInfo() {
       return schedulerState(this.schedulerStatus && this.schedulerStatus.state);
@@ -424,14 +473,17 @@ export default {
       handler(valid) {
         if (valid) {
           this.startSchedulerUpdates();
+          this.startHealthUpdates();
         } else {
           this.stopSchedulerUpdates();
+          this.stopHealthUpdates();
         }
       },
     },
   },
   unmounted() {
     this.stopSchedulerUpdates();
+    this.stopHealthUpdates();
   },
 };
 </script>
@@ -463,6 +515,20 @@ export default {
   color: var(--rapo-teal)
   background: var(--rapo-teal-soft)
   font-weight: 500
+
+.health-dot
+  position: absolute
+  top: 0
+  right: 0
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  border: 1px solid var(--rapo-surface)
+
+  &.health-dot-warn
+    background: var(--rapo-warn)
+  &.health-dot-crit
+    background: var(--rapo-crit)
 
 .instance-paths
   font-family: var(--rapo-font-mono)

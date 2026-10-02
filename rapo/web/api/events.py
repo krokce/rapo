@@ -265,3 +265,34 @@ def emit_datasources(kind='status'):
             sio.emit('datasources:changed', {'kind': kind}), loop)
     except RuntimeError:
         pass
+
+
+HEALTH_ROOM = 'health'
+
+
+@sio.on('health:join')
+async def health_join(sid, *args):
+    """Send the instance health samples to this client, while it looks."""
+    await sio.enter_room(sid, HEALTH_ROOM)
+
+
+@sio.on('health:leave')
+async def health_leave(sid, *args):
+    await sio.leave_room(sid, HEALTH_ROOM)
+
+
+def emit_health(kind, payload):
+    """Push an instance health sample to the clients showing it, or a change
+    of the worst level to every client, from any thread.
+    """
+    loop = main_loop
+    if loop is None or watcher.clients <= 0:
+        return
+    if kind == 'sample':
+        coroutine = sio.emit('health:sample', payload, room=HEALTH_ROOM)
+    else:
+        coroutine = sio.emit('health:level', payload)
+    try:
+        asyncio.run_coroutine_threadsafe(coroutine, loop)
+    except RuntimeError:
+        coroutine.close()

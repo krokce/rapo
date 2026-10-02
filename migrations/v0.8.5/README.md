@@ -21,6 +21,18 @@ by `install.sh` from the package index; on a host without access to it, provide 
    `discrepancy_parallel` and `discrepancy_timeout_minutes` in
    `rapo.ini` (see `rapo.ini.example`); the defaults apply otherwise.
 1. Optionally set the new `[KPI] calculate_timeout` (seconds, default 120) of *Calculate KPIs* in `rapo.ini`.
+1. Optionally set the new `[HEALTH]` options of the instance health (sampling intervals, history, warning levels) in
+   `rapo.ini` (see `rapo.ini.example`). For its database metrics a DBA grants the database user (as `SYS`, in the
+   PDB of a container database):
+    ```sql
+    grant select on v_$con_sysmetric to <user>;
+    grant select on v_$parameter to <user>;
+    grant select on v_$session to <user>;
+    grant select on v_$sgainfo to <user>;
+    grant select on v_$pgastat to <user>;
+    grant select on dba_tablespace_usage_metrics to <user>;
+    ```
+   Each view not granted only shows *No access* on its tile. None of them needs the Diagnostics Pack.
 1. Start the web server.
     ```bash
     .venv/bin/rapo-server start

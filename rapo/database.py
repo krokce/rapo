@@ -20,6 +20,10 @@ from .utils import utils
 oracle.version = '8.3.0'
 sys.modules['cx_Oracle'] = oracle
 
+# Oracle sessions of rapo carry this module, and the control a run process
+# performs as their action, for the instance health and the DBA's tools.
+MODULE = 'rapo'
+
 
 class Database:
     """Represent database with application schema."""
@@ -191,6 +195,24 @@ class Database:
             message = f'incorrect configuration for vendor {vendor_name}'
             raise ValueError(message)
         self.engine = sa.create_engine(url, **settings)
+        if vendor_name == 'oracle':
+            sa.event.listen(self.engine, 'connect', self._tag_connection)
+            sa.event.listen(self.engine, 'checkout', self._tag_checkout)
+
+    # The control a run process currently performs, None outside runs.
+    action = None
+
+    def _tag_connection(self, dbapi_connection, record):
+        # Sent with the next round trip, so tagging costs no call of its own.
+        dbapi_connection.module = MODULE
+        dbapi_connection.action = ''
+        record.info['action'] = None
+
+    def _tag_checkout(self, dbapi_connection, record, proxy):
+        action = (self.action or '')[:32]
+        if record.info.get('action') != action:
+            dbapi_connection.action = action
+            record.info['action'] = action
 
     def load(self):
         """Read database objects into memory."""

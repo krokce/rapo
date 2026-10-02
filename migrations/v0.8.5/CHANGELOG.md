@@ -3,8 +3,8 @@
 ## Annotation
 A *Discrepancy analysis* page explains what sets a run's discrepancies apart from its normal records, the email of
 a control can be sent on the result of an SQL statement, the Controls page shows when each control runs next,
-Results show what started each run, the editor's Run log is the Results table, and KPIs can be calculated for a
-past run while their SQL is written. There is no change to Rapo's own
+Results show what started each run, the editor's Run log is the Results table, KPIs can be calculated for a
+past run while their SQL is written, and *Instance details* shows the health of the server and the database. There is no change to Rapo's own
 schema; one Python package is added (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **Discrepancy analysis.** A new page, *Discrepancy analysis* in the menu of a run's discrepancy number (Results and
@@ -170,3 +170,32 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
      changes as usual.
    - A rename saved through the API without `kpi_config` now moves the KPIs to the new name and rewrites the same
      references; before, they were left behind as orphaned KPIs. `save-control` answers `kpis_moved`.
+
+9. **Instance health.** *Instance details* (the plug button of the header) has two tabs: *Configuration* (as before,
+   shown first) and a new **Health** tab.
+   - **Server:** CPU, memory, processes and disk of this server's host, each a value and a chart of the last hour,
+     with rapo's own share (the server, its runs, analysis and scan workers) as a second, dashed line: CPU and
+     memory used by rapo, rapo's processes and open files, free space where the logs and `rapo.ini` are.
+   - **Database** (the PDB in a container database): *DB CPU* (% of `cpu_count`, average active sessions),
+     *Sessions* (all and rapo's), *Locks* (sessions blocked by another, longest wait), *DB memory* (PGA of
+     `pga_aggregate_limit`, SGA) and *Storage* (used % of the user's default and temporary tablespaces, autoextend
+     counted, and the size of rapo's result and temporary tables; the leftover temporary tables open from there).
+   - **Sessions and Locks** open a list of the sessions, or of the blocked ones and their blockers: user, module,
+     action, status, wait event and time, blocker, SQL ID, machine. A rapo run's action is its control, which opens in
+     the editor. Read-only: nothing is killed from here.
+   - **Warning levels:** a tile turns amber or red at its warning or critical level (CPU 80/95% averaged over 30 s,
+     memory 85/95%, disk 85/95%, DB CPU 80/95%, PGA 85/95%, tablespace 85/95%, any blocked session / a lock wait of
+     60 s), and the plug button gets an amber or red dot naming the tiles in its tooltip. The dashed line of a chart is
+     its warning level.
+   - The server samples in the background, the OS every 10 s and the database every 30 s (a few cheap queries of
+     views free of the Diagnostics Pack), and keeps the last hour in memory only: a restart starts the charts anew.
+     The open tab receives each new sample live; nothing polls.
+   - **Database sessions of rapo are tagged:** every connection sets module `rapo`, and the connections of a run its
+     control's name as action (`V$SESSION.MODULE`/`ACTION`), so they are told apart in any DBA tool too.
+   - The database metrics need SELECT on `V_$CON_SYSMETRIC`, `V_$PARAMETER`, `V_$SESSION`, `V_$SGAINFO`,
+     `V_$PGASTAT` and `DBA_TABLESPACE_USAGE_METRICS` (see the [migration instructions](README.md)). A tile whose view
+     can not be read shows *No access* and the grant it needs; the others work. Views granted later are found
+     within 10 minutes, or at once with *Reload* of `rapo.ini`.
+   - New `[HEALTH]` options: `enabled`, `os_interval`, `db_interval`, `footprint_interval`, `history_minutes`, and
+     `<rule>_warn`/`<rule>_crit` for the levels, all applied by a reload. New routes `get-instance-health` and
+     `get-instance-sessions`, live events `health:sample` and `health:level`.

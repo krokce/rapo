@@ -18,6 +18,11 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   per result type. Preliminary results at once from a block sample, then refined in one (parallel) scan; options
   `[ANALYSIS] discrepancy_*`. New routes `start-|get-|stop-discrepancy-analysis`.
 
+- **Instance health** (*Instance details* → *Health*): CPU, memory, processes and disk of the server, and DB CPU,
+  sessions, locks, PGA/SGA and tablespace use of the database, each a value and a live chart of the last hour with
+  rapo's own share; warning levels color the tiles and put a dot on the header button; Sessions/Locks list the
+  sessions and blockers (a run's control by name). Rapo's DB sessions now carry module `rapo` (action = control).
+  Optional grants on six `V$`/`DBA_` views, `[HEALTH]` options. New routes `get-instance-health|sessions`.
 - **Calculate KPIs** (editor KPIs tab, row ▶, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
   stored value; *Last runs* backtests up to 30 runs; *Re-ingest* stores a run's KPIs with the package. Read-only

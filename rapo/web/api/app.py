@@ -44,6 +44,7 @@ from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
 from ...pdi import files as ds_files
 from ...pdi import download as ds_download
+from ...health import sampler as health, read_sessions
 
 
 UI_DIR = os.path.realpath(
@@ -75,13 +76,16 @@ async def lifespan(app):
     scanner.active = lambda: events.watcher.clients > 0
     scanner.listeners.append(events.emit_datasources)
     events.watcher.connect_listeners.append(scanner.poke)
+    health.listeners.append(events.emit_health)
     logs.cleaner.start()
     await asyncio.to_thread(runner.start)
     scheduler.start()
     sessions.start()
     explainer.start()
     scanner.start()
+    health.start()
     yield
+    await asyncio.to_thread(health.stop)
     await asyncio.to_thread(explainer.stop)
     await asyncio.to_thread(scanner.stop)
     await asyncio.to_thread(sessions.stop)
@@ -215,6 +219,28 @@ def parameters():
     return output_dict
 
 
+@api.get('/get-instance-health')
+def get_instance_health(history: bool = True):
+    """Get the OS and DB metrics of this server sampled in the last hour.
+
+    Without `history` only the warning levels, for the header button.
+    """
+    return health.snapshot(history=history)
+
+
+@api.get('/get-instance-sessions')
+def get_instance_sessions(kind: str = 'sessions'):
+    """Get the database sessions, or the blocked and blocking ones."""
+    if kind not in ('sessions', 'locks'):
+        raise fastapi.HTTPException(status_code=422,
+                                    detail='kind is sessions or locks')
+    try:
+        return read_sessions(kind)
+    except Exception as error:
+        message = str(error).strip().splitlines()[0]
+        raise fastapi.HTTPException(status_code=400, detail=message)
+
+
 @api.get('/get-config-changes')
 def get_config_changes():
     """Get the differences between the loaded rapo.ini and the file."""
@@ -242,6 +268,8 @@ def reload_config():
     # Grants on the PDI Core tables changed meanwhile are found.
     pdi.reset()
     scanner.poke()
+    # New [HEALTH] options and grants on the DB views apply at once.
+    health.reset()
     # A higher control_parallelism lets queued runs start at once.
     with runner.condition:
         runner.condition.notify_all()

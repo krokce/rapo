@@ -548,6 +548,7 @@ def operate(control, cascade, iterations, current, runs, parent_pid,
 
     def observe(run, resumed=False):
         current.value = run.process_id
+        db.action = run.name
         open_run_log(run.id, run.process_id)
         if resumed:
             return
@@ -566,6 +567,7 @@ def operate(control, cascade, iterations, current, runs, parent_pid,
                            process_id=run.process_id, runner=runner,
                            start_time=dt.datetime.now())
 
+    db.action = control.name
     open_run_log(control.id, control.process_id)
     logger.info(f'{control} Performed by process {os.getpid()} of {runner}')
     control.observer = observe

@@ -175,3 +175,37 @@ lock_stale_minutes=30
 # before it is saved, so it may have at most max_download_mb in all.
 file_download=True
 max_download_mb=500
+
+[HEALTH]
+# The Health tab of Instance details: OS and database metrics of this server,
+# sampled in the background and kept in memory for history_minutes (a restart
+# starts them anew). The database metrics need SELECT on V_$CON_SYSMETRIC,
+# V_$PARAMETER, V_$SESSION, V_$SGAINFO, V_$PGASTAT and
+# DBA_TABLESPACE_USAGE_METRICS; a view that can not be read shows No access.
+enabled=True
+# Seconds between OS samples, database samples and reads of the size of rapo's
+# result and temporary tables.
+os_interval=10
+db_interval=30
+footprint_interval=600
+history_minutes=60
+# Warning and critical levels (a value at or above them), which color the
+# tiles and put a dot on the header button. Rules: cpu (average of the last 3
+# samples), memory, disk, db_cpu, db_memory (PGA of pga_aggregate_limit) and
+# storage in %, locks (blocked sessions), locks_wait (seconds); defaults below.
+#cpu_warn=80
+#cpu_crit=95
+#memory_warn=85
+#memory_crit=95
+#disk_warn=85
+#disk_crit=95
+#db_cpu_warn=80
+#db_cpu_crit=95
+#db_memory_warn=85
+#db_memory_crit=95
+#storage_warn=85
+#storage_crit=95
+#locks_warn=1
+#locks_crit=
+#locks_wait_warn=
+#locks_wait_crit=60

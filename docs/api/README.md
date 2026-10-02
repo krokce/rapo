@@ -1041,6 +1041,41 @@ Applies the changes of `rapo.ini` that need no restart to this server:
 need a restart keep their loaded value and stay listed by `get-config-changes`. `400` when the file is missing or can
 not be parsed, and then nothing is applied. It only affects the server that answers; runs read the file anew anyway.
 
+#### `GET /api/get-instance-health`
+The OS and DB metrics this server sampled in the last `[HEALTH] history_minutes` (default 60), kept in its memory
+only (a restart starts them anew):
+`{enabled, server_time, level, levels, intervals: {os, db}, history_minutes, thresholds, os: [...], db: [...],
+footprint, access}`.
+- `os` points (every `os_interval` s) are this server's host and its process tree (the server, its runs, analysis
+  and scan workers): `cpu`, `cpu_rapo` (% of all cores), `cpus`, `load`, `memory`, `memory_rapo` (%),
+  `memory_rapo_gb`, `memory_total_gb`, `swap`, `processes`, `processes_rapo`, `disk` (used % of the fullest of the
+  file systems in `disks`, those of the log directory and the folder of `rapo.ini`), `fds_rapo`.
+- `db` points (every `db_interval` s) are the database rapo is connected to (the PDB in a container database):
+  `cpu_count`, `pga_limit_gb`, `db_cpu` (% of `cpu_count`, last minute), `db_cpu_cores`, `aas` (average active
+  sessions), `sessions`, `sessions_active`, `sessions_rapo`, `sessions_rapo_active` (sessions with module `rapo`),
+  `locks` (sessions blocked by another), `locks_wait` (longest wait, s), `sga_gb`, `pga_gb`, `pga_percent`,
+  `storage` (used % of the fullest of `tablespaces`, the user's default and temporary ones, autoextend counted),
+  `rapo_gb` and `rapo_segments` (`RAPO_RES*`/`RAPO_TEMP_*` segments, read every `footprint_interval` s), `errors`.
+  Each point has `t`, a naive ISO time of the server.
+- `levels` is `{rule: null|"warn"|"crit"}` for `cpu` (average of the last 3 points), `memory`, `disk`, `db_cpu`,
+  `db_memory` (`pga_percent`), `storage`, `locks` and `locks_wait`; `level` the worst of them; `thresholds`
+  `{rule: [warn, crit]}`, `null` for none.
+- `access` is `{source: {grant, error, probed}}` per DB view read: `sysmetric` (`V_$CON_SYSMETRIC`), `parameter`
+  (`V_$PARAMETER`), `session` (`V_$SESSION`), `sgainfo`, `pgastat`, `tablespace` (`DBA_TABLESPACE_USAGE_METRICS`).
+  A source with an `error` is not read; it is probed again every 10 minutes and on `reload-config`.
+
+`history=false` answers only `enabled`, `server_time`, `level` and `levels` (the UI's header button).
+
+#### `GET /api/get-instance-sessions`
+`kind=sessions` (default): the user sessions of the database, blocked first, then active, by wait; `kind=locks`: the
+blocked sessions and those blocking them. `{rows, truncated}`, at most 500 rows of `sid`, `serial`, `username`,
+`module`, `action`, `status`, `machine`, `program`, `event`, `sql_id`, `blocking_session`, `logon_time`,
+`wait_seconds` (the current wait, or the time since the last call of an idle session), `is_rapo` (module `rapo`) and
+`control_id` (the control a run performs, its name being the action). `400` without access to `V$SESSION`.
+
+Rapo's connections carry module `rapo`, and a run process's connections the control it performs as action, so they
+can be told apart in any DBA tool.
+
 #### `GET /api/status`
 The `rapo_scheduler` record: `server`, `username`, `pid`, `start_date`, `stop_date`, `status`. `404` before a
 scheduler has ever run.
@@ -1072,11 +1107,14 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `scheduler:changed` | `{event_ids}`                                     |
 | `analysis:progress` | `{session_id, state}` - see Data analysis         |
 | `discrepancy:progress` | A discrepancy analysis job without its `report` - see `start-discrepancy-analysis` |
+| `health:level`     | `{level}`: the worst level of the instance health changed (`null`, `warn`, `crit`) |
+| `health:sample`    | `{group, point, levels, level}`: a new `os` or `db` point of `get-instance-health`, sent only to clients that joined the room with `health:join` (and left with `health:leave`) |
 | `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*
-changed, never the new values - fetch them with the routes above. This is how the UI stays current without
+changed, never the new values - fetch them with the routes above (`health:sample` is the exception: it carries the
+point). This is how the UI stays current without
 polling, and it is the recommended way for any other client to do the same.
 
 ## Value reference
