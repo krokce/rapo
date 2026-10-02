@@ -18,15 +18,25 @@ UI.
 """
 
 import re
+import time
 
 import sqlalchemy as sa
 
+from .config import config
 from .core import sqlcheck
 from .database import db
 
 
 TYPE_TABLE = 'racs_kpi_type'
 CONFIG_TABLE = 'racs_kpi_config'
+HISTORY_TABLE = 'racs_kpi_runhistory_all'
+
+# The binds RACS_KPI_PKG gives the KPI and the alarm statement.
+KPI_BIND = 'v_processid'
+ALARM_BIND = 'v_kpi_value'
+
+CALCULATE_TIMEOUT = 120
+LOG_TAIL = 4000
 
 
 class Kpi:
@@ -34,6 +44,7 @@ class Kpi:
 
     def __init__(self):
         self._available = None
+        self._history = None
         self._tables = {}
 
     @property
@@ -46,6 +57,16 @@ class Kpi:
             except Exception:
                 self._available = False
         return self._available
+
+    @property
+    def history_available(self):
+        """Check whether the package's run history table is deployed."""
+        if self._history is None:
+            try:
+                self._history = self.available and db.exists(HISTORY_TABLE)
+            except Exception:
+                self._history = False
+        return self._history
 
     def table(self, name):
         """Get one of the KPI tables, reflected once and kept."""
@@ -208,6 +229,177 @@ class Kpi:
                     record.get('rerun_on_new_data_days_back')))
             db.execute(insert)
 
+    def read_orphan_kpis(self):
+        """Get the KPI rows of no control.
+
+        RACS_KPI_PKG finds a control's KPIs by its exact name, so a row whose
+        processname matches no control_name is never calculated: its control
+        was deleted, or renamed outside the application. `case_match` names a
+        control the row matches only ignoring case. The values the package
+        stored for it are counted from the run history.
+        """
+        if not self.available:
+            return []
+        config = self.table(CONFIG_TABLE)
+        controls = db.tables.config
+        select = (sa.select(config.c.processname, config.c.kpi_type,
+                            sa.case((config.c.kpi_sql_statement.isnot(None),
+                                     1), else_=0).label('has_kpi_sql'),
+                            sa.case((config.c.alarm_sql_statement.isnot(None),
+                                     1), else_=0).label('has_alarm_sql'))
+                    .select_from(config.outerjoin(
+                        controls,
+                        controls.c.control_name == config.c.processname))
+                    .where(controls.c.control_id.is_(None))
+                    .order_by(config.c.processname, config.c.kpi_type))
+        rows = db.execute(select, as_table=True)
+        if not rows:
+            return rows
+        names = db.execute(sa.select(controls.c.control_name), as_records=True)
+        by_upper = {}
+        for (name,) in names:
+            by_upper.setdefault((name or '').upper(), name)
+        stored = {}
+        if self.history_available:
+            history = self.table(HISTORY_TABLE)
+            processnames = sorted({row['processname'] for row in rows})
+            select = (sa.select(history.c.processname, history.c.kpi_type,
+                                sa.func.count().label('stored_runs'),
+                                sa.func.max(history.c.created)
+                                .label('last_stored'))
+                        .where(history.c.processname.in_(processnames))
+                        .group_by(history.c.processname, history.c.kpi_type))
+            for item in db.execute(select, as_table=True):
+                stored[(item['processname'], item['kpi_type'])] = item
+        for row in rows:
+            row['has_kpi_sql'] = bool(row['has_kpi_sql'])
+            row['has_alarm_sql'] = bool(row['has_alarm_sql'])
+            item = stored.get((row['processname'], row['kpi_type'])) or {}
+            row['stored_runs'] = item.get('stored_runs') or 0
+            row['last_stored'] = item.get('last_stored')
+            row['case_match'] = by_upper.get(
+                (row['processname'] or '').upper())
+        return rows
+
+    def delete_orphan_kpis(self, processname, kpi_type=None):
+        """Delete the KPI rows of a name no control has, one type or all.
+
+        Returns
+        -------
+        count : int
+            The rows deleted.
+        """
+        if not self.available:
+            raise ValueError('KPI tables are not available.')
+        self._check_orphan(processname)
+        config = self.table(CONFIG_TABLE)
+        delete = config.delete().where(config.c.processname == processname)
+        if kpi_type:
+            delete = delete.where(config.c.kpi_type == self._code(kpi_type))
+        return db.execute(delete).rowcount
+
+    def reassign_orphan_kpi(self, processname, kpi_type, control_name):
+        """Move one KPI row of a name no control has to an existing control."""
+        if not self.available:
+            raise ValueError('KPI tables are not available.')
+        self._check_orphan(processname)
+        kpi_type = self._code(kpi_type)
+        controls = db.tables.config
+        exists = db.execute(sa.select(sa.func.count())
+                              .where(controls.c.control_name == control_name),
+                            as_scalar=True)
+        if not exists:
+            raise ValueError(f'Control {control_name} does not exist.')
+        config = self.table(CONFIG_TABLE)
+        taken = db.execute(sa.select(sa.func.count())
+                             .select_from(config)
+                             .where(config.c.processname == control_name,
+                                    config.c.kpi_type == kpi_type),
+                           as_scalar=True)
+        if taken:
+            raise ValueError(f'Control {control_name} already has KPI '
+                             f'{kpi_type}.')
+        update = (config.update()
+                        .where(config.c.processname == processname,
+                               config.c.kpi_type == kpi_type)
+                        .values(processname=control_name))
+        if not db.execute(update).rowcount:
+            raise ValueError(f'{processname} has no KPI {kpi_type}.')
+
+    def move_control_kpis(self, old_name, new_name):
+        """Move the KPIs of a renamed control, rewriting their table names.
+
+        For a rename saved without a KPI configuration (the editor sends one
+        and rewrites the statements itself). Rows already under the new name
+        can only be orphans, since no other control has it, and are replaced,
+        as save_control_kpis does. All on one connection, so a failure moves
+        nothing.
+
+        Returns
+        -------
+        moved : list of dict
+            `{kpi_type, fields}` per moved KPI, `fields` naming the statements
+            whose table references were rewritten.
+        """
+        if not self.available or not old_name or old_name == new_name:
+            return []
+        table = self.table(CONFIG_TABLE)
+        rows = db.execute(table.select()
+                               .where(table.c.processname == old_name),
+                          as_table=True)
+        if not rows:
+            return []
+        moved = []
+        result, connection, transaction = db.execute(
+            table.delete().where(table.c.processname == new_name),
+            return_connection=True)
+        try:
+            for row in rows:
+                values = {'processname': new_name}
+                fields = []
+                for field in ('kpi_sql_statement', 'alarm_sql_statement'):
+                    text, count = rename_table_references(
+                        _plain(row[field]), old_name, new_name)
+                    if count:
+                        values[field] = text
+                        fields.append(field)
+                connection.execute(table.update()
+                                        .where(table.c.processname == old_name,
+                                               table.c.kpi_type
+                                               == row['kpi_type'])
+                                        .values(values))
+                moved.append({'kpi_type': row['kpi_type'], 'fields': fields})
+            transaction.commit()
+        except Exception:
+            transaction.rollback()
+            raise
+        finally:
+            connection.close()
+        return moved
+
+    def delete_control_kpis(self, control_name):
+        """Delete the KPI rows of a control, giving the types deleted."""
+        if not self.available or not control_name:
+            return []
+        types = [row['kpi_type'] for row in self.read_control_kpis(control_name)]
+        if types:
+            config = self.table(CONFIG_TABLE)
+            db.execute(config.delete()
+                             .where(config.c.processname == control_name))
+        return types
+
+    def _check_orphan(self, processname):
+        """Refuse a name a control has: its KPIs are edited with it."""
+        if not processname:
+            raise ValueError('processname is required.')
+        controls = db.tables.config
+        exists = db.execute(sa.select(sa.func.count())
+                              .where(controls.c.control_name == processname),
+                            as_scalar=True)
+        if exists:
+            raise ValueError(f'Control {processname} exists: edit its KPIs '
+                             'in the control editor.')
+
     def validate_statement(self, statement, kind='kpi'):
         """Parse a KPI or alarm statement without executing it.
 
@@ -228,10 +420,9 @@ class Kpi:
             return {'valid': False, 'error': 'Statement is empty.'}
         if not self.available:
             return {'valid': False, 'error': 'KPI tables are not available.'}
-        if sqlcheck.first_keyword(statement) not in sqlcheck.QUERY_KEYWORDS:
-            return {'valid': False,
-                    'error': 'A KPI or alarm statement must be a query '
-                             '(select) returning one number.'}
+        problem = self.guard_query(statement)
+        if problem:
+            return {'valid': False, 'error': problem}
         result = sqlcheck.parse(sqlcheck.strip_query(statement))
         if not result['valid']:
             return result
@@ -249,6 +440,267 @@ class Kpi:
         if warnings:
             result['warning'] = ' '.join(warnings)
         return result
+
+    def guard_query(self, statement):
+        """Tell why a statement may not be executed as a KPI preview.
+
+        Only one plain query passes: no FOR UPDATE lock, no PL/SQL declared in
+        a WITH clause and nothing after the first statement. The preview also
+        runs it read only, so DML in the same transaction is refused by Oracle;
+        a function with an autonomous transaction is the one thing neither
+        check can stop.
+
+        Returns
+        -------
+        problem : str or None
+        """
+        if sqlcheck.first_keyword(statement) not in sqlcheck.QUERY_KEYWORDS:
+            return ('A KPI or alarm statement must be a query (select) '
+                    'returning one number.')
+        code = _code_only(sqlcheck.strip_query(statement))
+        if re.match(r'[\s(]*with\s+(function|procedure)\b', code,
+                    flags=re.I):
+            return 'PL/SQL declared in a WITH clause is not allowed.'
+        if ';' in code:
+            return 'Only one statement is allowed.'
+        if re.search(r'\bfor\s+update\b', code, flags=re.I):
+            return 'FOR UPDATE is not allowed: it locks rows.'
+        return None
+
+    def calculate(self, process_id, kpi_type, kpi_sql_statement=None,
+                  alarm_sql_statement=None, saved=False):
+        """Calculate one KPI of one run without storing anything.
+
+        Mirrors racs_kpi_pkg.run_rapo_control_kpi_calculation: the KPI
+        statement gets :v_processid as text and gives the first column of its
+        first row, 0 when there is no row; the alarm statement gets that value
+        as :v_kpi_value. A blank statement means the type's default.
+
+        Parameters
+        ----------
+        process_id : int
+            The run.
+        kpi_type : str
+            The KPI type, which gives the defaults, unit and decimal places.
+        kpi_sql_statement, alarm_sql_statement : str
+            The statements as edited, ignored with `saved`.
+        saved : bool
+            Use the statements saved for the run's control.
+
+        Returns
+        -------
+        result : dict
+            The value, the alarm level and how they were reached. A statement
+            that fails is reported in `error`, never raised.
+        """
+        if not self.available:
+            raise ValueError('KPI tables are not available.')
+        process_id = int(process_id)
+        kpi_type = self._code(kpi_type)
+        types = self.table(TYPE_TABLE)
+        type_row = db.execute(types.select()
+                                   .where(types.c.kpi_type == kpi_type),
+                              as_dict=True)
+        if not type_row:
+            raise ValueError(f'KPI type {kpi_type} does not exist.')
+        if saved:
+            control_name = self._run_control_name(process_id)
+            config_table = self.table(CONFIG_TABLE)
+            row = db.execute(config_table.select().where(
+                config_table.c.processname == control_name,
+                config_table.c.kpi_type == kpi_type), as_dict=True)
+            if not row:
+                raise ValueError(f'Control {control_name} has no KPI '
+                                 f'{kpi_type}.')
+            kpi_sql_statement = row['kpi_sql_statement']
+            alarm_sql_statement = row['alarm_sql_statement']
+        own = 'saved' if saved else 'draft'
+        kpi_sql = self._text(kpi_sql_statement)
+        alarm_sql = self._text(alarm_sql_statement)
+        result = {
+            'kpi_type': kpi_type,
+            'process_id': process_id,
+            'kpi_value_unit': type_row['kpi_value_unit'],
+            'kpi_decimal_places': type_row['kpi_decimal_places'],
+            'kpi_source': own if kpi_sql else 'default',
+            'alarm_source': own if alarm_sql else 'default',
+            'kpi_sql': kpi_sql or self._text(
+                type_row['default_kpi_sql_statement']),
+            'alarm_sql': alarm_sql or self._text(
+                type_row['default_alarm_sql_statement']),
+            'value': 0, 'no_rows': False, 'alarm_level': 0,
+            'kpi_ms': None, 'alarm_ms': None, 'error': None, 'stage': None}
+        if not result['kpi_sql']:
+            result['kpi_source'] = None
+        if not result['alarm_sql']:
+            result['alarm_source'] = None
+        raw = 0
+        if result['kpi_sql']:
+            result['stage'] = 'kpi'
+            try:
+                row, result['kpi_ms'] = self._query(
+                    result['kpi_sql'], KPI_BIND, str(process_id))
+                if row is None:
+                    result['no_rows'] = True
+                else:
+                    raw = self._number_of(row[0])
+                    result['value'] = (None if raw is None
+                                       else round(raw, 4))
+            except Exception as error:
+                result['error'] = str(error).strip()
+                return result
+        if result['alarm_sql']:
+            result['stage'] = 'alarm'
+            try:
+                row, result['alarm_ms'] = self._query(
+                    result['alarm_sql'], ALARM_BIND, raw)
+                if row is not None:
+                    result['alarm_level'] = self._number_of(row[0])
+            except Exception as error:
+                result['error'] = str(error).strip()
+                return result
+        result['stage'] = None
+        return result
+
+    def _query(self, statement, bind, value):
+        """Run one KPI or alarm statement read only and get its first row.
+
+        The connection is the pool's own driver connection, so its timeout
+        is put back and the read-only transaction is always rolled back. A
+        statement interrupted by the timeout leaves the connection unusable,
+        so after any failure it is dropped from the pool.
+        """
+        problem = self.guard_query(statement)
+        if problem:
+            raise ValueError(problem)
+        statement = sqlcheck.strip_query(statement)
+        if not re.search(rf':{bind}\b', statement, flags=re.I):
+            raise ValueError(f':{bind} is not used, so RACS_KPI_PKG fails '
+                             'to bind it.')
+        section = config.get('KPI') or {}
+        timeout = section.get('calculate_timeout') or CALCULATE_TIMEOUT
+        connection = db.engine.raw_connection()
+        driver = (getattr(connection, 'dbapi_connection', None)
+                  or connection.connection)
+        previous = driver.call_timeout
+        failed = False
+        try:
+            driver.rollback()
+            driver.call_timeout = int(float(timeout) * 1000)
+            cursor = driver.cursor()
+            cursor.execute('set transaction read only')
+            started = time.monotonic()
+            cursor.execute(statement, {bind: value})
+            row = cursor.fetchone()
+            elapsed = round((time.monotonic() - started) * 1000)
+            row = tuple(_plain(item) for item in row) if row else None
+            return row, elapsed
+        except Exception as error:
+            failed = True
+            if 'DPY-4024' in str(error):
+                raise TimeoutError(f'Stopped after {timeout} s ([KPI] '
+                                   'calculate_timeout).') from error
+            raise
+        finally:
+            try:
+                driver.rollback()
+                driver.call_timeout = previous
+            except Exception:
+                failed = True
+            if failed:
+                connection.invalidate()
+            connection.close()
+
+    def _number_of(self, value):
+        """Turn the first column into the number the package defines."""
+        if value is None or isinstance(value, (int, float)):
+            return value
+        try:
+            return float(str(value).strip())
+        except ValueError:
+            raise ValueError(f'The statement returns "{value}", which is '
+                             'not a number (ORA-06502 in RACS_KPI_PKG).')
+
+    def _run_control_name(self, process_id):
+        """Get the name of the control a run belongs to."""
+        log, controls = db.tables.log, db.tables.config
+        select = (sa.select(controls.c.control_name)
+                    .select_from(log.join(
+                        controls, log.c.control_id == controls.c.control_id))
+                    .where(log.c.process_id == process_id))
+        name = db.execute(select, as_scalar=True)
+        if not name:
+            raise ValueError(f'Run {process_id} does not exist.')
+        return name
+
+    def read_history(self, process_id):
+        """Get the KPI values RACS_KPI_PKG stored for one run."""
+        if not self.history_available:
+            return []
+        table = self.table(HISTORY_TABLE)
+        log = sa.func.dbms_lob.substr(
+            table.c.kpi_sql_log, LOG_TAIL,
+            sa.func.greatest(
+                sa.func.dbms_lob.getlength(table.c.kpi_sql_log)
+                - LOG_TAIL + 1, 1))
+        select = (sa.select(table.c.processname, table.c.kpi_type,
+                            table.c.kpi_value, table.c.alarm_level,
+                            table.c.status, table.c.created,
+                            log.label('kpi_sql_log'))
+                    .where(table.c.processid == str(int(process_id)))
+                    .order_by(table.c.kpi_type))
+        return db.execute(select, as_table=True)
+
+    def read_kpi_runs(self, control_name, limit=50):
+        """Get the latest runs of one control, newest first."""
+        if not control_name:
+            return []
+        log, controls = db.tables.log, db.tables.config
+        select = (sa.select(log.c.process_id, log.c.status, log.c.date_from,
+                            log.c.date_to, log.c.start_date, log.c.added)
+                    .select_from(log.join(
+                        controls, log.c.control_id == controls.c.control_id))
+                    .where(controls.c.control_name == control_name)
+                    .order_by(log.c.process_id.desc())
+                    .limit(max(1, min(int(limit), 500))))
+        return db.execute(select, as_table=True)
+
+    def reingest(self, process_id):
+        """Calculate and store the KPIs of one run with RACS_KPI_PKG.
+
+        Calls racs_kpi_pkg.ingest_rapo_control, which takes the environment
+        snapshot, calculates the saved KPIs into RACS_KPI_RUNHISTORY_ALL and
+        posts the run to the dashboard. The package skips runs not ending D
+        and controls aliased TEST..., and logs its errors in its own table
+        instead of raising them, which is why the stored rows are returned.
+        """
+        if not self.available:
+            raise ValueError('KPI tables are not available.')
+        process_id = int(process_id)
+        log, controls = db.tables.log, db.tables.config
+        select = (sa.select(log.c.status, controls.c.control_name,
+                            controls.c.control_alias)
+                    .select_from(log.join(
+                        controls, log.c.control_id == controls.c.control_id))
+                    .where(log.c.process_id == process_id))
+        run = db.execute(select, as_dict=True)
+        if not run:
+            raise ValueError(f'Run {process_id} does not exist.')
+        if run['status'] != 'D':
+            raise ValueError(f'Run {process_id} did not end D, so '
+                             'RACS_KPI_PKG would skip it.')
+        if (run['control_alias'] or '').upper().startswith('TEST'):
+            raise ValueError(f'Control {run["control_name"]} is aliased '
+                             f'{run["control_alias"]}, so RACS_KPI_PKG '
+                             'would skip it.')
+        if not self.read_control_kpis(run['control_name']):
+            raise ValueError(f'Control {run["control_name"]} has no KPIs.')
+        try:
+            db.execute(sa.text('begin racs_kpi_pkg.ingest_rapo_control(:pid);'
+                               ' end;').bindparams(pid=process_id))
+        except sa.exc.DBAPIError as error:
+            raise ValueError(str(error.orig).strip()) from error
+        return self.read_history(process_id)
 
     def alarm_thresholds(self, statement):
         """Get the thresholds the dashboard reads from an alarm statement.
@@ -342,6 +794,52 @@ class Kpi:
         if value is None or value == '':
             return None
         return value
+
+
+def rename_table_references(text, old_name, new_name):
+    """Point the result table names of a control in a statement to its new
+    name.
+
+    Whole RAPO_REST_/RAPO_RESA_/RAPO_RESB_<old_name> names are replaced, in
+    any case, quoted or owner-qualified; a longer name that merely starts
+    with it is not. The prefix keeps its case and the new name is written
+    lower case where the old one was, unless quoted. Mirrored by renameTableReferences in
+    rapo-ui/src/utils/kpi.js, which the editor applies live: keep both in
+    step.
+
+    Returns
+    -------
+    text : str
+    count : int
+        The references replaced.
+    """
+    if not text or not old_name or not new_name:
+        return text, 0
+    pattern = re.compile(r'(?<![\w$#])("?)(RAPO_RES[TAB]_)('
+                         + re.escape(old_name) + r')\1(?![\w$#])', re.I)
+
+    def replace(match):
+        quote, prefix, name = match.groups()
+        if not quote and name == name.lower():
+            name = new_name.lower()
+        else:
+            name = new_name
+        return f'{quote}{prefix}{name}{quote}'
+
+    return pattern.subn(replace, text)
+
+
+def _code_only(statement):
+    """Drop comments and string literals, which may hold any word."""
+    text = re.sub(r'/\*.*?\*/', ' ', statement, flags=re.S)
+    text = re.sub(r'--[^\n]*', ' ', text)
+    return re.sub(r"'(?:[^']|'')*'", "''", text)
+
+
+def _plain(value):
+    """Read a LOB the first column may be."""
+    read = getattr(value, 'read', None)
+    return read() if read else value
 
 
 kpi = Kpi()

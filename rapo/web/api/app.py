@@ -661,6 +661,75 @@ def delete_kpi_type(kpi_type: str):
     return {'status': 200}
 
 
+@api.get('/get-orphan-kpis')
+def get_orphan_kpis():
+    """Get the KPI rows of no control in JSON."""
+    return kpi.read_orphan_kpis()
+
+
+@api.delete('/delete-orphan-kpis')
+def delete_orphan_kpis(processname: str, kpi_type: str | None = None):
+    """Delete the KPI rows of a name no control has, one type or all."""
+    try:
+        count = kpi.delete_orphan_kpis(processname, kpi_type)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    logger.info(f'{count} orphaned KPI row(s) of {processname} deleted')
+    events.poke()
+    return {'status': 200, 'count': count}
+
+
+@api.post('/reassign-orphan-kpi')
+def reassign_orphan_kpi(processname: str, kpi_type: str, control_name: str):
+    """Move one KPI row of a name no control has to an existing control."""
+    try:
+        kpi.reassign_orphan_kpi(processname, kpi_type, control_name)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    logger.info(f'Orphaned KPI {kpi_type} of {processname} assigned to '
+                f'{control_name}')
+    events.poke()
+    return {'status': 200}
+
+
+@api.post('/calculate-kpi')
+def calculate_kpi(data: dict = fastapi.Body(...)):
+    """Calculate one KPI of one run without storing it."""
+    try:
+        return kpi.calculate(data.get('process_id'), data.get('kpi_type'),
+                             data.get('kpi_sql_statement'),
+                             data.get('alarm_sql_statement'),
+                             saved=bool(data.get('saved')))
+    except (ValueError, TypeError) as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+
+
+@api.get('/get-kpi-history')
+def get_kpi_history(process_id: int):
+    """Get the KPI values RACS_KPI_PKG stored for one run in JSON."""
+    return kpi.read_history(process_id)
+
+
+@api.get('/get-kpi-runs')
+def get_kpi_runs(control_name: str | None = None, limit: int = 50):
+    """Get the latest runs of one control to calculate KPIs for in JSON."""
+    return kpi.read_kpi_runs(control_name, limit=limit)
+
+
+@api.post('/reingest-kpis')
+def reingest_kpis(process_id: int):
+    """Calculate, store and post the KPIs of one run with RACS_KPI_PKG."""
+    logger.info(f'Re-ingesting KPIs of run {process_id}')
+    try:
+        stored = kpi.reingest(process_id)
+    except Exception as error:
+        logger.error()
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+    return {'status': 200, 'kpis': stored}
+
+
 @contextlib.contextmanager
 def datasource_errors():
     """Answer a DatasourceError with its HTTP code."""
@@ -1010,11 +1079,16 @@ def save_control(data: dict = fastapi.Body(...)):
         except Exception as error:
             logger.error()
             rename_error = error
+    kpis_moved = []
     try:
         if kpi_config is not None:
             control_name = data.get('control_name') or previous_name
             kpi.save_control_kpis(control_name, kpi_config,
                                   old_name=previous_name)
+        elif previous_name and control_name and previous_name != control_name:
+            # The editor sends the KPIs with their table names rewritten; any
+            # other caller's rename takes them along here.
+            kpis_moved = kpi.move_control_kpis(previous_name, control_name)
     except Exception as error:
         # The control itself is saved by now, so the scheduler must be told.
         logger.error()
@@ -1034,7 +1108,8 @@ def save_control(data: dict = fastapi.Body(...)):
                    f'{rename_error}')
     return {'status': 200, **saved_stamp(data),
             'renamed_dependents': [rename['control_name']
-                                   for rename in renames]}
+                                   for rename in renames],
+            'kpis_moved': kpis_moved}
 
 
 def saved_stamp(data):
@@ -1052,12 +1127,14 @@ def saved_stamp(data):
 
 
 @api.delete('/delete-control')
-def delete_control(control_id: int, drop_tables: bool = True):
+def delete_control(control_id: int, drop_tables: bool = True,
+                   delete_kpis: bool = True):
     """Delete control from configuration table.
 
     With `drop_tables` (the default) its result tables are dropped first,
     every RAPO_REST_/RESA_/RESB_ table of its name, so none is left behind
-    as an orphan. A failed drop keeps the control.
+    as an orphan. A failed drop keeps the control. With `delete_kpis` (the
+    default) its racs_kpi_config rows are deleted after it.
     """
     name = reader.read_control_name_by_id(control_id)
     dependents = [dependent['row']['control_name']
@@ -1095,7 +1172,20 @@ def delete_control(control_id: int, drop_tables: bool = True):
     reader.delete_control(control_id)
     scheduler.refresh()
     events.poke()
-    return {'status': 200, 'dropped': dropped}
+    kpis_deleted = []
+    if name and delete_kpis:
+        try:
+            kpis_deleted = kpi.delete_control_kpis(name)
+        except Exception as error:
+            logger.error()
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Control {name} was deleted, but its KPIs could not '
+                       f'be: {error}')
+        if kpis_deleted:
+            logger.info(f'KPIs of deleted control {name} deleted: '
+                        f'{", ".join(kpis_deleted)}')
+    return {'status': 200, 'dropped': dropped, 'kpis_deleted': kpis_deleted}
 
 
 @api.get('/get-control-run-log')

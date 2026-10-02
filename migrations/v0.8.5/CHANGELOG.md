@@ -3,7 +3,8 @@
 ## Annotation
 A *Discrepancy analysis* page explains what sets a run's discrepancies apart from its normal records, the email of
 a control can be sent on the result of an SQL statement, the Controls page shows when each control runs next,
-Results show what started each run, and the editor's Run log is the Results table. There is no change to Rapo's own
+Results show what started each run, the editor's Run log is the Results table, and KPIs can be calculated for a
+past run while their SQL is written. There is no change to Rapo's own
 schema; one Python package is added (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **Discrepancy analysis.** A new page, *Discrepancy analysis* in the menu of a run's discrepancy number (Results and
@@ -121,3 +122,51 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
      gone.
    - The table fills the tab down to the *Save* bar and scrolls inside.
    - `get-control-runs` takes `control_name` and `days` for this, and answers `added` and `end_date` for every run.
+
+6. **Calculate KPIs.** KPI and alarm statements can be tried on a past run before they are saved, without storing
+   anything: *Calculate KPIs* in the header of the editor's *KPIs* tab (all KPIs), a ▶ button on each KPI row (that
+   KPI), and *Calculate KPIs* in the row menu of the editor's *Run log* and of *Results* (controls with KPIs).
+   - The calculation is the one `RACS_KPI_PKG` makes: the KPI statement gets `:v_processid`, its first column of the
+     first row is the value (**0 when there is no row**, said under it), rounded to 4 places and shown with the type's
+     decimal places and unit; the alarm statement gets it as `:v_kpi_value`. The alarm level is a chip: 3 red, 2
+     orange, 1 blue, none for 0.
+   - Next to it, what the package **stored** for that run (value, alarm, status, time), highlighted when it differs;
+     a stored `ERROR` shows the end of its log. Per KPI: where each statement came from (as edited, saved, type
+     default), the time each took, the statements with their bound values, and the error of a failing one.
+   - From the editor the statements are the ones **as edited**, saved or not; from *Results* the saved ones. Both
+     open the same dialog; *Recalculate* (Ctrl+Enter) calculates again.
+   - **Run:** any run of the control, the latest done one by default. **Last runs:** the latest N (10, at most 30)
+     runs that ended D at once, a table per KPI with the stored values and how often each alarm level fires, to tune
+     thresholds.
+   - **Re-ingest** (one run that ended D, saved statements, no unsaved changes) stores the KPIs for real: it calls
+     `racs_kpi_pkg.ingest_rapo_control` after a confirmation, which overwrites the run's stored KPIs and posts the run
+     to the dashboard, as after a run. Refused for a control aliased `TEST...`, as the package would skip it.
+   - **Safety:** only one query runs: it must start with `select`/`with`; `FOR UPDATE`, PL/SQL in a `WITH` clause and
+     a second statement are refused. It runs in a read-only transaction that is rolled back, and is stopped after
+     `[KPI] calculate_timeout` seconds (new option, 120). A function with an autonomous transaction that writes is
+     the one thing these checks can not stop, so KPI statements calling functions should be read before they run.
+   - New routes `calculate-kpi`, `get-kpi-history`, `get-kpi-runs` and `reingest-kpis` (see the API reference).
+
+7. **Orphaned KPIs, and KPIs deleted with their control.** `RACS_KPI_PKG` finds a control's KPIs by its exact
+   name, so KPIs configured for a name no control has are never calculated.
+   - The Controls page header shows *N orphaned KPIs* next to *orphaned result tables*. Its dialog lists each one:
+     process name, KPI type, own or default statements, how many runs have stored values (and the latest), and why
+     (no control of that name, or *differs only in case from control X*).
+   - **Assign to control** moves a KPI to an existing control (the one differing only in case is offered first), for
+     a control renamed outside the application; refused when that control already has the KPI type. **Delete**
+     removes one KPI, **Delete all** every KPI of the name. Values stored for past runs are always kept.
+   - **Deleting a control** now offers *Also delete its KPIs ...*, ticked, next to *Also drop the result tables*.
+     Unticked, they are left as orphaned KPIs, as before. `delete-control` takes `delete_kpis` (default true).
+   - New routes `get-orphan-kpis`, `delete-orphan-kpis` and `reassign-orphan-kpi`.
+
+8. **KPIs follow a rename or clone.** KPI statements that read the control's own result table
+   (`RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<name>`) keep reading it after the control is renamed or cloned.
+   - In the editor, while the *Control name* changes (and at once on a clone, which still read the source control's
+     tables), the KPI and alarm statements of the control's KPIs are rewritten to the new name. Only whole names
+     change, in any case, quoted or owner-qualified (`RAPO_REST_X2` is left alone for `X`); type defaults and other
+     controls' KPIs are never changed.
+   - A banner on the *KPIs* tab (and a dot on the tab) says which statements now follow the name; **Undo** points them
+     back and stops following the name until the control is loaded again. The unsaved-changes list shows the KPI
+     changes as usual.
+   - A rename saved through the API without `kpi_config` now moves the KPIs to the new name and rewrites the same
+     references; before, they were left behind as orphaned KPIs. `save-control` answers `kpis_moved`.

@@ -214,6 +214,9 @@
         <q-item dense clickable class="col items-center" @click="$refs.runLogDialog.open(menuRow)" v-close-popup>
           <q-item-section> Show full log </q-item-section>
         </q-item>
+        <q-item v-if="hasKpis && hasKpis(menuRow)" dense clickable class="col items-center" @click="$emit('calculate-kpis', menuRow)" v-close-popup>
+          <q-item-section> Calculate KPIs </q-item-section>
+        </q-item>
         <q-item v-if="menuRow.status == 'D' && menuRowSendsEmail" dense clickable class="col items-center" @click="sendEmail(menuRow)" v-close-popup>
           <q-item-section> Send email </q-item-section>
         </q-item>
@@ -260,8 +263,10 @@ export default {
     loading: { type: Boolean, default: false },
     error: { type: Boolean, default: false },
     emptyText: { type: String, default: "No runs" },
+    // Whether a run's control has KPIs; the row menu's Calculate KPIs emits calculate-kpis (run).
+    hasKpis: { type: Function, default: null },
   },
-  emits: ["filter"],
+  emits: ["filter", "calculate-kpis"],
   data() {
     return {
       activeRunStatuses: ACTIVE_RUN_STATUSES,

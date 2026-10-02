@@ -45,7 +45,7 @@
           <q-tab name="sql" label="SQL Scripts" icon="fas fa-code" />
           <q-tab v-if="control.control_type !== 'REP' && control.control_type !== 'REC'" name="case" label="Case definition" icon="fas fa-tag" />
           <q-tab name="scheduler" label="Scheduler" icon="fas fa-clock" />
-          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-calculator" />
+          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-calculator" :alert="kpiRenameShown ? 'blue' : false" />
           <q-tab v-if="emailEnabled" name="email" label="Email" icon="fas fa-envelope" />
           <q-tab v-if="control.control_id" name="log" label="Run log" icon="fas fa-file-medical-alt" />
         </q-tabs>
@@ -861,8 +861,24 @@
             </q-tab-panel>
             <q-tab-panel name="kpi">
               <div class="q-ma-lg q-gutter-y-md">
+                <q-banner v-if="kpiRenameShown" dense rounded class="bg-blue-1 text-blue-10">
+                  <template v-slot:avatar><q-icon name="fas fa-info-circle" color="blue-7" size="sm" /></template>
+                  The KPI statements follow the control name: {{ kpiRenamePrefix }}{{ kpiRenameFrom }} → {{ kpiRenamePrefix }}{{ kpiTableName }} in
+                  {{ kpiRenameList }}.
+                  <template v-slot:action>
+                    <q-btn flat dense no-caps color="primary" label="Undo" @click="undoKpiRename">
+                      <q-tooltip>Point the statements back to {{ kpiRenameFrom }} and stop following the name</q-tooltip>
+                    </q-btn>
+                  </template>
+                </q-banner>
                 <div class="row q-gutter-md">
-                  <kpi-config-box class="col" v-model="kpiConfigObject" :control-name="control.control_name" :control-type="control.control_type">
+                  <kpi-config-box
+                    class="col"
+                    v-model="kpiConfigObject"
+                    :control-name="control.control_name"
+                    :control-type="control.control_type"
+                    :calculable="schemaEnabled"
+                    @calculate="(kpiType) => openKpiCalculate(null, kpiType)">
                   </kpi-config-box>
                 </div>
               </div>
@@ -910,7 +926,9 @@
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
                     :refresh="refreshLogs"
                     :loading="!logsLoaded"
-                    :empty-text="`No runs in the last ${log_days_back} days`" />
+                    :empty-text="`No runs in the last ${log_days_back} days`"
+                    :has-kpis="() => kpiConfigObject.length > 0"
+                    @calculate-kpis="(run) => openKpiCalculate(run.process_id)" />
                 </div>
               </div>
             </q-tab-panel>
@@ -992,6 +1010,7 @@
       :loaded-id="controlVersion && controlVersion.version_id"
       @load="loadVersion"
       @changed="refreshVersions" />
+    <kpi-calculate-dialog ref="kpiCalculate" />
   </q-page>
 </template>
 
@@ -1016,6 +1035,8 @@ import ReconciliationMisMatchCriteriaBox from "./ReconciliationMisMatchCriteriaB
 import CaseConfigBox from "./CaseConfigBox.vue";
 import IterationConfigBox from "./IterationConfigBox.vue";
 import KpiConfigBox from "./KpiConfigBox.vue";
+import KpiCalculateDialog from "./KpiCalculateDialog.vue";
+import { renameKpiTables } from "../utils/kpi";
 import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
@@ -1075,6 +1096,7 @@ export default {
     CaseConfigBox,
     IterationConfigBox,
     KpiConfigBox,
+    KpiCalculateDialog,
     EmailConfigBox,
     ComparisonCriteriaBox,
     ComparisonOutputTableBox,
@@ -1134,6 +1156,12 @@ export default {
       savedKpiJson: null,
       // True while a control is being loaded, so the datasource watchers don't reset its saved fields.
       initializing: false,
+      // The control name the KPI statements' result table names refer to (the loaded one, the source of a clone),
+      // the name they were loaded with, whether they still follow the name field, and what they changed so far.
+      kpiTableName: null,
+      kpiRenameFrom: null,
+      kpiFollowName: true,
+      kpiRenames: [],
       loadedUpdatedDate: null,
       // The other person's change already notified, so the notice shows once per change.
       noticedUpdatedDate: null,
@@ -1232,6 +1260,17 @@ export default {
       return row ? { ...row, label: versionLabel(row) } : null;
     },
     // Whether the form differs from the saved control, so Apply has something to write.
+    // The KPIs tab's notice that the statements now read the tables of the new name, while they differ from the loaded.
+    kpiRenameShown() {
+      return this.kpiRenames.length > 0 && this.kpiTableName !== this.kpiRenameFrom;
+    },
+    kpiRenamePrefix() {
+      return this.control.control_type === "REC" ? "RAPO_RESA|B_" : "RAPO_REST_";
+    },
+    kpiRenameList() {
+      const labels = { kpi_sql_statement: "KPI", alarm_sql_statement: "alarm" };
+      return this.kpiRenames.map((item) => `${item.kpi_type} (${labels[item.field]})`).join(", ");
+    },
     dirty() {
       if (!this.ready) {
         return false;
@@ -1409,6 +1448,33 @@ export default {
       }
       // Not versioned, so these rows are the saved state whichever version is shown.
       this.savedKpiJson = JSON.stringify(this.kpiConfigObject);
+      // A clone still reads the tables of the control it was cloned from, so it follows its own name at once.
+      this.kpiTableName = controlName;
+      this.kpiRenameFrom = controlName;
+      this.kpiFollowName = true;
+      this.kpiRenames = [];
+      this.followKpiName();
+    },
+    // Rewrites the result table names in the KPI statements from the name they refer to to the name field. A name
+    // that is not a plain identifier (blank, half typed with a space) waits.
+    followKpiName() {
+      const name = this.control.control_name;
+      if (!this.kpiFollowName || !this.kpiTableName || !name || !/^\w+$/.test(name) || name === this.kpiTableName) {
+        return;
+      }
+      for (const change of renameKpiTables(this.kpiConfigObject, this.kpiTableName, name)) {
+        if (!this.kpiRenames.some((item) => item.kpi_type === change.kpi_type && item.field === change.field)) {
+          this.kpiRenames.push(change);
+        }
+      }
+      this.kpiTableName = name;
+    },
+    // Points the statements back to the name they were loaded with; edits made since stay.
+    undoKpiRename() {
+      renameKpiTables(this.kpiConfigObject, this.kpiTableName, this.kpiRenameFrom);
+      this.kpiTableName = this.kpiRenameFrom;
+      this.kpiRenames = [];
+      this.kpiFollowName = false;
     },
     async getDatasources() {
       try {
@@ -1565,6 +1631,17 @@ export default {
     },
     refreshLogs() {
       return this.getControlLogs(this.control.control_name, this.log_days_back);
+    },
+    // Calculate KPIs with the statements as edited. The runs are the saved control's, whatever the form calls it now.
+    openKpiCalculate(processId, kpiType) {
+      const saved = this.controlCatalogueById(this.control.control_id);
+      this.$refs.kpiCalculate.open({
+        controlName: saved ? saved.control_name : this.control.control_name,
+        draft: () => this.kpiConfigObject,
+        only: kpiType,
+        processId,
+        reingestReason: () => (this.dirty ? "Apply your changes first: Re-ingest uses the saved KPIs" : null),
+      });
     },
     ReconciliationTimeFromToleranceChanged() {
       if (!isNaN(Number(this.ruleConfigObject.time_tolerance_from))) {
@@ -2330,6 +2407,10 @@ export default {
     },
   },
   watch: {
+    "control.control_name"() {
+      clearTimeout(this.kpiRenameTimer);
+      this.kpiRenameTimer = setTimeout(() => this.followKpiName(), 500);
+    },
     logSort: {
       deep: true,
       handler(sort) {
@@ -2470,6 +2551,7 @@ export default {
     }
   },
   unmounted() {
+    clearTimeout(this.kpiRenameTimer);
     window.removeEventListener("keydown", this.onKeydown);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
     window.removeEventListener("resize", this.sizeLogTable);

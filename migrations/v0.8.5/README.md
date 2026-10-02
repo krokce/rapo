@@ -20,6 +20,7 @@ by `install.sh` from the package index; on a host without access to it, provide 
 1. Optionally set the new `[ANALYSIS]` options `discrepancy_quick_rows`, `discrepancy_exact_rows`,
    `discrepancy_parallel` and `discrepancy_timeout_minutes` in
    `rapo.ini` (see `rapo.ini.example`); the defaults apply otherwise.
+1. Optionally set the new `[KPI] calculate_timeout` (seconds, default 120) of *Calculate KPIs* in `rapo.ini`.
 1. Start the web server.
     ```bash
     .venv/bin/rapo-server start

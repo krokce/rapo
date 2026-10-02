@@ -79,17 +79,21 @@
       :loading="!hasDay && !loadError"
       :error="!hasDay && loadError"
       :empty-text="controlResults.length ? 'No runs match the filters' : `No runs on ${day}`"
-      @filter="applyRowFilter" />
+      :has-kpis="kpiControlIds ? (run) => kpiControlIds.has(run.control_id) : null"
+      @filter="applyRowFilter"
+      @calculate-kpis="openKpiCalculate" />
+    <kpi-calculate-dialog ref="kpiCalculate" />
   </q-page>
 </template>
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import FilterChips from "./FilterChips.vue";
+import KpiCalculateDialog from "./KpiCalculateDialog.vue";
 import RunControlDialog from "./RunControlDialog.vue";
 import RunSummary from "./RunSummary.vue";
 import RunTable from "./RunTable.vue";
-import { notifyError } from "../api";
+import { api, notifyError } from "../api";
 import { CONTROL_TYPE_OPTIONS, RUN_STATUS_OPTIONS, runStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { dayTitle, shiftDay } from "../utils/format";
@@ -103,6 +107,7 @@ export default {
   mixins: [persistFilters("results", ["filter", "sort"])],
   components: {
     FilterChips,
+    KpiCalculateDialog,
     RunControlDialog,
     RunSummary,
     RunTable,
@@ -124,10 +129,28 @@ export default {
         key: "start_date",
         dir: "desc",
       },
+      // The ids of the controls with KPIs, which the row menu offers Calculate KPIs for; null without KPI tables.
+      kpiControlIds: null,
     };
   },
   methods: {
     ...mapActions(["updateControlResults"]),
+    async refreshKpiControls() {
+      if (!(this.getEnvInfo && this.getEnvInfo.kpi_available)) {
+        this.kpiControlIds = null;
+        return;
+      }
+      try {
+        const usage = await api("get-kpi-type-usage", { loadingBar: false });
+        this.kpiControlIds = new Set(usage.map((item) => item.control_id).filter((id) => id != null));
+      } catch (error) {
+        console.error("KPI usage check failed:", error);
+      }
+    },
+    // The saved statements, in a modal: Results has no draft.
+    openKpiCalculate(run) {
+      this.$refs.kpiCalculate.open({ controlName: run.control_name, processId: run.process_id });
+    },
     fillViewportToBottom,
     async refreshControlResults() {
       this.refreshing = true;
@@ -188,7 +211,7 @@ export default {
     hasDay() {
       return Boolean(this.day) && this.controlResultsDay === this.day;
     },
-    ...mapGetters(["getSearch"]),
+    ...mapGetters(["getSearch", "getEnvInfo"]),
     activeFilters() {
       const filter = this.filter;
       return [
@@ -223,6 +246,10 @@ export default {
     },
   },
   watch: {
+    // The instance details can arrive after the page was opened.
+    "getEnvInfo.kpi_available"() {
+      this.refreshKpiControls();
+    },
     // Day navigation only changes the query; the filters and the sort are kept. While the page is cached,
     // activated() refetches instead.
     "$route.query.date"() {
@@ -235,11 +262,14 @@ export default {
   activated() {
     this.active = true;
     this.stopLiveUpdates = liveRefetch("runs:changed", () => this.updateControlResults(this.$route.query.date || null));
+    this.stopKpiUpdates = liveRefetch("controls:changed", () => this.refreshKpiControls());
     this.refreshControlResults();
+    this.refreshKpiControls();
   },
   deactivated() {
     this.active = false;
     this.stopLiveUpdates();
+    this.stopKpiUpdates();
   },
 };
 </script>

@@ -132,6 +132,12 @@ discrepancy_parallel=4
 # One runs at a time on a server.
 discrepancy_timeout_minutes=20
 
+[KPI]
+# Calculate KPIs (the control editor's KPIs tab, a run's menu) runs a KPI or
+# alarm statement for a past run without storing it. Seconds before one
+# statement is stopped.
+calculate_timeout=120
+
 [DATASOURCES]
 # The Datasources page edits the PDI Core datasources (PDI_CORE_DS_CONFIG and
 # PDI_CORE_DS_TABLES), shown where the database user can read them, in its own

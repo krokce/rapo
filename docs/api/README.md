@@ -38,8 +38,9 @@ section and answer 404 otherwise. Redoc is disabled.
 ## Conventions
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
-  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `validate-sql`, `validate-analysis-where` and
-  `download-ds-files`, which take a JSON body, and `analysis-start`, which takes an optional one.
+  `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `calculate-kpi`, `validate-sql`,
+  `validate-analysis-where` and `download-ds-files`, which take a JSON body, and `analysis-start`, which takes an
+  optional one.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -223,6 +224,13 @@ still saved, the tables stay under the old name, and the answer is `400` with
 reading the result tables (chain-rules, below) get their `source_name*` renamed in the same save, each as a new
 version.
 
+**KPIs follow a rename.** With `kpi_config` the KPIs are written under the new name (the web UI has already pointed
+their statements to the renamed result tables). Without `kpi_config`, the control's `racs_kpi_config` rows are moved to
+the new name, and whole `RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<old name>` references in their own KPI and alarm
+statements are rewritten (any case, quoted or owner-qualified; type defaults are never changed); rows already under
+the new name, orphans, are replaced. The answer adds `kpis_moved`, `[{"kpi_type": "RER", "fields":
+["kpi_sql_statement"]}]`; a failure answers `400` "Control was saved, but its KPI configuration was not: ...".
+
 **Chain-rules.** A datasource named `rapo_rest_`/`rapo_resa_`/`rapo_resb_<name>` of an existing control (a plain
 name, not owner-qualified, linked or with `{variables}`) makes the control read that control's results: each run
 first runs it for the same period and reads only its records, with no date window and no time-shift widening
@@ -376,8 +384,10 @@ that is not lists of integers and names.
 #### `DELETE /api/delete-control`
 Delete a control (`control_id`) from `rapo_config`. With `drop_tables` (default **true**) its result tables are
 dropped first: every `RAPO_REST_`/`RAPO_RESA_`/`RAPO_RESB_<name>` that exists, orphans included. Answers
-`{status, dropped}`, the dropped table names. Pass `drop_tables=false` to keep them, as before v0.8.4. Its run log,
-run log files and KPI rows are not touched. `400` naming them while other controls read its results (chain-rules,
+`{status, dropped, kpis_deleted}`, the dropped table names and deleted KPI types. Pass `drop_tables=false` to keep
+the tables, as before v0.8.4. With `delete_kpis` (default **true**) its `racs_kpi_config` rows are deleted after it;
+`delete_kpis=false` leaves them as orphaned KPIs. A KPI failure answers `400` saying the control *was* deleted. Its run
+log, run log files and the stored KPI values (`racs_kpi_runhistory_all`) are not touched. `400` naming them while other controls read its results (chain-rules,
 see `save-control`), `400` while the control has a run in progress, and `400` when a table cannot be dropped: the
 control is then kept, and the message names the tables already dropped.
 
@@ -465,6 +475,54 @@ An alarm also gets `thresholds`, `[{"condition": "KPI>1000", "alarm": "3"}, ...]
 expressions. The `warning` says when that reading goes wrong (a level outside 1-3, a condition that is not a plain
 comparison on `:v_kpi_value`). The shape it understands is
 `case when <condition> then 1..3 ... else 0 end from dual`.
+
+#### `GET /api/get-orphan-kpis`
+The `racs_kpi_config` rows whose `processname` matches no control (`RACS_KPI_PKG` matches the name exactly, so they
+are never calculated): `processname`, `kpi_type`, `has_kpi_sql`/`has_alarm_sql` (own statement, else the type's
+default), `stored_runs` and `last_stored` (from `racs_kpi_runhistory_all`), and `case_match`, a control whose name
+differs only in case, or `null`.
+
+#### `DELETE /api/delete-orphan-kpis`
+Delete the KPI rows of `processname`, one `kpi_type` or all of them. Answers `{"status": 200, "count": N}`. `400`
+when a control has that name (its KPIs are edited with it in `save-control`). Stored values are kept.
+
+#### `POST /api/reassign-orphan-kpi`
+Move one KPI row (`processname`, `kpi_type`) to an existing control (`control_name`), e.g. one renamed outside the
+application. `400` when a control has `processname`, `control_name` does not exist, or it already has the type.
+
+#### `POST /api/calculate-kpi`
+Calculate one KPI of one run without storing anything, as `RACS_KPI_PKG.run_rapo_control_kpi_calculation` would.
+The body is `{"process_id": 1000003247, "kpi_type": "RER", "kpi_sql_statement": "...", "alarm_sql_statement":
+"..."}` with the statements as edited (blank = the type's default), or `{"process_id": ..., "kpi_type": ..., "saved":
+true}` for the statements saved for the run's control.
+
+The KPI statement gets `:v_processid` as text; its value is the first column of the first row, **0 when there is no
+row** (`no_rows: true`), rounded to 4 places. The alarm statement gets that value as `:v_kpi_value`. A missing
+statement (own and default) leaves the value or the alarm level 0, as the package does. The answer:
+`{kpi_type, process_id, kpi_value_unit, kpi_decimal_places, kpi_source, alarm_source, kpi_sql, alarm_sql, value,
+no_rows, alarm_level, kpi_ms, alarm_ms, error, stage}`; a source is `draft`, `saved`, `default` or `null` (none).
+
+Only one query is executed: it must start with `select`/`with`, and `FOR UPDATE`, PL/SQL in a `WITH` clause and a
+second statement are refused. It runs on its own connection in a read-only transaction that is always rolled back,
+stopped after `[KPI] calculate_timeout` seconds (120). A function with an autonomous transaction is the one thing
+these checks cannot stop. A statement that is refused or fails is answered `200` with `error` and the `stage`
+(`kpi`/`alarm`) it failed in; `400` for an unknown run, KPI type or saved KPI.
+
+#### `GET /api/get-kpi-history`
+What `RACS_KPI_PKG` stored for one run (`process_id`) in `racs_kpi_runhistory_all`: one row per KPI type with
+`processname`, `kpi_type`, `kpi_value`, `alarm_level`, `status`, `created` and the last 4000 characters of
+`kpi_sql_log`. `[]` without that table.
+
+#### `GET /api/get-kpi-runs`
+The latest runs of one control (`control_name`, `limit` default 50, at most 500), newest first: `process_id`,
+`status`, `date_from`, `date_to`, `start_date`, `added`.
+
+#### `POST /api/reingest-kpis`
+Calculate, store and post the saved KPIs of one run (`process_id`) by calling
+`racs_kpi_pkg.ingest_rapo_control`: environment snapshot, `racs_kpi_runhistory_all`, dashboard post. Answers
+`{"status": 200, "kpis": [...]}` with the rows `get-kpi-history` answers afterwards; the package logs its own failures
+instead of raising them, so check their `status`. `400` when the run did not end `D`, the control is aliased `TEST...`
+or has no KPIs (the package would skip it), or the package fails.
 
 ### Datasources
 

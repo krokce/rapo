@@ -18,6 +18,14 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   per result type. Preliminary results at once from a block sample, then refined in one (parallel) scan; options
   `[ANALYSIS] discrepancy_*`. New routes `start-|get-|stop-discrepancy-analysis`.
 
+- **Calculate KPIs** (editor KPIs tab, row ▶, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
+  saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
+  stored value; *Last runs* backtests up to 30 runs; *Re-ingest* stores a run's KPIs with the package. Read-only
+  single queries, `[KPI] calculate_timeout`. New routes `calculate-kpi`, `get-kpi-history|runs`, `reingest-kpis`.
+- **Orphaned KPIs** (Controls header chip): KPIs configured for a name no control has, assigned to a control or
+  deleted. Deleting a control deletes its KPIs (ticked option, `delete_kpis`); stored values are kept.
+- **KPIs follow a rename or clone:** the editor rewrites `RAPO_REST|RESA|RESB_<name>` in the control's KPI statements
+  live as the name changes (banner with Undo); an API rename without `kpi_config` moves and rewrites them too.
 - **Email *Send when: Evaluate SQL*:** sent only when a Prerequisite-style SQL returns a number above 0, whatever the
   run status or result rows; its value is `{evaluate_value}`. A failing or non-numeric statement sends nothing and
   warns in the run log; *Resend* and *Send test* always send.

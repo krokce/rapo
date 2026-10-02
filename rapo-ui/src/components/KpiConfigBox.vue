@@ -1,9 +1,13 @@
 <template>
   <div class="col q-gutter-y-md">
     <q-card class="q-pa-sm" flat bordered>
-      <q-item-section class="q-ma-xs">
+      <div class="row items-center q-ma-xs">
         <q-item-label>KPIs</q-item-label>
-      </q-item-section>
+        <q-space />
+        <q-btn v-if="calculable && kpiConfigObject.length" size="sm" outline color="primary" icon="fas fa-play" label="Calculate KPIs" @click="$emit('calculate', null)">
+          <q-tooltip>Calculate the KPIs as edited for a past run, without storing them</q-tooltip>
+        </q-btn>
+      </div>
 
       <q-card-section class="q-gutter-xs">
         <div class="row q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
@@ -43,6 +47,9 @@
               <br />Leave empty or 0 to never rerun.
             </q-tooltip>
           </q-input>
+          <q-btn v-if="calculable" aria-label="Calculate this KPI" size="sm" color="primary" flat round icon="fas fa-play" @click="$emit('calculate', item.kpi_type)">
+            <q-tooltip>Calculate this KPI as edited for a past run</q-tooltip>
+          </q-btn>
           <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeKpi(index)" />
           <q-btn aria-label="Add row"
             v-if="index == kpiConfigObject.length - 1"
@@ -203,7 +210,10 @@ export default {
     modelValue: { type: Array, required: true },
     controlName: String,
     controlType: String,
+    // Whether the KPIs can be calculated for a past run (a saved control); Calculate emits calculate(kpiType | null).
+    calculable: { type: Boolean, default: false },
   },
+  emits: ["calculate"],
   data() {
     return {
       statements: STATEMENTS,

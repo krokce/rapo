@@ -28,6 +28,14 @@
             </q-tooltip>
           </q-chip>
         </div>
+        <div v-if="orphanKpis.length">
+          <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanKpisDialog.open()">
+            {{ orphanKpis.length }} orphaned KPI{{ orphanKpis.length > 1 ? "s" : "" }}
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
+              KPIs configured for a name no control has, so never calculated: review, assign or delete them
+            </q-tooltip>
+          </q-chip>
+        </div>
         <div v-if="tempTables.total_tables">
           <q-chip clickable color="blue-grey" text-color="white" icon="fas fa-trash-alt" @click="$refs.tempDialog.open()">
             {{ tempTables.total_tables }} temporary table{{ tempTables.total_tables > 1 ? "s" : "" }} · {{ formatNumber(tempTables.total_mb, 1) }} MB
@@ -455,6 +463,7 @@
       </q-list>
     </q-menu>
     <orphan-tables-dialog ref="orphanDialog" :tables="orphanTables" @changed="refreshSchemaDrift" />
+    <orphan-kpis-dialog ref="orphanKpisDialog" :kpis="orphanKpis" @changed="refreshKpiControls" />
     <temp-tables-dialog ref="tempDialog" :tables="tempTables" @changed="refreshTempTables" />
   </q-page>
 </template>
@@ -467,6 +476,7 @@ import RunControlDialog from "./RunControlDialog.vue";
 import FilterChips from "./FilterChips.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import OrphanTablesDialog from "./OrphanTablesDialog.vue";
+import OrphanKpisDialog from "./OrphanKpisDialog.vue";
 import TempTablesDialog from "./TempTablesDialog.vue";
 import { api, notifyError } from "../api";
 import { CONTROL_ENGINES, CONTROL_TYPE_OPTIONS, controlType, KPI_ICON } from "../constants";
@@ -486,6 +496,7 @@ export default {
   mixins: [persistFilters("controls", ["filter", "sort"])],
   components: {
     OrphanTablesDialog,
+    OrphanKpisDialog,
     TempTablesDialog,
     RunControlDialog,
     FilterChips,
@@ -506,6 +517,9 @@ export default {
       // The ids of the controls with at least one KPI (racs_kpi_config), or null when that is not known, e.g.
       // where the KPI tables are not deployed, so no control is flagged "No KPI".
       kpiControlIds: null,
+      // get-kpi-type-usage rows (the KPIs of each control) and get-orphan-kpis rows (those of no control).
+      kpiUsage: [],
+      orphanKpis: [],
       loaded: false,
       refreshing: false,
       loadError: false,
@@ -574,27 +588,36 @@ export default {
       const written = control.control_type === "REC" ? [`RAPO_RESA_${name}`, `RAPO_RESB_${name}`] : [`RAPO_REST_${name}`];
       return [...new Set([...written, ...orphans])];
     },
-    // Asks first, offering to drop the result tables too (ticked), so none is left behind as an orphan.
+    // Asks first, offering to drop the result tables and delete the KPIs too (ticked), so none is left behind as an
+    // orphan.
     deleteControl(control) {
       const tables = this.resultTablesOf(control);
-      const options = tables.length
-        ? { type: "checkbox", model: ["drop"], items: [{ label: `Also drop the result tables ${tables.join(", ")}, with all results`, value: "drop" }] }
-        : undefined;
+      const kpis = this.kpiUsage.filter((item) => item.control_id === control.control_id).map((item) => item.kpi_type);
+      const items = [];
+      if (tables.length) items.push({ label: `Also drop the result tables ${tables.join(", ")}, with all results`, value: "drop" });
+      if (kpis.length) items.push({ label: `Also delete its KPI${kpis.length > 1 ? "s" : ""} ${kpis.join(", ")} (stored values are kept)`, value: "kpis" });
+      const options = items.length ? { type: "checkbox", model: items.map((item) => item.value), items } : undefined;
       this.$q
         .dialog({ title: `Delete ${control.control_name}?`, message: "The control and its schedule are deleted.", options, cancel: true, persistent: true })
         .onOk(async (selected) => {
           const dropTables = (selected || []).includes("drop");
+          const deleteKpis = (selected || []).includes("kpis");
           try {
-            const result = await api("delete-control", { method: "DELETE", params: { control_id: control.control_id, drop_tables: dropTables } });
+            const result = await api("delete-control", {
+              method: "DELETE",
+              params: { control_id: control.control_id, drop_tables: dropTables, delete_kpis: deleteKpis },
+            });
             const dropped = result.dropped || [];
+            const kpisDeleted = result.kpis_deleted || [];
+            const done = [dropped.length ? `its tables ${dropped.join(", ")} dropped` : "", kpisDeleted.length ? `its KPIs ${kpisDeleted.join(", ")} deleted` : ""].filter(Boolean);
             this.$q.notify({
               type: "positive",
-              message: `Control ${control.control_name} was deleted${dropped.length ? `, and its tables ${dropped.join(", ")} dropped` : ""}.`,
+              message: `Control ${control.control_name} was deleted${done.length ? `, and ${done.join(" and ")}` : ""}.`,
             });
           } catch (error) {
             notifyError("Control was not deleted.", error);
           }
-          await Promise.all([this.updateControlCatalogue(), this.refreshSchemaDrift()]);
+          await Promise.all([this.updateControlCatalogue(), this.refreshSchemaDrift(), this.refreshKpiControls()]);
         });
     },
     confirmRecreateSchema(control_name) {
@@ -674,10 +697,14 @@ export default {
     async refreshKpiControls() {
       if (!(this.getEnvInfo && this.getEnvInfo.kpi_available)) {
         this.kpiControlIds = null;
+        this.kpiUsage = [];
+        this.orphanKpis = [];
         return;
       }
       try {
-        const usage = await api("get-kpi-type-usage", { loadingBar: false });
+        const [usage, orphans] = await Promise.all([api("get-kpi-type-usage", { loadingBar: false }), api("get-orphan-kpis", { loadingBar: false })]);
+        this.kpiUsage = usage;
+        this.orphanKpis = orphans;
         this.kpiControlIds = new Set(usage.map((item) => item.control_id).filter((id) => id != null));
       } catch (error) {
         console.error("KPI usage check failed:", error);
