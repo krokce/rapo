@@ -17,17 +17,18 @@ import threading as th
 import time
 
 from ..config import config
+from .. import options
 from ..logger import logger
 
 from . import explain
 
 
-DEFAULTS = {
-    'discrepancy_quick_rows': 100000,
-    'discrepancy_exact_rows': 1000000,
-    'discrepancy_parallel': 4,
-    'discrepancy_timeout_minutes': 20,
-}
+DEFAULTS = {name: options.default('ANALYSIS', name) for name in (
+    'discrepancy_quick_rows',
+    'discrepancy_exact_rows',
+    'discrepancy_parallel',
+    'discrepancy_timeout_minutes',
+)}
 CACHED = 20
 
 

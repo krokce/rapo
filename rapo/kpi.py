@@ -23,6 +23,7 @@ import time
 import sqlalchemy as sa
 
 from .config import config
+from . import options
 from .core import sqlcheck
 from .database import db
 
@@ -35,7 +36,7 @@ HISTORY_TABLE = 'racs_kpi_runhistory_all'
 KPI_BIND = 'v_processid'
 ALARM_BIND = 'v_kpi_value'
 
-CALCULATE_TIMEOUT = 120
+CALCULATE_TIMEOUT = options.default('KPI', 'calculate_timeout')
 LOG_TAIL = 4000
 
 

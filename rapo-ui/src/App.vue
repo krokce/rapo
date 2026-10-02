@@ -107,7 +107,7 @@
     </q-page-container>
 
     <q-dialog v-model="instanceDialog">
-      <q-card style="width: 900px; max-width: 95vw">
+      <q-card style="width: 1100px; max-width: 95vw">
         <q-card-section class="q-pb-none">
           <div class="text-h6">Instance details</div>
           <q-banner v-if="configBanner" dense rounded inline-actions class="q-mt-sm" :class="configBanner.class">
@@ -133,42 +133,8 @@
           <instance-health v-if="instanceDialog" @navigate="instanceDialog = false" />
         </q-card-section>
 
-        <q-card-section v-else class="scroll" style="max-height: 65vh">
-          <div class="text-grey-7 instance-paths" v-if="getEnvInfo">
-            <div v-if="getEnvInfo.config_path"><span>Configuration</span>{{ getEnvInfo.config_path }}</div>
-            <div v-if="getEnvInfo.log_directory"><span>Logs</span>{{ getEnvInfo.log_directory }}</div>
-          </div>
-          <div v-for="section in envSections" :key="section.title" class="q-mt-sm">
-            <div class="text-weight-bold q-mb-xs">{{ section.title }}</div>
-            <table class="env-table">
-              <colgroup>
-                <col style="width: 40%" />
-                <col style="width: 60%" />
-              </colgroup>
-              <tr v-if="!section.entries.length">
-                <td colspan="2">N/A</td>
-              </tr>
-              <tr v-for="entry in section.entries" :key="entry.key" :class="entry.change ? `env-${entry.change}` : ''">
-                <td>{{ entry.change === "added" ? "+ " : "" }}{{ entry.key }}</td>
-                <td>
-                  <template v-if="entry.secret">
-                    <strong>{{ entry.change }}</strong>
-                    <span class="text-grey-7"> (value hidden)</span>
-                  </template>
-                  <template v-else-if="entry.change === 'changed'">
-                    <span class="env-old">{{ envValue(entry.value) }}</span>
-                    &rarr;
-                    <strong>{{ envValue(entry.file) }}</strong>
-                  </template>
-                  <strong v-else>{{ envValue(entry.change === "added" ? entry.file : entry.value) }}</strong>
-                  <q-chip v-if="entry.restart" dense size="10px" color="orange-2" text-color="orange-10" class="q-ml-sm">
-                    restart required
-                  </q-chip>
-                </td>
-              </tr>
-            </table>
-            <q-separator class="q-mt-sm" />
-          </div>
+        <q-card-section v-else class="scroll" style="max-height: 70vh">
+          <config-catalogue v-if="instanceDialog" />
         </q-card-section>
 
         <q-card-actions align="right">
@@ -188,6 +154,7 @@ import { liveRefetch } from "./socket";
 import { THEMES, applyTheme, readTheme, saveTheme } from "./utils/theme";
 import { HEALTH_TILES, LEVEL_TEXT, tileLevel } from "./utils/health";
 import InstanceHealth from "./components/health/InstanceHealth.vue";
+import ConfigCatalogue from "./components/ConfigCatalogue.vue";
 
 const THEME_INFO = {
   auto: { icon: "fas fa-adjust", label: "Automatic" },
@@ -207,7 +174,7 @@ function readMiniDrawer() {
 }
 
 export default {
-  components: { InstanceHealth },
+  components: { ConfigCatalogue, InstanceHealth },
   data() {
     return {
       leftDrawerOpen: false,
@@ -243,61 +210,6 @@ export default {
     },
     isActiveLink(link) {
       return link.routes.includes(this.$route.name);
-    },
-    flattenEntries(source, parentKey = "") {
-      if (!source || typeof source !== "object") {
-        return [];
-      }
-
-      return Object.entries(source).reduce((entries, [key, value]) => {
-        const fullKey = parentKey ? `${parentKey}.${key}` : key;
-
-        if (Array.isArray(value)) {
-          if (!value.length) {
-            entries.push([fullKey, "[]"]);
-            return entries;
-          }
-
-          value.forEach((item, index) => {
-            const itemKey = `${fullKey}[${index}]`;
-            if (item !== null && typeof item === "object") {
-              entries.push(...this.flattenEntries(item, itemKey));
-            } else {
-              entries.push([itemKey, item]);
-            }
-          });
-          return entries;
-        }
-
-        if (value !== null && typeof value === "object") {
-          const nestedEntries = this.flattenEntries(value, fullKey);
-          if (!nestedEntries.length) {
-            entries.push([fullKey, "{}"]);
-            return entries;
-          }
-          entries.push(...nestedEntries);
-          return entries;
-        }
-
-        entries.push([fullKey, value]);
-        return entries;
-      }, []);
-    },
-    envValue(value) {
-      return value === null || value === undefined || value === "" ? "N/A" : String(value);
-    },
-    // One row per option of a rapo.ini section, marked with its pending change (changed, added or removed on disk).
-    configEntries(section, values) {
-      const changes = ((this.getEnvConfigChanges && this.getEnvConfigChanges.changes) || []).filter((item) => item.section === section);
-      const byOption = Object.fromEntries(changes.map((item) => [item.option, item]));
-      const entries = Object.entries(values || {}).map(([key, value]) => ({ key, value, ...this.configMark(byOption[key]) }));
-      changes
-        .filter((item) => !(values && item.option in values))
-        .forEach((item) => entries.push({ key: item.option, value: item.loaded, ...this.configMark(item) }));
-      return entries;
-    },
-    configMark(item) {
-      return item ? { change: item.change, file: item.file, restart: item.restart, secret: item.secret } : {};
     },
     async reloadConfig() {
       this.reloadingConfig = true;
@@ -370,7 +282,6 @@ export default {
       "getSocketConnected",
       "getEnvVersion",
       "getEnvInfo",
-      "getEnvParameters",
       "getEnvConfigChanges",
     ]),
     ...mapState(["schedulerStatus"]),
@@ -405,18 +316,6 @@ export default {
     },
     schedulerStateInfo() {
       return schedulerState(this.schedulerStatus && this.schedulerStatus.state);
-    },
-    // The version of the application, then one section per section of rapo.ini.
-    // Options changed on disk are marked in their section, and a section only in the file is added at the end.
-    envSections() {
-      const parameters = this.getEnvParameters || {};
-      const changes = (this.getEnvConfigChanges && this.getEnvConfigChanges.changes) || [];
-      const titles = Object.keys(parameters);
-      changes.forEach((item) => titles.includes(item.section) || titles.push(item.section));
-      return [
-        { title: "Version", entries: this.flattenEntries(this.getEnvVersion).map(([key, value]) => ({ key, value })) },
-        ...titles.map((title) => ({ title, entries: this.configEntries(title, parameters[title]) })),
-      ];
     },
     // The notice of rapo.ini changes on disk: Reload applies those that need no restart.
     configBanner() {
@@ -529,42 +428,6 @@ export default {
     background: var(--rapo-warn)
   &.health-dot-crit
     background: var(--rapo-crit)
-
-.instance-paths
-  font-family: var(--rapo-font-mono)
-  font-size: 12px
-  line-height: 1.5
-  word-break: break-all
-
-  span
-    display: inline-block
-    width: 100px
-
-.env-table
-  border-collapse: collapse
-  width: 100%
-  table-layout: fixed
-  font-family: var(--rapo-font-mono)
-  font-size: 12px
-  line-height: 1.25
-
-  td
-    padding: 2px 10px 2px 0
-    vertical-align: top
-    word-break: break-word
-
-  // Options of rapo.ini changed on disk and not applied yet.
-  tr.env-changed td, tr.env-added td, tr.env-removed td
-    background: var(--rapo-highlight)
-  tr.env-added td
-    color: var(--rapo-added-fg)
-  tr.env-removed td
-    text-decoration: line-through
-    color: var(--rapo-muted)
-
-  .env-old
-    color: var(--rapo-muted)
-    text-decoration: line-through
 
 // A virtual-scroll table on a list page (utils/layout.js): as tall as its rows, but no taller than the rest of the
 // page, where it scrolls instead, with its header kept in view.

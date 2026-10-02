@@ -17,9 +17,10 @@ import sqlalchemy as sa
 from . import events
 from .auth import verify_token
 
-from ...config import config, is_secret, path as CONFIG_PATH
-from ...config import PEPPERONI_OPTIONS
+from ...config import config, is_secret, needs_restart, path as CONFIG_PATH
+from ...config import ConfigConflict, PEPPERONI_OPTIONS
 from ...database import db
+from ... import options
 from ...kpi import kpi
 from ...logger import logger, LOG_DIR
 from ...reader import reader
@@ -68,6 +69,10 @@ def find_control(process_id):
 async def lifespan(app):
     """Run the run manager and the scheduler together with the server."""
     events.bind(asyncio.get_running_loop())
+    missing = options.missing_from_catalogue()
+    if missing:
+        logger.warning('Options of rapo.ini.example missing from '
+                       f'rapo/options.py: {", ".join(missing)}')
     runner.listeners.append(events.poke_scheduler)
     scheduler.listeners.append(events.poke_scheduler)
     sessions.listeners.append(events.emit_analysis)
@@ -220,12 +225,12 @@ def parameters():
 
 
 @api.get('/get-instance-health')
-def get_instance_health(history: bool = True):
-    """Get the OS and DB metrics of this server sampled in the last hour.
+def get_instance_health(history: bool = True, hours: int = 1):
+    """Get the OS and DB metrics this server sampled in the last `hours`.
 
     Without `history` only the warning levels, for the header button.
     """
-    return health.snapshot(history=history)
+    return health.snapshot(history=history, hours=hours)
 
 
 @api.get('/get-instance-sessions')
@@ -255,10 +260,18 @@ def get_config_changes():
 def reload_config():
     """Apply the changes of rapo.ini that do not need a restart."""
     try:
-        applied = config.reload()
+        applied, pending = apply_config()
     except configparser.Error as error:
         raise fastapi.HTTPException(status_code=400,
                                     detail=f'rapo.ini can not be read: {error}')
+    return {'status': 200, 'applied': applied, 'restart_required': pending}
+
+
+def apply_config():
+    """Reload rapo.ini into this server: (applied changes, changes waiting
+    for a restart). Raises configparser.Error when the file can not be read.
+    """
+    applied = config.reload()
     logging_options = {item['option'] for item in applied
                        if item['section'].upper() == 'LOGGING'
                        and item['option'] in PEPPERONI_OPTIONS}
@@ -282,7 +295,125 @@ def reload_config():
                           for item in pending)
         logger.info(f'rapo.ini changes waiting for a restart: {names}')
     events.poke_scheduler()
-    return {'status': 200, 'applied': applied, 'restart_required': pending}
+    return applied, pending
+
+
+@api.get('/get-config-catalogue')
+def get_config_catalogue():
+    """Get every rapo.ini option rapo knows: its value in the file, the value
+    loaded by this server, its default and description, in sections.
+    """
+    from ... import __version__
+    try:
+        written = config.read_file()
+    except configparser.Error:
+        written = {}
+    written = {section.upper(): values for section, values in written.items()}
+    sections = []
+    for name, description in options.SECTIONS.items():
+        file_values = written.get(name, {})
+        loaded_values = config.get(name) or {}
+        items = []
+        for option in options.CATALOGUE:
+            if option.section != name:
+                continue
+            aliases = [option.name, *option.deprecated]
+            key = next((alias for alias in aliases if alias in file_values),
+                       None)
+            hidden = options.is_hidden(option)
+            value = file_values.get(key) if key else None
+            loaded = next((loaded_values.get(alias) for alias in aliases
+                           if loaded_values.get(alias) is not None), None)
+            items.append({
+                'name': option.name,
+                'written_as': key,
+                'type': option.type,
+                'default': None if hidden else option.default,
+                'description': option.description,
+                'choices': option.choices,
+                'minimum': option.minimum,
+                'restart': needs_restart(name, option.name),
+                'secret': hidden,
+                'editable': options.is_editable(option),
+                'set': key is not None,
+                'value': None if hidden else value,
+                'loaded': None if hidden else loaded,
+                'deprecated': list(option.deprecated),
+            })
+        sections.append({'name': name, 'description': description,
+                         'options': items})
+    unknown = [{'section': section, 'name': option,
+                'value': None if is_secret(option) else value}
+               for section, values in written.items()
+               for option, value in values.items()
+               if not options.find(section, option)]
+    return {
+        'general': {'version': __version__,
+                    'instance_name': options.get('SCHEDULER', 'instance_name'),
+                    'config_path': CONFIG_PATH,
+                    'log_directory': LOG_DIR},
+        'digest': config.digest(),
+        'sections': sections,
+        'unknown': unknown,
+    }
+
+
+@api.post('/set-config-option')
+def set_config_option(body: dict = fastapi.Body(...)):
+    """Change one option in rapo.ini and apply it at once.
+
+    Body: {section, option, value, reset, digest}. Only options applied
+    without a restart and holding no secret can be changed; `reset` removes
+    the option, so its default applies. `digest` is the checksum
+    get-config-catalogue answered: 409 when the file changed since.
+    """
+    section = str(body.get('section') or '')
+    name = str(body.get('option') or '')
+    option = options.find(section, name)
+    if option is None:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'Unknown option {section}.{name}')
+    if not options.is_editable(option):
+        reason = ('holds a secret' if options.is_hidden(option)
+                  else 'applies only after a restart')
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'{option.section}.{option.name} {reason}; change it in '
+                   f'rapo.ini on the server')
+    if body.get('reset'):
+        text = None
+    else:
+        try:
+            text = options.parse(option, body.get('value'))
+        except options.OptionError as error:
+            raise fastapi.HTTPException(status_code=400, detail=str(error))
+    try:
+        before = config.read_file().get(option.section, {}) \
+            .get(option.name)
+    except configparser.Error:
+        before = None
+    try:
+        backup = config.write_option(option.section, option.name, text,
+                                     body.get('digest'))
+    except ConfigConflict:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='rapo.ini changed on disk meanwhile; it is shown again')
+    except OSError as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'rapo.ini can not be written: '
+                                           f'{error}')
+    after = 'its default' if text is None else repr(text)
+    logger.info(f'rapo.ini: {option.section}.{option.name} {before!r} -> '
+                f'{after} from the UI'
+                + (f', backup {os.path.basename(backup)}' if backup else ''))
+    try:
+        applied, pending = apply_config()
+    except configparser.Error as error:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail=f'rapo.ini can not be read: {error}')
+    return {'status': 200, 'digest': config.digest(), 'applied': applied,
+            'restart_required': pending}
 
 
 @api.post('/run-control')

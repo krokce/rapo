@@ -12,6 +12,7 @@ import sqlparse as spa
 import oracledb as oracle
 
 from .config import config
+from . import options
 from .utils import utils
 
 # SQLAlchemy 1.4 has no python-oracledb dialect, so its cx_Oracle one runs on
@@ -159,12 +160,15 @@ class Database:
         username = parameters.get_deprecated('user', 'username')
         password = parameters.get('password')
         client_path = parameters.get('client_path')
-        max_identifier_length = parameters.get('max_identifier_length', 128)
-        max_overflow = parameters.get('max_overflow', 10)
-        pool_pre_ping = parameters.get('pool_pre_ping', True)
-        pool_size = parameters.get('pool_size', 5)
-        pool_recycle = parameters.get('pool_recycle', -1)
-        pool_timeout = parameters.get('pool_timeout', 30)
+        def pool_option(name):
+            return parameters.get(name, options.default('DATABASE', name))
+
+        max_identifier_length = pool_option('max_identifier_length')
+        max_overflow = pool_option('max_overflow')
+        pool_pre_ping = pool_option('pool_pre_ping')
+        pool_size = pool_option('pool_size')
+        pool_recycle = pool_option('pool_recycle')
+        pool_timeout = pool_option('pool_timeout')
         if vendor_name == 'sqlite' and path:
             if sys.platform.startswith('win'):
                 url = f'{vendor_name}:///{path}'

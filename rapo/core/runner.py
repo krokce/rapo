@@ -20,6 +20,7 @@ import threading as th
 import time
 
 from ..config import config
+from .. import options
 from ..database import db
 from ..logger import logger, open_run_log
 from ..reader import reader
@@ -157,8 +158,9 @@ class RunManager:
     def capacity(self):
         """Get number of execution slots."""
         if config.check('SCHEDULER'):
-            return config['SCHEDULER'].get('control_parallelism') or 10
-        return 10
+            return (config['SCHEDULER'].get('control_parallelism')
+                    or options.default('SCHEDULER', 'control_parallelism'))
+        return options.default('SCHEDULER', 'control_parallelism')
 
     def start(self):
         """Start run manager threads."""

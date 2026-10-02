@@ -1023,6 +1023,25 @@ and for the PDI Core datasources `datasources_available`, `datasources_writable`
 `datasources_file_download` (files can be downloaded: the file log is readable and `[DATASOURCES] file_download` on),
 `datasources_state`, `datasources_state_write` and `datasources_state_delete` (the lane locks of `PDI_CORE_STATE`).
 
+#### `GET /api/get-config-catalogue`
+Every option of `rapo.ini` rapo knows (`rapo/options.py`), in sections, for the Configuration tab:
+`{general: {version, instance_name, config_path, log_directory}, digest, sections: [{name, description, options}],
+unknown}`. Each option has `name`, `written_as` (the name in the file, a deprecated one included), `type` (`bool`,
+`int`, `float`, `text`, `choice`, `path`), `default`, `description`, `choices`, `minimum`, `restart` (applies after a
+restart only), `secret`, `editable` (no secret, no restart), `set` (written in the file), `value` (as written) and
+`loaded` (the value this server uses); a secret's `value`, `loaded` and `default` are `null`. `unknown` lists the
+options of the file rapo does not read (`{section, name, value}`). `digest` is the file's SHA-256, for
+`set-config-option`.
+
+#### `POST /api/set-config-option`
+Body `{section, option, value, reset, digest}`. Writes one option to `rapo.ini` and applies it at once, as
+`reload-config` does; `reset: true` removes it, so its default applies (a section left empty goes too). Only that
+line changes: comments, order and mode stay; a new option goes to the end of its section, a new section to the end
+of the file. The file is first copied to `rapo.ini.bak-<timestamp>` (mode 600, the newest 10 kept). Answers
+`{status, digest, applied, restart_required}`. `400` for an unknown option, a secret, an option that applies only
+after a restart, or a value not fitting its type, choices or minimum; `409` when the file's checksum is not `digest`
+(changed on disk meanwhile). Each change is logged with the old and new value and the backup.
+
 #### `GET /api/parameters`
 The loaded `rapo.ini` as it is written, one object per section. Options whose name contains `password`, `token` or
 `secret` are left out, and options that are not in the file are simply absent - defaults applied in code are not
@@ -1042,26 +1061,39 @@ need a restart keep their loaded value and stay listed by `get-config-changes`. 
 not be parsed, and then nothing is applied. It only affects the server that answers; runs read the file anew anyway.
 
 #### `GET /api/get-instance-health`
-The OS and DB metrics this server sampled in the last `[HEALTH] history_minutes` (default 60), kept in its memory
-only (a restart starts them anew):
-`{enabled, server_time, level, levels, intervals: {os, db}, history_minutes, thresholds, os: [...], db: [...],
-footprint, access}`.
+The OS and DB metrics this server sampled in the last `hours` (1 by default), kept in its memory only (a restart
+starts them anew): `{enabled, server_time, level, levels, labels, intervals: {os, db}, history_minutes, hours, spans,
+step: {os, db}, history_since, thresholds, os: [...], db: [...], footprint, access}`.
+- `hours=1` answers the samples (the last `[HEALTH] history_minutes`, default 60); longer spans (up to
+  `history_hours`, default 24) the one-minute aggregates, merged into at most 480 points per group. `step` is the
+  seconds per point, `spans` the spans this server keeps (of 1, 3, 6, 12, 24), `history_since` its first point. An
+  aggregate averages numbers, takes the highest of `locks`, `locks_wait`, `tcp_close_wait`, `processes_rapo`,
+  `net_errors` and `net_drops`, and the last value of uptimes, sizes and lists; the last point of a longer span is
+  the minute in progress.
+- `labels`: `{server, database}`, the host name and `user@host:port/service` (or the `path`) of `[DATABASE]`.
 - `os` points (every `os_interval` s) are this server's host and its process tree (the server, its runs, analysis
   and scan workers): `cpu`, `cpu_rapo` (% of all cores), `cpus`, `load`, `memory`, `memory_rapo` (%),
   `memory_rapo_gb`, `memory_total_gb`, `swap`, `processes`, `processes_rapo`, `disk` (used % of the fullest of the
-  file systems in `disks`, those of the log directory and the folder of `rapo.ini`), `fds_rapo`.
+  file systems in `disks`, those of the log directory and the folder of `rapo.ini`), `fds_rapo`, `net_rx_mbs`,
+  `net_tx_mbs` (all interfaces but `lo`, `null` at the first sample), `net_errors`, `net_drops` (since the sample
+  before), `tcp_established`, `tcp_close_wait`, `tcp_time_wait` (the host's TCP connections), `rapo_db_sockets` (the
+  process tree's connections to `[DATABASE] port`), `uptime` and `rapo_uptime` (seconds since the host booted and
+  the server started).
 - `db` points (every `db_interval` s) are the database rapo is connected to (the PDB in a container database):
   `cpu_count`, `pga_limit_gb`, `db_cpu` (% of `cpu_count`, last minute), `db_cpu_cores`, `aas` (average active
   sessions), `sessions`, `sessions_active`, `sessions_rapo`, `sessions_rapo_active` (sessions with module `rapo`),
   `locks` (sessions blocked by another), `locks_wait` (longest wait, s), `sga_gb`, `pga_gb`, `pga_percent`,
   `storage` (used % of the fullest of `tablespaces`, the user's default and temporary ones, autoextend counted),
-  `rapo_gb` and `rapo_segments` (`RAPO_RES*`/`RAPO_TEMP_*` segments, read every `footprint_interval` s), `errors`.
+  `rapo_gb` and `rapo_segments` (`RAPO_RES*`/`RAPO_TEMP_*` segments, read every `footprint_interval` s),
+  `io_read_mbs`, `io_write_mbs` (physical reads and writes of all files), `redo_mbs`, `commits` (per second, last
+  minute), `db_uptime` (seconds since the instance started, by the database's clock), `errors`.
   Each point has `t`, a naive ISO time of the server.
 - `levels` is `{rule: null|"warn"|"crit"}` for `cpu` (average of the last 3 points), `memory`, `disk`, `db_cpu`,
-  `db_memory` (`pga_percent`), `storage`, `locks` and `locks_wait`; `level` the worst of them; `thresholds`
+  `db_memory` (`pga_percent`), `storage`, `locks`, `locks_wait` and `close_wait` (`tcp_close_wait`); `level` the worst of them; `thresholds`
   `{rule: [warn, crit]}`, `null` for none.
 - `access` is `{source: {grant, error, probed}}` per DB view read: `sysmetric` (`V_$CON_SYSMETRIC`), `parameter`
-  (`V_$PARAMETER`), `session` (`V_$SESSION`), `sgainfo`, `pgastat`, `tablespace` (`DBA_TABLESPACE_USAGE_METRICS`).
+  (`V_$PARAMETER`), `session` (`V_$SESSION`), `sgainfo`, `pgastat`, `tablespace` (`DBA_TABLESPACE_USAGE_METRICS`),
+  `instance` (`V_$INSTANCE`).
   A source with an `error` is not read; it is probed again every 10 minutes and on `reload-config`.
 
 `history=false` answers only `enabled`, `server_time`, `level` and `levels` (the UI's header button).
@@ -1108,7 +1140,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `analysis:progress` | `{session_id, state}` - see Data analysis         |
 | `discrepancy:progress` | A discrepancy analysis job without its `report` - see `start-discrepancy-analysis` |
 | `health:level`     | `{level}`: the worst level of the instance health changed (`null`, `warn`, `crit`) |
-| `health:sample`    | `{group, point, levels, level}`: a new `os` or `db` point of `get-instance-health`, sent only to clients that joined the room with `health:join` (and left with `health:leave`) |
+| `health:sample`    | `{group, point, minute, levels, level}`: a new `os` or `db` sample of `get-instance-health`, and `minute` the aggregate of the minute it closed (else `null`), sent only to clients that joined the room with `health:join` (and left with `health:leave`) |
 | `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything

@@ -173,29 +173,64 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
 
 9. **Instance health.** *Instance details* (the plug button of the header) has two tabs: *Configuration* (as before,
    shown first) and a new **Health** tab.
-   - **Server:** CPU, memory, processes and disk of this server's host, each a value and a chart of the last hour,
-     with rapo's own share (the server, its runs, analysis and scan workers) as a second, dashed line: CPU and
-     memory used by rapo, rapo's processes and open files, free space where the logs and `rapo.ini` are.
+   - **Two columns**, the server left and the database right, with matching metrics side by side. Each is headed
+     by its name and uptime: *Server: kosta-notebook (up 6 d 7 h · rapo up 2 h 10 min)*, *Database:
+     mm_usage@localhost:1521/RAAUT (up 5 d 8 h)*.
+   - **Span:** small buttons *1h 3h 6h 12h 24h*, remembered by the browser. One hour shows every sample; longer
+     spans one point per minute (24 h: per 3 minutes), averaged, but the highest value of locks, lock waits,
+     CLOSE_WAIT connections and rapo's processes, so a short peak still shows. A chart starting later says since
+     when the server runs.
+   - **Server:** CPU, memory, processes and disk of this server's host, each a value and a chart, with rapo's own
+     share (the server, its runs, analysis and scan workers) as a second, dashed line: CPU and memory used by rapo,
+     rapo's processes and open files, free space where the logs and `rapo.ini` are. *Network*: received and sent
+     per second over all interfaces but loopback, with errors and drops. *Connections*: the host's established TCP
+     connections and those in CLOSE_WAIT (closed by the other side but never by a local program, a leak when it
+     grows), TIME_WAIT, and rapo's connections to the database.
    - **Database** (the PDB in a container database): *DB CPU* (% of `cpu_count`, average active sessions),
      *Sessions* (all and rapo's), *Locks* (sessions blocked by another, longest wait), *DB memory* (PGA of
      `pga_aggregate_limit`, SGA) and *Storage* (used % of the user's default and temporary tablespaces, autoextend
-     counted, and the size of rapo's result and temporary tables; the leftover temporary tables open from there).
+     counted, and the size of rapo's result and temporary tables; the leftover temporary tables open from there) and
+     *DB I/O* (physical reads and writes per second, redo and commits).
    - **Sessions and Locks** open a list of the sessions, or of the blocked ones and their blockers: user, module,
      action, status, wait event and time, blocker, SQL ID, machine. A rapo run's action is its control, which opens in
      the editor. Read-only: nothing is killed from here.
    - **Warning levels:** a tile turns amber or red at its warning or critical level (CPU 80/95% averaged over 30 s,
      memory 85/95%, disk 85/95%, DB CPU 80/95%, PGA 85/95%, tablespace 85/95%, any blocked session / a lock wait of
-     60 s), and the plug button gets an amber or red dot naming the tiles in its tooltip. The dashed line of a chart is
+     60 s, 50 connections in CLOSE_WAIT), and the plug button gets an amber or red dot naming the tiles in its tooltip. The dashed line of a chart is
      its warning level.
    - The server samples in the background, the OS every 10 s and the database every 30 s (a few cheap queries of
-     views free of the Diagnostics Pack), and keeps the last hour in memory only: a restart starts the charts anew.
+     views free of the Diagnostics Pack), and keeps the samples of the last hour and one-minute aggregates of the
+     last 24 hours in memory only (a few MB): a restart starts the charts anew.
      The open tab receives each new sample live; nothing polls.
    - **Database sessions of rapo are tagged:** every connection sets module `rapo`, and the connections of a run its
      control's name as action (`V$SESSION.MODULE`/`ACTION`), so they are told apart in any DBA tool too.
    - The database metrics need SELECT on `V_$CON_SYSMETRIC`, `V_$PARAMETER`, `V_$SESSION`, `V_$SGAINFO`,
-     `V_$PGASTAT` and `DBA_TABLESPACE_USAGE_METRICS` (see the [migration instructions](README.md)). A tile whose view
+     `V_$PGASTAT`, `DBA_TABLESPACE_USAGE_METRICS` and `V_$INSTANCE` (see the [migration instructions](README.md)). A tile whose view
      can not be read shows *No access* and the grant it needs; the others work. Views granted later are found
      within 10 minutes, or at once with *Reload* of `rapo.ini`.
-   - New `[HEALTH]` options: `enabled`, `os_interval`, `db_interval`, `footprint_interval`, `history_minutes`, and
+   - **Layout:** the six server charts first (two per row), then the six database charts.
+   - New `[HEALTH]` options: `enabled`, `os_interval`, `db_interval`, `footprint_interval`, `history_minutes`,
+     `history_hours`, and
      `<rule>_warn`/`<rule>_crit` for the levels, all applied by a reload. New routes `get-instance-health` and
      `get-instance-sessions`, live events `health:sample` and `health:level`.
+
+10. **Configuration tab: every option, editable in place.** *Instance details* → *Configuration* lists every
+    `rapo.ini` option rapo reads, in sections and in a logical order, not only those written in the file.
+    - A *General* box first: version, instance name, and the configuration file and log folder in use.
+    - One line per option: its name, its value in `rapo.ini` (blue), or its default (grey) when the file does not
+      set it, the default, and what it does; sections are separated by lines. A legend explains the colors and
+      symbols. A filter and *Only set in rapo.ini* narrow the list; options the file sets that rapo does not read
+      carry a red dot; changes on disk not applied yet stay highlighted.
+    - **Change in place:** hovering a value that applies without a restart shows a pencil; clicking it opens a small
+      editor (a switch, a number, a choice or a text), with *Save* and *Reset to default*. The option's line in
+      `rapo.ini` is rewritten (comments and the rest of the file kept) and applied at once on this server, as
+      *Reload* does. Before each change the file is copied to `rapo.ini.bak-<timestamp>` next to it (readable by its
+      owner only; the newest 10 are kept, and they are ignored by git). A file changed on disk meanwhile is shown
+      again instead of being overwritten.
+    - Options that apply only after a restart (`[DATABASE]`, `[API]`, `[LOGGING] directory`, `[SCHEDULER]
+      enabled`) carry an orange dot and are changed in the file on the server; secrets (passwords, the API token)
+      show only whether they are set.
+    - The defaults shown are the ones rapo uses: they now come from one catalogue in the code, `rapo/options.py`.
+      Nothing changes in behavior.
+    - The change applies to the server answering; another server on the same database has its own `rapo.ini`.
+    - New routes `get-config-catalogue` and `set-config-option`.

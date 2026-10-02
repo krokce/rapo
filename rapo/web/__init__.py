@@ -12,6 +12,7 @@ import psutil
 
 from .api import app
 from ..config import config
+from .. import options
 from ..database import db
 from ..reader import reader
 
@@ -76,8 +77,10 @@ class Server:
 
     def __init__(self, host=None, port=None, dev=False, scheduler=None):
         self.app = app
-        self.host = host or config['API'].get('host') or '127.0.0.1'
-        self.port = port or config['API'].get('port') or 8080
+        self.host = (host or config['API'].get('host')
+                     or options.default('API', 'host'))
+        self.port = (port or config['API'].get('port')
+                     or options.default('API', 'port'))
         self.url = f'{self.host}:{self.port}'
         self.dev = bool(dev)
         # A reload restarts the scheduler with every change, so development

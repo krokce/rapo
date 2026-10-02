@@ -31,6 +31,7 @@ by `install.sh` from the package index; on a host without access to it, provide 
     grant select on v_$sgainfo to <user>;
     grant select on v_$pgastat to <user>;
     grant select on dba_tablespace_usage_metrics to <user>;
+    grant select on v_$instance to <user>;
     ```
    Each view not granted only shows *No access* on its tile. None of them needs the Diagnostics Pack.
 1. Start the web server.

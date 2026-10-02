@@ -5,6 +5,30 @@ import { formatNumber } from "./format";
 const percent = (value) => (value === null || value === undefined ? "–" : `${formatNumber(value, value < 10 ? 1 : 0)}%`);
 const gb = (value) => (value === null || value === undefined ? "–" : `${formatNumber(value, value < 10 ? 2 : 1)} GB`);
 const count = (value) => (value === null || value === undefined ? "–" : formatNumber(value));
+// A rate in MB/s, shown in KB/s below 1 MB/s.
+const rate = (value) => {
+  if (value === null || value === undefined) {
+    return "–";
+  }
+  return value < 1 ? `${formatNumber(value * 1024, value * 1024 < 10 ? 1 : 0)} KB/s` : `${formatNumber(value, value < 10 ? 2 : 1)} MB/s`;
+};
+
+// Seconds as "3 d 4 h", "2 h 10 min" or "5 min".
+export function formatUptime(seconds) {
+  if (seconds === null || seconds === undefined) {
+    return null;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days) {
+    return `${days} d ${hours} h`;
+  }
+  return hours ? `${hours} h ${minutes % 60} min` : `${minutes} min`;
+}
+
+// The spans of the Health tab, in hours; the server answers which it keeps (get-instance-health `spans`).
+export const HEALTH_SPANS = [1, 3, 6, 12, 24];
 
 export const LEVEL_TEXT = { warn: "Warning", crit: "Critical" };
 
@@ -23,7 +47,7 @@ export const HEALTH_TILES = [
     format: percent,
     max: 100,
     rules: ["cpu"],
-    sub: (p) => `rapo ${percent(p.cpu_rapo)} · load ${p.load ?? "–"} · ${p.cpus} cores`,
+    sub: (p) => `rapo ${percent(p.cpu_rapo)} · load ${p.load === null || p.load === undefined ? "–" : formatNumber(p.load, 2)} · ${p.cpus} cores`,
   },
   {
     key: "memory",
@@ -61,6 +85,32 @@ export const HEALTH_TILES = [
     sub: (p) => (p.disks || []).map((disk) => `${gb(disk.free_gb)} free`).join(" · ") || "–",
   },
   {
+    key: "network",
+    group: "os",
+    title: "Network",
+    hint: "Received (line) and sent (dashed) by the host, all interfaces but loopback; errors and drops since the sample before",
+    series: [
+      { field: "net_rx_mbs", label: "Received" },
+      { field: "net_tx_mbs", label: "Sent" },
+    ],
+    format: rate,
+    rules: [],
+    sub: (p) => `sent ${rate(p.net_tx_mbs)} · errors ${count(p.net_errors)} · drops ${count(p.net_drops)}`,
+  },
+  {
+    key: "connections",
+    group: "os",
+    title: "Connections",
+    hint: "TCP connections of the host: established (line) and CLOSE_WAIT (dashed), connections the other side closed but a local program never did, a leak when it grows",
+    series: [
+      { field: "tcp_established", label: "Established" },
+      { field: "tcp_close_wait", label: "CLOSE_WAIT" },
+    ],
+    format: count,
+    rules: ["close_wait"],
+    sub: (p) => `CLOSE_WAIT ${count(p.tcp_close_wait)} · TIME_WAIT ${count(p.tcp_time_wait)} · rapo→DB ${count(p.rapo_db_sockets)}`,
+  },
+  {
     key: "db_cpu",
     group: "db",
     title: "DB CPU",
@@ -71,6 +121,20 @@ export const HEALTH_TILES = [
     rules: ["db_cpu"],
     access: ["sysmetric", "parameter"],
     sub: (p) => `AAS ${p.aas ?? "–"} · ${p.db_cpu_cores ?? "–"} of ${p.cpu_count ?? "–"} CPUs`,
+  },
+  {
+    key: "db_io",
+    group: "db",
+    title: "DB I/O",
+    hint: "Physical reads (line) and writes (dashed) of the database, all files incl. redo and temp, the last minute",
+    series: [
+      { field: "io_read_mbs", label: "Read" },
+      { field: "io_write_mbs", label: "Write" },
+    ],
+    format: rate,
+    rules: [],
+    access: ["sysmetric"],
+    sub: (p) => `write ${rate(p.io_write_mbs)} · redo ${rate(p.redo_mbs)} · ${p.commits ?? "–"} commits/s`,
   },
   {
     key: "sessions",
@@ -127,6 +191,16 @@ export const HEALTH_TILES = [
         .join(" · "),
   },
 ];
+
+// The order of the tiles of each section, two per row.
+export const HEALTH_ROWS = {
+  os: ["cpu", "memory", "disk", "network", "connections", "processes"],
+  db: ["db_cpu", "db_memory", "storage", "db_io", "sessions", "locks"],
+};
+
+export function healthTiles(group) {
+  return HEALTH_ROWS[group].map((key) => HEALTH_TILES.find((tile) => tile.key === key));
+}
 
 // The views a tile reads that this database user may not select from, as "GRANT SELECT ON ..." lines.
 export function missingGrants(tile, access) {

@@ -19,6 +19,7 @@ from email.utils import formataddr, make_msgid
 import sqlalchemy as sa
 
 from ..config import config
+from .. import options
 from ..database import db
 from ..logger import logger
 from ..utils import utils
@@ -27,8 +28,8 @@ from ..utils import utils
 SEND_WHEN = ('done_with_results', 'done', 'done_or_error', 'evaluate_sql')
 DEFAULT_SEND_WHEN = 'done_with_results'
 EMAIL_TYPES = ('ANL', 'REP', 'REC')
-DEFAULT_MAX_ROWS = 100000
-DEFAULT_MAX_MB = 20
+DEFAULT_MAX_ROWS = options.default('EMAIL', 'max_attachment_rows')
+DEFAULT_MAX_MB = options.default('EMAIL', 'max_attachment_mb')
 EXCEL_MAX_DIGITS = 15
 EXCEL_MAX_TEXT = 32767
 
@@ -527,7 +528,7 @@ def deliver(message, recipients):
     else:
         security = 'starttls'
     port = params.get('port') or (465 if security == 'ssl' else 587)
-    timeout = params.get('timeout') or 30
+    timeout = params.get('timeout') or options.default('EMAIL', 'timeout')
     context = ssl.create_default_context()
     if security == 'ssl':
         smtp = smtplib.SMTP_SSL(host, int(port), timeout=timeout,

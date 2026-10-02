@@ -19,6 +19,7 @@ from ..reader import reader, WARNING_PREFIX
 from ..utils import utils
 
 from ..config import get_algorithm_setting
+from .. import options
 
 from . import chain
 from . import mailer
@@ -2317,19 +2318,19 @@ class Parser:
         fuzzy_optimization = utils.coalesce(
             fuzzy_optimization,
             get_algorithm_setting('fuzzy_optimization'),
-            True)
+            options.default('ALGORITHM', 'fuzzy_optimization'))
 
         normalization_type = input_config.get('normalization_type')
         normalization_type = utils.coalesce(
             normalization_type,
             get_algorithm_setting('normalization_type'),
-            'default')
+            options.default('ALGORITHM', 'normalization_type'))
 
         discrepancy_matching = input_config.get('discrepancy_matching')
         discrepancy_matching = utils.coalesce(
             discrepancy_matching,
             get_algorithm_setting('discrepancy_matching'),
-            False)
+            options.default('ALGORITHM', 'discrepancy_matching'))
 
         correlation_config = []
         for item_config in input_config.get('correlation_config', {}):

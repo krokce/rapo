@@ -14,6 +14,7 @@ import sqlalchemy as sa
 
 from ..database import db
 from ..config import config
+from .. import options
 from ..logger import logger
 from ..reader import reader
 
@@ -32,13 +33,9 @@ LATE_TOLERANCE = 60
 MISSED_LIMIT = 100
 
 
-def get_setting(name, default=None):
-    """Get SCHEDULER option or default when it is not set."""
-    if config.check('SCHEDULER'):
-        value = config['SCHEDULER'].get(name)
-        if value is not None:
-            return value
-    return default
+def get_setting(name):
+    """Get SCHEDULER option, or its default (rapo/options.py) when not set."""
+    return options.get('SCHEDULER', name)
 
 
 def is_enabled():
@@ -50,7 +47,7 @@ def is_enabled():
     override = os.environ.get('RAPO_SCHEDULER')
     if override is not None:
         return override.strip().lower() in ('1', 'true', 'y', 'yes')
-    return get_setting('enabled', True) is not False
+    return get_setting('enabled') is not False
 
 
 class Scheduler:
@@ -148,7 +145,7 @@ class Scheduler:
         """Get scheduler status report."""
         record = reader.read_scheduler_record() or {}
         disabled = record.get('disabled') == 'Y'
-        timeout = get_setting('lease_timeout', 60)
+        timeout = get_setting('lease_timeout')
         heartbeat = record.get('heartbeat')
         alive = (record.get('status') == 'Y' and heartbeat is not None
                  and (dt.datetime.now()-heartbeat).total_seconds() < timeout)
@@ -232,7 +229,7 @@ class Scheduler:
         record = reader.read_scheduler_record()
         if not record or record['disabled'] == 'Y':
             return
-        timeout = get_setting('lease_timeout', 60)
+        timeout = get_setting('lease_timeout')
         if record['status'] == 'Y' and record['instance_id'] is None:
             # Row left by a standalone rapo-scheduler of an older version.
             pid = record['pid']
@@ -326,7 +323,7 @@ class Scheduler:
 
     def _load(self, now):
         """Reload schedules when configuration changed."""
-        interval = get_setting('refresh_interval', 300)
+        interval = get_setting('refresh_interval')
         if not self.reload and now-self.checked >= CONFIG_CHECK_INTERVAL:
             self.checked = now
             signature = _read_config_signature()
@@ -393,7 +390,7 @@ class Scheduler:
         """Record fires that fell into scheduler downtime."""
         if since is None:
             return
-        window = get_setting('missed_window_hours', 24)
+        window = get_setting('missed_window_hours')
         since = max(since, until-dt.timedelta(hours=window))
         if since >= until:
             return
@@ -436,7 +433,7 @@ class Scheduler:
                     Control(name=record.control_name).clean()
                 except Exception:
                     logger.error()
-            days = get_setting('event_retention_days', 90)
+            days = get_setting('event_retention_days')
             deleted = journal.purge(days)
             logger.info(f'{deleted} scheduler events older than {days} '
                         'days deleted')

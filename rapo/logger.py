@@ -15,23 +15,20 @@ import pepperoni
 
 from . import config as configurator
 from .config import config, PEPPERONI_OPTIONS
+from . import options
 
 
 SERVER_LOG_NAME = 'rapo-server_{root.logger.start_date:%Y%m%d}'
 
 
-def get_setting(name, default=None):
-    """Get LOGGING option or default when it is not set."""
-    if config.check('LOGGING'):
-        value = config['LOGGING'].get(name)
-        if value is not None:
-            return value
-    return default
+def get_setting(name):
+    """Get LOGGING option, or its default (rapo/options.py) when not set."""
+    return options.get('LOGGING', name)
 
 
 def get_log_dir():
     """Get absolute log folder, relative paths start at rapo.ini folder."""
-    directory = os.path.expanduser(str(get_setting('directory', 'logs')))
+    directory = os.path.expanduser(str(get_setting('directory')))
     base = os.path.dirname(configurator.path)
     return os.path.abspath(os.path.join(base, directory))
 
@@ -75,7 +72,7 @@ LOG_DIR = get_log_dir()
 
 logger = pepperoni.logger(file=True)
 logger.record = verbatim(logger.record)
-logger.configure(format='{isodate}\t{thread}\t{rectype}\t{message}\n')
+logger.configure(format=options.default('LOGGING', 'format'))
 
 if config.check('LOGGING'):
     parameters = {key: value for key, value in config['LOGGING'].items()

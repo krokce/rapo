@@ -23,6 +23,7 @@ import threading
 import time
 
 from ..config import config
+from .. import options
 from ..logger import logger
 
 from .store import pdi, DatasourceError, split_directories
@@ -37,19 +38,7 @@ CHECK_SECONDS = 5
 check_pool = concurrent.futures.ThreadPoolExecutor(
     max_workers=8, thread_name_prefix='rapo-ds-check')
 
-OPTIONS = {
-    'scan_interval': 60,
-    'scan_max_entries': 200000,
-    'scan_budget_seconds': 20,
-    'list_max_files': 10000,
-    'list_budget_seconds': 10,
-    'clean_max_bytes': 1024,
-    'dir_mode': '2775',
-    'stalled_minutes': 60,
-    'lock_stale_minutes': 30,
-    'file_download': True,
-    'max_download_mb': 500,
-}
+OPTIONS = options.defaults('DATASOURCES')
 
 OTHER_DIRECTORIES = ('archive_directory', 'error_directory',
                      'duplicate_directory')

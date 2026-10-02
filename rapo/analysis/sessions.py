@@ -16,20 +16,21 @@ import time
 import uuid
 
 from ..config import config
+from .. import options
 from ..logger import logger
 
 from . import datasets
 from .worker import RANDOM_ORDER, serve
 
 
-DEFAULTS = {
-    'initial_rows': 50000,
-    'extend_rows': 50000,
-    'max_rows': 1000000,
-    'max_sessions': 4,
-    'idle_minutes': 15,
-    'max_memory_mb': 2048,
-}
+DEFAULTS = {name: options.default('ANALYSIS', name) for name in (
+    'initial_rows',
+    'extend_rows',
+    'max_rows',
+    'max_sessions',
+    'idle_minutes',
+    'max_memory_mb',
+)}
 EXPIRY_INTERVAL = 30
 REQUEST_TIMEOUT = 120
 EXPORT_TIMEOUT = 900

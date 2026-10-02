@@ -7,17 +7,19 @@ connected to; rapo's own sessions are those tagged `module = 'rapo'`
 """
 
 import os
+import socket
 import time
 
 import psutil
 import sqlalchemy as sa
 
-from ..config import path as CONFIG_PATH
+from ..config import config, path as CONFIG_PATH
 from ..database import db, MODULE
 from ..logger import LOG_DIR
 
 
 GB = 1024 ** 3
+MB = 1024 ** 2
 
 # DB sources: what each reads, the grant it needs, and a statement that
 # changes nothing yet makes Oracle check the privilege.
@@ -30,7 +32,26 @@ DB_SOURCES = {
     'pgastat': ('V_$PGASTAT', 'select 1 from v$pgastat where 1 = 0'),
     'tablespace': ('DBA_TABLESPACE_USAGE_METRICS',
                    'select 1 from dba_tablespace_usage_metrics where 1 = 0'),
+    'instance': ('V_$INSTANCE', 'select 1 from v$instance where 1 = 0'),
 }
+
+
+def labels():
+    """Get the names of this server and of the database rapo connects to,
+    as `user@host:port/service`; the password is never part of it.
+    """
+    section = config.get('DATABASE') or {}
+    user = section.get('username') or section.get('user') or ''
+    if section.get('path'):
+        address = section.get('path')
+    else:
+        address = f"{section.get('host') or ''}:{section.get('port') or ''}"
+        service = (section.get('service_name') or section.get('service')
+                   or section.get('sid'))
+        if service:
+            address += f'/{service}'
+    return {'server': socket.gethostname(),
+            'database': f'{user}@{address}' if user else address}
 
 
 def probe():
@@ -65,8 +86,9 @@ class ProcessTree:
         for process in [self.root, *children]:
             current[process.pid] = self.processes.get(process.pid, process)
         self.processes = current
-        cpu = rss = fds = 0
+        cpu = rss = fds = sockets = 0
         count = 0
+        port = (config.get('DATABASE') or {}).get('port')
         for process in current.values():
             try:
                 with process.oneshot():
@@ -74,13 +96,68 @@ class ProcessTree:
                     rss += process.memory_info().rss
                     if hasattr(process, 'num_fds'):
                         fds += process.num_fds()
+                    if port:
+                        connections = getattr(process, 'net_connections',
+                                              process.connections)('tcp')
+                        sockets += sum(
+                            1 for item in connections
+                            if item.raddr and item.raddr.port == port
+                            and item.status == psutil.CONN_ESTABLISHED)
                 count += 1
             except psutil.Error:
                 continue
-        return {'cpu': cpu, 'rss': rss, 'fds': fds, 'count': count}
+        return {'cpu': cpu, 'rss': rss, 'fds': fds, 'count': count,
+                'sockets': sockets if port else None}
 
 
 tree = None
+# The previous network counters and their time, for the rates.
+network = None
+
+
+def read_network():
+    """Get the receive and send rates of all interfaces but loopback, and
+    the errors and drops since the previous sample; None at the first one.
+    """
+    global network
+    counters = psutil.net_io_counters(pernic=True)
+    now = time.monotonic()
+    total = [0, 0, 0, 0]
+    for name, item in counters.items():
+        if name == 'lo':
+            continue
+        total[0] += item.bytes_recv
+        total[1] += item.bytes_sent
+        total[2] += item.errin + item.errout
+        total[3] += item.dropin + item.dropout
+    previous, network = network, (now, total)
+    output = dict.fromkeys(['net_rx_mbs', 'net_tx_mbs', 'net_errors',
+                            'net_drops'])
+    if previous is None:
+        return output
+    seconds = now - previous[0]
+    deltas = [value - before for value, before in zip(total, previous[1])]
+    # Counters start anew when an interface goes away or is reset.
+    if seconds <= 0 or any(delta < 0 for delta in deltas):
+        return output
+    return {'net_rx_mbs': round(deltas[0] / MB / seconds, 3),
+            'net_tx_mbs': round(deltas[1] / MB / seconds, 3),
+            'net_errors': deltas[2], 'net_drops': deltas[3]}
+
+
+def read_connections():
+    """Count the TCP connections of the host by state."""
+    try:
+        connections = psutil.net_connections('tcp')
+    except psutil.Error:
+        return dict.fromkeys(['tcp_established', 'tcp_close_wait',
+                              'tcp_time_wait'])
+    states = {}
+    for item in connections:
+        states[item.status] = states.get(item.status, 0) + 1
+    return {'tcp_established': states.get(psutil.CONN_ESTABLISHED, 0),
+            'tcp_close_wait': states.get(psutil.CONN_CLOSE_WAIT, 0),
+            'tcp_time_wait': states.get(psutil.CONN_TIME_WAIT, 0)}
 
 
 def read_os():
@@ -128,6 +205,11 @@ def read_os():
         'disk': max((disk['used_percent'] for disk in disks), default=None),
         'disks': disks,
         'fds_rapo': rapo['fds'],
+        **read_network(),
+        **read_connections(),
+        'rapo_db_sockets': rapo['sockets'],
+        'uptime': int(time.time() - psutil.boot_time()),
+        'rapo_uptime': int(time.time() - tree.root.create_time()),
     }
 
 
@@ -152,6 +234,8 @@ def read_db(available):
         read('memory', lambda: _memory(point.get('pga_limit_gb')))
     if 'tablespace' in available:
         read('tablespace', _tablespaces)
+    if 'instance' in available:
+        read('instance', _instance)
     point['errors'] = errors
     return point
 
@@ -172,17 +256,35 @@ def _sysmetric(cpu_count):
     rows = db.execute(sa.text(
         "select metric_name, value from v$con_sysmetric "
         "where metric_name in ('CPU Usage Per Sec', "
-        "'Average Active Sessions')"), as_records=True)
+        "'Average Active Sessions', 'Physical Read Total Bytes Per Sec', "
+        "'Physical Write Total Bytes Per Sec', 'Redo Generated Per Sec', "
+        "'User Commits Per Sec')"), as_records=True)
     values = {name: float(value) for name, value in rows}
     cores = values.get('CPU Usage Per Sec')
     cores = cores / 100 if cores is not None else None
     cpu = None
     if cores is not None and cpu_count:
         cpu = round(min(cores / cpu_count * 100, 100), 1)
-    aas = values.get('Average Active Sessions')
+
+    def rate(name, divisor=MB, places=3):
+        value = values.get(name)
+        return round(value / divisor, places) if value is not None else None
+
     return {'db_cpu': cpu,
             'db_cpu_cores': round(cores, 2) if cores is not None else None,
-            'aas': round(aas, 2) if aas is not None else None}
+            'aas': rate('Average Active Sessions', 1, 2),
+            'io_read_mbs': rate('Physical Read Total Bytes Per Sec'),
+            'io_write_mbs': rate('Physical Write Total Bytes Per Sec'),
+            'redo_mbs': rate('Redo Generated Per Sec'),
+            'commits': rate('User Commits Per Sec', 1, 2)}
+
+
+def _instance():
+    # Counted by the database, whose clock may differ from this server's.
+    seconds = db.execute(sa.text(
+        "select round((sysdate - startup_time) * 86400) from v$instance"),
+        as_scalar=True)
+    return {'db_uptime': int(seconds) if seconds is not None else None}
 
 
 def _sessions():

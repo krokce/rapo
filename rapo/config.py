@@ -3,8 +3,13 @@
 Used to transfer parameters from user to application.
 """
 
+import datetime as dt
+import glob
+import hashlib
 import os
 import re
+import shutil
+import tempfile
 import configparser
 
 
@@ -23,6 +28,12 @@ RESTART_OPTIONS = ('DATABASE', 'API', 'LOGGING.directory', 'SCHEDULER.enabled')
 # but pepperoni has no way back to its default, so a removed one waits.
 PEPPERONI_OPTIONS = ['console', 'file', 'info', 'debug', 'warning', 'error',
                      'critical', 'format', 'maxsize', 'maxlevel', 'maxerrors']
+# Backups of rapo.ini kept by write_option, the newest first.
+BACKUPS_KEPT = 10
+
+
+class ConfigConflict(Exception):
+    """rapo.ini changed since the caller read it."""
 
 
 def is_secret(option):
@@ -138,6 +149,111 @@ class Configurator(dict):
                 self[section][option] = content[section][option]
             applied.append(item)
         return applied
+
+    def digest(self):
+        """Get a checksum of rapo.ini as it is on disk, None without one."""
+        try:
+            with open(path, 'rb') as file:
+                return hashlib.sha256(file.read()).hexdigest()
+        except OSError:
+            return None
+
+    def write_option(self, section, option, value, expected_digest=None):
+        """Set an option in rapo.ini, or remove it with `value` None.
+
+        Only the option's own line changes: comments, order and the other
+        options stay as written. A missing option is added at the end of its
+        section, a missing section at the end of the file. The file is first
+        copied to rapo.ini.bak-<timestamp> (the newest BACKUPS_KEPT kept),
+        then replaced at once, keeping its mode.
+
+        Raises ConfigConflict when the file's checksum is not
+        `expected_digest`. Returns the path of the backup.
+        """
+        with open(path, 'r', encoding=encoding) as file:
+            text = file.read()
+        digest = hashlib.sha256(text.encode(encoding)).hexdigest()
+        if expected_digest and expected_digest != digest:
+            raise ConfigConflict(f'{path} changed meanwhile')
+        lines = text.split('\n')
+        header = re.compile(r'^\s*\[([^\]]+)\]')
+        pattern = re.compile(rf'^\s*{re.escape(option)}\s*[=:]', re.IGNORECASE)
+        start = end = None
+        for number, line in enumerate(lines):
+            match = header.match(line)
+            if match:
+                if start is not None:
+                    end = number
+                    break
+                if match.group(1).strip().upper() == section.upper():
+                    start = number
+        if start is not None and end is None:
+            end = len(lines)
+        found = None
+        if start is not None:
+            for number in range(start + 1, end):
+                if pattern.match(lines[number]):
+                    found = number
+        entry = f'{option}={value}'
+        if found is not None:
+            if value is None:
+                del lines[found]
+                end -= 1
+                # A section left without options or comments goes too.
+                if not any(line.strip() for line in lines[start + 1:end]):
+                    del lines[start:end]
+                    # The last section: no blank lines left at the end.
+                    if start >= len(lines):
+                        while lines and not lines[-1].strip():
+                            lines.pop()
+            else:
+                lines[found] = entry
+        elif value is not None:
+            if start is None:
+                while lines and not lines[-1].strip():
+                    lines.pop()
+                lines += ['', f'[{section.upper()}]', entry, '']
+            else:
+                last = start
+                for number in range(start + 1, end):
+                    if lines[number].strip():
+                        last = number
+                lines.insert(last + 1, entry)
+        content = '\n'.join(lines)
+        if not content.endswith('\n'):
+            content += '\n'
+        if content == text:
+            return None
+        backup = self.backup()
+        mode = os.stat(path).st_mode & 0o7777
+        folder = os.path.dirname(path)
+        handle, temporary = tempfile.mkstemp(prefix='.rapo.ini.', dir=folder)
+        try:
+            with os.fdopen(handle, 'w', encoding=encoding) as file:
+                file.write(content)
+            os.chmod(temporary, mode)
+            os.replace(temporary, path)
+        except Exception:
+            if os.path.exists(temporary):
+                os.remove(temporary)
+            raise
+        return backup
+
+    def backup(self):
+        """Copy rapo.ini to rapo.ini.bak-<timestamp>, readable by the owner
+        only, and delete all but the newest BACKUPS_KEPT copies.
+        """
+        stamp = dt.datetime.now().strftime('%Y%m%d%H%M%S%f')
+        target = f'{path}.bak-{stamp}'
+        shutil.copy2(path, target)
+        os.chmod(target, 0o600)
+        backups = sorted(glob.glob(glob.escape(path) + '.bak-*'), reverse=True)
+        for old in backups[BACKUPS_KEPT:]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+        return target
 
     def normalize(self, value):
         """Normalize given parameter value."""
