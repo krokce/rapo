@@ -217,6 +217,22 @@ function diskRoles(roles) {
   return parts.join(" · ") + (roles && (roles.input || roles.archive) ? " dirs" : "");
 }
 
+// At most this many symlinks are named in a disk tile's hint.
+const MAX_LINKS = 10;
+
+// A disk tile's hint: its device, what it holds and the symlinks leading onto it (/data_in → /iris/DATA1/data_in).
+function diskHint(template, disk) {
+  const lines = [`${template.hint}.`, `${disk.mount}${disk.device ? ` (${disk.device})` : ""} holds ${diskRoles(disk.roles)}.`];
+  const links = disk.links || [];
+  if (links.length) {
+    lines.push(...links.slice(0, MAX_LINKS).map(([link, target]) => `${link} → ${target}`));
+    if (links.length > MAX_LINKS) {
+      lines.push(`+${links.length - MAX_LINKS} more`);
+    }
+  }
+  return lines.join("\n");
+}
+
 // The Disk template made into one tile per file system of the latest point, each charting its own used percent from
 // the `disks` of every point (a point without the mount has no value). Its level is its own value against the disk
 // thresholds, since the rule "disk" is the fullest one.
@@ -235,7 +251,7 @@ export function diskTiles(points, thresholds) {
       ...template,
       key: `disk:${disk.mount}`,
       title: `Disk ${disk.mount}`,
-      hint: `${template.hint}. ${disk.mount}${disk.device ? ` (${disk.device})` : ""} holds ${diskRoles(disk.roles)}`,
+      hint: diskHint(template, disk),
       points: mountPoints,
       level,
       sub: (p) => (p.disk ? `${gb(p.disk.free_gb)} free of ${gb(p.disk.total_gb)} · ${diskRoles(p.disk.roles)}` : "–"),

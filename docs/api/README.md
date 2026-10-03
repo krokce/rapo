@@ -1105,9 +1105,11 @@ step: {os, db}, history_since, thresholds, os: [...], db: [...], footprint, acce
   and scan workers): `cpu`, `cpu_rapo` (% of all cores), `cpus`, `load`, `memory`, `memory_rapo` (%),
   `memory_rapo_gb`, `memory_total_gb`, `swap`, `processes`, `processes_rapo`, `disk` (used % of the fullest of
   `disks`), `disks` (one per file system holding the log directory, the folder of `rapo.ini` or a datasource's input
-  or archive directory, matched by mount point name only, the datasources read every `footprint_interval` s:
-  `{mount, device, roles: {logs, home, input, archive}` (directories held), `used_percent`, `used_gb`, `free_gb`,
-  `total_gb}`, or `error` when it did not answer in 2 s), `fds_rapo`, `net_rx_mbs`,
+  or archive directory, resolved once after the server starts: symlinks followed, the file system found by device
+  number, several mount points of one file system as the shortest; a directory missing on this host or not resolved
+  in 2 s is left out. `{mount, device, roles: {logs, home, input, archive}` (directories held), `links` (`[[link,
+  target]]`, the symlinks leading onto it), `used_percent`, `used_gb`, `free_gb`, `total_gb}`, or `error` when it did
+  not answer in 2 s; empty in the first sample), `fds_rapo`, `net_rx_mbs`,
   `net_tx_mbs` (all interfaces but `lo`, `null` at the first sample), `net_errors`, `net_drops` (since the sample
   before), `tcp_established`, `tcp_close_wait`, `tcp_time_wait` (the host's TCP connections), `rapo_db_sockets` (the
   process tree's connections to `[DATABASE] port`), `uptime` and `rapo_uptime` (seconds since the host booted and

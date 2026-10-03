@@ -8,7 +8,9 @@ connected to; rapo's own sessions are those tagged `module = 'rapo'`
 
 import concurrent.futures
 import os
+import re
 import socket
+import threading
 import time
 
 import psutil
@@ -161,11 +163,11 @@ def read_connections():
             'tcp_time_wait': states.get(psutil.CONN_TIME_WAIT, 0)}
 
 
-def read_os(directories=()):
+def read_os(mounts=None):
     """Read the OS metrics of this host, and rapo's share of them.
 
-    `directories` are the datasource directories, [(role, path)], whose file
-    systems are measured with those of the logs and of rapo.
+    `mounts` are the file systems to measure, as resolve_directories gives
+    them; none until they are resolved.
     """
     global tree
     if tree is None:
@@ -181,7 +183,7 @@ def read_os(directories=()):
         load = os.getloadavg()[0]
     except OSError:
         load = None
-    disks = read_disks(directories)
+    disks = read_disks(mounts or {})
     return {
         'cpu': psutil.cpu_percent(),
         'cpu_rapo': round(rapo['cpu'] / cpus, 1),
@@ -222,57 +224,161 @@ def read_directories():
     return directories
 
 
-# Seconds a file system may take to answer its usage; one that does not (a
-# hung network mount) is reported with an error and not asked again until it
-# answered.
+def base_directories():
+    """Get the directories of rapo itself, [(role, path)]."""
+    return [('logs', LOG_DIR), ('home', os.path.dirname(CONFIG_PATH))]
+
+
+# Seconds a path may take to resolve, or a file system to answer its usage;
+# one that does not (a hung network mount) is left out, or reported with an
+# error and not asked again until it answered.
 DISK_SECONDS = 2
-disk_pool = concurrent.futures.ThreadPoolExecutor(
-    max_workers=4, thread_name_prefix='rapo-health-disk')
+# Paths resolved at once, each in a thread of its own.
+RESOLVE_BATCH = 32
 disk_pending = {}
 
 
+def call_in_daemon(function, *args):
+    """Run a function in a daemon thread, answering a Future.
+
+    A pool's threads are joined at exit, so one hung in a file system call
+    would keep the server from stopping; a daemon thread is abandoned.
+    """
+    future = concurrent.futures.Future()
+
+    def target():
+        try:
+            future.set_result(function(*args))
+        except BaseException as error:
+            future.set_exception(error)
+
+    threading.Thread(target=target, name='rapo-health-disk',
+                     daemon=True).start()
+    return future
+
+
+def read_mounts():
+    """Get the mounts of this host, {device number: (mount point, source)}.
+
+    Read from /proc/self/mountinfo, whose major:minor is the st_dev of every
+    file in the mount; of several mount points of one file system (a bind
+    mount, an export mounted twice) the shortest is kept. Elsewhere from
+    psutil, by the st_dev of each mount point.
+    """
+    mounts = {}
+
+    def add(device, mount, source):
+        if device not in mounts or len(mount) < len(mounts[device][0]):
+            mounts[device] = (mount, source)
+
+    try:
+        with open('/proc/self/mountinfo', encoding='utf-8') as file:
+            for line in file:
+                fields = line.split()
+                separator = fields.index('-')
+                major, minor = fields[2].split(':')
+                # Spaces and the like are octal escapes, e.g. \040.
+                mount = re.sub(r'\\([0-7]{3})',
+                               lambda match: chr(int(match.group(1), 8)),
+                               fields[4])
+                add(os.makedev(int(major), int(minor)), mount,
+                    fields[separator + 2])
+        return mounts
+    except (OSError, ValueError, IndexError):
+        pass
+    for item in psutil.disk_partitions(all=True):
+        try:
+            add(os.stat(item.mountpoint).st_dev, item.mountpoint, item.device)
+        except OSError:
+            continue
+    return mounts
+
+
 def mount_of(path, mounts):
-    """Get the mount point holding `path`, the longest one it starts with."""
-    best = '/'
-    for mount in mounts:
+    """Get the mount point holding `path` by name, the longest one it starts
+    with: for a device not listed by its number (e.g. a btrfs subvolume).
+    """
+    best = None
+    for mount, source in mounts.values():
         if ((path == mount or path.startswith(mount.rstrip('/') + '/'))
-                and len(mount) > len(best)):
-            best = mount
+                and (best is None or len(mount) > len(best[0]))):
+            best = (mount, source)
     return best
 
 
-def read_disks(directories):
-    """Get the usage of each file system holding the logs, rapo or one of
-    the `directories`, with how many of them it holds by role.
-
-    Datasource paths are matched to the mounts by name only, so a missing
-    directory or a hung network mount never blocks the sample.
+def resolve_path(path):
+    """Get the real path of a directory, its device number and the symlink
+    leading to it, (link, target) or None. Raises when it does not exist.
     """
-    try:
-        partitions = psutil.disk_partitions(all=True)
-    except Exception:
-        partitions = []
-    devices = {item.mountpoint: item.device for item in partitions}
-    paths = [('logs', os.path.realpath(LOG_DIR)),
-             ('home', os.path.realpath(os.path.dirname(CONFIG_PATH))),
-             *((role, os.path.normpath(path)) for role, path in directories
-               if path and os.path.isabs(path))]
-    roles = {}
-    for role, path in dict.fromkeys(paths):
-        counts = roles.setdefault(mount_of(path, devices), {})
-        counts[role] = counts.get(role, 0) + 1
+    path = os.path.normpath(path)
+    real = os.path.realpath(path)
+    device = os.stat(real).st_dev
+    link = None
+    if real != path:
+        parts = path.split(os.sep)
+        for index in range(2, len(parts) + 1):
+            prefix = os.sep.join(parts[:index]) or os.sep
+            if os.path.islink(prefix):
+                link = (prefix, os.path.realpath(prefix))
+                break
+    return real, device, link
+
+
+def resolve_directories(directories):
+    """Get the file systems holding the directories, [(role, path)], as
+    {mount: {device, roles: {role: count}, links: [(link, target)]}}.
+
+    Symlinks are followed and each directory is found on its file system by
+    its device number. A directory missing on this host, or not resolved in
+    DISK_SECONDS (a hung network mount), is left out.
+    """
+    mounts = read_mounts()
+    pairs = list(dict.fromkeys((role, path) for role, path in directories
+                               if path and os.path.isabs(path)))
+    paths = list(dict.fromkeys(path for _, path in pairs))
+    resolved = {}
+    for start in range(0, len(paths), RESOLVE_BATCH):
+        batch = paths[start:start + RESOLVE_BATCH]
+        futures = {path: call_in_daemon(resolve_path, path) for path in batch}
+        deadline = time.monotonic() + DISK_SECONDS
+        for path, future in futures.items():
+            try:
+                resolved[path] = future.result(
+                    timeout=max(deadline - time.monotonic(), 0.01))
+            except Exception:
+                continue
+    output = {}
+    for role, path in pairs:
+        if path not in resolved:
+            continue
+        real, device, link = resolved[path]
+        mount, source = mounts.get(device) or mount_of(real, mounts) or (None,
+                                                                          None)
+        if mount is None:
+            continue
+        item = output.setdefault(mount, {'device': source, 'roles': {},
+                                         'links': []})
+        item['roles'][role] = item['roles'].get(role, 0) + 1
+        if link and list(link) not in item['links']:
+            item['links'].append(list(link))
+    return output
+
+
+def read_disks(mounts):
+    """Get the usage of each file system of `mounts` (resolve_directories),
+    with how many of the directories it holds by role.
+    """
     futures = {}
-    for mount in roles:
+    for mount in mounts:
         future = disk_pending.get(mount)
         if future is None or future.done():
-            future = disk_pending[mount] = disk_pool.submit(
-                psutil.disk_usage, mount)
+            future = disk_pending[mount] = call_in_daemon(psutil.disk_usage,
+                                                          mount)
         futures[mount] = future
     deadline = time.monotonic() + DISK_SECONDS
     disks = []
-    for mount in sorted(roles):
-        disk = {'mount': mount, 'device': devices.get(mount),
-                'roles': roles[mount]}
+    for mount in sorted(mounts):
+        disk = {'mount': mount, **mounts[mount]}
         try:
             usage = futures[mount].result(
                 timeout=max(deadline - time.monotonic(), 0.01))

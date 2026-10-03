@@ -19,7 +19,7 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   `[ANALYSIS] discrepancy_*`. New routes `start-|get-|stop-discrepancy-analysis`.
 
 - **Instance health** (*Instance details* → *Health Rapo server* / *Health Database*, charts filling the dialog):
-  server (CPU, memory, a disk per file system of the logs, rapo and datasource input/archive directories, network,
+  server (CPU, memory, a disk per file system (symlinks followed) of the logs, rapo and datasource input/archive directories, network,
   TCP connections, processes) and database (CPU, PGA/SGA, storage in GB, I/O, sessions, locks), each under its name and
   uptimes, each a value and a live chart over 1–24 h (span remembered) with rapo's own share; warning levels color
   the tiles and put a dot on the header button; Sessions/Locks list the sessions and blockers (a run's control by

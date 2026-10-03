@@ -183,8 +183,11 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - **Server:** CPU, memory, processes and disk of this server's host, each a value and a chart, with rapo's own
      share (the server, its runs, analysis and scan workers) as a second, dashed line: CPU and memory used by rapo,
      rapo's processes and open files. *Disk*: one tile per file system holding the logs, `rapo.ini` or a
-     datasource's input or archive directory, with its free space and what it holds (e.g. *logs · rapo · 72 input ·
-     61 archive dirs*); a directory missing on this host counts on the file system its path falls under. *Network*: received and sent
+     datasource's input or archive directory, titled by its mount point, with its free space and what it holds (e.g.
+     *logs · rapo · 72 input · 61 archive dirs*). Symlinks are followed, so `/data_in -> /iris/DATA1/data_in` counts
+     on `/iris/DATA1`, and directories on one file system share its tile (its hint names the device and the links).
+     The directories are resolved once after the server starts: a datasource added later counts from the next
+     restart. A directory missing on this host, or on a mount that does not answer in 2 s, is left out. *Network*: received and sent
      per second over all interfaces but loopback, with errors and drops. *Connections*: the host's established TCP
      connections and those in CLOSE_WAIT (closed by the other side but never by a local program, a leak when it
      grows), TIME_WAIT, and rapo's connections to the database.
