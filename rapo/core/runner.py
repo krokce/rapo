@@ -507,9 +507,9 @@ class RunManager:
                     control._cancel()
                 elif failed:
                     control._save_text_message(
-                        f'Upstream control {label} ended C.')
+                        f'Chain source control {label} ended C.')
                     control._save_text_error(
-                        f'Upstream control {label} ended C: {message}')
+                        f'Chain source control {label} ended C: {message}')
                     control.executor.release_lock()
                     control._set_as_error()
                 else:

@@ -194,13 +194,13 @@ const PREREQUISITE = [
     text: "select count(*)\nfrom user_tab_partitions\nwhere table_name = 'DS_CALLS'\n  and partition_name = 'P{control_date:%Y%m%d}'",
   },
   {
-    title: "Upstream control finished for the same window",
+    title: "Preceding control finished for the same window",
     caption: `Waits for another rapo control to end with status D. ${PREREQUISITE_NOTE}`,
     text:
       "select count(*)\n" +
       "from rapo_log l\n" +
       "join rapo_config c on c.control_id = l.control_id\n" +
-      "where c.control_name = 'UPSTREAM_CONTROL'\n" +
+      "where c.control_name = 'PRECEDING_CONTROL'\n" +
       "  and l.status = 'D'\n" +
       `  and l.date_from = ${WINDOW_FROM}`,
   },

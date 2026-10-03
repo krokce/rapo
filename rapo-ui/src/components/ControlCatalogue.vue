@@ -149,6 +149,13 @@
         use-chips
         :options="attributeOptions"
         label="Control attributes">
+        <!-- The attributes in groups: a group's name is a caption, not an option. -->
+        <template #option="scope">
+          <q-item-label v-if="scope.opt.header" header class="q-pt-sm q-pb-xs text-weight-bold">{{ scope.opt.label }}</q-item-label>
+          <q-item v-else v-bind="scope.itemProps">
+            <q-item-section class="q-pl-sm">{{ scope.opt.label }}</q-item-section>
+          </q-item>
+        </template>
       </q-select>
 
     </div>
@@ -485,7 +492,7 @@ import { chainIndex } from "../utils/chain";
 import { controlGroups, controlSystems, filterOptions, NO_CONTROL_GROUP } from "../utils/controlGroups";
 import { sendsEmail } from "../utils/email";
 import { formatNumber, toDateTimeString, toMillis } from "../utils/format";
-import { scheduleText, scheduleUnits, windowLabel } from "../utils/schedule";
+import { scheduleFrequency, scheduleText, scheduleUnits, windowLabel } from "../utils/schedule";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -841,10 +848,19 @@ export default {
     systemFilterOptions() {
       return controlSystems(this.controlCatalogue);
     },
+    // The attributes by group, the run steps in the order a run performs them; each group starts with a header.
     attributeOptions() {
-      const options = ["DB engine", "PL engine", "Preparation SQL", "Prerequisite SQL", "Completion SQL", "Iterations", "Chain", "Case definition", "Pre-run hook", "Post-run hook", "No Post-run hook"];
-      if (this.kpiControlIds !== null) options.push("No KPI");
-      return [...options, "Email", "Schema drift", "Datasource missing"];
+      const groups = [
+        ["Execution", ["DB engine", "PL engine"]],
+        ["Scheduling", ["Cascade schedule", "Chain", "Iterations"]],
+        ["Run steps", ["Preparation SQL", "Prerequisite SQL", "Pre-run hook", "Case definition", "Completion SQL", "Post-run hook", "No Post-run hook"]],
+        ["Output", ["Email", ...(this.kpiControlIds !== null ? ["No KPI"] : [])]],
+        ["Issues", ["Schema drift", "Datasource missing"]],
+      ];
+      return groups.flatMap(([group, values]) => [
+        { label: group, value: `header:${group}`, header: true, disable: true },
+        ...values.map((value) => ({ label: value, value })),
+      ]);
     },
     // Skeleton rows only while nothing is known yet; a catalogue already in the store is shown at once.
     showSkeleton() {
@@ -919,6 +935,7 @@ export default {
             (attr === "Prerequisite SQL" && item.prerequisite_sql) ||
             (attr === "Completion SQL" && item.completion_sql) ||
             (attr === "Iterations" && this.iterationCount(item) > 0) ||
+            (attr === "Cascade schedule" && scheduleFrequency(item.schedule_config) === "cascade") ||
             (attr === "Chain" && this.chains.has(item.control_name)) ||
             (attr === "Case definition" && item.case_config) ||
             (attr === "Pre-run hook" && item.need_prerun_hook === "Y") ||

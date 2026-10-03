@@ -87,10 +87,9 @@ export function chainOf(controlName, catalogue) {
   return { iterations, cascade: cascade.map((item) => item.control_name), upstream: allUpstreams(controlName, catalogue) };
 }
 
-// A sentence naming the controls a run cascades into, or "" when it cascades into none.
-// The iterations are not named here: they are optional on a manual run and have their own switch.
-export function cascadeMessage(cascade) {
-  return cascade.length ? `This will also cascade into ${cascade.join(", ")}.` : "";
+// The label of the option of a manual run to cascade into the controls following it (off unless ticked).
+export function cascadeLabel(cascade) {
+  return `Cascade into ${cascade.join(", ")}`;
 }
 
 // The values of one unit a moment can match, as schedule.check matches them; null for "any" (null or "*").
@@ -230,8 +229,8 @@ function timePhrase(units) {
 }
 
 // A short description of a schedule_config: "Every day at 08:15", "Weekly on Monday at 08:15", "Twice a month
-// (1st, 2nd) at 08:15:01", "Every hour at :05:12", "After CHN_B finishes", "Not scheduled". `triggerName` names the
-// control a cascade follows.
+// (1st, 2nd) at 08:15:01", "Every hour at :05:12", "After CHN_B finishes · own window", "Not scheduled". `triggerName`
+// names the control a cascade follows; a scheduled cascade counts its own periods back from that control's fire time.
 export function describeSchedule(config, triggerName = null) {
   const units = scheduleUnits(config);
   if (!units) {
@@ -239,7 +238,7 @@ export function describeSchedule(config, triggerName = null) {
   }
   if (!units.fires) {
     if (units.trigger_id) {
-      return `After ${triggerName || `control ${units.trigger_id}`} finishes`;
+      return `After ${triggerName || `control ${units.trigger_id}`} finishes · own window`;
     }
     return units.set ? "Never fires" : "Not scheduled";
   }

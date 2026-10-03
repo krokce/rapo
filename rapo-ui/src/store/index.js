@@ -22,6 +22,8 @@ const store = createStore({
       controlResults: [],
       controlResultsDay: null,
       serverToday: null,
+      // The server's clock minus the browser's, as of the last get-control-runs (utils/clock.js).
+      serverClockOffset: 0,
       tokenIsValid: false,
       tokenValue: "",
       socketConnected: false,
@@ -37,6 +39,8 @@ const store = createStore({
       datasourceStatus: null,
       // The file log of one day as aggregates (get-files-day), and the lane locks of PDI Core (get-pdi-state).
       fileDay: null,
+      // The database's clock (the file log's) minus the browser's, as of the last get-files-day (utils/clock.js).
+      databaseClockOffset: 0,
       pdiState: null,
     };
   },

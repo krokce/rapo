@@ -7,6 +7,18 @@ export function triggerOf(run) {
   return TRIGGER_TYPES[run.trigger_type] || { label: run.trigger_type || "Trigger not recorded", icon: "fas fa-question" };
 }
 
+// The trigger a run is filtered by: its trigger_type, or NO_TRIGGER when none was recorded (null means no filter).
+export const NO_TRIGGER = "NONE";
+
+export function triggerKey(run) {
+  return run.trigger_type || NO_TRIGGER;
+}
+
+// The trigger of a filter key, as triggerOf gives it.
+export function triggerOfKey(key) {
+  return triggerOf({ trigger_type: key === NO_TRIGGER ? null : key });
+}
+
 export function triggerTitle(run) {
   if (!run.trigger_type) {
     return "Trigger not recorded";

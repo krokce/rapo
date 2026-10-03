@@ -17,7 +17,7 @@
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="When the run started, and what started it: hover its icon" class="col-start text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
+            <th :title="filterable ? 'When the run started, and what started it: hover its icon, click it to filter by it (again: clears the filter)' : 'When the run started, and what started it: hover its icon'" class="col-start text-left sortable" @click="toggleSort(sort, 'start_date')" v-keyboard :aria-sort="ariaSort(sort, 'start_date')">
               Start
               <q-icon v-if="sort.key === 'start_date'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -89,7 +89,12 @@
             <div class="text-blue-grey-7 no-wrap row items-center">
               <strong>{{ toDateString(run.start_date) }}</strong>
               <small class="text-grey-7 q-px-sm">{{ toTimeString(run.start_date) }}</small>
-              <q-icon :name="triggerOf(run).icon" size="11px" :class="run.trigger_type ? 'text-blue-grey-4' : 'text-grey-4'" :title="triggerTitle(run)" />
+              <q-icon
+                :name="triggerOf(run).icon"
+                size="11px"
+                :class="[run.trigger_type ? 'text-blue-grey-4' : 'text-grey-4', { 'cursor-pointer': filterable }]"
+                :title="filterable ? `${triggerTitle(run)}; click to filter by it` : triggerTitle(run)"
+                @click="filterable && $emit('filter', { trigger_type: triggerKey(run) })" />
             </div>
           </td>
           <td class="text-right number-cell">{{ round(run.duration_minutes, 1) }} min</td>
@@ -247,7 +252,7 @@ import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
 import { textWidth } from "../utils/layout";
-import { runSortValue, startsNewDay, triggerOf, triggerTitle } from "../utils/runs";
+import { runSortValue, startsNewDay, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // A table of runs (get-control-runs rows), shared by the Results page and the editor's Run log: sortable columns,
@@ -345,6 +350,7 @@ export default {
     toDateString,
     toTimeString,
     toggleSort,
+    triggerKey,
     triggerOf,
     triggerTitle,
     openNumberMenu(event, row, dataset) {

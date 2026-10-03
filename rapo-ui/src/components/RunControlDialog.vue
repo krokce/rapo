@@ -44,6 +44,10 @@
             <q-toggle v-if="iterationCount" color="teal" :label="`Run ${iterationCount} iteration${iterationCount > 1 ? 's' : ''}`" v-model="iterations">
               <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Also run the control for the periods of its iteration configuration </q-tooltip>
             </q-toggle>
+
+            <q-toggle v-if="chain.cascade.length" color="teal" :label="cascadeLabel" v-model="cascade">
+              <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Also run the controls cascading from this one, for the same dates </q-tooltip>
+            </q-toggle>
           </div>
 
           <div v-if="iterations" class="q-mt-sm text-caption text-grey-8">
@@ -62,10 +66,6 @@
         <q-icon name="fas fa-link" class="q-mr-xs" />{{ upstreamNote }}
       </q-card-section>
 
-      <q-card-section v-if="cascadeNote" class="text-caption text-grey-8">
-        <q-icon name="fas fa-diagram-project" class="q-mr-xs" />{{ cascadeNote }}
-      </q-card-section>
-
       <q-card-actions align="right">
         <q-btn v-close-popup="-1" flat color="primary" label="Run" icon="fas fa-play" @click="runControl" />
       </q-card-actions>
@@ -77,7 +77,7 @@
 import { mapActions, mapState } from "vuex";
 import { api, notifyError } from "../api";
 import { startRun } from "../runActions";
-import { cascadeMessage, chainOf } from "../utils/schedule";
+import { cascadeLabel, chainOf } from "../utils/schedule";
 import { upstreamMessage } from "../utils/chain";
 import { localDate, toDateString } from "../utils/format";
 
@@ -91,6 +91,7 @@ export default {
       range: false,
       debug_mode: false,
       iterations: false,
+      cascade: false,
       iterationPreview: [],
       previewTimer: null,
       selectDate: localDate(),
@@ -103,9 +104,9 @@ export default {
     chain() {
       return chainOf(this.run_control_name, this.controlCatalogue);
     },
-    // A run always cascades into the controls following it, so the dialog names them.
-    cascadeNote() {
-      return cascadeMessage(this.chain.cascade);
+    // A manual run cascades into the controls following it only when asked to.
+    cascadeLabel() {
+      return cascadeLabel(this.chain.cascade);
     },
     // The controls whose results it reads run first, for the same period.
     upstreamNote() {
@@ -173,6 +174,7 @@ export default {
         name: this.run_control_name,
         debug_mode: this.debug_mode ? "true" : null,
         iterations: this.iterations ? "true" : null,
+        cascade: this.cascade ? "true" : "false",
         ...this.dateParams(),
       };
 
@@ -203,6 +205,7 @@ export default {
     range: "schedulePreviewFetch",
     run_control_name() {
       this.iterations = false;
+      this.cascade = false;
       this.iterationPreview = [];
     },
   },

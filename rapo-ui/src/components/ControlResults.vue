@@ -21,13 +21,23 @@
         clickable
         @filter-type="(type) => (filter.type = type)"
         @filter-status="addStatusFilter"
-        @filter-warnings="filter.warnings = true" />
+        @filter-warnings="filter.warnings = true"
+        @filter-trigger="toggleTrigger" />
     </div>
 
     <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-sm" @clear="clearFilters" />
 
     <!-- Runs per hour, following every filter but the hour, which a click picks. -->
-    <hour-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" unit="run(s)" corner="warnings" class="q-mb-md" @select="(hour) => (filter.hour = hour)" />
+    <hour-heatmap
+      v-if="hasDay"
+      :rows="heatmap"
+      :selected="filter.hour"
+      :now="nowPosition"
+      :now-label="nowLabel"
+      unit="run(s)"
+      corner="warnings"
+      class="q-mb-md"
+      @select="(hour) => (filter.hour = hour)" />
 
     <run-table
       :runs="filteredControlResults"
@@ -68,8 +78,9 @@ import { runStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { dayTitle, toDateString } from "../utils/format";
 import { hourRange } from "../utils/files";
-import { runHeatmapRows, runHour, runMatchesSearch } from "../utils/runs";
+import { runHeatmapRows, runHour, runMatchesSearch, triggerKey, triggerOfKey } from "../utils/runs";
 import { fillViewportToBottom } from "../utils/layout";
+import { clockLabel, dayPosition } from "../utils/clock";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import persistFilters from "../mixins/persistFilters";
 
@@ -96,6 +107,7 @@ export default {
         status: [],
         warnings: null,
         hour: null,
+        trigger_type: null,
       },
       // The process ID found to have no run by "Go to its day".
       missingRun: null,
@@ -103,6 +115,8 @@ export default {
         key: "start_date",
         dir: "desc",
       },
+      // The browser's time, moved on every minute for the heatmap's Now marker.
+      now: Date.now(),
       // The ids of the controls with KPIs, which the row menu offers Calculate KPIs for; null without KPI tables.
       kpiControlIds: null,
     };
@@ -167,10 +181,15 @@ export default {
         this.filter.status.push(status);
       }
     },
-    // A type or status chip, or the name's magnifier, clicked in the table.
-    applyRowFilter({ type, status, control_name }) {
+    // A trigger (a triggerKey) clicked in the summary or the table filters by it; the one filtered by clears it.
+    toggleTrigger(key) {
+      this.filter.trigger_type = this.filter.trigger_type === key ? null : key;
+    },
+    // A type or status chip, the trigger icon or the name's magnifier, clicked in the table.
+    applyRowFilter({ type, status, trigger_type, control_name }) {
       if (type) this.filter.type = type;
       if (status) this.addStatusFilter(status);
+      if (trigger_type) this.toggleTrigger(trigger_type);
       // The magnifier of the name filtered by clears it.
       if (control_name) this.filter.control_name = this.filter.control_name === control_name ? null : control_name;
     },
@@ -181,11 +200,19 @@ export default {
       this.filter.status = [];
       this.filter.warnings = null;
       this.filter.hour = null;
+      this.filter.trigger_type = null;
       this.$store.commit("updateSearch", "");
     },
   },
   computed: {
-    ...mapState(["controlResults", "controlResultsDay", "serverToday"]),
+    ...mapState(["controlResults", "controlResultsDay", "serverToday", "serverClockOffset"]),
+    // The present by the server's clock, which the runs' hours are counted in: marked on today's heatmap only.
+    nowPosition() {
+      return dayPosition(this.now + this.serverClockOffset, this.day);
+    },
+    nowLabel() {
+      return clockLabel(this.now + this.serverClockOffset);
+    },
     // The day shown: ?date=YYYY-MM-DD, or the server's today.
     day() {
       return this.$route.query.date || this.serverToday;
@@ -211,6 +238,9 @@ export default {
           (value) => (filter.status = filter.status.filter((item) => item !== value)),
           (value) => runStatus(value).label,
         ),
+        ...valueFilter("trigger", "Trigger", filter.trigger_type, () => (filter.trigger_type = null), {
+          label: filter.trigger_type === null ? null : triggerOfKey(filter.trigger_type).label,
+        }),
         ...valueFilter("warnings", "Warnings", filter.warnings || null, () => (filter.warnings = null), { label: "Flagged runs" }),
         ...valueFilter("hour", "Hour", filter.hour, () => (filter.hour = null), { label: filter.hour === null ? null : hourRange(filter.hour) }),
         ...searchFilter(this.$store),
@@ -229,7 +259,8 @@ export default {
           (!name || (item.control_name || "").toUpperCase() === name) &&
           (!this.filter.type || item.control_type === this.filter.type) &&
           (this.filter.status.length === 0 || this.filter.status.includes(item.status)) &&
-          (!this.filter.warnings || item.has_warning)
+          (!this.filter.warnings || item.has_warning) &&
+          (!this.filter.trigger_type || triggerKey(item) === this.filter.trigger_type)
       );
     },
     filteredControlResults() {
@@ -266,11 +297,14 @@ export default {
     this.stopKpiUpdates = liveRefetch("controls:changed", () => this.refreshKpiControls());
     this.refreshControlResults();
     this.refreshKpiControls();
+    this.now = Date.now();
+    this.clock = setInterval(() => (this.now = Date.now()), 60000);
   },
   deactivated() {
     this.active = false;
     this.stopLiveUpdates();
     this.stopKpiUpdates();
+    clearInterval(this.clock);
   },
 };
 </script>

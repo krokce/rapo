@@ -1,3 +1,5 @@
+import { clockOffset } from "../utils/clock";
+
 // Rows of the big lists are read-only snapshots replaced wholesale on every fetch, so they are frozen: Vue then
 // skips making thousands of rows deeply reactive.
 const freezeRows = (rows) => Object.freeze(rows.map(Object.freeze));
@@ -37,6 +39,7 @@ export default {
     state.controlResults = freezeRows(payload.runs);
     state.controlResultsDay = payload.date;
     state.serverToday = payload.today;
+    state.serverClockOffset = clockOffset(payload.server_time);
   },
   updateSchedulerStatus(state, payload) {
     state.schedulerStatus = payload;
@@ -52,6 +55,7 @@ export default {
   },
   updateFileDay(state, payload) {
     state.fileDay = Object.freeze(payload);
+    state.databaseClockOffset = clockOffset(payload.database_time);
   },
   updatePdiState(state, payload) {
     state.pdiState = Object.freeze(payload);

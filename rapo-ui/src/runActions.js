@@ -3,7 +3,7 @@
 import { Dialog, Notify } from "quasar";
 import { api, notifyError } from "./api";
 import store from "./store";
-import { cascadeMessage, chainOf } from "./utils/schedule";
+import { cascadeLabel, chainOf } from "./utils/schedule";
 import { upstreamMessage } from "./utils/chain";
 import { copyText, toDateString, toDateTimeString } from "./utils/format";
 
@@ -37,10 +37,10 @@ async function chainOfRun(controlName) {
 }
 
 // The iterations of a manual run are optional and off by default, so the confirmation offers them
-// as a checkbox naming the dates they would run for, which the engine computes.
-async function iterationOption(run, chain) {
+// as a checkbox item naming the dates they would run for, which the engine computes.
+async function iterationItem(run, chain) {
   if (!chain.iterations) {
-    return undefined;
+    return null;
   }
   let preview = [];
   try {
@@ -59,16 +59,22 @@ async function iterationOption(run, chain) {
     })
     .join(", ");
   const label = `Run ${chain.iterations} iteration${chain.iterations > 1 ? "s" : ""}${dates ? ` (${dates})` : ""}`;
-  return { type: "checkbox", model: [], items: [{ label, value: "iterations" }] };
+  return { label, value: "iterations" };
+}
+
+// The unticked options of a re-run: its iterations, and the cascade into the controls following it.
+async function runOptions(run, chain) {
+  const items = [await iterationItem(run, chain), chain.cascade.length ? { label: cascadeLabel(chain.cascade), value: "cascade" } : null].filter(Boolean);
+  return items.length ? { type: "checkbox", model: [], items } : undefined;
 }
 
 export async function reRun(run, onDone) {
   const from = toDateString(run.date_from);
   const to = toDateString(run.date_to);
   const chain = await chainOfRun(run.control_name);
-  const note = [upstreamMessage(chain.upstream), cascadeMessage(chain.cascade)].filter(Boolean).join(" ");
+  const note = upstreamMessage(chain.upstream);
   const question = `Re-run for '${from}'${from !== to ? ` - '${to}'` : ""}?`;
-  const selected = await confirm(run.control_name, note ? `${question} ${note}` : question, await iterationOption(run, chain));
+  const selected = await confirm(run.control_name, note ? `${question} ${note}` : question, await runOptions(run, chain));
   if (!selected) {
     return;
   }
@@ -78,13 +84,14 @@ export async function reRun(run, onDone) {
       date_from: toDateTimeString(run.date_from),
       date_to: toDateTimeString(run.date_to),
       iterations: selected.includes("iterations") ? "true" : null,
+      cascade: selected.includes("cascade") ? "true" : "false",
     })
   ) {
     onDone();
   }
 }
 
-// Queues a run (`params`: name, the window, debug_mode, iterations) and says so; false when the server refused it.
+// Queues a run (`params`: name, the window, debug_mode, iterations, cascade) and says so; false when the server refused it.
 export async function startRun(params) {
   try {
     await api("run-control", { method: "POST", params });

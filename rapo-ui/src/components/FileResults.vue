@@ -98,7 +98,14 @@
       All lanes are locked since {{ toDateTimeString(globalLock) }} (the LOCK record of PDI_CORE_STATE): PDI Core loads no file.
     </q-banner>
 
-    <hour-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" class="q-mt-sm q-mb-md" @select="(hour) => (filter.hour = hour)" />
+    <hour-heatmap
+      v-if="hasDay"
+      :rows="heatmap"
+      :selected="filter.hour"
+      :now="nowPosition"
+      :now-label="nowLabel"
+      class="q-mt-sm q-mb-md"
+      @select="(hour) => (filter.hour = hour)" />
 
     <div class="row items-center q-mb-sm">
       <q-input
@@ -312,6 +319,7 @@ import FileListDialog from "./FileListDialog.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { compactNumber, dayTitle, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
+import { clockLabel, dayPosition } from "../utils/clock";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
@@ -353,6 +361,8 @@ export default {
     return {
       refreshing: false,
       loadError: false,
+      // The browser's time, moved on every minute for the heatmap's Now marker.
+      now: Date.now(),
       fileSearch: "",
       fileSearchResults: [],
       fileSearchOpen: false,
@@ -372,7 +382,14 @@ export default {
     };
   },
   computed: {
-    ...mapState(["fileDay", "pdiState", "datasourceCatalogue", "datasourceStatus"]),
+    ...mapState(["fileDay", "databaseClockOffset", "pdiState", "datasourceCatalogue", "datasourceStatus"]),
+    // The present by the database's clock, which stamps the file log: marked on today's heatmap only.
+    nowPosition() {
+      return dayPosition(this.now + this.databaseClockOffset, this.day);
+    },
+    nowLabel() {
+      return clockLabel(this.now + this.databaseClockOffset);
+    },
     ...mapGetters(["getSearch", "getEnvInfo"]),
     // The day shown: ?date=YYYY-MM-DD, or the database's today.
     day() {
@@ -797,10 +814,13 @@ export default {
     this.refreshState();
     this.updateDatasourceCatalogue().catch(() => null);
     this.updateDatasourceStatus().catch(() => null);
+    this.now = Date.now();
+    this.clock = setInterval(() => (this.now = Date.now()), 60000);
   },
   deactivated() {
     this.active = false;
     this.stopLiveUpdates();
+    clearInterval(this.clock);
   },
 };
 </script>

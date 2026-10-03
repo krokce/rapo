@@ -25,7 +25,12 @@
       {{ summary.runs === 1 ? "run" : "runs" }}
       <span v-if="summary.triggers.length">
         &middot;
-        <span v-for="item in summary.triggers" :key="String(item.key)" class="q-ml-xs q-mr-xs text-no-wrap">
+        <span
+          v-for="item in summary.triggers"
+          :key="String(item.key)"
+          class="q-ml-xs q-mr-xs text-no-wrap"
+          :class="{ 'cursor-pointer': clickable }"
+          @click="clickable && $emit('filter-trigger', triggerKey({ trigger_type: item.key }))">
           <q-icon :name="triggerOf({ trigger_type: item.key }).icon" size="11px" :class="item.key ? 'text-blue-grey-5' : 'text-grey-5'" />
           {{ item.count }}
           <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
@@ -56,7 +61,7 @@
 <script>
 import { controlType, runStatus } from "../constants";
 import { compactNumber, formatDuration, formatNumber } from "../utils/format";
-import { runSummary, triggerOf } from "../utils/runs";
+import { runSummary, triggerKey, triggerOf } from "../utils/runs";
 
 // The totals of a list of runs, as the Results page and the editor's Run log show them above their RunTable: the
 // type, status and warning chips, then the runs, their triggers, the failing controls, records fetched and runtime.
@@ -66,10 +71,10 @@ export default {
     // The type chips and the control counts (controls, failing), which say nothing about one control's runs.
     showTypes: { type: Boolean, default: false },
     showControls: { type: Boolean, default: false },
-    // Chips emit filter-type, filter-status and filter-warnings when clicked.
+    // Chips emit filter-type, filter-status and filter-warnings, triggers filter-trigger (a triggerKey) when clicked.
     clickable: { type: Boolean, default: false },
   },
-  emits: ["filter-type", "filter-status", "filter-warnings"],
+  emits: ["filter-type", "filter-status", "filter-warnings", "filter-trigger"],
   computed: {
     summary() {
       return runSummary(this.runs);
@@ -81,6 +86,7 @@ export default {
     formatDuration,
     formatNumber,
     runStatus,
+    triggerKey,
     triggerOf,
   },
 };

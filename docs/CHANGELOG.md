@@ -49,12 +49,21 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   run; the name magnifier filters by the exact control and clears on a second click. `get-control-run` answers `added`.
 - **Scheduler page:** a status bar of live chips beside the title (state, server, heartbeat, slots gauge, next fire,
   24 h counters) linking to the tabs instead of the status card; filter fields removed (header search, count chips that filter); Upcoming = next 24 hours incl.
-  cascades and upstreams (*Trigger* column, *via*), History = last 24 hours plus an *Older missed* chip; a green/blue
+  cascades and chain sources (*Trigger* column, *via*), History = last 24 hours plus an *Older missed* chip; a green/blue
   24-hour heatmap above each (failed/error outlined, missed marked, click filters the hour); Running is a tab of its own (counts on the tab, scrolls inside) with the run
   window in History's column order. `scheduler-upcoming` cascades/upstreams, `scheduler-events?hours=`, new
   `get-missed-fires`.
 - **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
-  catch-up, iteration, cascade, upstream); hover for details. The day's totals count the runs per trigger.
+  catch-up, iteration, cascade, chain); hover for details. The day's totals count the runs per trigger. A click on
+  either filters by the trigger (again: clears); Scheduler trigger clicks toggle too.
+- **Manual runs cascade only when ticked:** *Run* and *Re-run* offer *Cascade into X* (off); `run-control` takes
+  `cascade` (default `true` for API callers). Scheduled/catch-up runs unchanged.
+- **"Upstream" renamed "Chain"** in the UI and run log (stored code stays `UPSTREAM`). A scheduled cascade's window
+  is its own periods counted back from the fire time of the control it follows (*After X finishes · own window*,
+  explained in the editor). Controls: *Cascade schedule* attribute; the attribute list is grouped.
+- **Now marker** on the hour heatmaps (Results, Files, file log on today; Scheduler Upcoming/History): a line at the
+  current minute under a clock icon and *Now HH:MM*, by the server's or the database's clock as the hours are; the
+  Scheduler's midnight divider is drawn alike, in grey, with a calendar icon.
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,
   day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 

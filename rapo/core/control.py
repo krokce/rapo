@@ -889,7 +889,7 @@ class Control:
                                         f'results in a cycle: {cycle}.')
             run = self.chain_runs.get(name)
             if run is None:
-                logger.info(f'{self} Running upstream control {name} '
+                logger.info(f'{self} Running chain source control {name} '
                             f'for {self.date_from} - {self.date_to}...')
                 try:
                     control = self.__class__(name=name,
@@ -910,11 +910,11 @@ class Control:
                 run = {'process_id': control.process_id, 'status': status}
                 self.chain_runs[name] = run
                 self._announce()
-                logger.info(f'{self} Upstream control {name} '
+                logger.info(f'{self} Chain source control {name} '
                             f'[{run["process_id"]}] ended {status}')
             if run['status'] != 'D':
                 status = run['status'] or 'canceled'
-                return self._fail_chain(f'Upstream control {name} '
+                return self._fail_chain(f'Chain source control {name} '
                                         f'[{run["process_id"]}] ended '
                                         f'{status}.')
             self.upstream_pids[upstream['side']] = run['process_id']

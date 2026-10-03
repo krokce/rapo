@@ -67,7 +67,7 @@
                     <th title="The control running now; &quot;for&quot; names the control whose job it runs in (chain upstream or cascade)" class="text-left">Control</th>
                     <th title="The start of the run's data window" class="text-left">Run from</th>
                     <th title="The end of the run's data window" class="text-left">Run to</th>
-                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or upstream" class="text-left">Trigger</th>
+                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or chain" class="text-left">Trigger</th>
                     <th title="Running, or queued for a free slot (control_parallelism)" class="text-left">State</th>
                     <th title="The operating system's process ID of the worker running it" class="text-center">OS PID</th>
                     <th></th>
@@ -85,12 +85,12 @@
                   <td><date-time-text :value="job.queued" /></td>
                   <td><date-time-text :value="job.started" /></td>
                   <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ job.process_id }}</td>
-                  <!-- The run the job performs now: an upstream of a chain or a cascade child runs in the job of another control. -->
+                  <!-- The run the job performs now: a chain source or a cascade child runs in the job of another control. -->
                   <td class="control-cell">
                     <span class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</span>
                     <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
                       for {{ job.job_control_name }}
-                      <q-tooltip>Runs in the job of {{ job.job_control_name }}, as its upstream (chain) or cascade</q-tooltip>
+                      <q-tooltip>Runs in the job of {{ job.job_control_name }}, as its chain source or cascade</q-tooltip>
                     </span>
                   </td>
                   <td class="text-weight-bold text-blue-grey-7">{{ toDateString(job.date_from) }}</td>
@@ -149,6 +149,8 @@
               :rows="upcomingHeatmap"
               :slots="upcomingSlots"
               :hue="150"
+              :now="nowPosition(upcomingStart)"
+              :now-label="nowLabel"
               unit="fire(s)"
               :selected="slotIndex(upcomingFilter.hour, upcomingStart)"
               class="q-px-sm"
@@ -170,7 +172,7 @@
                     <th title="How long until the fire" class="text-right">Next fire</th>
                     <th title="The control the scheduler will run" class="text-left">Control</th>
                     <th
-                      title="Why it runs: its own schedule, a cascade of the control it names, or an upstream pulled by it (both start after that control's fire); click to filter by it"
+                      title="Why it runs: its own schedule, a cascade of the control it names, or a chain source pulled by it (both start after that control's fire); click to filter by it"
                       class="text-left">
                       Trigger
                     </th>
@@ -200,7 +202,7 @@
                     </router-link>
                   </td>
                   <td class="text-no-wrap ellipsis" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <span class="cursor-pointer" @click="upcomingFilter.trigger_type = fire.trigger_type">
+                    <span class="cursor-pointer" @click="toggleTrigger(upcomingFilter, fire.trigger_type)">
                       <q-icon :name="triggerType(fire.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(fire.trigger_type).label }}
                     </span>
                     <span v-if="fire.via" class="text-grey-6 q-ml-xs" :title="viaTitle(fire)">via {{ fire.via }}</span>
@@ -252,6 +254,8 @@
               v-if="loaded"
               :rows="historyHeatmap"
               :slots="historySlots"
+              :now="nowPosition(historyStart)"
+              :now-label="nowLabel"
               unit="event(s)"
               corner="warnings"
               :selected="slotIndex(filter.hour, historyStart)"
@@ -278,7 +282,7 @@
                     <th title="The control; click it to open its schedule" class="text-left">Control</th>
                     <th title="The start of the run's data window" class="text-left">Run from</th>
                     <th title="The end of the run's data window" class="text-left">Run to</th>
-                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or upstream; click to filter by it" class="text-left">Trigger</th>
+                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or chain; click to filter by it" class="text-left">Trigger</th>
                     <th title="What happened: queued, started, missed, failed or canceled; click to filter by it" class="text-left">Event</th>
                     <th title="The status of the run the event started; click to filter by it" class="text-left">Run</th>
                     <th title="Details, such as why a fire was missed or failed" class="text-left">Message</th>
@@ -319,7 +323,7 @@
                     {{ toDateString(event.date_to) }}
                   </td>
                   <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <span class="cursor-pointer" @click="filter.trigger_type = event.trigger_type">
+                    <span class="cursor-pointer" @click="toggleTrigger(filter, event.trigger_type)">
                       <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
                     </span>
                   </td>
@@ -420,6 +424,7 @@ import { TRIGGER_TYPES, controlType, controlTypeColor, runStatus, schedulerEvent
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toMillis } from "../utils/format";
+import { clockLabel, windowPosition } from "../utils/clock";
 import { searchFilter, valueFilter } from "../utils/filters";
 import { runMatchesSearch } from "../utils/runs";
 import { ORDERS, countBy, historyHeatmapRows, rollingSlots, upcomingHeatmapRows, windowStart } from "../utils/scheduler";
@@ -491,6 +496,10 @@ export default {
     historyStart() {
       return windowStart(this.now + this.clockOffset, -23);
     },
+    // The server's time of the Now marker of both heatmaps.
+    nowLabel() {
+      return clockLabel(this.now + this.clockOffset);
+    },
     upcomingSlots() {
       return rollingSlots(this.upcomingStart);
     },
@@ -539,7 +548,7 @@ export default {
       const filter = this.upcomingFilter;
       return [
         ...countBy(this.upcoming, "control_type", ORDERS.type).map((item) => this.typeChip(item, () => (filter.type = item.key))),
-        ...countBy(this.upcoming, "trigger_type", ORDERS.trigger).map((item) => this.triggerChip(item, () => (filter.trigger_type = item.key))),
+        ...countBy(this.upcoming, "trigger_type", ORDERS.trigger).map((item) => this.triggerChip(item, () => this.toggleTrigger(filter, item.key))),
       ];
     },
     unhouredEvents() {
@@ -564,7 +573,7 @@ export default {
       const filter = this.filter;
       return [
         ...countBy(this.events, "control_type", ORDERS.type).map((item) => this.typeChip(item, () => (filter.type = item.key))),
-        ...countBy(this.events, "trigger_type", ORDERS.trigger).map((item) => this.triggerChip(item, () => (filter.trigger_type = item.key))),
+        ...countBy(this.events, "trigger_type", ORDERS.trigger).map((item) => this.triggerChip(item, () => this.toggleTrigger(filter, item.key))),
         ...countBy(this.events, "event_type", ORDERS.event).map((item) => {
           const type = schedulerEventType(item.key);
           return { key: `event-${item.key}`, icon: type.icon, color: type.color, label: type.label, count: item.count, title: "Events of this kind", apply: () => (filter.event_type = item.key) };
@@ -590,6 +599,14 @@ export default {
     typeChip(item, apply) {
       const type = controlType(item.key);
       return { key: `type-${item.key}`, icon: type.icon, color: type.color, label: item.key, count: item.count, title: type.label, apply };
+    },
+    // Where the present falls in a window starting at `start`.
+    nowPosition(start) {
+      return windowPosition(this.now + this.clockOffset, start);
+    },
+    // A click on a trigger filters by it, a click on the trigger already filtered by clears it.
+    toggleTrigger(filter, type) {
+      filter.trigger_type = filter.trigger_type === type ? null : type;
     },
     triggerChip(item, apply) {
       const trigger = this.triggerType(item.key);

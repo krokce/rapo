@@ -40,7 +40,14 @@
     <filter-chips :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" class="q-mb-md" @clear="clearFilters" />
 
     <!-- Files per hour, as on the Files page: one row per status and a total, following the other filters. -->
-    <hour-heatmap v-if="!embedded && files.length" :rows="heatmap" :selected="hour" class="q-mt-sm q-mb-md" @select="(value) => (hour = value)" />
+    <hour-heatmap
+      v-if="!embedded && files.length"
+      :rows="heatmap"
+      :selected="hour"
+      :now="nowPosition"
+      :now-label="nowLabel"
+      class="q-mt-sm q-mb-md"
+      @select="(value) => (hour = value)" />
 
     <div class="row items-center" :class="{ 'q-mb-sm': !embedded }">
       <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="shiftDay(-1)">
@@ -239,6 +246,7 @@ import { hourRange, loadHour, statusHeatmapRows } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
 import { compactNumber, dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { clockLabel, clockOffset, dayPosition } from "../utils/clock";
 import persistFilters from "../mixins/persistFilters";
 
 // The files one datasource loaded on one day (get-ds-file-log, the database's day), newest first. A row opens the log
@@ -285,6 +293,9 @@ export default {
       loading: false,
       day: null,
       today: null,
+      // The database's clock minus the browser's, and the browser's time moved on every minute: the Now marker.
+      clockOffset: 0,
+      now: Date.now(),
       files: [],
       truncated: false,
       search: "",
@@ -306,6 +317,13 @@ export default {
     };
   },
   computed: {
+    // The present by the database's clock, which stamps the file log: marked on today's heatmap only.
+    nowPosition() {
+      return dayPosition(this.now + this.clockOffset, this.day);
+    },
+    nowLabel() {
+      return clockLabel(this.now + this.clockOffset);
+    },
     ...mapGetters(["getEnvInfo"]),
     statusCounts() {
       const counts = new Map();
@@ -467,6 +485,7 @@ export default {
         this.keepHour = false;
         this.day = result.date;
         this.today = result.today;
+        this.clockOffset = clockOffset(result.database_time);
         this.files = Object.freeze(result.files.map(Object.freeze));
         this.truncated = result.truncated;
         if (!quiet) {
@@ -623,6 +642,7 @@ export default {
   },
   mounted() {
     this.load(this.initialDay);
+    this.clock = setInterval(() => (this.now = Date.now()), 60000);
     // Today's files change while PDI Core loads; a past day's only by an action, which reloads itself.
     this.stopLiveUpdates = liveRefetch("datasources:changed", () => this.day === this.today && this.load(null, true), {
       filter: (payload) => payload.kind === "files",
@@ -630,6 +650,7 @@ export default {
     });
   },
   unmounted() {
+    clearInterval(this.clock);
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }

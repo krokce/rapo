@@ -853,6 +853,12 @@
                     :options="periodTypeOptions"
                     label="Period type" />
                 </div>
+                <!-- A scheduled cascade gets the fire time of its trigger, not its window (Control._cascade_dates). -->
+                <div v-if="scheduleType === 'C'" class="text-caption text-grey-8">
+                  <q-icon name="fas fa-info-circle" class="q-mr-xs" />Counted back from the fire time of
+                  {{ scheduleTriggerName ? `${scheduleTriggerName}, the control this one follows` : "the control this one follows" }}. A manual run of it passes its own
+                  dates instead.
+                </div>
 
                 <div v-if="scheduleType !== 'C'" class="row q-gutter-md">
                   <iteration-config-box class="col" v-model="iterationConfigObject" :pb="control.period_back"> </iteration-config-box>

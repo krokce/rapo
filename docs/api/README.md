@@ -75,10 +75,12 @@ Initiate a control run and queue it for execution.
 | `date_to`    | str  | -       | End of the run window.                                          |
 | `debug_mode` | bool | `false` | Keep the temporary tables of the run.                           |
 | `iterations` | bool | `false` | Also run the enabled iterations of the control.                 |
+| `cascade`    | bool | `true`  | Also run the controls cascading from it. The UI sends `false` unless ticked. |
 
 With no date at all the window is `now`..`now`. The call goes through the same queue as a scheduled fire: it
 returns as soon as the run is initiated - a `rapo_log` row with status `I`, already visible and cancellable - not
-when the run is done. The run **cascades** into the controls triggered by it, for the window that was asked for.
+when the run is done. The run **cascades** into the controls triggered by it, for the window that was asked for, unless
+`cascade=false`.
 Its iterations are performed only with `iterations=true`.
 
 `400` when the control is unknown or cannot be initiated, `503` when the run manager is not running.
@@ -137,8 +139,8 @@ Every run **started** on one day, newest first, or the runs of one control over 
 | `control_name` | str  | -                  | One control's runs instead (the editor's *Run log*); `date` is then ignored and answered as null. |
 | `days`         | int  | 7                  | With `control_name`: how many days back from now, 1 .. 366.     |
 
-Answers `{date, today, runs}`, where `today` is the server's current day, so a caller can tell whether it is
-looking at today without a clock of its own. A run that never started is reported on the day it was added. The
+Answers `{date, today, server_time, runs}`, where `today` is the server's current day, so a caller can tell whether it
+is looking at today without a clock of its own, and `server_time` its time (the Results heatmap's *Now* marker). A run that never started is reported on the day it was added. The
 list is not capped.
 
 Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `added`, `start_date`, `end_date`,
@@ -637,7 +639,8 @@ partition_days_to_retain, partition_days_in_advance}`) configuring a partition k
 
 #### `GET /api/get-ds-file-log`
 The files a datasource (`id`) loaded on one day (`date`, `YYYY-MM-DD`, default the database's today), newest first,
-at most 20,000: `{date, today, files, truncated}`, each file with the columns of `pdi_core_file_log` but `log`.
+at most 20,000: `{date, today, database_time, files, truncated}` (`database_time`: the clock that stamps the file
+log), each file with the columns of `pdi_core_file_log` but `log`.
 
 #### `GET /api/get-ds-file-log-text`
 `{"log": "..."}`, the log text PDI Core wrote for one file (`file_id`).

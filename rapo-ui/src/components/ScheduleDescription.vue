@@ -10,7 +10,7 @@
 
 <script>
 import ScheduleRhythm from "./ScheduleRhythm.vue";
-import { scheduleRhythm, scheduleText, windowLabel } from "../utils/schedule";
+import { scheduleFrequency, scheduleRhythm, scheduleText, windowLabel } from "../utils/schedule";
 
 // A schedule in words, then the strip of where its fires fall and the data window of a run. Lines 2 and 3 of
 // ScheduleSummary; the control editor shows it live under the schedule fields.
@@ -39,7 +39,12 @@ export default {
       return windowLabel(this.periodBack, this.periodNumber, this.periodType);
     },
     windowTitle() {
-      return `Data window of a run: periods back ${this.periodBack ?? 0}, number of periods ${this.periodNumber ?? 1}, period type ${this.periodType}`;
+      const periods = `periods back ${this.periodBack ?? 0}, number of periods ${this.periodNumber ?? 1}, period type ${this.periodType}`;
+      if (scheduleFrequency(this.scheduleConfig) === "cascade") {
+        const trigger = this.triggerName || "the control it follows";
+        return `Data window of a scheduled cascade: counted back from the fire time of ${trigger} by this control's own periods (${periods}). When ${trigger} runs manually, its dates are used instead.`;
+      }
+      return `Data window of a run: ${periods}`;
     },
   },
 };

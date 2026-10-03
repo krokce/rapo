@@ -419,17 +419,19 @@ def set_config_option(body: dict = fastapi.Body(...)):
 @api.post('/run-control')
 def run_control(name: str, date: str | None = None,
                 date_from: str | None = None, date_to: str | None = None,
-                debug_mode: bool = False, iterations: bool = False):
+                debug_mode: bool = False, iterations: bool = False,
+                cascade: bool = True):
     """Initiate control run and queue it for execution.
 
     The run cascades into the controls following it, the way a scheduled run
-    does. Its iterations are performed only when they are asked for.
+    does, unless cascade is false. Its iterations are performed only when they
+    are asked for.
     """
     if not runner.active:
         raise fastapi.HTTPException(status_code=503,
                                     detail='Run manager is not running')
     try:
-        runner.submit(name, journal.MANUAL, cascade=True,
+        runner.submit(name, journal.MANUAL, cascade=cascade,
                       iterations=iterations, date_from=date_from,
                       date_to=date_to, date=date, debug_mode=debug_mode)
     except Exception as error:
@@ -741,14 +743,15 @@ def get_control_runs(date: dt.date | None = None,
                      days: int = fastapi.Query(7, ge=1, le=366)):
     """Get all control runs started on the passed day (default: the server's today), or those of one control of the
     last days, in JSON."""
-    today = dt.date.today()
+    now = dt.datetime.now().replace(microsecond=0)
+    today = now.date()
     if control_name:
-        return {'date': None, 'today': today.isoformat(),
+        return {'date': None, 'today': today.isoformat(), 'server_time': now,
                 'runs': reader.read_control_runs(control_name=control_name,
                                                  days=days)}
     day = date or today
     return {'date': day.isoformat(), 'today': today.isoformat(),
-            'runs': reader.read_control_runs(day=day)}
+            'server_time': now, 'runs': reader.read_control_runs(day=day)}
 
 
 @api.get('/read-control-logs')
@@ -1065,13 +1068,15 @@ def get_ds_table_facts(tables: list[str] = fastapi.Query([])):
 def get_ds_file_log(id: int, date: str | None = None):
     """Get the files of a datasource loaded on one day (the database's)."""
     with datasource_errors():
-        today = pdi.read_database_time().date()
+        now = pdi.read_database_time()
+        today = now.date()
         try:
             day = dt.date.fromisoformat(date) if date else today
         except ValueError:
             raise fastapi.HTTPException(status_code=422,
                                         detail='date must be YYYY-MM-DD')
-        return {'date': day, 'today': today, **pdi.read_file_log(id, day)}
+        return {'date': day, 'today': today, 'database_time': now,
+                **pdi.read_file_log(id, day)}
 
 
 @api.get('/get-ds-file-log-text')

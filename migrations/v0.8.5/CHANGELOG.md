@@ -4,7 +4,7 @@
 A *Discrepancy analysis* page explains what sets a run's discrepancies apart from its normal records, the email of
 a control can be sent on the result of an SQL statement, the Controls page shows when each control runs next,
 Results show what started each run and the runs per hour, with a day pill and no filter row, the Scheduler shows the next and last 24 hours with heatmaps, the editor's Run log is the Results table, KPIs can be calculated for a
-past run while their SQL is written, and *Instance details* shows the health of the server and the database. There is no change to Rapo's own
+past run while their SQL is written, *Instance details* shows the health of the server and the database, Results filter by trigger, and a manual run cascades only when ticked. There is no change to Rapo's own
 schema; one Python package is added (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **Discrepancy analysis.** A new page, *Discrepancy analysis* in the menu of a run's discrepancy number (Results and
@@ -101,9 +101,9 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - New route `GET /api/get-next-fires` (see the API reference).
 
 4. **Results: trigger icon.** The *Start* cell shows a small icon after the start time for what started the run:
-   the schedule, a manual start, a catch-up, an iteration, a cascade or a chain pull (upstream). Hover it for the
+   the schedule, a manual start, a catch-up, an iteration, a cascade or a chain pull (*Chain*). Hover it for the
    trigger's name and details, e.g. `Started by: Schedule (scheduled for 2026-09-24 18:15:00)` or `Started by:
-   Upstream (For CHN_B [1000002993])`. A run the run manager did not start (library use, older runs) shows a faint
+   Chain (For CHN_B [1000002993])`. A click filters the runs by that trigger (see 13). A run the run manager did not start (library use, older runs) shows a faint
    question mark, *Trigger not recorded*. The *Start* column is 18px wider, taken from the *Processname* column.
    `get-control-runs` answers `trigger_type`, `trigger_message` and `scheduled_time` for each run.
    - The day's totals under the header chips count the runs by trigger, each an icon with its number (hover it for
@@ -264,8 +264,8 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       on *History* the Trigger, Event and Run cells filter, too. Active filters show as chips, with a dot on the tab.
     - **Upcoming** shows the next 24 whole hours (now until the same hour tomorrow) and every run the scheduler causes:
       own fires (*Schedule*), the cascades they trigger (*Cascade*) and the controls each run pulls first
-      (*Upstream*). A new *Trigger* column names it, with *via* the control it follows; cascades and upstreams show the
-      time of that fire, as they start right after it.
+      (*Chain*). A new *Trigger* column names it, with *via* the control it follows; cascades and chain sources show
+      the time of that fire, as they start right after it.
     - **History** shows the last 24 whole hours (from the same hour yesterday), up to 5000 events. Older missed fires
       that were never run for their moment are counted by an *Older missed* chip, which lists them with *Run for this
       moment*.
@@ -287,3 +287,29 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
     - API: `scheduler-upcoming` answers cascades and upstreams (`trigger_type`, `via`, `date_from`, `date_to`) and its
       window ends on a whole hour; `scheduler-events` takes `hours`; new `get-missed-fires`; `scheduler-status` jobs
       carry `date_from`/`date_to`.
+
+13. **Triggers, chains and cascades.**
+    - **Results: filter by trigger.** A click on a trigger icon in the *Start* cell, or on a trigger count of the
+      day's totals, filters the runs by that trigger (a *Trigger* chip); a second click on the same trigger clears it.
+      *Trigger not recorded* can be filtered, too. The filter is kept like the others and followed by the heatmap.
+      On the Scheduler page a second click on the trigger filtered by clears it as well.
+    - **"Upstream" is now "Chain"** wherever a trigger is named (Results, run log, Scheduler, heatmaps); the
+      control a chain pulls is its *chain source*, also in the run log (`Chain source control X ended C`). The
+      stored trigger code stays `UPSTREAM`.
+    - **Manual runs cascade only when asked.** The *Run* dialog and *Re-run* offer *Cascade into X, Y* as an unticked
+      option (as for iterations) when other controls cascade from the control; until now a manual run always
+      cascaded. Scheduled and catch-up runs cascade as before. `run-control` takes `cascade` (default `true`, so API
+      callers keep the previous behavior); the UI always sends it.
+    - **The window of a cascade.** A scheduled cascade gets the *fire time* of the control it follows and counts its
+      **own** *Periods back / Number of periods / Period type* back from it; it does not inherit the window of that
+      control (a manual run of that control passes its dates instead). The schedule now reads *After X finishes ·
+      own window*, the window chip's tooltip and a note under the period fields of the editor's *Scheduler* tab say
+      so. Check cascaded controls whose period fields were assumed not to matter.
+    - **Controls: *Cascade schedule* attribute** filters the controls that run after another one. The *Control
+      attributes* list is grouped (Execution, Scheduling, Run steps in the order a run performs them, Output,
+      Issues).
+    - **Now on the hour heatmaps.** The heatmaps of Results, Files, a datasource's file log (today only) and the
+      Scheduler's Upcoming and History show the present as a line at the current minute under a clock icon and
+      *Now HH:MM*. Results and the Scheduler count by the server's clock, Files and the file log by the database's,
+      as their hours are. The midnight divider of the Scheduler heatmaps is drawn the same way, in grey, with a calendar
+      icon before the day. `get-control-runs` answers `server_time`, `get-ds-file-log` answers `database_time`.
