@@ -14,7 +14,6 @@ is logged in the server log.
 import datetime as dt
 import json
 import re
-import threading
 import time
 
 import sqlalchemy as sa
@@ -118,23 +117,14 @@ class Store:
     PROBE_TTL = 600
     PROBE_RETRY = 60
 
-    # Finished days of the files calendar are kept this long (s), so a later
-    # recycle or reload of an old file shows; today is always read live.
-    CALENDAR_TTL = 3600
-    CALENDAR_MONTHS = 24
-
     def __init__(self):
         self._probe = None
         self._probe_time = 0
         self.probe_errors = {}
-        self._calendar = {}
-        self._calendar_lock = threading.Lock()
 
     def reset(self):
         """Forget what the probe found, e.g. after the schema changed."""
         self._probe = None
-        with self._calendar_lock:
-            self._calendar.clear()
 
     @property
     def probe(self):
@@ -492,63 +482,6 @@ class Store:
             id = self._value(row.pop('sourceid'))
             stats[id] = {key: self._value(value) for key, value in row.items()}
         return stats
-
-    def read_files_calendar(self, start, end):
-        """Get the files and ERROR files per day loaded in [start, end).
-
-        The days before the database's today are read once per month and
-        kept for CALENDAR_TTL seconds (a month of a busy file log is millions
-        of rows, about a second to count); today is counted on every call
-        from its own partition.
-
-        Returns
-        -------
-        days : dict
-            By YYYY-MM-DD (startloaddate, the database's clock), `count` and
-            `errors`, for the days with files.
-        """
-        self.check()
-        if not self.log_available:
-            raise DatasourceError('The file log is not available.', 404)
-        today = dt.datetime.combine(self.read_database_time().date(),
-                                    dt.time())
-        if start > today:
-            return {}
-        days = {}
-        if start < today:
-            days.update(self._finished_days(start, min(end, today)))
-        if start <= today < end:
-            days.update(self._count_days(today, today+dt.timedelta(days=1)))
-        return days
-
-    def _finished_days(self, start, end):
-        """Get the counts of days that are over, from the cache if fresh."""
-        key = (start, end)
-        with self._calendar_lock:
-            cached = self._calendar.get(key)
-        if cached and time.monotonic()-cached[0] < self.CALENDAR_TTL:
-            return cached[1]
-        days = self._count_days(start, end)
-        with self._calendar_lock:
-            self._calendar[key] = (time.monotonic(), days)
-            while len(self._calendar) > self.CALENDAR_MONTHS:
-                oldest = min(self._calendar, key=lambda k: self._calendar[k][0])
-                del self._calendar[oldest]
-        return days
-
-    def _count_days(self, start, end):
-        """Count the files and ERROR files per day in [start, end)."""
-        rows = db.execute(sa.text(
-            'select to_char(trunc(startloaddate), \'YYYY-MM-DD\') day, '
-            'count(*) files, '
-            'sum(case when filestatus = \'ERROR\' then 1 else 0 end) errors '
-            f'from {LOG_TABLE} '
-            'where startloaddate >= :day_from and startloaddate < :day_to '
-            'group by trunc(startloaddate)'
-        ).bindparams(day_from=start, day_to=end), as_table=True)
-        return {row['day']: {'count': int(row['files']),
-                             'errors': int(row['errors'] or 0)}
-                for row in rows}
 
     def read_files_day(self, day):
         """Get the loads of every datasource on one day, as aggregates.

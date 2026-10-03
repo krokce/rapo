@@ -3,7 +3,7 @@
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-md'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
-        <div><day-navigator :day="day" :today="today" :calendar="loadCalendar" :legend="{ count: 'files', errors: 'errors' }" @go="goToDay" /></div>
+        <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -701,10 +701,6 @@ export default {
       this.filter.hour = null;
       this.filter.duplicates = false;
       this.$store.commit("updateSearch", "");
-    },
-    // The calendar dots of a month (YYYY-MM) for the day pill.
-    loadCalendar(month) {
-      return api("get-files-calendar", { params: { month }, loadingBar: false });
     },
     goToDay(day) {
       this.$router.push({ name: "files", query: day && day !== this.today ? { date: day } : {} });

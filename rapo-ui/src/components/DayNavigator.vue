@@ -4,9 +4,9 @@
     <q-btn flat square class="day-nav__seg" icon="fas fa-chevron-left" :aria-label="`Previous day: ${label(previous)}`" :disable="!day" @click="$emit('go', previous)">
       <q-tooltip anchor="bottom middle" self="top middle" :offset="[0, 8]">Previous day: {{ label(previous) }}</q-tooltip>
     </q-btn>
-    <div v-if="!calendar" class="day-nav__day">{{ label(day) }}</div>
-    <!-- The day opens a calendar: days with activity have a dot (red with errors), later days cannot be picked. -->
-    <div v-else class="day-nav__day day-nav__day--pick" v-keyboard:button aria-haspopup="dialog" aria-label="Pick a day">
+    <!-- The day opens a date picker (later days cannot be picked); with `calendar`, days with activity have a dot (red with
+         errors). -->
+    <div class="day-nav__day day-nav__day--pick" v-keyboard:button aria-haspopup="dialog" aria-label="Pick a day">
       {{ label(day) }}
       <q-icon name="fas fa-caret-down" size="12px" class="q-ml-sm day-nav__caret" />
       <q-popup-proxy ref="popup" transition-show="scale" transition-hide="scale" @before-show="openCalendar">
@@ -22,7 +22,7 @@
             :event-color="(date) => (marker(date) && marker(date).errors ? 'red-6' : 'teal')"
             @navigation="loadMonth"
             @update:model-value="pick" />
-          <div class="row items-center q-px-md q-pb-sm day-nav__legend">
+          <div v-if="calendar" class="row items-center q-px-md q-pb-sm day-nav__legend">
             <span class="legend-dot bg-teal" />{{ legend.count }}
             <span class="legend-dot bg-red-6 q-ml-md" />{{ legend.errors }}
             <q-space />
@@ -53,8 +53,8 @@ export default {
     // The day shown and the server's today, YYYY-MM-DD.
     day: { type: String, default: null },
     today: { type: String, default: null },
-    // (month "YYYY-MM") => Promise of {"YYYY-MM-DD": {count, errors}}: the dots of the calendar; without it the day is
-    // plain text.
+    // (month "YYYY-MM") => Promise of {"YYYY-MM-DD": {count, errors}}: the dots of the calendar; without it the
+    // calendar only picks a day.
     calendar: { type: Function, default: null },
     // The legend under the calendar.
     legend: { type: Object, default: () => ({ count: "runs", errors: "errors" }) },
@@ -95,12 +95,18 @@ export default {
     // Fresh markers each time it opens, so today's dot is current.
     openCalendar() {
       this.markers = {};
+      if (!this.calendar) {
+        return;
+      }
       const month = (this.day || this.today || "").slice(0, 7);
       if (month) {
         this.loadMonth({ year: Number(month.slice(0, 4)), month: Number(month.slice(5, 7)) });
       }
     },
     async loadMonth({ year, month }) {
+      if (!this.calendar) {
+        return;
+      }
       const key = `${year}-${String(month).padStart(2, "0")}`;
       if (this.markers[key]) {
         return;

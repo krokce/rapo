@@ -1098,14 +1098,6 @@ def get_files_day(date: str | None = None):
         return pdi.read_files_day(day)
 
 
-@api.get('/get-files-calendar')
-def get_files_calendar(month: str):
-    """Get the files and ERROR files per day of a month (YYYY-MM)."""
-    start, end = parse_month(month)
-    with datasource_errors():
-        return pdi.read_files_calendar(start, end)
-
-
 @api.get('/search-files')
 def search_files(text: str | None = None, id: int | None = None):
     """Find files of any day by a name prefix (text) or by their ID."""

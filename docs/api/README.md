@@ -654,11 +654,6 @@ second of its SUCCESS files with a runtime, and `last_success`), `week_before` (
 weekday a week earlier, for today up to the same time of day), `names` (the SOURCENAME the log gives each id),
 `date`, `today`, `database_time`.
 
-#### `GET /api/get-files-calendar`
-The files per day of a month (`month=YYYY-MM`), for the Files calendar: `{"YYYY-MM-DD": {"count": n, "errors": e}}`
-by `STARTLOADDATE` (the database's clock), `errors` the files in `ERROR`. Errors as `get-files-day`. The days before
-today are cached per month for an hour (a month is millions of rows in a busy file log); today is always counted.
-
 #### `GET /api/search-files`
 Files of any day, newest first, at most 200: those whose `INPUTFILENAME` starts with `text` (3 characters or more,
 case-sensitive, so that its index is used), or the file `id`. One of the two is required (`400`). Each with `id`,
