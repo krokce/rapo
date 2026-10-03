@@ -317,3 +317,23 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       and the controls pulling one (*Pulled by X*) in the schedule descriptions (Controls, editor, KPI type), and
       *via X* (Upcoming) and *for X* (Running) on the Scheduler page. A link from one editor to another loads that
       control (asking first about unsaved changes).
+
+14. **Files: chips instead of filter fields, lane locks, file search in the header.**
+    - **No filter fields.** *Find file*, *Datasource*, *Lane*, *File status* and *Issues* are gone. The chips of the
+      day's totals filter (status, *Duplicate* and the issues); a second click on a chip clears its filter, and a
+      chip that filters has an orange ring. Active filters show as chips under the title as before.
+    - **Every issue in the header.** *Silent*, *Drop*, *Errors*, *Log name differs* and (on today) *Stalled* are
+      counted beside the status chips when any datasource has them; until now only *Silent*, *Drop* and *Stalled*.
+    - **Lane chips: the icon locks, the text filters.** A click on a lane's icon locks an idle lane (inserts its
+      `LOAD_<lane>` row into `PDI_CORE_STATE`, as a core_load run does, after a confirmation: no core_load run of
+      the lane starts until it is removed) or removes the lock of a running one (as before); on hover the icon shows
+      a lock or an open lock. A lane locked by hand looks like a running lane. A click on a lane's name shows only
+      its datasources; a second click shows all again. One lane at a time, also from the *Lane* column.
+      New route `set-lane-lock` (needs `INSERT` on `PDI_CORE_STATE`).
+    - **Header search.** *Search datasource name or ID, ?file name, #file ID*: plain text finds datasources by name,
+      or digits by the start of their ID; `?FMS-S` finds the files whose name **starts with** the text
+      (case-sensitive, 3 characters or more) and `#48910075` the file with that ID, of **any day**, newest first (at
+      most 200). The table then shows the datasources of the files found, and a line under the filter chips lists
+      them; a file opens its datasource's file log on the file's day.
+    - API: `search-files` takes `text` (start of `INPUTFILENAME`, case-sensitive, using its index) or `id`, of any day;
+      `date` is gone and `text` no longer matches inside a name.

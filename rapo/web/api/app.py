@@ -1107,10 +1107,13 @@ def get_files_calendar(month: str):
 
 
 @api.get('/search-files')
-def search_files(text: str, date: str | None = None):
-    """Find the files of one day whose name contains a text."""
+def search_files(text: str | None = None, id: int | None = None):
+    """Find files of any day by a name prefix (text) or by their ID."""
+    if text is None and id is None:
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='Give text or id.')
     with datasource_errors():
-        return pdi.search_files(parse_day(date), text)
+        return pdi.search_files(text=text, file_id=id)
 
 
 @api.post('/set-file-status')
@@ -1169,6 +1172,15 @@ def remove_lane_lock(lane: int, since: str):
     """Remove the lock of one lane (JOB LOAD_<lane>), if still the one seen."""
     with datasource_errors():
         pdi.remove_lane_lock(lane, since)
+    events.poke()
+    return {'status': 200}
+
+
+@api.post('/set-lane-lock')
+def set_lane_lock(lane: int):
+    """Pause one lane (JOB LOAD_<lane>) as if a core_load run held it."""
+    with datasource_errors():
+        pdi.set_lane_lock(lane)
     events.poke()
     return {'status': 200}
 

@@ -64,6 +64,10 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
 - **Now marker** on the hour heatmaps (Results, Files, file log on today; Scheduler Upcoming/History): a line at the
   current minute under a clock icon and *Now HH:MM*, by the server's or the database's clock as the hours are; the
   Scheduler's midnight divider is drawn alike, in grey, with a calendar icon.
+- **Files page:** filter fields removed (chips filter, toggling); every issue kind is a header chip; a lane chip's
+  icon locks or unlocks the lane (new route `set-lane-lock`), its text shows only that lane. The header search takes
+  a datasource name or ID, `?<file name start>` (case-sensitive) or `#<file ID>`, files of any day, newest first;
+  `search-files` takes `text` (prefix) or `id`, no longer `date`.
 - **Links to referenced controls** in schedule descriptions (*After X finishes*, *Pulled by X*) and the Scheduler's
   *via X* / *for X*; an editor-to-editor link reloads the form (unsaved changes asked first).
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,

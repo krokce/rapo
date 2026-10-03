@@ -93,7 +93,7 @@ const router = createRouter({
     {
       name: "files",
       path: "/files",
-      meta: { searchPlaceholder: "Search datasource" },
+      meta: { searchPlaceholder: "Search datasource name or ID, ?file name, #file ID" },
       component: FileResults,
     },
     {

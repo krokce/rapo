@@ -18,18 +18,28 @@
              today, those Stalled now. An issue counts the rows it filters to; the others are on the Datasources page. -->
         <div v-if="statusEntries.length || totals.duplicates || issueEntries.length" class="row items-center justify-end header-chips">
           <div v-if="statusEntries.length || totals.duplicates" class="row items-center">
-            <q-chip v-for="entry in statusEntries" :key="entry.status" clickable @click="addStatusFilter(entry.status)">
+            <q-chip
+              v-for="entry in statusEntries"
+              :key="entry.status"
+              clickable
+              :class="{ 'chip-selected': filter.statuses.includes(entry.status) }"
+              @click="toggleListFilter('statuses', entry.status)">
               <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
               <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
             </q-chip>
-            <q-chip v-if="totals.duplicates" clickable @click="filter.duplicates = true">
+            <q-chip v-if="totals.duplicates" clickable :class="{ 'chip-selected': filter.duplicates }" @click="filter.duplicates = !filter.duplicates">
               <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
               <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(totals.duplicates) }})
               <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources with duplicate files</q-tooltip>
             </q-chip>
           </div>
           <div v-for="group in issueGroups" :key="group.key" class="row items-center">
-            <q-chip v-for="entry in group.entries" :key="entry.key" clickable @click="addIssueFilter(entry.key)">
+            <q-chip
+              v-for="entry in group.entries"
+              :key="entry.key"
+              clickable
+              :class="{ 'chip-selected': filter.issues.includes(entry.key) }"
+              @click="toggleListFilter('issues', entry.key)">
               <q-avatar :icon="entry.icon" :color="entry.color" text-color="white" />
               <span class="text-weight-bold q-mr-xs">{{ entry.label }}</span>({{ formatNumber(entry.count) }})
               <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ entry.hint }}</q-tooltip>
@@ -52,28 +62,76 @@
     </div>
     <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" class="q-mb-sm" @clear="clearFilters" />
 
+    <!-- The header search finds files (?name prefix, #ID) of any day; the rows narrow to their datasources. -->
+    <div v-if="fileSearchActive" class="row items-center q-mb-sm text-blue-grey-8">
+      <q-icon name="fas fa-file-alt" size="14px" class="q-mr-sm" />
+      <span v-if="!fileSearchReady" class="text-grey-7">{{ fileSearchHint }}</span>
+      <span v-else-if="!fileSearchResults.length" class="text-grey-7">{{ searchMode.kind === "id" ? `No file ${searchMode.value}` : `No file name starts with '${searchMode.value}'` }}</span>
+      <a v-else href="#" class="text-teal-8 text-weight-bold file-search-link" @click.prevent>
+        <template v-if="searchMode.kind === 'id'">
+          File {{ fileSearchResults[0].id }}: {{ fileSearchResults[0].inputfilename }} &middot; {{ fileSearchResults[0].sourcename }} &middot;
+          {{ toDateTimeString(fileSearchResults[0].startloaddate) }}
+        </template>
+        <template v-else>
+          {{ fileSearchResults.length >= fileSearchLimit ? `The newest ${fileSearchLimit} files` : `${formatNumber(fileSearchResults.length)} file(s)` }} starting with
+          '{{ searchMode.value }}', newest first
+        </template>
+        <q-icon name="fas fa-caret-down" size="14px" class="q-ml-xs" />
+        <q-menu fit :offset="[0, 4]" max-height="400px">
+          <q-list dense style="min-width: 480px">
+            <q-item v-for="file in fileSearchResults" :key="file.id" clickable v-close-popup @click="openFile(file)">
+              <q-item-section avatar>
+                <q-icon :name="fileStatus(file.filestatus).icon" :color="fileStatus(file.filestatus).color" size="16px" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="ellipsis">{{ file.inputfilename }}</q-item-label>
+                <q-item-label caption>#{{ file.id }} &middot; {{ file.sourcename }} &middot; {{ toDateTimeString(file.startloaddate) }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-menu>
+      </a>
+    </div>
+
     <!-- The lanes (core_load schedulers) of PDI Core, as PDI_CORE_STATE says, and the lock of all of them. -->
     <div v-if="stateAvailable" class="row items-center q-gutter-x-sm q-mb-sm">
       <span class="text-blue-grey-8 q-mr-xs">Lanes</span>
+      <!-- The icon locks or unlocks the lane, the text shows only its datasources (a second click shows all again). -->
       <q-chip
         v-for="lane in laneStates"
         :key="lane.value"
-        :clickable="!lane.running || stateDelete"
-        :outline="!lane.running"
+        :outline="!lane.running && !laneSelected(lane.value)"
+        :class="{ 'chip-selected': laneSelected(lane.value) }"
         :color="lane.stale ? 'red-1' : undefined"
-        :text-color="lane.stale ? 'red-9' : lane.running ? undefined : 'grey-7'"
-        @click="clickLane(lane)">
-        <q-avatar :icon="lane.running ? 'fas fa-sync' : lane.icon" :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'" text-color="white" />
-        <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
-        <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
-        <span v-else class="text-grey-7">idle</span>
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
-          <template v-if="lane.running">
-            Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
-            <span v-if="stateDelete">Click to remove its lock (LOAD_{{ lane.value }}).</span>
-          </template>
-          <template v-else>No core_load run holds LOAD_{{ lane.value }}. Click to show only its datasources.</template>
-        </q-tooltip>
+        :text-color="lane.stale ? 'red-9' : lane.running ? undefined : 'grey-7'">
+        <q-avatar
+          :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'"
+          text-color="white"
+          class="lane-avatar"
+          :class="laneAction(lane) ? ['lane-avatar--action', lane.running ? 'lane-avatar--unlock' : 'lane-avatar--lock'] : []"
+          v-keyboard:button="Boolean(laneAction(lane))"
+          @click="laneAction(lane) && laneAction(lane)()">
+          <q-icon :name="lane.running ? 'fas fa-sync' : lane.icon" class="lane-avatar__icon" />
+          <q-icon v-if="laneAction(lane)" :name="lane.running ? 'fas fa-lock-open' : 'fas fa-lock'" class="lane-avatar__hover" />
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
+            <template v-if="lane.running">
+              Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
+              <span v-if="stateDelete">Click to remove its lock (LOAD_{{ lane.value }}).</span>
+            </template>
+            <template v-else>
+              No core_load run holds LOAD_{{ lane.value }}.
+              <span v-if="stateWrite">Click to lock the lane, so that no core_load run of it starts.</span>
+            </template>
+          </q-tooltip>
+        </q-avatar>
+        <span class="lane-text cursor-pointer" v-keyboard:button @click="selectLane(lane.value)">
+          <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
+          <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
+          <span v-else class="text-grey-7">idle</span>
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
+            {{ laneSelected(lane.value) ? "Show the datasources of every lane" : `Show only the datasources of ${lane.label}` }}
+          </q-tooltip>
+        </span>
       </q-chip>
       <q-space />
       <q-btn v-if="!globalLock && stateWrite" outline dense no-caps color="negative" icon="fas fa-lock" label="Lock all lanes" padding="4px 10px" @click="setGlobalLock(true)">
@@ -106,81 +164,6 @@
       :now-label="nowLabel"
       class="q-mt-sm q-mb-md"
       @select="(hour) => (filter.hour = hour)" />
-
-    <div class="row items-center q-mb-sm">
-      <q-input
-        ref="fileSearch"
-        v-model="fileSearch"
-        class="col-2 q-mb-md q-pa-sm"
-        outlined
-        clearable
-        debounce="400"
-        label="Find file"
-        @update:model-value="searchFiles">
-        <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
-        <q-menu v-model="fileSearchOpen" no-focus no-refocus fit :offset="[0, 4]" max-height="400px">
-          <q-list dense style="min-width: 420px">
-            <q-item-label header class="q-py-sm">
-              {{ fileSearchResults.length >= 200 ? "The first 200 files" : `${fileSearchResults.length} file(s)` }} of {{ dayTitle }}
-            </q-item-label>
-            <q-item v-for="file in fileSearchResults" :key="file.id" clickable v-close-popup @click="openFile(file)">
-              <q-item-section avatar>
-                <q-icon :name="fileStatus(file.filestatus).icon" :color="fileStatus(file.filestatus).color" size="16px" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label class="ellipsis">{{ file.inputfilename }}</q-item-label>
-                <q-item-label caption>{{ file.sourcename }} &middot; {{ toDateTimeString(file.startloaddate).slice(11) }}</q-item-label>
-              </q-item-section>
-            </q-item>
-            <q-item v-if="!fileSearchResults.length">
-              <q-item-section class="text-grey-7">No file of that name</q-item-section>
-            </q-item>
-          </q-list>
-        </q-menu>
-      </q-input>
-
-      <q-input clearable class="col q-mb-md q-pa-sm name-filter" outlined v-model="filter.text" label="Datasource" maxlength="60" />
-
-      <q-select
-        v-model="filter.lanes"
-        class="col-2 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="laneOptions"
-        label="Lane">
-      </q-select>
-
-      <q-select
-        v-model="filter.statuses"
-        class="col-2 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="statusOptions"
-        label="File status">
-      </q-select>
-
-      <q-select
-        v-model="filter.issues"
-        class="col-2 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="issueOptions"
-        label="Issues">
-      </q-select>
-    </div>
-
 
     <q-virtual-scroll
       type="table"
@@ -215,7 +198,7 @@
         <tr :key="row.id" :class="{ 'row-inactive': row.isactive === 0 }">
           <td v-for="column in tableColumns" :key="column.key" :class="['text-' + column.align, { 'number-cell': column.number, 'name-cell': column.key === 'sourcename' }]">
             <template v-if="column.key === 'isactive'">
-              <q-chip v-if="row.isactive !== null" clickable :title="lane(row.isactive).label" @click="addLaneFilter(row.isactive)">
+              <q-chip v-if="row.isactive !== null" clickable :title="lane(row.isactive).label" @click="selectLane(row.isactive)">
                 <q-avatar :icon="lane(row.isactive).icon" :color="lane(row.isactive).color" text-color="white" />
                 <span class="text-weight-bold">{{ lane(row.isactive).short }}</span>
               </q-chip>
@@ -235,7 +218,7 @@
                   text-color="white"
                   :icon="issue.icon"
                   :title="issue.title"
-                  @click="addIssueFilter(issue.key)">
+                  @click="toggleListFilter('issues', issue.key)">
                   {{ issue.label }}
                 </q-chip>
               </div>
@@ -317,15 +300,30 @@ import { ISSUES as DATASOURCE_ISSUES, formatAge, issuesOf as datasourceIssuesOf 
 import { ALWAYS_STATUSES, FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusRank, statusTotals } from "../utils/files";
 import FileListDialog from "./FileListDialog.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { compactNumber, dayTitle, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { clockLabel, dayPosition } from "../utils/clock";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
-// The Datasources page's issues this page shows too (on today), and the issues the header counts.
+// The Datasources page's issues this page shows too (on today).
 const FILE_DATASOURCE_ISSUES = ["stalled"];
-const HEADER_ISSUES = ["silent", "drop", "ds_stalled"];
+
+// The most files search-files answers.
+const FILE_SEARCH_LIMIT = 200;
+
+// The header search: "?<start of a file name>" and "#<file ID>" find files of any day, anything else is a datasource
+// name or ID.
+function parseSearch(search) {
+  const text = (search || "").trim();
+  if (text.startsWith("?")) {
+    return { kind: "file", value: text.slice(1).trim() };
+  }
+  if (text.startsWith("#")) {
+    return { kind: "id", value: text.slice(1).trim() };
+  }
+  return { kind: "name", value: text };
+}
 
 // The columns around the status columns (one per status the day has files in); `title` is the header's tooltip.
 const LEADING_COLUMNS = [
@@ -363,11 +361,12 @@ export default {
       loadError: false,
       // The browser's time, moved on every minute for the heatmap's Now marker.
       now: Date.now(),
-      fileSearch: "",
+      // The files found by the header search, and the search (fileSearchKey) they were found for.
       fileSearchResults: [],
-      fileSearchOpen: false,
+      fileSearchFor: null,
+      fileSearchLimit: FILE_SEARCH_LIMIT,
       filter: {
-        text: "",
+        // At most one lane: its chip's text shows only its datasources.
         lanes: [],
         statuses: [],
         issues: [],
@@ -400,9 +399,6 @@ export default {
     },
     hasDay() {
       return Boolean(this.fileDay) && this.fileDay.date === this.day;
-    },
-    dayTitle() {
-      return dayTitle(this.day);
     },
     dayQuery() {
       return this.$route.query.date ? { date: this.$route.query.date } : {};
@@ -484,11 +480,11 @@ export default {
         : [];
       return [...FILE_ISSUES.map((issue) => ({ ...issue, group: "day" })), ...datasourceKinds];
     },
-    // The issue chips of the header (HEADER_ISSUES), by the rows of the day whatever the filters; none with no datasource.
+    // The issue chips of the header, every kind some datasource has, by the rows of the day whatever the filters.
     issueGroups() {
       const counts = new Map();
       this.allRows.forEach((row) => this.rowIssues(row).forEach((issue) => counts.set(issue.key, (counts.get(issue.key) || 0) + 1)));
-      const entries = this.issueKinds.filter((kind) => HEADER_ISSUES.includes(kind.key) && counts.get(kind.key)).map((kind) => ({ ...kind, count: counts.get(kind.key) }));
+      const entries = this.issueKinds.filter((kind) => counts.get(kind.key)).map((kind) => ({ ...kind, count: counts.get(kind.key) }));
       return ["day", "datasource"]
         .map((key) => ({ key, entries: entries.filter((entry) => entry.group === key) }))
         .filter((group) => group.entries.length);
@@ -547,25 +543,11 @@ export default {
       const width = textWidth(names, "bold 16px Roboto, sans-serif");
       return Math.max(width + 32, 200);
     },
-    laneOptions() {
-      const lanes = new Set(this.datasourceCatalogue.map((row) => row.isactive));
-      return [...lanes].sort((a, b) => a - b).map((value) => ({ label: datasourceLane(value).label, value }));
-    },
-    // The statuses the day has files in (as the status columns), and a picked one it has none in, so it can be removed.
-    statusOptions() {
-      const statuses = dayStatuses(this.hasDay ? this.fileDay.cells : []);
-      (this.filter.statuses || []).forEach((status) => statuses.includes(status) || statuses.push(status));
-      return statuses.map((value) => ({ label: fileStatus(value).label, value }));
-    },
-    issueOptions() {
-      return this.issueKinds.map((issue) => ({ label: issue.label, value: issue.key }));
-    },
     activeFilters() {
       const filter = this.filter;
       const issueLabel = (key) => (this.issueKinds.find((issue) => issue.key === key) || {}).label || key;
       const hourLabel = filter.hour === null ? null : hourRange(filter.hour);
       return [
-        ...valueFilter("text", "Datasource", filter.text, () => (filter.text = null), { text: true }),
         ...listFilter("lane", "Lane", filter.lanes, (value) => (filter.lanes = filter.lanes.filter((item) => item !== value)), (value) => datasourceLane(value).label),
         ...listFilter("status", "Status", filter.statuses, (value) => (filter.statuses = filter.statuses.filter((item) => item !== value)), (value) => fileStatus(value).label),
         ...listFilter("issue", "Issue", filter.issues, (value) => (filter.issues = filter.issues.filter((item) => item !== value)), issueLabel),
@@ -573,6 +555,33 @@ export default {
         ...valueFilter("duplicates", "Duplicates", filter.duplicates || null, () => (filter.duplicates = false), { label: "With duplicate files" }),
         ...searchFilter(this.$store),
       ];
+    },
+    searchMode() {
+      return parseSearch(this.getSearch);
+    },
+    fileSearchActive() {
+      return this.searchMode.kind !== "name" && Boolean(this.searchMode.value);
+    },
+    // What search-files is asked for, or null while the search is too short or no file ID.
+    fileSearchKey() {
+      const { kind, value } = this.searchMode;
+      if ((kind === "file" && value.length >= 3) || (kind === "id" && /^\d+$/.test(value))) {
+        return `${kind}:${value}`;
+      }
+      return null;
+    },
+    fileSearchReady() {
+      return Boolean(this.fileSearchKey) && this.fileSearchFor === this.fileSearchKey;
+    },
+    fileSearchHint() {
+      if (this.fileSearchKey) {
+        return "Searching the file log...";
+      }
+      return this.searchMode.kind === "id" ? "A file ID is a number" : "Type 3 characters or more of the start of a file name (case-sensitive)";
+    },
+    // The datasources of the files found, which the rows narrow to; null while no file search applies.
+    fileSearchSources() {
+      return this.fileSearchActive && this.fileSearchReady ? new Set(this.fileSearchResults.map((file) => file.sourceid)) : null;
     },
     stateAvailable() {
       return Boolean(this.pdiState && this.pdiState.available);
@@ -623,10 +632,15 @@ export default {
       if (lanes.length && !(datasource && lanes.includes(datasource.isactive))) {
         return false;
       }
+      if (this.searchMode.kind !== "name") {
+        return !this.fileSearchSources || this.fileSearchSources.has(id);
+      }
+      const search = this.searchMode.value.toUpperCase();
+      if (!search) {
+        return true;
+      }
       const name = (datasource ? datasource.sourcename : (this.fileDay && this.fileDay.names && this.fileDay.names[id]) || `#${id}`).toUpperCase();
-      const text = (this.filter.text || "").toUpperCase();
-      const search = (this.getSearch || "").toUpperCase();
-      return (!text || name.includes(text)) && (!search || name.includes(search));
+      return name.includes(search) || (/^\d+$/.test(search) && String(id).startsWith(search));
     },
     // The day's issues of a row, then (on today) those of its datasource.
     rowIssues(row) {
@@ -661,31 +675,26 @@ export default {
       }
       return { name: "files-log", params: { id: row.id }, query };
     },
-    addStatusFilter(status) {
-      if (!this.filter.statuses.includes(status)) {
-        this.filter.statuses.push(status);
-      }
+    // A header or badge chip adds its value to the filter, or removes it when it is there.
+    toggleListFilter(field, value) {
+      const values = this.filter[field];
+      this.filter[field] = values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
     },
-    // A running lane's chip removes its lock; an idle one filters the page by the lane.
-    clickLane(lane) {
-      if (!lane.running) {
-        this.addLaneFilter(lane.value);
-      } else if (this.stateDelete) {
-        this.removeLaneLock(lane);
-      }
+    laneSelected(lane) {
+      return this.filter.lanes.includes(lane);
     },
-    addLaneFilter(lane) {
-      if (!this.filter.lanes.includes(lane)) {
-        this.filter.lanes.push(lane);
-      }
+    // Only one lane at a time; the lane shown is shown no more.
+    selectLane(lane) {
+      this.filter.lanes = this.laneSelected(lane) ? [] : [lane];
     },
-    addIssueFilter(key) {
-      if (!this.filter.issues.includes(key)) {
-        this.filter.issues.push(key);
+    // What a lane's icon does: a running lane's removes its lock, an idle lane's sets one; null without the grant.
+    laneAction(lane) {
+      if (lane.running) {
+        return this.stateDelete ? () => this.removeLaneLock(lane) : null;
       }
+      return this.stateWrite ? () => this.setLaneLock(lane) : null;
     },
     clearFilters() {
-      this.filter.text = null;
       this.filter.lanes = [];
       this.filter.statuses = [];
       this.filter.issues = [];
@@ -721,22 +730,47 @@ export default {
         // The lanes stay as they were; the next state event asks again.
       }
     },
-    async searchFiles(text) {
-      const value = (text || "").trim();
-      if (value.length < 3) {
-        this.fileSearchResults = [];
-        this.fileSearchOpen = false;
+    // Asks search-files for the header search, unless it was found already or the search changed meanwhile.
+    async searchFiles() {
+      const key = this.fileSearchKey;
+      if (!key || key === this.fileSearchFor) {
         return;
       }
+      const { kind, value } = this.searchMode;
       try {
-        this.fileSearchResults = await api("search-files", { params: { text: value, date: this.$route.query.date || null }, loadingBar: false });
-        this.fileSearchOpen = true;
+        const files = await api("search-files", { params: kind === "id" ? { id: value } : { text: value }, loadingBar: false });
+        if (key === this.fileSearchKey) {
+          this.fileSearchResults = files;
+          this.fileSearchFor = key;
+        }
       } catch (error) {
         notifyError("The files could not be searched.", error);
       }
     },
+    // The file log of the file's datasource on the file's day, with the file picked.
     openFile(file) {
-      this.$router.push({ name: "files-log", params: { id: file.sourceid }, query: { ...this.dayQuery, file: file.id } });
+      const day = String(file.startloaddate).slice(0, 10);
+      const query = { ...(day && day !== this.today ? { date: day } : {}), file: file.id };
+      this.$router.push({ name: "files-log", params: { id: file.sourceid }, query });
+    },
+    setLaneLock(lane) {
+      this.$q
+        .dialog({
+          title: `Lock ${lane.label}?`,
+          message: `Inserts LOAD_${lane.value} into PDI_CORE_STATE, as a core_load run does: no core_load run of the lane starts until the lock is removed. The other lanes go on.`,
+          cancel: true,
+          persistent: true,
+          ok: { label: "Lock lane", color: "negative" },
+        })
+        .onOk(async () => {
+          try {
+            await api("set-lane-lock", { method: "POST", params: { lane: lane.value } });
+            this.$q.notify({ type: "warning", message: `${lane.label} is locked.` });
+          } catch (error) {
+            notifyError(`${lane.label} was not locked.`, error);
+          }
+          this.refreshState();
+        });
     },
     removeLaneLock(lane) {
       const warning = lane.stale
@@ -787,6 +821,13 @@ export default {
     },
   },
   watch: {
+    // Debounced like the old Find file box; only while the page is shown.
+    fileSearchKey(key) {
+      clearTimeout(this.fileSearchTimer);
+      if (key && this.active) {
+        this.fileSearchTimer = setTimeout(this.searchFiles, 400);
+      }
+    },
     // The Datasources page's issues describe today, so their filters are dropped once another day is shown.
     hasDay(loaded) {
       if (loaded && !this.isToday && (this.filter.issues || []).some((key) => key.startsWith("ds_"))) {
@@ -801,6 +842,12 @@ export default {
       }
     },
   },
+  // A session kept from when several lanes could be picked keeps the first.
+  created() {
+    if (this.filter.lanes.length > 1) {
+      this.filter.lanes = this.filter.lanes.slice(0, 1);
+    }
+  },
   activated() {
     this.active = true;
     const stops = [
@@ -814,6 +861,7 @@ export default {
     this.refreshState();
     this.updateDatasourceCatalogue().catch(() => null);
     this.updateDatasourceStatus().catch(() => null);
+    this.searchFiles();
     this.now = Date.now();
     this.clock = setInterval(() => (this.now = Date.now()), 60000);
   },
@@ -821,6 +869,7 @@ export default {
     this.active = false;
     this.stopLiveUpdates();
     clearInterval(this.clock);
+    clearTimeout(this.fileSearchTimer);
   },
 };
 </script>
@@ -848,4 +897,34 @@ export default {
   text-decoration: underline;
 }
 .files-table td.name-cell { white-space: normal; }
+/* A chip whose value filters the page. */
+.chip-selected {
+  box-shadow: inset 0 0 0 2px var(--rapo-filter-border);
+}
+.lane-avatar__hover {
+  display: none;
+}
+.lane-avatar--action {
+  cursor: pointer;
+}
+.lane-avatar--action:hover .lane-avatar__icon,
+.lane-avatar--action:focus-visible .lane-avatar__icon {
+  display: none;
+}
+/* On hover the icon says what a click does: lock (red) or unlock (green). */
+.lane-avatar--lock:hover :deep(.q-avatar__content),
+.lane-avatar--lock:focus-visible :deep(.q-avatar__content) {
+  background: var(--q-negative) !important;
+}
+.lane-avatar--unlock:hover :deep(.q-avatar__content),
+.lane-avatar--unlock:focus-visible :deep(.q-avatar__content) {
+  background: var(--q-positive) !important;
+}
+.lane-avatar--action:hover .lane-avatar__hover,
+.lane-avatar--action:focus-visible .lane-avatar__hover {
+  display: inline-flex;
+}
+.file-search-link {
+  text-decoration: none;
+}
 </style>

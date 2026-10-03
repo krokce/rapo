@@ -660,8 +660,9 @@ by `STARTLOADDATE` (the database's clock), `errors` the files in `ERROR`. Errors
 today are cached per month for an hour (a month is millions of rows in a busy file log); today is always counted.
 
 #### `GET /api/search-files`
-The files of one day (`date`) whose name contains `text` (3 characters or more, case-insensitive), newest first, at
-most 200: `id`, `sourceid`, `sourcename`, `inputfilename`, `filestatus`, `startloaddate`.
+Files of any day, newest first, at most 200: those whose `INPUTFILENAME` starts with `text` (3 characters or more,
+case-sensitive, so that its index is used), or the file `id`. One of the two is required (`400`). Each with `id`,
+`sourceid`, `sourcename`, `inputfilename`, `filestatus`, `startloaddate`.
 
 #### `POST /api/set-file-status`
 Ask PDI Core to recycle, reload or delete loaded files. The body is `{"ids": [...], "status": "RECYCLE"|"RELOAD"|
@@ -677,6 +678,11 @@ row stops every lane, or `null`), `other` rows, `database_time`, `lock_stale_min
 #### `POST /api/remove-lane-lock`
 Delete the `LOAD_<lane>` row (`lane`) when its `DATETIME` still is `since`, as the caller saw it; `409` when it was
 taken anew or is gone.
+
+#### `POST /api/set-lane-lock`
+Pause one lane (`lane`): insert its `LOAD_<lane>` row (`sysdate`, `RUNNING`), as a core_load run does, so no other
+run of the lane starts until it is removed (`remove-lane-lock`). `409` when the lane is locked already, `403` without
+`INSERT` on `PDI_CORE_STATE`.
 
 #### `POST /api/set-global-lock`
 `on=true` inserts the `LOCK` row (`sysdate`, `RUNNING`) unless it exists, `on=false` deletes it. `403` without the

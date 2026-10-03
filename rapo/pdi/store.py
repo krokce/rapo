@@ -624,24 +624,29 @@ class Store:
                            for key, value in row.items()} for row in cells],
                 'perf': perf, 'week_before': week_before, 'names': names}
 
-    def search_files(self, day, text):
-        """Find the files of one day whose name contains a text."""
+    def search_files(self, text=None, file_id=None):
+        """Find files of any day by a name prefix or by their ID.
+
+        `text` matches the start of INPUTFILENAME, case-sensitively, so that
+        the index on it is used; `file_id` is one ID. Newest first.
+        """
         self.check()
         if not self.log_available:
             return []
-        text = (text or '').strip()
-        if len(text) < 3:
-            raise DatasourceError('Search for 3 characters or more.')
-        pattern = '%' + re.sub(r'([\\%_])', r'\\\1', text.upper()) + '%'
-        start = dt.datetime.combine(day, dt.time())
+        if file_id is not None:
+            condition, params = 'id = :id', {'id': int(file_id)}
+        else:
+            text = (text or '').strip()
+            if len(text) < 3:
+                raise DatasourceError('Search for 3 characters or more.')
+            pattern = re.sub(r'([\\%_])', r'\\\1', text) + '%'
+            condition = 'inputfilename like :pattern escape \'\\\''
+            params = {'pattern': pattern}
         statement = sa.text(
             'select id, sourceid, sourcename, inputfilename, filestatus, '
-            f'startloaddate from {LOG_TABLE} where startloaddate >= :day_from '
-            'and startloaddate < :day_to and upper(inputfilename) like '
-            ':pattern escape \'\\\' order by startloaddate desc '
-            f'fetch first {SEARCH_LIMIT} rows only').bindparams(
-                day_from=start, day_to=start + dt.timedelta(days=1),
-                pattern=pattern)
+            f'startloaddate from {LOG_TABLE} where {condition} '
+            'order by startloaddate desc '
+            f'fetch first {SEARCH_LIMIT} rows only').bindparams(**params)
         return [{key: self._value(value) for key, value in row.items()}
                 for row in db.execute(statement, as_table=True)]
 
@@ -812,6 +817,25 @@ class Store:
             raise DatasourceError(f'{job} was locked anew at '
                                   f'{current:%d.%m.%Y %H:%M:%S}.', 409)
         logger.info(f'Lane lock {job} (since {since}) removed')
+
+    def set_lane_lock(self, lane):
+        """Pause one lane: insert its LOAD_<lane> row, as a core_load run does.
+
+        A lane already locked (by a run or by hand) answers 409.
+        """
+        self._check_state('state_insert', 'lock lanes')
+        job = f'LOAD_{int(lane)}'
+        try:
+            result = db.execute(sa.text(
+                f'insert into {STATE_TABLE} (job, datetime, status) '
+                'select :job, sysdate, \'RUNNING\' from dual where not '
+                f'exists (select 1 from {STATE_TABLE} where job = :job)'
+            ).bindparams(job=job))
+        except sa.exc.DatabaseError as error:
+            raise DatasourceError(self._message(error)) from error
+        if not result.rowcount:
+            raise DatasourceError(f'{job} is already locked.', 409)
+        logger.info(f'Lane lock {job} set')
 
     def set_global_lock(self, on):
         """Stop every lane (JOB LOCK) or let them run again."""
