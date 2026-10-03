@@ -2158,6 +2158,8 @@ export default {
       }
       this.getControlVersions(this.control.control_id);
       if (firstSave) {
+        // The form already holds the saved control: the new route is not another control to load.
+        this.replacingRoute = true;
         await this.$router.replace({ name: "edit-control", params: { controlId: String(this.control.control_id) } });
         this.getControlLogs(this.control.control_name, this.log_days_back);
         if (!this.stopLiveUpdates) {
@@ -2358,6 +2360,85 @@ export default {
           }
         });
     },
+    // Loads the control of the route into the form (mounted, and a link to another control: reloadPage).
+    async loadPage() {
+      this.getDatasources();
+      // Both are usually cached. The KPI types must be in before loadControl, which reads kpiAvailable; a new
+      // control doesn't wait for them, its KPIs tab appears when they arrive.
+      const kpiTypesLoaded = this.loadKpiTypes();
+
+      let controlData = this.controlCatalogueById(this.controlId);
+
+      if (!controlData && this.controlId != "new") {
+        try {
+          await this.updateControlCatalogue();
+        } catch (error) {
+          notifyError("Failed to load controls.", error);
+        }
+        controlData = this.controlCatalogueById(this.controlId);
+      }
+
+      if (controlData) {
+        await kpiTypesLoaded;
+        // Before the clone rename, so a clone starts with the KPIs of the control it was cloned from.
+        const kpiControlName = controlData.control_name;
+        if (this.$route.query.clone) {
+          // Force insert instead of update
+          controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
+        }
+        await this.loadControl(controlData, kpiControlName);
+        this.openRouteTab();
+        this.ready = true;
+        if (this.control.control_id) {
+          this.getControlVersions(this.controlId);
+          this.getControlLogs(this.control.control_name, this.log_days_back);
+        }
+        this.loadedUpdatedDate = this.control.updated_date;
+        // A clone has never been saved, so it stays dirty (null) until it is.
+        if (!this.$route.query.clone) {
+          this.savedControlJson = JSON.stringify(this.buildControlPayload());
+        }
+        this.startLiveUpdates();
+      } else {
+        // NEW CONTROL
+        this.control = {
+          control_engine: "DB",
+          control_type: "ANL",
+          status: "Y",
+          need_hook: "Y",
+          need_postrun_hook: "Y",
+          need_prerun_hook: "N",
+          with_deletion: "N",
+          with_drop: "N",
+          days_back: 1,
+          days_retention: 90,
+          parallelism: 1,
+          instance_limit: 1,
+          period_type: "D",
+          period_back: 1,
+          period_number: 1,
+        };
+        this.ready = true;
+        await this.$nextTick();
+        // After a reloadPage, which leaves the form initializing.
+        this.initializing = false;
+        this.savedControlJson = JSON.stringify(this.buildControlPayload());
+      }
+  
+    },
+    // Another control opened from this editor (a link in its texts): the route's component is reused, so its state is
+    // reset and the new control loaded as on mount.
+    async reloadPage() {
+      if (this.stopLiveUpdates) {
+        this.stopLiveUpdates();
+        this.stopLiveUpdates = null;
+      }
+      clearTimeout(this.kpiRenameTimer);
+      clearTimeout(this.schemaTimer);
+      // Initializing until loadControl takes over, so the datasource watchers ignore the emptied form.
+      Object.assign(this.$data, this.$options.data.call(this), { initializing: true });
+      await this.loadPage();
+    },
     startLiveUpdates() {
       const stopLogs = liveRefetch("runs:changed", this.onRunsChanged, {
         filter: (payload) => payload.control_names.includes(this.control.control_name),
@@ -2413,6 +2494,14 @@ export default {
     },
   },
   watch: {
+    // The id always changes with that replace ("new" or the cloned control's id to the saved one), so it ends here.
+    controlId() {
+      if (this.replacingRoute) {
+        this.replacingRoute = false;
+      } else {
+        this.reloadPage();
+      }
+    },
     "control.control_name"() {
       clearTimeout(this.kpiRenameTimer);
       this.kpiRenameTimer = setTimeout(() => this.followKpiName(), 500);
@@ -2494,67 +2583,8 @@ export default {
       }
     },
   },
-  async mounted() {
-    this.getDatasources();
-    // Both are usually cached. The KPI types must be in before loadControl, which reads kpiAvailable; a new
-    // control doesn't wait for them, its KPIs tab appears when they arrive.
-    const kpiTypesLoaded = this.loadKpiTypes();
-
-    let controlData = this.controlCatalogueById(this.controlId);
-
-    if (!controlData && this.controlId != "new") {
-      try {
-        await this.updateControlCatalogue();
-      } catch (error) {
-        notifyError("Failed to load controls.", error);
-      }
-      controlData = this.controlCatalogueById(this.controlId);
-    }
-
-    if (controlData) {
-      await kpiTypesLoaded;
-      // Before the clone rename, so a clone starts with the KPIs of the control it was cloned from.
-      const kpiControlName = controlData.control_name;
-      if (this.$route.query.clone) {
-        // Force insert instead of update
-        controlData = { ...controlData, control_id: undefined, control_name: controlData.control_name + "_CLONE" };
-      }
-      await this.loadControl(controlData, kpiControlName);
-      this.openRouteTab();
-      this.ready = true;
-      if (this.control.control_id) {
-        this.getControlVersions(this.controlId);
-        this.getControlLogs(this.control.control_name, this.log_days_back);
-      }
-      this.loadedUpdatedDate = this.control.updated_date;
-      // A clone has never been saved, so it stays dirty (null) until it is.
-      if (!this.$route.query.clone) {
-        this.savedControlJson = JSON.stringify(this.buildControlPayload());
-      }
-      this.startLiveUpdates();
-    } else {
-      // NEW CONTROL
-      this.control = {
-        control_engine: "DB",
-        control_type: "ANL",
-        status: "Y",
-        need_hook: "Y",
-        need_postrun_hook: "Y",
-        need_prerun_hook: "N",
-        with_deletion: "N",
-        with_drop: "N",
-        days_back: 1,
-        days_retention: 90,
-        parallelism: 1,
-        instance_limit: 1,
-        period_type: "D",
-        period_back: 1,
-        period_number: 1,
-      };
-      this.ready = true;
-      await this.$nextTick();
-      this.savedControlJson = JSON.stringify(this.buildControlPayload());
-    }
+  mounted() {
+    return this.loadPage();
   },
   unmounted() {
     clearTimeout(this.kpiRenameTimer);
@@ -2565,6 +2595,15 @@ export default {
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }
+  },
+  // Another control opened from this editor asks first, as leaving does; the editor's own replace after a first save
+  // (or a clone's) does not.
+  beforeRouteUpdate(to, from, next) {
+    if (to.params.controlId === from.params.controlId || this.replacingRoute) {
+      next();
+      return;
+    }
+    this.$options.beforeRouteLeave.call(this, to, from, next);
   },
   // Leaving with unsaved changes (Cancel, the side menu, back) asks first.
   beforeRouteLeave(to, from, next) {

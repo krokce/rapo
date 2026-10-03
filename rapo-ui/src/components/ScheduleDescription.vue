@@ -1,6 +1,18 @@
 <template>
   <div class="schedule-description">
-    <div class="description-text ellipsis" :class="{ 'text-grey-7': dim }">{{ text }}</div>
+    <div class="description-text ellipsis" :class="{ 'text-grey-7': dim }">
+      <template v-for="(part, index) in parts" :key="index">
+        <router-link
+          v-if="part.control && controlIds.has(part.control)"
+          :to="{ name: 'edit-control', params: { controlId: controlIds.get(part.control) }, query: { tab: 'scheduler' } }"
+          class="control-link"
+          :title="`Open ${part.control}`"
+          @click.stop>
+          {{ part.control }}
+        </router-link>
+        <template v-else>{{ part.text ?? part.control }}</template>
+      </template>
+    </div>
     <div v-if="hasRhythm || window" class="details row no-wrap items-center">
       <schedule-rhythm :schedule-config="scheduleConfig" :color="color" />
       <span v-if="window" class="window-chip" :title="windowTitle"><q-icon name="fas fa-history" size="9px" /> {{ window }}</span>
@@ -9,8 +21,9 @@
 </template>
 
 <script>
+import { mapGetters } from "vuex";
 import ScheduleRhythm from "./ScheduleRhythm.vue";
-import { scheduleFrequency, scheduleRhythm, scheduleText, windowLabel } from "../utils/schedule";
+import { scheduleFrequency, scheduleParts, scheduleRhythm, windowLabel } from "../utils/schedule";
 
 // A schedule in words, then the strip of where its fires fall and the data window of a run. Lines 2 and 3 of
 // ScheduleSummary; the control editor shows it live under the schedule fields.
@@ -32,8 +45,10 @@ export default {
     hasRhythm() {
       return !!scheduleRhythm(this.scheduleConfig);
     },
-    text() {
-      return scheduleText(this.scheduleConfig, this.triggerName, this.pulledBy);
+    ...mapGetters({ controlIds: "controlIdsByName" }),
+    // The sentence, the controls it names (the trigger of a cascade, the controls pulling it) linking to their editor.
+    parts() {
+      return scheduleParts(this.scheduleConfig, this.triggerName, this.pulledBy);
     },
     window() {
       return windowLabel(this.periodBack, this.periodNumber, this.periodType);
@@ -55,6 +70,14 @@ export default {
   font-size: 12px;
   line-height: 16px;
   min-width: 0;
+}
+.control-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 500;
+}
+.control-link:hover {
+  text-decoration: underline;
 }
 .details {
   gap: 6px;

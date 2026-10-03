@@ -89,7 +89,9 @@
                   <td class="control-cell">
                     <span class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</span>
                     <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
-                      for {{ job.job_control_name }}
+                      for
+                      <router-link v-if="controlIds.has(job.job_control_name)" :to="editLink(job.job_control_name)" class="control-ref">{{ job.job_control_name }}</router-link>
+                      <template v-else>{{ job.job_control_name }}</template>
                       <q-tooltip>Runs in the job of {{ job.job_control_name }}, as its chain source or cascade</q-tooltip>
                     </span>
                   </td>
@@ -205,7 +207,11 @@
                     <span class="cursor-pointer" @click="toggleTrigger(upcomingFilter, fire.trigger_type)">
                       <q-icon :name="triggerType(fire.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(fire.trigger_type).label }}
                     </span>
-                    <span v-if="fire.via" class="text-grey-6 q-ml-xs" :title="viaTitle(fire)">via {{ fire.via }}</span>
+                    <span v-if="fire.via" class="text-grey-6 q-ml-xs" :title="viaTitle(fire)"
+                      >via
+                      <router-link v-if="controlIds.has(fire.via)" :to="editLink(fire.via)" class="control-ref">{{ fire.via }}</router-link>
+                      <template v-else>{{ fire.via }}</template>
+                    </span>
                   </td>
                   <td class="text-weight-bold text-blue-grey-7" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
                     {{ toDateString(fire.date_from) }}
@@ -489,6 +495,7 @@ export default {
       return [...this.runner.running.map((job) => ({ ...job, state: "running" })), ...this.runner.queued.map((job) => ({ ...job, state: "queued" }))];
     },
     ...mapGetters(["getSearch"]),
+    ...mapGetters({ controlIds: "controlIdsByName" }),
     // The first hour (ms) of each tab's window: Upcoming from the current hour of the server, History up to it.
     upcomingStart() {
       return windowStart(this.now + this.clockOffset);
@@ -586,7 +593,11 @@ export default {
     },
   },
   methods: {
-    ...mapActions(["updateSchedulerStatus"]),
+    ...mapActions(["updateSchedulerStatus", "updateControlCatalogue"]),
+    // The editor of a control the page names (via, for), on its Scheduler tab.
+    editLink(controlName) {
+      return { name: "edit-control", params: { controlId: this.controlIds.get(controlName) }, query: { tab: "scheduler" } };
+    },
     controlType,
     controlTypeColor,
     runStatus,
@@ -670,8 +681,10 @@ export default {
       const status = await this.updateSchedulerStatus();
       this.clockOffset = toMillis(status.server_time) - Date.now();
     },
+    // With the catalogue, which the links of the controls a fire runs via are looked up in.
     async refreshUpcoming() {
-      this.upcoming = await api("scheduler-upcoming", { params: { hours: 24 } });
+      const [upcoming] = await Promise.all([api("scheduler-upcoming", { params: { hours: 24 } }), this.updateControlCatalogue().catch(() => null)]);
+      this.upcoming = upcoming;
     },
     async refreshEvents() {
       const [events, missed] = await Promise.all([
@@ -741,6 +754,12 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+/* A control named beside another (via, for): in the grey of its text. */
+.control-ref {
+  color: inherit;
+  font-weight: 500;
 }
 
 

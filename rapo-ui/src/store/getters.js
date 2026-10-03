@@ -8,4 +8,6 @@ export default {
   getEnvParameters: (state) => state.envParameters,
   getEnvConfigChanges: (state) => state.envConfigChanges,
   controlCatalogueById: (state) => (controlId) => state.controlCatalogue.find((item) => item.control_id === Number(controlId)),
+  // Control IDs by name, built once per catalogue, for links to the controls a text names.
+  controlIdsByName: (state) => new Map(state.controlCatalogue.map((item) => [item.control_name, item.control_id])),
 };

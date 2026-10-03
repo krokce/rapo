@@ -313,3 +313,7 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       *Now HH:MM*. Results and the Scheduler count by the server's clock, Files and the file log by the database's,
       as their hours are. The midnight divider of the Scheduler heatmaps is drawn the same way, in grey, with a calendar
       icon before the day. `get-control-runs` answers `server_time`, `get-ds-file-log` answers `database_time`.
+    - **Referenced controls link to their editor:** the control a cascade follows (*After X finishes · own window*)
+      and the controls pulling one (*Pulled by X*) in the schedule descriptions (Controls, editor, KPI type), and
+      *via X* (Upcoming) and *for X* (Running) on the Scheduler page. A link from one editor to another loads that
+      control (asking first about unsaved changes).

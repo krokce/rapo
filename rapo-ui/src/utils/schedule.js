@@ -253,13 +253,24 @@ export function describeSchedule(config, triggerName = null) {
 }
 
 // The schedule in words as the Controls Scheduler column shows it: a control with no schedule of its own that other
-// controls pull (chain-rules) reads "Pulled by X".
-export function scheduleText(config, triggerName = null, pulledBy = []) {
+// controls pull (chain-rules) reads "Pulled by X". As parts, [{text} | {control: name}], so the controls it names
+// can link to their editor (ScheduleDescription); scheduleText joins them.
+export function scheduleParts(config, triggerName = null, pulledBy = []) {
+  const units = scheduleUnits(config);
+  if (units && !units.fires && units.trigger_id && triggerName) {
+    return [{ text: "After " }, { control: triggerName }, { text: " finishes · own window" }];
+  }
   const text = describeSchedule(config, triggerName);
   if (pulledBy.length && ["Not scheduled", "Never fires"].includes(text)) {
-    return `Pulled by ${pulledBy.join(", ")}`;
+    return [{ text: "Pulled by " }, ...pulledBy.flatMap((name, index) => (index ? [{ text: ", " }, { control: name }] : [{ control: name }]))];
   }
-  return text;
+  return [{ text }];
+}
+
+export function scheduleText(config, triggerName = null, pulledBy = []) {
+  return scheduleParts(config, triggerName, pulledBy)
+    .map((part) => part.text ?? part.control)
+    .join("");
 }
 
 const PERIOD_NAMES = { D: "day", W: "week", M: "month" };

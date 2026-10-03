@@ -64,6 +64,8 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
 - **Now marker** on the hour heatmaps (Results, Files, file log on today; Scheduler Upcoming/History): a line at the
   current minute under a clock icon and *Now HH:MM*, by the server's or the database's clock as the hours are; the
   Scheduler's midnight divider is drawn alike, in grey, with a calendar icon.
+- **Links to referenced controls** in schedule descriptions (*After X finishes*, *Pulled by X*) and the Scheduler's
+  *via X* / *for X*; an editor-to-editor link reloads the form (unsaved changes asked first).
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,
   day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 
