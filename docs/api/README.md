@@ -154,6 +154,11 @@ CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run
 
 > Until v0.8.0 this route took no parameters and returned the last 200 runs as a plain array.
 
+#### `GET /api/get-run-calendar`
+The runs per day of a month (`month=YYYY-MM`, `400` otherwise), for the Results calendar:
+`{"YYYY-MM-DD": {"count": n, "errors": e}}` for the days with runs. A run counts on the day it started, or was added
+if it never started, as `get-control-runs?date=`; runs of deleted controls are left out, `errors` are runs in `E`.
+
 #### `GET /api/get-control-run`
 Details of one run (`process_id`): name, window, timestamps (`added`, `start_date`, `end_date`), status and
 counters. `404` when the run does not
@@ -645,6 +650,11 @@ runtime in seconds summed, one per datasource, hour
 second of its SUCCESS files with a runtime, and `last_success`), `week_before` (files by datasource id on the same
 weekday a week earlier, for today up to the same time of day), `names` (the SOURCENAME the log gives each id),
 `date`, `today`, `database_time`.
+
+#### `GET /api/get-files-calendar`
+The files per day of a month (`month=YYYY-MM`), for the Files calendar: `{"YYYY-MM-DD": {"count": n, "errors": e}}`
+by `STARTLOADDATE` (the database's clock), `errors` the files in `ERROR`. Errors as `get-files-day`. The days before
+today are cached per month for an hour (a month is millions of rows in a busy file log); today is always counted.
 
 #### `GET /api/search-files`
 The files of one day (`date`) whose name contains `text` (3 characters or more, case-insensitive), newest first, at

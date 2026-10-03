@@ -3,7 +3,7 @@
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
-        <div><day-navigator :day="day" :today="serverToday" @go="goToDay" /></div>
+        <div><day-navigator :day="day" :today="serverToday" :calendar="loadCalendar" :legend="{ count: 'runs', errors: 'errors' }" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -139,6 +139,10 @@ export default {
       }
     },
     // The server's today is plain /results, so the menu link and redirects always land on today.
+    // The calendar dots of a month (YYYY-MM) for the day pill.
+    loadCalendar(month) {
+      return api("get-run-calendar", { params: { month }, loadingBar: false });
+    },
     goToDay(day) {
       this.$router.push({ name: "results", query: day && day !== this.serverToday ? { date: day } : {} });
     },

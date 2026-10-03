@@ -1093,6 +1093,14 @@ def get_files_day(date: str | None = None):
         return pdi.read_files_day(day)
 
 
+@api.get('/get-files-calendar')
+def get_files_calendar(month: str):
+    """Get the files and ERROR files per day of a month (YYYY-MM)."""
+    start, end = parse_month(month)
+    with datasource_errors():
+        return pdi.read_files_calendar(start, end)
+
+
 @api.get('/search-files')
 def search_files(text: str, date: str | None = None):
     """Find the files of one day whose name contains a text."""
@@ -1167,6 +1175,18 @@ def set_global_lock(on: bool):
         pdi.set_global_lock(on)
     events.poke()
     return {'status': 200}
+
+
+def parse_month(month):
+    """Get the first moments of a YYYY-MM month and of the next, or 400."""
+    try:
+        start = dt.datetime.strptime(month, '%Y-%m')
+    except (TypeError, ValueError):
+        raise fastapi.HTTPException(status_code=400,
+                                    detail='month must be YYYY-MM')
+    end = start.replace(year=start.year+start.month//12,
+                        month=start.month % 12+1)
+    return start, end
 
 
 def parse_day(date):
@@ -1377,6 +1397,13 @@ def download_control_run_log(process_id: int):
     name = reader.read_control_name_by_id(run['control_id']) or 'control'
     return fastapi.responses.FileResponse(path, media_type='text/plain',
                                           filename=f'{name}_{process_id}.log')
+
+
+@api.get('/get-run-calendar')
+def get_run_calendar(month: str):
+    """Get the runs and runs in error per day of a month (YYYY-MM)."""
+    start, end = parse_month(month)
+    return reader.read_run_calendar(start, end)
 
 
 @api.get('/get-control-run')

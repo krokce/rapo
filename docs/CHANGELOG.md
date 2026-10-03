@@ -45,7 +45,7 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   tab. Type, Name and Scheduler fit their content; Description takes the rest. New route `get-next-fires`.
 - **Results page:** filter row and *Run control* button removed (chips filter); a runs-per-hour heatmap (runs per type
   on hover, errors outlined red, warnings an amber corner, click filters the hour); a day pill `‹ day › ⏭` in the
-  title (also on Files); the header search finds process IDs (prefix) and offers *Go to its day* for another day's
+  title (also on Files) whose day opens a calendar with activity/error dots; the header search finds process IDs (prefix) and offers *Go to its day* for another day's
   run; the name magnifier filters by the exact control and clears on a second click. `get-control-run` answers `added`.
 - **Scheduler page:** a status bar of live chips beside the title (state, server, heartbeat, slots gauge, next fire,
   24 h counters) linking to the tabs instead of the status card; filter fields removed (header search, count chips that filter); Upcoming = next 24 hours incl.

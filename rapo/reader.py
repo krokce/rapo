@@ -309,6 +309,31 @@ class Reader:
             return [row[0] for row in db.execute(statement, as_records=True)]
         return db.execute(statement).rowcount
 
+    def read_run_calendar(self, start, end):
+        """Get the runs and runs in error per day in [start, end).
+
+        A run counts on the day it started, or was added if it never started,
+        as on Results; runs of deleted controls are left out as there.
+
+        Returns
+        -------
+        days : dict
+            By YYYY-MM-DD, `count` and `errors`, for the days with runs.
+        """
+        rows = db.execute(sa.text("""
+            select to_char(trunc(nvl(l.start_date, l.added)), 'YYYY-MM-DD') day,
+                   count(*) runs,
+                   sum(case when l.status = 'E' then 1 else 0 end) errors
+              from rapo_log l
+              join rapo_config c on l.control_id = c.control_id
+             where nvl(l.start_date, l.added) >= :day_from
+               and nvl(l.start_date, l.added) < :day_to
+             group by trunc(nvl(l.start_date, l.added))
+        """).bindparams(day_from=start, day_to=end), as_table=True)
+        return {row['day']: {'count': int(row['runs']),
+                             'errors': int(row['errors'] or 0)}
+                for row in rows}
+
     def read_control_results_for_day(self, day):
         """Get list of all control runs started on the passed day."""
         return self.read_control_runs(day=day)

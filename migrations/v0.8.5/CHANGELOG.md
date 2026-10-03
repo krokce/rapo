@@ -247,8 +247,10 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       starts with the digits typed. A process ID not run on the day shown offers *Go to its day*, which opens the day
       it ran on with the search kept; a process ID with no run says so.
     - **Day pill.** The day in the title is a pill with the weekday: `‹` the previous day, and on an earlier day `›` the
-      next day and `⏭` today; hover a segment for the day it opens. The same pill replaces the day buttons of the
-      *Files* page.
+      next day and `⏭` today; hover a segment for the day it opens. A click on the day opens a calendar (Monday
+      first, later days disabled) whose days carry a dot: teal with runs, red with a run in error; on *Files* the
+      same for files and ERROR files. Picking a day opens it. The same pill replaces the day buttons of the *Files*
+      page. New routes `get-run-calendar` and `get-files-calendar`.
     - **Runs per hour.** A heatmap above the table counts the day's runs by the hour they started (or were added, if
       they never started), following the filters. Hover an hour for its runs per control type, errors and warnings; an
       hour with a run in error has a red outline, one with a run flagged with a warning an amber corner. A click
