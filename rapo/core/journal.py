@@ -82,9 +82,8 @@ def read(event_id):
     return db.execute(select, as_dict=True)
 
 
-def read_events(control_name=None, event_type=None, trigger_type=None,
-                date_from=None, date_to=None, limit=500):
-    """Get events with their control and run details, latest first."""
+def _events_select(limit):
+    """Get the select of events with their control and run, latest first."""
     event = db.tables.scheduler_event
     config = db.tables.config
     log = db.tables.log
@@ -92,26 +91,34 @@ def read_events(control_name=None, event_type=None, trigger_type=None,
                        isouter=True)
                  .join(log, event.c.process_id == log.c.process_id,
                        isouter=True))
-    select = (sa.select(event.c.event_id,
-                        event.c.control_id,
-                        config.c.control_name,
-                        config.c.control_type,
-                        event.c.trigger_type,
-                        event.c.event_type,
-                        event.c.scheduled_time,
-                        event.c.event_time,
-                        event.c.start_time,
-                        event.c.process_id,
-                        event.c.message,
-                        event.c.runner,
-                        log.c.status,
-                        log.c.date_from,
-                        log.c.date_to,
-                        log.c.start_date,
-                        log.c.end_date)
-                .select_from(join)
-                .order_by(event.c.event_id.desc())
-                .limit(limit))
+    return (sa.select(event.c.event_id,
+                      event.c.control_id,
+                      config.c.control_name,
+                      config.c.control_type,
+                      event.c.trigger_type,
+                      event.c.event_type,
+                      event.c.scheduled_time,
+                      event.c.event_time,
+                      event.c.start_time,
+                      event.c.process_id,
+                      event.c.message,
+                      event.c.runner,
+                      log.c.status,
+                      log.c.date_from,
+                      log.c.date_to,
+                      log.c.start_date,
+                      log.c.end_date)
+              .select_from(join)
+              .order_by(event.c.event_id.desc())
+              .limit(limit))
+
+
+def read_events(control_name=None, event_type=None, trigger_type=None,
+                date_from=None, date_to=None, limit=500, since=None):
+    """Get events with their control and run details, latest first."""
+    event = db.tables.scheduler_event
+    config = db.tables.config
+    select = _events_select(limit)
     if control_name:
         select = select.where(config.c.control_name == control_name)
     if event_type:
@@ -122,6 +129,27 @@ def read_events(control_name=None, event_type=None, trigger_type=None,
         select = select.where(event.c.event_time >= date_from)
     if date_to:
         select = select.where(event.c.event_time < date_to)
+    if since:
+        select = select.where(event.c.event_time >= since)
+    return db.execute(select, as_table=True)
+
+
+def read_missed(before, limit=500):
+    """Get missed fires recorded before a moment and never caught up.
+
+    A fire is caught up by a CATCHUP event of its control and scheduled time
+    (run-missed submits one).
+    """
+    event = db.tables.scheduler_event
+    caught = event.alias('caught')
+    catchup = (sa.select(caught.c.event_id)
+                 .where(caught.c.control_id == event.c.control_id,
+                        caught.c.scheduled_time == event.c.scheduled_time,
+                        caught.c.trigger_type == CATCHUP))
+    select = (_events_select(limit)
+              .where(event.c.event_type == MISSED,
+                     event.c.event_time < before,
+                     ~sa.exists(catchup)))
     return db.execute(select, as_table=True)
 
 

@@ -6,10 +6,14 @@
     :label="stopped ? 'Start scheduler' : 'Stop scheduler'"
     :disable="status.state === 'off' || busy"
     :loading="busy"
+    rounded
     no-caps
     unelevated
+    padding="0 12px"
+    class="toggle-button"
     @click="toggle">
     <q-tooltip v-if="status.state === 'off'">The scheduler is disabled for this server in rapo.ini or in development mode.</q-tooltip>
+    <q-tooltip v-else>{{ stopped ? "Scheduled controls run again from now on" : "No scheduled control runs on any server until started again" }}</q-tooltip>
   </q-btn>
 </template>
 
@@ -57,3 +61,15 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+/* As tall as the chips of the status bar beside it. */
+.toggle-button {
+  height: 32px;
+  min-height: 32px;
+  font-size: 14px;
+}
+.toggle-button :deep(.q-icon) {
+  font-size: 12px;
+}
+</style>

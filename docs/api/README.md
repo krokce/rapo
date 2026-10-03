@@ -944,7 +944,8 @@ The state of the scheduler, of its lease and of the run manager of **this** serv
 * `scheduled_controls`, `last_fire`, `next_maintenance`;
 * `server_time` - the server's clock, which the UI uses to show relative times;
 * `runner` - `{runner, active, capacity, queued, running}`, where `queued` and `running` list
-  `{event_id, control_name, control_type, job_control_name, trigger_type, process_id, pid, queued, started}`.
+  `{event_id, control_name, control_type, job_control_name, trigger_type, process_id, pid, queued, started,
+  date_from, date_to}` (`date_from`/`date_to`: the data window of the run performed now).
   `process_id`, `control_name` and `control_type` are those of the run the job process performs now, which is an
   upstream run of a chain, an iteration or a cascade child while those run; `job_control_name` is the control the
   job was submitted for.
@@ -955,15 +956,18 @@ server against that database. A start resumes from now: fires that fell into the
 scheduler is disabled for this server in `rapo.ini`.
 
 #### `GET /api/scheduler-upcoming`
-Future fires of all enabled schedules, ordered by time.
+The runs the scheduler causes from now on, ordered by time: own fires of the enabled schedules, the cascades they
+trigger and the controls each run pulls first (chain-rules), as `get-next-fires` counts them.
 
-| Parameter      | Type | Default | Meaning                             |
-|----------------|------|---------|--------------------------------------|
-| `hours`        | int  | 24      | How far ahead to look, 1 .. 744.     |
-| `control_name` | str  | -       | One control instead of all of them.  |
+| Parameter      | Type | Default | Meaning                                                              |
+|----------------|------|---------|-----------------------------------------------------------------------|
+| `hours`        | int  | 24      | Whole hours from the start of the current one, 1 .. 744 (24 = now until the same hour tomorrow, exclusive). |
+| `control_name` | str  | -       | One control instead of all of them.                                   |
 
-Each fire is `{scheduled_time, control_id, control_name, control_type, control_group}`. It is computed from the
-database, so any server answers it, even one whose scheduler is stopped.
+Each fire is `{scheduled_time, control_id, control_name, control_type, control_group, trigger_type, via, date_from,
+date_to}`: `trigger_type` is `SCHEDULE`, `CASCADE` (`via` the control it follows) or `UPSTREAM` (`via` the control
+that pulls it); cascades and upstreams carry the time of the fire they follow. It is computed from the database, so
+any server answers it, even one whose scheduler is stopped.
 
 #### `GET /api/get-next-fires`
 The next runs of every control, for the Controls page. A scheduled fire runs the control, then cascades into the
@@ -991,11 +995,17 @@ The run request history, latest first.
 | `trigger_type` | str  | -       | `SCHEDULE`, `MANUAL`, `CATCHUP`, `ITERATION`, `CASCADE`, `UPSTREAM`. |
 | `date_from`    | date | -       | Events from this day on.                       |
 | `date_to`      | date | -       | Events up to and including this day.           |
+| `hours`        | int  | -       | Events of the last whole hours, the current included, 1 .. 744 (24 = from the same hour yesterday). |
 | `limit`        | int  | 500     | Maximum number of rows, 1 .. 5000.             |
 
 Each event carries `event_id`, `control_id`, `control_name`, `control_type`, `trigger_type`, `event_type`,
 `scheduled_time`, `event_time`, `start_time`, `process_id`, `message`, `runner`, and the run's `status`,
 `date_from`, `date_to`, `start_date` and `end_date` joined from `rapo_log`.
+
+#### `GET /api/get-missed-fires`
+`MISSED` events recorded before the last `hours` (default 24, as `scheduler-events`) that were never caught up (no
+`CATCHUP` event of the same control and scheduled time), latest first, at most `limit` (500, 1 .. 5000). Rows as
+`scheduler-events`.
 
 #### `POST /api/run-missed`
 Run a missed fire (`event_id`) for its original moment, as a `CATCHUP` run with its iterations and its cascade. The

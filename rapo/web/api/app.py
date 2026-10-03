@@ -1444,11 +1444,27 @@ def scheduler_events(control_name: str | None = None,
                      trigger_type: str | None = None,
                      date_from: dt.date | None = None,
                      date_to: dt.date | None = None,
+                     hours: int | None = fastapi.Query(None, ge=1,
+                                                       le=24*31),
                      limit: int = fastapi.Query(500, ge=1, le=5000)):
     """Get scheduler events, latest first."""
     date_to = date_to+dt.timedelta(days=1) if date_to else None
+    since = window_start(hours) if hours else None
     return journal.read_events(control_name, event_type, trigger_type,
-                               date_from, date_to, limit)
+                               date_from, date_to, limit, since=since)
+
+
+def window_start(hours):
+    """Get the start of the last `hours` whole hours, the current included."""
+    now = dt.datetime.now().replace(minute=0, second=0, microsecond=0)
+    return now-dt.timedelta(hours=hours-1)
+
+
+@api.get('/get-missed-fires')
+def get_missed_fires(hours: int = fastapi.Query(24, ge=1, le=24*31),
+                     limit: int = fastapi.Query(500, ge=1, le=5000)):
+    """Get missed fires older than the last hours, never caught up."""
+    return journal.read_missed(window_start(hours), limit)
 
 
 @api.post('/run-missed')

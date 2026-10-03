@@ -1,9 +1,18 @@
 <template>
   <div class="hour-heatmap">
+    <!-- The day a rolling window turns to, over its midnight column. -->
+    <div v-if="columns.some((slot) => slot.dividerLabel)" class="hour-heatmap__row hour-heatmap__days">
+      <div class="hour-heatmap__label"></div>
+      <div v-for="(slot, index) in columns" :key="index" class="hour-heatmap__day" :class="{ 'hour-heatmap__divider': slot.divider }">{{ slot.dividerLabel }}</div>
+    </div>
     <div class="hour-heatmap__row hour-heatmap__hours">
       <div class="hour-heatmap__label"></div>
-      <div v-for="hour in 24" :key="hour" class="hour-heatmap__hour" :class="{ 'hour-heatmap__hour--selected': selected === hour - 1 }">
-        {{ String(hour - 1).padStart(2, "0") }}
+      <div
+        v-for="(slot, index) in columns"
+        :key="index"
+        class="hour-heatmap__hour"
+        :class="{ 'hour-heatmap__hour--selected': selected === index, 'hour-heatmap__divider': slot.divider }">
+        {{ String(slot.hour).padStart(2, "0") }}
       </div>
     </div>
     <div v-for="row in rows" :key="row.key" class="hour-heatmap__row">
@@ -15,6 +24,7 @@
         :key="hour"
         class="hour-heatmap__cell"
         :class="{
+          'hour-heatmap__divider': columns[hour].divider,
           'hour-heatmap__cell--errors': cell.errors,
           'hour-heatmap__cell--corner-errors': corner === 'errors' && cell.errors,
           'hour-heatmap__cell--corner-warnings': corner === 'warnings' && cell.warnings,
@@ -24,10 +34,10 @@
         :style="{ background: color(cell.count, row.key === 'total') }"
         v-keyboard:button
         :aria-pressed="selected === hour"
-        :aria-label="`${hourRange(hour)}, ${cell.count} ${unit}${cell.errors ? ', with errors' : ''}${cell.warnings ? ', with warnings' : ''}`"
+        :aria-label="`${columns[hour].title}, ${cell.count} ${unit}${cell.errors ? ', with errors' : ''}${cell.warnings ? ', with warnings' : ''}`"
         @click="$emit('select', selected === hour ? null : hour)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 6]">
-          {{ hourRange(hour) }}, {{ row.label }}: {{ cell.count.toLocaleString() }} {{ unit }}<span v-if="cell.breakdown"> &middot; {{ cell.breakdown }}</span
+          {{ columns[hour].title }}, {{ row.label }}: {{ cell.count.toLocaleString() }} {{ unit }}<span v-if="cell.breakdown"> &middot; {{ cell.breakdown }}</span
           ><span v-if="cell.errors">, {{ cell.errors }} error(s)</span><span v-if="cell.warnings">, {{ cell.warnings }} warning(s)</span>
         </q-tooltip>
       </div>
@@ -37,8 +47,9 @@
 
 <script>
 // Counts per hour of the day: one row per group and a Total, colored by count on a square-root scale up to the busiest
-// cell. A cell with errors has a red outline; its corner marks errors (red) or warnings (amber). A click picks the hour,
-// a second clears it. Used for files (Files, file log) and runs (Results).
+// cell. A cell with errors has a red outline; its corner marks errors (red) or warnings (amber). A click picks the hour
+// (the index of its column), a second clears it. Used for files (Files, file log), runs (Results) and the scheduler's
+// rolling 24 hours (columns from `slots`, green for the future).
 import { Dark } from "quasar";
 import { hourRange } from "../utils/files";
 
@@ -53,9 +64,17 @@ export default {
     unit: { type: String, default: "file(s)" },
     // What the corner triangle marks: "errors" (red) or "warnings" (amber).
     corner: { type: String, default: "errors" },
+    // The columns in order, [{hour, title?, divider?, dividerLabel?}]; the hours 0..23 of one day by default. A divider
+    // column (midnight of a rolling window) has a line before it and its dividerLabel above.
+    slots: { type: Array, default: null },
+    // The hue of the scale: blue (199) for the past, a green for what is still to come.
+    hue: { type: Number, default: 199 },
   },
   emits: ["select"],
   computed: {
+    columns() {
+      return (this.slots || Array.from({ length: 24 }, (_, hour) => ({ hour }))).map((slot) => ({ ...slot, title: slot.title || hourRange(slot.hour) }));
+    },
     // The busiest cell of the groups; the Total row is scaled on its own, else it would wash the groups out.
     maxima() {
       const groups = this.rows.filter((row) => row.key !== "total").flatMap((row) => row.cells.map((cell) => cell.count));
@@ -64,14 +83,13 @@ export default {
     },
   },
   methods: {
-    hourRange,
     color(count, total = false) {
       if (!count) {
         return "var(--rapo-grid)";
       }
       const share = Math.sqrt(count / (total ? this.maxima.total : this.maxima.groups));
       const lightness = Dark.isActive ? 20 + Math.min(share, 1) * 40 : 92 - Math.min(share, 1) * 55;
-      return `hsl(199, 80%, ${lightness}%)`;
+      return `hsl(${this.hue}, ${this.hue === 199 ? 80 : 55}%, ${lightness}%)`;
     },
   },
 };
@@ -98,6 +116,15 @@ export default {
 .hour-heatmap__hour {
   text-align: center;
   color: var(--rapo-label);
+}
+.hour-heatmap__day {
+  color: var(--rapo-label);
+  white-space: nowrap;
+  overflow: visible;
+  padding-left: 3px;
+}
+.hour-heatmap__divider {
+  box-shadow: -2px 0 0 0 var(--rapo-label);
 }
 .hour-heatmap__hour--selected {
   color: var(--rapo-info);

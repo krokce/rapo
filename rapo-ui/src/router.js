@@ -53,7 +53,7 @@ const router = createRouter({
     {
       name: "scheduler",
       path: "/scheduler",
-      meta: { hideSearch: true },
+      meta: { searchPlaceholder: "Search control name or process ID" },
       component: SchedulerPage,
     },
     {

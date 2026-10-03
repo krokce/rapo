@@ -47,6 +47,12 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   on hover, errors outlined red, warnings an amber corner, click filters the hour); a day pill `‹ day › ⏭` in the
   title (also on Files); the header search finds process IDs (prefix) and offers *Go to its day* for another day's
   run; the name magnifier filters by the exact control and clears on a second click. `get-control-run` answers `added`.
+- **Scheduler page:** a status bar of live chips beside the title (state, server, heartbeat, slots gauge, next fire,
+  24 h counters) linking to the tabs instead of the status card; filter fields removed (header search, count chips that filter); Upcoming = next 24 hours incl.
+  cascades and upstreams (*Trigger* column, *via*), History = last 24 hours plus an *Older missed* chip; a green/blue
+  24-hour heatmap above each (failed/error outlined, missed marked, click filters the hour); Running is a tab of its own (counts on the tab, scrolls inside) with the run
+  window in History's column order. `scheduler-upcoming` cascades/upstreams, `scheduler-events?hours=`, new
+  `get-missed-fires`.
 - **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
   catch-up, iteration, cascade, upstream); hover for details. The day's totals count the runs per trigger.
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,

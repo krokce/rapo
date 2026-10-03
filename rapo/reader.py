@@ -100,14 +100,15 @@ class Reader:
         Returns
         -------
         record : dict or None
-            Status, initiation date, start date and configured timeout of
-            the run, and the name and type of its control.
+            Status, initiation date, start date, data window and configured
+            timeout of the run, and the name and type of its control.
         """
         log = db.tables.log
         config = db.tables.config
         join = log.join(config, log.c.control_id == config.c.control_id,
                         isouter=True)
         select = (sa.select(log.c.status, log.c.added, log.c.start_date,
+                            log.c.date_from, log.c.date_to,
                             config.c.timeout, config.c.control_name,
                             config.c.control_type)
                     .select_from(join)

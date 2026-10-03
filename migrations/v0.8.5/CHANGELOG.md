@@ -3,7 +3,7 @@
 ## Annotation
 A *Discrepancy analysis* page explains what sets a run's discrepancies apart from its normal records, the email of
 a control can be sent on the result of an SQL statement, the Controls page shows when each control runs next,
-Results show what started each run and the runs per hour, with a day pill and no filter row, the editor's Run log is the Results table, KPIs can be calculated for a
+Results show what started each run and the runs per hour, with a day pill and no filter row, the Scheduler shows the next and last 24 hours with heatmaps, the editor's Run log is the Results table, KPIs can be calculated for a
 past run while their SQL is written, and *Instance details* shows the health of the server and the database. There is no change to Rapo's own
 schema; one Python package is added (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
@@ -254,3 +254,34 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       hour with a run in error has a red outline, one with a run flagged with a warning an amber corner. A click
       filters the table to that hour (an *Hour* chip), a second click clears it; another day clears it, too.
     - `get-control-run` also answers `added`.
+
+12. **Scheduler: 24 hours, chips and heatmaps instead of filter fields.**
+    - **No filter fields.** *Horizon*, *Control name*, *Event* and *Trigger* are gone. The header search works on the
+      Scheduler page (control name; on *History* also a process ID prefix); the *Running* table is never filtered.
+      Chips above each tab count its rows by type and trigger (*History* also by event and run status), each filters;
+      on *History* the Trigger, Event and Run cells filter, too. Active filters show as chips, with a dot on the tab.
+    - **Upcoming** shows the next 24 whole hours (now until the same hour tomorrow) and every run the scheduler causes:
+      own fires (*Schedule*), the cascades they trigger (*Cascade*) and the controls each run pulls first
+      (*Upstream*). A new *Trigger* column names it, with *via* the control it follows; cascades and upstreams show the
+      time of that fire, as they start right after it.
+    - **History** shows the last 24 whole hours (from the same hour yesterday), up to 5000 events. Older missed fires
+      that were never run for their moment are counted by an *Older missed* chip, which lists them with *Run for this
+      moment*.
+    - **Heatmaps:** a strip of the 24 hours above each table, starting at its window's first hour with the day marked
+      at midnight; green for Upcoming (fires per hour, by type and trigger on hover), blue for History (events per hour;
+      a red outline where an event failed or a run ended in error, an amber corner where a fire was missed). A click
+      filters the table to that hour.
+    - **Status bar:** the status card is replaced by a row of chips beside the page title: the state (its dot pulses
+      while this server schedules), the scheduling server and its uptime, the heartbeat's age (the heart beats on
+      each one; green, amber near the lease timeout, red past it), the slots as a ring gauge with the queued count,
+      the next fire, and the last 24 hours' started, missed and failed counts; hover for details (PID, since, next
+      maintenance, lease timeout, last fire). The slots open *Running*, the next fire *Upcoming* and each counter
+      *History* filtered to it. Stop/Start is a round button at its end. The *In* column of Upcoming is *Next fire*,
+      right-aligned and counting down every second.
+    - **Running** is a tab of its own (first, with the running + queued counts on it and a spinning icon while
+      something runs), so many jobs no longer push Upcoming and History off the page: the table fills the page and
+      scrolls inside. It lists *Run from* and *Run to*, and its columns follow History: Type, Queued, Started, PID,
+      Control, Run from, Run to, Trigger, State, OS PID.
+    - API: `scheduler-upcoming` answers cascades and upstreams (`trigger_type`, `via`, `date_from`, `date_to`) and its
+      window ends on a whole hour; `scheduler-events` takes `hours`; new `get-missed-fires`; `scheduler-status` jobs
+      carry `date_from`/`date_to`.

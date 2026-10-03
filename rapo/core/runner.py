@@ -120,6 +120,8 @@ class Job:
             'control_name': current.get('name') or self.control.name,
             'control_type': current.get('type') or self.control.type,
             'job_control_name': self.control.name,
+            'date_from': current.get('date_from', self.control.date_from),
+            'date_to': current.get('date_to', self.control.date_to),
             'trigger_type': self.trigger_type,
             'process_id': process_id,
             'pid': self.process.pid if self.process else None,
@@ -138,7 +140,9 @@ class Job:
         state = reader.read_run_state(process_id) or {}
         self.current_control = {'process_id': process_id,
                                 'name': state.get('control_name'),
-                                'type': state.get('control_type')}
+                                'type': state.get('control_type'),
+                                'date_from': state.get('date_from'),
+                                'date_to': state.get('date_to')}
         return self.current_control
 
 

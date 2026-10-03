@@ -210,7 +210,7 @@
                   <q-card-section class="q-gutter-y-md">
                     <div class="row q-gutter-md items-start">
                       <q-select
-                        class="field-240"
+                        class="field-320"
                         outlined
                         emit-value
                         map-options
@@ -224,7 +224,7 @@
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Whether the subdirectories of the input directories are scanned too</q-tooltip>
                       </q-select>
                       <q-input
-                        class="field-200"
+                        class="field-320"
                         outlined
                         type="number"
                         v-model.number="datasource.files_max_per_cycle"
@@ -238,7 +238,7 @@
                         </q-tooltip>
                       </q-input>
                       <q-select
-                        class="field-200"
+                        class="field-320"
                         outlined
                         emit-value
                         map-options
@@ -257,7 +257,7 @@
                     <div class="text-caption text-grey-7">A file modified in the last 60 s waits for the next cycle.</div>
                     <div class="row q-gutter-md items-start">
                       <q-select
-                        class="field-200"
+                        class="field-320"
                         outlined
                         emit-value
                         map-options
@@ -291,7 +291,7 @@
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">{{ dupDescription }}</q-tooltip>
                       </q-select>
                       <q-input
-                        class="field-200"
+                        class="field-320"
                         outlined
                         type="number"
                         v-model.number="datasource.max_recordsreject"
@@ -329,7 +329,7 @@
                         @attention="tab = 'attention'" />
                     </div>
                     <q-input
-                      class="field-240"
+                      class="field-360"
                       outlined
                       type="number"
                       v-model.number="datasource.files_retention_days"
@@ -1071,5 +1071,8 @@ export default {
 }
 .field-320 {
   width: 320px;
+}
+.field-360 {
+  width: 360px;
 }
 </style>
