@@ -155,7 +155,8 @@ CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run
 > Until v0.8.0 this route took no parameters and returned the last 200 runs as a plain array.
 
 #### `GET /api/get-control-run`
-Details of one run (`process_id`): name, window, timestamps, status and counters. `404` when the run does not
+Details of one run (`process_id`): name, window, timestamps (`added`, `start_date`, `end_date`), status and
+counters. `404` when the run does not
 exist or its control has been deleted.
 
 #### `GET /api/get-running-controls`

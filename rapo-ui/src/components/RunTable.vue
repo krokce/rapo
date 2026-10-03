@@ -29,7 +29,7 @@
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th v-if="columns.name" :title="filterable ? 'The control the run belongs to: its name opens the control, the magnifier filters by it' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
+            <th v-if="columns.name" :title="filterable ? 'The control the run belongs to: its name opens the control, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Processname
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -95,7 +95,16 @@
           <td class="text-right number-cell">{{ round(run.duration_minutes, 1) }} min</td>
           <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ run.process_id }}</td>
           <td v-if="columns.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
-            <q-btn aria-label="Filter by this control" v-if="filterable && !getSearch" size="7px" color="grey-5" round flat icon="fas fa-search" @click.stop="$emit('filter', { control_name: run.control_name })" />
+            <q-btn
+              v-if="filterable"
+              :aria-label="isFilteredName(run) ? 'Clear the filter by this control' : 'Filter by this control'"
+              :aria-pressed="isFilteredName(run)"
+              size="7px"
+              :color="isFilteredName(run) ? 'teal-8' : 'grey-5'"
+              round
+              flat
+              icon="fas fa-search"
+              @click.stop="$emit('filter', { control_name: run.control_name })" />
             <router-link :to="{ name: 'edit-control', params: { controlId: run.control_id } }">
               <span class="col cursor-pointer" style="font-size: 13px" :class="'text-' + controlTypeColor(run.control_type)">
                 {{ run.control_name }}
@@ -176,7 +185,9 @@
         </tbody>
         <tbody v-else-if="!sortedRuns.length">
           <tr>
-            <td :colspan="colspan" class="text-center text-grey-7 q-pa-lg">{{ emptyText }}</td>
+            <td :colspan="colspan" class="text-center text-grey-7 q-pa-lg">
+              <slot name="empty">{{ emptyText }}</slot>
+            </td>
           </tr>
         </tbody>
       </template>
@@ -263,6 +274,8 @@ export default {
     loading: { type: Boolean, default: false },
     error: { type: Boolean, default: false },
     emptyText: { type: String, default: "No runs" },
+    // The control name filtered by, whose magnifiers are highlighted (a click clears it), or null.
+    filteredName: { type: String, default: null },
     // Whether a run's control has KPIs; the row menu's Calculate KPIs emits calculate-kpis (run).
     hasKpis: { type: Function, default: null },
   },
@@ -276,7 +289,7 @@ export default {
     };
   },
   computed: {
-    ...mapGetters(["getSearch", "controlCatalogueById"]),
+    ...mapGetters(["controlCatalogueById"]),
     sortedRuns() {
       return sortRows(this.runs, (run) => runSortValue(run, this.sort.key), this.sort.dir);
     },
@@ -314,6 +327,9 @@ export default {
     },
   },
   methods: {
+    isFilteredName(run) {
+      return Boolean(this.filteredName) && (run.control_name || "").toUpperCase() === this.filteredName.toUpperCase();
+    },
     ariaSort,
     cancelRun,
     controlType,

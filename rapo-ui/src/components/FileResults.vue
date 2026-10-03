@@ -1,9 +1,9 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-md'">
-      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
-        <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
+        <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -98,13 +98,9 @@
       All lanes are locked since {{ toDateTimeString(globalLock) }} (the LOCK record of PDI_CORE_STATE): PDI Core loads no file.
     </q-banner>
 
-    <file-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" class="q-mt-sm q-mb-md" @select="(hour) => (filter.hour = hour)" />
+    <hour-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" class="q-mt-sm q-mb-md" @select="(hour) => (filter.hour = hour)" />
 
     <div class="row items-center q-mb-sm">
-      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
-      </q-btn>
-
       <q-input
         ref="fileSearch"
         v-model="fileSearch"
@@ -176,14 +172,6 @@
         :options="issueOptions"
         label="Issues">
       </q-select>
-
-      <q-space />
-      <q-btn aria-label="Next day" v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
-      </q-btn>
-      <q-btn aria-label="Today" v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(today)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
-      </q-btn>
     </div>
 
 
@@ -311,7 +299,8 @@
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
-import FileHeatmap from "./FileHeatmap.vue";
+import DayNavigator from "./DayNavigator.vue";
+import HourHeatmap from "./HourHeatmap.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
@@ -321,7 +310,7 @@ import { ISSUES as DATASOURCE_ISSUES, formatAge, issuesOf as datasourceIssuesOf 
 import { ALWAYS_STATUSES, FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusRank, statusTotals } from "../utils/files";
 import FileListDialog from "./FileListDialog.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { compactNumber, dayTitle, formatDuration, formatNumber, shiftDay, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
@@ -359,7 +348,7 @@ const TRAILING_COLUMNS = [
 export default {
   name: "FileResults",
   mixins: [persistFilters("files", ["filter", "sort"])],
-  components: { FileHeatmap, FileListDialog, FilterChips, SkeletonRows },
+  components: { DayNavigator, HourHeatmap, FileListDialog, FilterChips, SkeletonRows },
   data() {
     return {
       refreshing: false,
@@ -400,12 +389,6 @@ export default {
     },
     dayQuery() {
       return this.$route.query.date ? { date: this.$route.query.date } : {};
-    },
-    previousDay() {
-      return shiftDay(this.day, -1);
-    },
-    nextDay() {
-      return shiftDay(this.day, 1);
     },
     isToday() {
       return Boolean(this.day) && this.day >= this.today;

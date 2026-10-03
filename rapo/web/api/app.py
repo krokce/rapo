@@ -1388,6 +1388,7 @@ def get_control_run(process_id: int):
         'date_from': control.date_from,
         'date_to': control.date_to,
         'process_id': control.process_id,
+        'added': control.result['added'],
         'start_date': control.start_date,
         'end_date': control.end_date,
         'status': control.status,

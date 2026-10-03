@@ -40,7 +40,7 @@
     <filter-chips :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" class="q-mb-md" @clear="clearFilters" />
 
     <!-- Files per hour, as on the Files page: one row per status and a total, following the other filters. -->
-    <file-heatmap v-if="!embedded && files.length" :rows="heatmap" :selected="hour" class="q-mt-sm q-mb-md" @select="(value) => (hour = value)" />
+    <hour-heatmap v-if="!embedded && files.length" :rows="heatmap" :selected="hour" class="q-mt-sm q-mb-md" @select="(value) => (hour = value)" />
 
     <div class="row items-center" :class="{ 'q-mb-sm': !embedded }">
       <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="shiftDay(-1)">
@@ -229,7 +229,7 @@
 
 <script>
 import { mapGetters } from "vuex";
-import FileHeatmap from "./FileHeatmap.vue";
+import HourHeatmap from "./HourHeatmap.vue";
 import FilterChips from "./FilterChips.vue";
 import { api, notifyError } from "../api";
 import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
@@ -263,7 +263,7 @@ const COLUMNS = [
 export default {
   name: "FileLogTable",
   mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
-  components: { FileHeatmap, FilterChips },
+  components: { HourHeatmap, FilterChips },
   props: {
     datasourceId: { type: Number, required: true },
     // YYYY-MM-DD to start with; null for the database's today.

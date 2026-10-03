@@ -1,9 +1,9 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
-      <h2 class="row title-baseline items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
-        <div class="text-grey-7 page-subject">{{ dayTitle }}</div>
+        <div><day-navigator :day="day" :today="serverToday" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
             <q-icon name="fas fa-sync fa-spin" />
@@ -24,51 +24,10 @@
         @filter-warnings="filter.warnings = true" />
     </div>
 
-    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-md" @clear="clearFilters" />
+    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-sm" @clear="clearFilters" />
 
-    <div class="row items-center q-mb-md">
-      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="goToDay(previousDay)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
-      </q-btn>
-      <q-btn class="col-2 q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-play-circle" label="Run control" @click="$refs.runControlDialog.open()" />
-      <run-control-dialog ref="runControlDialog" :hook="refreshControlResults" />
-
-      <q-select
-        v-model="filter.type"
-        class="col-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="controlTypeOptions"
-        label="Control type">
-      </q-select>
-
-      <q-input clearable class="col q-mb-md q-pa-sm name-filter" outlined v-model="filter.control_name" label="Control name" maxlength="45" />
-
-      <q-select
-        v-model="filter.status"
-        class="col-4 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="runStatusOptions"
-        label="Run status">
-      </q-select>
-
-
-      <q-space />
-      <q-btn aria-label="Next day" v-if="day && !isToday" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="goToDay(nextDay)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
-      </q-btn>
-      <q-btn aria-label="Today" v-if="day && !isToday" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="goToDay(serverToday)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
-      </q-btn>
-    </div>
+    <!-- Runs per hour, following every filter but the hour, which a click picks. -->
+    <hour-heatmap v-if="hasDay" :rows="heatmap" :selected="filter.hour" unit="run(s)" corner="warnings" class="q-mb-md" @select="(hour) => (filter.hour = hour)" />
 
     <run-table
       :runs="filteredControlResults"
@@ -78,25 +37,38 @@
       :refresh="refreshControlResults"
       :loading="!hasDay && !loadError"
       :error="!hasDay && loadError"
-      :empty-text="controlResults.length ? 'No runs match the filters' : `No runs on ${day}`"
+      :empty-text="controlResults.length ? 'No runs match the filters' : `No runs on ${dayTitle}`"
+      :filtered-name="filter.control_name"
       :has-kpis="kpiControlIds ? (run) => kpiControlIds.has(run.control_id) : null"
       @filter="applyRowFilter"
-      @calculate-kpis="openKpiCalculate" />
+      @calculate-kpis="openKpiCalculate">
+      <!-- A process ID searched for that is not on this day: its day is looked up on request. -->
+      <template v-if="searchedProcessId" #empty>
+        <span v-if="missingRun === searchedProcessId">No run {{ searchedProcessId }}</span>
+        <span v-else>
+          Run {{ searchedProcessId }} is not on {{ dayTitle }} &middot;
+          <a href="#" class="text-teal-8 text-weight-bold" @click.prevent="goToRunDay(searchedProcessId)">Go to its day</a>
+        </span>
+      </template>
+    </run-table>
     <kpi-calculate-dialog ref="kpiCalculate" />
   </q-page>
 </template>
 
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
+import DayNavigator from "./DayNavigator.vue";
 import FilterChips from "./FilterChips.vue";
+import HourHeatmap from "./HourHeatmap.vue";
 import KpiCalculateDialog from "./KpiCalculateDialog.vue";
-import RunControlDialog from "./RunControlDialog.vue";
 import RunSummary from "./RunSummary.vue";
 import RunTable from "./RunTable.vue";
 import { api, notifyError } from "../api";
-import { CONTROL_TYPE_OPTIONS, RUN_STATUS_OPTIONS, runStatus } from "../constants";
+import { runStatus } from "../constants";
 import { liveRefetch } from "../socket";
-import { dayTitle, shiftDay } from "../utils/format";
+import { dayTitle, toDateString } from "../utils/format";
+import { hourRange } from "../utils/files";
+import { runHeatmapRows, runHour, runMatchesSearch } from "../utils/runs";
 import { fillViewportToBottom } from "../utils/layout";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import persistFilters from "../mixins/persistFilters";
@@ -106,16 +78,15 @@ export default {
   name: "ControlResults",
   mixins: [persistFilters("results", ["filter", "sort"])],
   components: {
+    DayNavigator,
     FilterChips,
+    HourHeatmap,
     KpiCalculateDialog,
-    RunControlDialog,
     RunSummary,
     RunTable,
   },
   data() {
     return {
-      controlTypeOptions: CONTROL_TYPE_OPTIONS,
-      runStatusOptions: RUN_STATUS_OPTIONS,
       active: false,
       refreshing: false,
       loadError: false,
@@ -124,7 +95,10 @@ export default {
         type: null,
         status: [],
         warnings: null,
+        hour: null,
       },
+      // The process ID found to have no run by "Go to its day".
+      missingRun: null,
       sort: {
         key: "start_date",
         dir: "desc",
@@ -168,6 +142,22 @@ export default {
     goToDay(day) {
       this.$router.push({ name: "results", query: day && day !== this.serverToday ? { date: day } : {} });
     },
+    // The day a searched process ID ran on, opened with the search kept; a run that does not exist says so instead.
+    async goToRunDay(processId) {
+      try {
+        const run = await api("get-control-run", { params: { process_id: processId } });
+        const day = toDateString(run.start_date || run.added);
+        if (day && day !== this.day) {
+          this.goToDay(day);
+        }
+      } catch (error) {
+        if (error.status === 404) {
+          this.missingRun = processId;
+        } else {
+          notifyError(`Failed to find run ${processId}.`, error);
+        }
+      }
+    },
     addStatusFilter(status) {
       if (!this.filter.status.includes(status)) {
         this.filter.status.push(status);
@@ -177,7 +167,8 @@ export default {
     applyRowFilter({ type, status, control_name }) {
       if (type) this.filter.type = type;
       if (status) this.addStatusFilter(status);
-      if (control_name) this.filter.control_name = control_name;
+      // The magnifier of the name filtered by clears it.
+      if (control_name) this.filter.control_name = this.filter.control_name === control_name ? null : control_name;
     },
     // Every filter and the header search; the sort stays.
     clearFilters() {
@@ -185,6 +176,7 @@ export default {
       this.filter.type = null;
       this.filter.status = [];
       this.filter.warnings = null;
+      this.filter.hour = null;
       this.$store.commit("updateSearch", "");
     },
   },
@@ -197,15 +189,6 @@ export default {
     // The day shown, as DD.MM.YYYY for the page title.
     dayTitle() {
       return dayTitle(this.day);
-    },
-    previousDay() {
-      return shiftDay(this.day, -1);
-    },
-    nextDay() {
-      return shiftDay(this.day, 1);
-    },
-    isToday() {
-      return this.day >= this.serverToday;
     },
     // Whether the store holds the runs of the day shown; until then the table shows skeleton rows.
     hasDay() {
@@ -225,11 +208,12 @@ export default {
           (value) => runStatus(value).label,
         ),
         ...valueFilter("warnings", "Warnings", filter.warnings || null, () => (filter.warnings = null), { label: "Flagged runs" }),
+        ...valueFilter("hour", "Hour", filter.hour, () => (filter.hour = null), { label: filter.hour === null ? null : hourRange(filter.hour) }),
         ...searchFilter(this.$store),
       ];
     },
-    filteredControlResults() {
-      const s = this.getSearch ? this.getSearch.toUpperCase() : null;
+    // The runs that pass every filter but the hour, which the heatmap picks.
+    unhouredControlResults() {
       const name = this.filter.control_name ? this.filter.control_name.toUpperCase() : null;
       // Until the requested day has loaded, the store still holds the previous one.
       if (!this.hasDay) {
@@ -237,12 +221,24 @@ export default {
       }
       return this.controlResults.filter(
         (item) =>
-          (!s || (item.control_name || "").toUpperCase().includes(s)) &&
-          (!name || (item.control_name || "").toUpperCase().includes(name)) &&
+          runMatchesSearch(item, this.getSearch) &&
+          (!name || (item.control_name || "").toUpperCase() === name) &&
           (!this.filter.type || item.control_type === this.filter.type) &&
           (this.filter.status.length === 0 || this.filter.status.includes(item.status)) &&
           (!this.filter.warnings || item.has_warning)
       );
+    },
+    filteredControlResults() {
+      const hour = this.filter.hour;
+      return hour === null ? this.unhouredControlResults : this.unhouredControlResults.filter((item) => runHour(item) === hour);
+    },
+    heatmap() {
+      return runHeatmapRows(this.unhouredControlResults);
+    },
+    // The header search when it is a process ID; only then can an empty table be a run of another day.
+    searchedProcessId() {
+      const search = (this.getSearch || "").trim();
+      return /^\d+$/.test(search) ? search : null;
     },
   },
   watch: {
@@ -254,6 +250,7 @@ export default {
     // activated() refetches instead.
     "$route.query.date"() {
       if (this.active && this.$route.name === "results") {
+        this.filter.hour = null;
         this.refreshControlResults();
       }
     },

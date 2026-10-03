@@ -3,7 +3,7 @@
 ## Annotation
 A *Discrepancy analysis* page explains what sets a run's discrepancies apart from its normal records, the email of
 a control can be sent on the result of an SQL statement, the Controls page shows when each control runs next,
-Results show what started each run, the editor's Run log is the Results table, KPIs can be calculated for a
+Results show what started each run and the runs per hour, with a day pill and no filter row, the editor's Run log is the Results table, KPIs can be calculated for a
 past run while their SQL is written, and *Instance details* shows the health of the server and the database. There is no change to Rapo's own
 schema; one Python package is added (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
@@ -234,3 +234,23 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       Nothing changes in behavior.
     - The change applies to the server answering; another server on the same database has its own `rapo.ini`.
     - New routes `get-config-catalogue` and `set-config-option`.
+
+11. **Results: a cleaner page, a day pill and runs per hour.**
+    - **No filter row.** The *Run control* button and the *Control type*, *Control name* and *Run status* fields are
+      gone. Filter by type, status or warnings with the chips of the day's totals or of the table; start a run from
+      the row menu (*Re-run*, *Run*), the Controls page or the editor. Active filters show as chips under the title
+      as before.
+    - **Name filter.** The magnifier before a control name filters by exactly that control (no longer a part of the
+      name); it is teal while it filters, and a second click clears it. It is shown also while the header search is
+      used.
+    - **Process ID search.** The header search (*Search control name or process ID*) also finds runs whose process ID
+      starts with the digits typed. A process ID not run on the day shown offers *Go to its day*, which opens the day
+      it ran on with the search kept; a process ID with no run says so.
+    - **Day pill.** The day in the title is a pill with the weekday: `‹` the previous day, and on an earlier day `›` the
+      next day and `⏭` today; hover a segment for the day it opens. The same pill replaces the day buttons of the
+      *Files* page.
+    - **Runs per hour.** A heatmap above the table counts the day's runs by the hour they started (or were added, if
+      they never started), following the filters. Hover an hour for its runs per control type, errors and warnings; an
+      hour with a run in error has a red outline, one with a run flagged with a warning an amber corner. A click
+      filters the table to that hour (an *Hour* chip), a second click clears it; another day clears it, too.
+    - `get-control-run` also answers `added`.

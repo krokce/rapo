@@ -13,7 +13,7 @@ import { Dark, Dialog, LoadingBar, Notify, Cookies } from "quasar";
 // To be used on app.use(Quasar, { ... })
 export default {
   config: {
-    loadingBar: { color: "teal", size: "2px", position: "top" },
+    loadingBar: { color: "teal", size: "1px", position: "top" },
     notify: {
       position: "bottom-right",
       progress: true,

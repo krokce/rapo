@@ -43,6 +43,10 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   in how long, the schedule in words (*Weekdays at 08:15*), a frequency-colored avatar, a strip of where the runs
   fall and the data window. Sorted by the next run, hover for the next 5 runs, click for the Scheduler
   tab. Type, Name and Scheduler fit their content; Description takes the rest. New route `get-next-fires`.
+- **Results page:** filter row and *Run control* button removed (chips filter); a runs-per-hour heatmap (runs per type
+  on hover, errors outlined red, warnings an amber corner, click filters the hour); a day pill `‹ day › ⏭` in the
+  title (also on Files); the header search finds process IDs (prefix) and offers *Go to its day* for another day's
+  run; the name magnifier filters by the exact control and clears on a second click. `get-control-run` answers `added`.
 - **Results trigger icon:** a small icon after the start time shows what started the run (schedule, manual,
   catch-up, iteration, cascade, upstream); hover for details. The day's totals count the runs per trigger.
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,

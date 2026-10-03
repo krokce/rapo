@@ -53,6 +53,47 @@ export function runSummary(rows) {
   };
 }
 
+// The hour a run started (get-control-runs' start_date, which is the added date of a run that never started, as for
+// the day it is listed on), or null.
+export function runHour(run) {
+  const hour = Number(String(run.start_date || "").slice(11, 13));
+  return run.start_date && Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : null;
+}
+
+// Runs per hour for HourHeatmap: one row of 24 cells with the runs, those in error and those flagged with a warning,
+// and the runs per type for the tooltip.
+export function runHeatmapRows(runs) {
+  const types = Object.keys(CONTROL_TYPES);
+  const cells = Array.from({ length: 24 }, () => ({ count: 0, errors: 0, warnings: 0, types: {} }));
+  runs.forEach((run) => {
+    const hour = runHour(run);
+    if (hour === null) {
+      return;
+    }
+    const cell = cells[hour];
+    cell.count += 1;
+    cell.types[run.control_type] = (cell.types[run.control_type] || 0) + 1;
+    if (run.status === "E") cell.errors += 1;
+    if (run.has_warning) cell.warnings += 1;
+  });
+  cells.forEach((cell) => {
+    cell.breakdown = Object.keys(cell.types)
+      .sort((a, b) => types.indexOf(a) - types.indexOf(b))
+      .map((type) => `${type} ${cell.types[type]}`)
+      .join(" · ");
+  });
+  return [{ key: "total", label: "Runs", cells }];
+}
+
+// Whether a run matches the header search: its name contains the text or, for digits only, its process ID starts with it.
+export function runMatchesSearch(run, search) {
+  if (!search) {
+    return true;
+  }
+  const text = search.trim().toUpperCase();
+  return (run.control_name || "").toUpperCase().includes(text) || (/^\d+$/.test(text) && String(run.process_id).startsWith(text));
+}
+
 function numeric(value) {
   if (value == null) return null;
   if (typeof value === "number") {

@@ -34,6 +34,7 @@ const router = createRouter({
       name: "results",
       path: "/results",
       component: ControlResults,
+      meta: { searchPlaceholder: "Search control name or process ID" },
     },
     {
       // Its own chunk, so ECharts and the analysis components load only when a dataset is analysed.

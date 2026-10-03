@@ -123,7 +123,7 @@ function issuesOf(row) {
   return issues;
 }
 
-// Files per hour: one row per lane of the datasources shown and a Total row, 24 cells each with files and errors.
+// Files per hour: one row per lane of the datasources shown and a Total row, 24 cells each with a count of files and errors.
 export function heatmapRows(day, datasources, keep) {
   const lanes = new Map();
   const total = { key: "total", label: "Total", cells: emptyHours() };
@@ -139,7 +139,7 @@ export function heatmapRows(day, datasources, keep) {
     }
     [lanes.get(lane), total].forEach((row) => {
       const hour = row.cells[cell.hour];
-      hour.files += cell.files;
+      hour.count += cell.files;
       if (cell.status === "ERROR") {
         hour.errors += cell.files;
       }
@@ -150,7 +150,7 @@ export function heatmapRows(day, datasources, keep) {
 }
 
 function emptyHours() {
-  return Array.from({ length: 24 }, () => ({ files: 0, errors: 0 }));
+  return Array.from({ length: 24 }, () => ({ count: 0, errors: 0 }));
 }
 
 // The hour a file log row started loading (startloaddate, the database's clock), or null.
@@ -179,12 +179,12 @@ export function statusHeatmapRows(files) {
       rows.set(file.filestatus, { key: `status-${file.filestatus}`, label: info.label, color: info.color, cells: emptyHours() });
     }
     [rows.get(file.filestatus), total].forEach((row) => {
-      row.cells[hour].files += 1;
+      row.cells[hour].count += 1;
       if (file.filestatus === "ERROR") {
         row.cells[hour].errors += 1;
       }
     });
   });
-  const list = [...rows.values()].sort((a, b) => b.cells.reduce((n, c) => n + c.files, 0) - a.cells.reduce((n, c) => n + c.files, 0));
+  const list = [...rows.values()].sort((a, b) => b.cells.reduce((n, c) => n + c.count, 0) - a.cells.reduce((n, c) => n + c.count, 0));
   return list.length > 1 ? [...list, total] : list.length ? list : [total];
 }

@@ -20,6 +20,11 @@ export function dayTitle(day) {
   return day ? date.formatDate(date.extractDate(day, "YYYY-MM-DD"), "DD.MM.YYYY") : "";
 }
 
+// A YYYY-MM-DD day with its weekday, as "Fri 03.10.2026"; "" for no day.
+export function dayLabel(day) {
+  return day ? date.formatDate(date.extractDate(day, "YYYY-MM-DD"), "ddd DD.MM.YYYY") : "";
+}
+
 // The API sends datetimes as naive ISO strings (2026-09-19T10:05:07); these slice them for display.
 export function toDateString(value) {
   return value ? String(value).substring(0, 10) : "";
