@@ -123,14 +123,17 @@
           </q-banner>
         </q-card-section>
 
-        <q-tabs v-model="instanceTab" dense align="left" no-caps active-color="teal" indicator-color="teal" class="q-px-md text-grey-7">
-          <q-tab name="configuration" label="Configuration" />
-          <q-tab name="health" label="Health" />
+        <q-tabs v-model="instanceTab" dense inline-label align="left" no-caps active-color="teal" indicator-color="teal" class="q-px-md text-grey-7">
+          <q-tab name="configuration" icon="fas fa-sliders-h" label="Configuration" />
+          <q-tab name="health-os" icon="fas fa-server" label="Health Rapo server" />
+          <q-tab name="health-db" icon="fas fa-database" label="Health Database" />
         </q-tabs>
         <q-separator />
 
-        <q-card-section v-if="instanceTab === 'health'" class="scroll" style="max-height: 70vh">
-          <instance-health v-if="instanceDialog" @navigate="instanceDialog = false" />
+        <!-- Both health tabs share one InstanceHealth, so a switch between them reloads nothing; the tab has a fixed height
+             that its charts fill. -->
+        <q-card-section v-if="instanceTab.startsWith('health')" class="scroll" style="height: 70vh">
+          <instance-health v-if="instanceDialog" :group="instanceTab === 'health-db' ? 'db' : 'os'" @navigate="instanceDialog = false" />
         </q-card-section>
 
         <q-card-section v-else class="scroll" style="max-height: 70vh">

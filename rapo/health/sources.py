@@ -6,6 +6,7 @@ connected to; rapo's own sessions are those tagged `module = 'rapo'`
 (`Database.tag`). Only views free of the Diagnostics Pack are read.
 """
 
+import concurrent.futures
 import os
 import socket
 import time
@@ -160,8 +161,12 @@ def read_connections():
             'tcp_time_wait': states.get(psutil.CONN_TIME_WAIT, 0)}
 
 
-def read_os():
-    """Read the OS metrics of this host, and rapo's share of them."""
+def read_os(directories=()):
+    """Read the OS metrics of this host, and rapo's share of them.
+
+    `directories` are the datasource directories, [(role, path)], whose file
+    systems are measured with those of the logs and of rapo.
+    """
     global tree
     if tree is None:
         tree = ProcessTree()
@@ -176,20 +181,7 @@ def read_os():
         load = os.getloadavg()[0]
     except OSError:
         load = None
-    disks = []
-    seen = set()
-    for path in (LOG_DIR, os.path.dirname(CONFIG_PATH)):
-        try:
-            device = os.stat(path).st_dev
-            if device in seen:
-                continue
-            seen.add(device)
-            usage = psutil.disk_usage(path)
-        except OSError:
-            continue
-        disks.append({'path': path, 'used_percent': usage.percent,
-                      'free_gb': round(usage.free / GB, 2),
-                      'total_gb': round(usage.total / GB, 2)})
+    disks = read_disks(directories)
     return {
         'cpu': psutil.cpu_percent(),
         'cpu_rapo': round(rapo['cpu'] / cpus, 1),
@@ -202,7 +194,8 @@ def read_os():
         'swap': swap.percent,
         'processes': len(psutil.pids()),
         'processes_rapo': rapo['count'],
-        'disk': max((disk['used_percent'] for disk in disks), default=None),
+        'disk': max((disk['used_percent'] for disk in disks
+                     if 'used_percent' in disk), default=None),
         'disks': disks,
         'fds_rapo': rapo['fds'],
         **read_network(),
@@ -211,6 +204,89 @@ def read_os():
         'uptime': int(time.time() - psutil.boot_time()),
         'rapo_uptime': int(time.time() - tree.root.create_time()),
     }
+
+
+def read_directories():
+    """Get the input and archive directories of every datasource, as
+    [(role, path)]; none when the PDI Core tables cannot be read.
+    """
+    from ..pdi.store import pdi, split_directories
+    if not pdi.available:
+        return []
+    directories = []
+    for row in pdi.read_datasources():
+        directories += [('input', path)
+                        for path in split_directories(row['input_directory'])]
+        if row.get('archive_directory'):
+            directories.append(('archive', row['archive_directory']))
+    return directories
+
+
+# Seconds a file system may take to answer its usage; one that does not (a
+# hung network mount) is reported with an error and not asked again until it
+# answered.
+DISK_SECONDS = 2
+disk_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix='rapo-health-disk')
+disk_pending = {}
+
+
+def mount_of(path, mounts):
+    """Get the mount point holding `path`, the longest one it starts with."""
+    best = '/'
+    for mount in mounts:
+        if ((path == mount or path.startswith(mount.rstrip('/') + '/'))
+                and len(mount) > len(best)):
+            best = mount
+    return best
+
+
+def read_disks(directories):
+    """Get the usage of each file system holding the logs, rapo or one of
+    the `directories`, with how many of them it holds by role.
+
+    Datasource paths are matched to the mounts by name only, so a missing
+    directory or a hung network mount never blocks the sample.
+    """
+    try:
+        partitions = psutil.disk_partitions(all=True)
+    except Exception:
+        partitions = []
+    devices = {item.mountpoint: item.device for item in partitions}
+    paths = [('logs', os.path.realpath(LOG_DIR)),
+             ('home', os.path.realpath(os.path.dirname(CONFIG_PATH))),
+             *((role, os.path.normpath(path)) for role, path in directories
+               if path and os.path.isabs(path))]
+    roles = {}
+    for role, path in dict.fromkeys(paths):
+        counts = roles.setdefault(mount_of(path, devices), {})
+        counts[role] = counts.get(role, 0) + 1
+    futures = {}
+    for mount in roles:
+        future = disk_pending.get(mount)
+        if future is None or future.done():
+            future = disk_pending[mount] = disk_pool.submit(
+                psutil.disk_usage, mount)
+        futures[mount] = future
+    deadline = time.monotonic() + DISK_SECONDS
+    disks = []
+    for mount in sorted(roles):
+        disk = {'mount': mount, 'device': devices.get(mount),
+                'roles': roles[mount]}
+        try:
+            usage = futures[mount].result(
+                timeout=max(deadline - time.monotonic(), 0.01))
+        except concurrent.futures.TimeoutError:
+            disk['error'] = f'No answer in {DISK_SECONDS} s'
+        except Exception as error:
+            disk['error'] = str(error).strip().splitlines()[0][:200]
+        else:
+            disk.update({'used_percent': usage.percent,
+                         'used_gb': round(usage.used / GB, 2),
+                         'free_gb': round(usage.free / GB, 2),
+                         'total_gb': round(usage.total / GB, 2)})
+        disks.append(disk)
+    return disks
 
 
 def read_db(available):
@@ -320,17 +396,30 @@ def _memory(pga_limit_gb):
 
 
 def _tablespaces():
-    # Used percent counts autoextend: the size is what the files may grow to.
+    # The size counts autoextend: what the files may grow to.
     rows = db.execute(sa.text(
-        "select m.tablespace_name name, round(m.used_percent, 1) used "
-        "from dba_tablespace_usage_metrics m, user_users u "
+        "select m.tablespace_name name, round(m.used_percent, 1) used, "
+        "round(m.used_space * t.block_size / power(1024, 3), 2) used_gb, "
+        "round(m.tablespace_size * t.block_size / power(1024, 3), 2) size_gb, "
+        "case when m.tablespace_name = u.default_tablespace then 1 end "
+        "is_default "
+        "from dba_tablespace_usage_metrics m "
+        "join user_tablespaces t on t.tablespace_name = m.tablespace_name, "
+        "user_users u "
         "where m.tablespace_name in (u.default_tablespace, "
-        "u.temporary_tablespace) order by m.used_percent desc"),
+        "u.temporary_tablespace) "
+        "order by case when m.tablespace_name = u.default_tablespace "
+        "then 0 else 1 end, m.tablespace_name"),
         as_table=True)
-    tablespaces = [{'name': row['name'], 'used_percent': float(row['used'])}
+    tablespaces = [{'name': row['name'], 'used_percent': float(row['used']),
+                    'used_gb': float(row['used_gb']),
+                    'size_gb': float(row['size_gb']),
+                    'default': bool(row['is_default'])}
                    for row in rows]
+    default = next((row for row in tablespaces if row['default']), None)
     return {'storage': max((row['used_percent'] for row in tablespaces),
                            default=None),
+            'storage_gb': default['used_gb'] if default else None,
             'tablespaces': tablespaces}
 
 

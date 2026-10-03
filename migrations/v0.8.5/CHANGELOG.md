@@ -171,25 +171,28 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - A rename saved through the API without `kpi_config` now moves the KPIs to the new name and rewrites the same
      references; before, they were left behind as orphaned KPIs. `save-control` answers `kpis_moved`.
 
-9. **Instance health.** *Instance details* (the plug button of the header) has two tabs: *Configuration* (as before,
-   shown first) and a new **Health** tab.
-   - **Two columns**, the server left and the database right, with matching metrics side by side. Each is headed
-     by its name and uptime: *Server: kosta-notebook (up 6 d 7 h · rapo up 2 h 10 min)*, *Database:
-     mm_usage@localhost:1521/RAAUT (up 5 d 8 h)*.
+9. **Instance health.** *Instance details* (the plug button of the header) has three tabs with icons:
+   *Configuration* (as before, shown first), **Health Rapo server** and **Health Database**.
+   - **Each health tab** shows its tiles two per row, the charts filling the dialog, so nothing scrolls unless the
+     Sessions or Locks list is open (or a server has many disks). Each is headed by its name and uptime: *Server:
+     kosta-notebook (up 6 d 7 h · rapo up 2 h 10 min)*, *Database: mm_usage@localhost:1521/RAAUT (up 5 d 8 h)*.
    - **Span:** small buttons *1h 3h 6h 12h 24h*, remembered by the browser. One hour shows every sample; longer
      spans one point per minute (24 h: per 3 minutes), averaged, but the highest value of locks, lock waits,
      CLOSE_WAIT connections and rapo's processes, so a short peak still shows. A chart starting later says since
      when the server runs.
    - **Server:** CPU, memory, processes and disk of this server's host, each a value and a chart, with rapo's own
      share (the server, its runs, analysis and scan workers) as a second, dashed line: CPU and memory used by rapo,
-     rapo's processes and open files, free space where the logs and `rapo.ini` are. *Network*: received and sent
+     rapo's processes and open files. *Disk*: one tile per file system holding the logs, `rapo.ini` or a
+     datasource's input or archive directory, with its free space and what it holds (e.g. *logs · rapo · 72 input ·
+     61 archive dirs*); a directory missing on this host counts on the file system its path falls under. *Network*: received and sent
      per second over all interfaces but loopback, with errors and drops. *Connections*: the host's established TCP
      connections and those in CLOSE_WAIT (closed by the other side but never by a local program, a leak when it
      grows), TIME_WAIT, and rapo's connections to the database.
    - **Database** (the PDB in a container database): *DB CPU* (% of `cpu_count`, average active sessions),
      *Sessions* (all and rapo's), *Locks* (sessions blocked by another, longest wait), *DB memory* (PGA of
-     `pga_aggregate_limit`, SGA) and *Storage* (used % of the user's default and temporary tablespaces, autoextend
-     counted, and the size of rapo's result and temporary tables; the leftover temporary tables open from there) and
+     `pga_aggregate_limit`, SGA) and *Storage* (GB used in the user's default tablespace, and the size of rapo's
+     result and temporary tables as the second line; each of the default and temporary tablespaces in GB of what it
+     may grow to, autoextend counted, and %; the leftover temporary tables open from there) and
      *DB I/O* (physical reads and writes per second, redo and commits).
    - **Sessions and Locks** open a list of the sessions, or of the blocked ones and their blockers: user, module,
      action, status, wait event and time, blocker, SQL ID, machine. A rapo run's action is its control, which opens in

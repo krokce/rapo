@@ -74,15 +74,16 @@ export const HEALTH_TILES = [
     sub: (p) => `host ${count(p.processes)} · rapo ${count(p.fds_rapo)} open files`,
   },
   {
+    // A template: InstanceHealth makes one tile per file system of the latest sample's `disks` (diskTiles).
     key: "disk",
     group: "os",
     title: "Disk",
-    hint: "Used space of the file systems holding the log directory and rapo's home, the fullest one charted",
-    series: [{ field: "disk", label: "Used" }],
+    hint: "Used space of the file systems holding the logs, rapo and the datasources' input and archive directories",
+    series: [{ field: "used_percent", label: "Used" }],
     format: percent,
     max: 100,
     rules: ["disk"],
-    sub: (p) => (p.disks || []).map((disk) => `${gb(disk.free_gb)} free`).join(" · ") || "–",
+    perMount: true,
   },
   {
     key: "network",
@@ -179,20 +180,24 @@ export const HEALTH_TILES = [
     key: "storage",
     group: "db",
     title: "Storage",
-    hint: "Used space of rapo's default and temporary tablespaces (autoextend counted), the fullest one charted; rapo's result and temporary tables below",
-    series: [{ field: "storage", label: "Used" }],
-    format: percent,
-    max: 100,
+    hint: "Used space of rapo's default tablespace (line) and the size of rapo's result and temporary tables (dashed); each tablespace of the default and temporary ones below, of what it may grow to (autoextend counted)",
+    series: [
+      { field: "storage_gb", label: "Default tablespace" },
+      { field: "rapo_gb", label: "Rapo tables" },
+    ],
+    format: gb,
+    // The warning rule is a used percent, so its level colors the tile but draws no line on a chart in GB.
     rules: ["storage"],
+    noThreshold: true,
     access: ["tablespace"],
     sub: (p) =>
-      [...(p.tablespaces || []).map((ts) => `${ts.name} ${percent(ts.used_percent)}`), p.rapo_gb !== undefined ? `rapo ${gb(p.rapo_gb)}` : null]
+      [...(p.tablespaces || []).map((ts) => `${ts.name} ${gb(ts.used_gb)} of ${gb(ts.size_gb)} (${percent(ts.used_percent)})`), p.rapo_gb !== undefined ? `rapo ${gb(p.rapo_gb)}` : null]
         .filter(Boolean)
         .join(" · "),
   },
 ];
 
-// The order of the tiles of each section, two per row.
+// The order of the tiles of each tab, two per row; "disk" stands for one tile per file system.
 export const HEALTH_ROWS = {
   os: ["cpu", "memory", "disk", "network", "connections", "processes"],
   db: ["db_cpu", "db_memory", "storage", "db_io", "sessions", "locks"],
@@ -200,6 +205,42 @@ export const HEALTH_ROWS = {
 
 export function healthTiles(group) {
   return HEALTH_ROWS[group].map((key) => HEALTH_TILES.find((tile) => tile.key === key));
+}
+
+const ROLE_TEXT = { logs: "logs", home: "rapo", input: "input", archive: "archive" };
+
+// What a file system holds, e.g. "logs · rapo · 72 input · 61 archive dirs".
+function diskRoles(roles) {
+  const parts = Object.keys(ROLE_TEXT)
+    .filter((role) => roles && roles[role])
+    .map((role) => (role === "logs" || role === "home" ? ROLE_TEXT[role] : `${roles[role]} ${ROLE_TEXT[role]}`));
+  return parts.join(" · ") + (roles && (roles.input || roles.archive) ? " dirs" : "");
+}
+
+// The Disk template made into one tile per file system of the latest point, each charting its own used percent from
+// the `disks` of every point (a point without the mount has no value). Its level is its own value against the disk
+// thresholds, since the rule "disk" is the fullest one.
+export function diskTiles(points, thresholds) {
+  const template = HEALTH_TILES.find((tile) => tile.key === "disk");
+  const latest = points.length ? points[points.length - 1].disks || [] : [];
+  const [warn, crit] = (thresholds && thresholds.disk) || [];
+  return latest.map((disk) => {
+    const mountPoints = points.map((point) => {
+      const item = (point.disks || []).find((other) => other.mount === disk.mount);
+      return { t: point.t, used_percent: item ? item.used_percent : null, disk: item, errors: item && item.error ? { disk: item.error } : {} };
+    });
+    const value = disk.used_percent;
+    const level = value === null || value === undefined ? null : crit !== null && crit !== undefined && value >= crit ? "crit" : warn !== null && warn !== undefined && value >= warn ? "warn" : null;
+    return {
+      ...template,
+      key: `disk:${disk.mount}`,
+      title: `Disk ${disk.mount}`,
+      hint: `${template.hint}. ${disk.mount}${disk.device ? ` (${disk.device})` : ""} holds ${diskRoles(disk.roles)}`,
+      points: mountPoints,
+      level,
+      sub: (p) => (p.disk ? `${gb(p.disk.free_gb)} free of ${gb(p.disk.total_gb)} · ${diskRoles(p.disk.roles)}` : "–"),
+    };
+  });
 }
 
 // The views a tile reads that this database user may not select from, as "GRANT SELECT ON ..." lines.

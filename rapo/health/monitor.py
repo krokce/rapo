@@ -150,6 +150,9 @@ class Sampler:
         self.buckets = {'os': [], 'db': []}
         self.footprint = None
         self.footprint_time = 0
+        # The datasource directories whose file systems are measured.
+        self.directories = []
+        self.directories_time = None
         self.probe_errors = None
         self.probe_time = 0
         self.levels = {}
@@ -182,6 +185,7 @@ class Sampler:
         """Probe the DB sources again and apply changed options at once."""
         with self.lock:
             self.probe_errors = None
+            self.directories_time = None
         for wake in self.wakes.values():
             wake.set()
 
@@ -209,7 +213,17 @@ class Sampler:
             self.publish('level', {'level': None})
 
     def sample_os(self):
-        point = {'t': now(), **sources.read_os()}
+        # Read with the footprint's interval, so the OS thread seldom asks the
+        # database; the last list is kept when it cannot be read.
+        if (self.directories_time is None or time.monotonic()
+                - self.directories_time > option('footprint_interval')):
+            try:
+                self.directories = sources.read_directories()
+            except Exception as error:
+                logger.warning('Instance health: datasource directories not '
+                               f'read: {str(error).splitlines()[0]}')
+            self.directories_time = time.monotonic()
+        point = {'t': now(), **sources.read_os(self.directories)}
         self.add('os', point)
 
     def sample_db(self):

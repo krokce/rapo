@@ -1,5 +1,5 @@
 <template>
-  <div class="instance-health">
+  <div class="instance-health" :class="{ 'instance-health-drill': drill }">
     <div v-if="error" class="text-negative">{{ error }}</div>
     <div v-else-if="!state">
       <q-skeleton v-for="row in 3" :key="row" height="96px" class="q-mb-sm" />
@@ -21,7 +21,7 @@
           text-color="grey-8"
           class="health-spans q-mr-sm" />
         <span>
-          Sampled every {{ state.intervals.os }} s (server) and {{ state.intervals.db }} s (database)<template v-if="state.hours > 1">, a point per {{ stepText }}</template><template v-if="since">; since {{ since }}, when the server started</template>
+          Sampled every {{ state.intervals[group] }} s<template v-if="state.hours > 1">, a point per {{ stepText }}</template><template v-if="since">; since {{ since }}, when the server started</template>
         </span>
         <q-space />
         <span class="health-legend"><i class="health-legend-line" />Main</span>
@@ -29,14 +29,9 @@
         <span class="health-legend q-ml-sm"><i class="health-legend-line health-legend-threshold" />Warning level</span>
       </div>
 
-      <div class="health-section-title ellipsis" :title="serverLabel">{{ serverLabel }}</div>
+      <div class="health-section-title ellipsis" :title="sectionLabel">{{ sectionLabel }}</div>
       <div class="health-grid">
-        <health-tile v-for="tile in osTiles" :key="tile.key" v-bind="tileProps(tile)" />
-      </div>
-
-      <div class="health-section-title ellipsis q-mt-md" :title="databaseLabel">{{ databaseLabel }}</div>
-      <div class="health-grid">
-        <health-tile v-for="tile in dbTiles" :key="tile.key" v-bind="tileProps(tile)" :active="drill === tile.drill" @drill="toggleDrill">
+        <health-tile v-for="tile in tiles" :key="tile.key" v-bind="tileProps(tile)" :active="Boolean(tile.drill) && drill === tile.drill" @drill="toggleDrill">
           <template v-if="tile.key === 'storage' && tempTables.total_tables" #sub="{ text }">
             {{ text }} ·
             <a href="#" class="health-link" @click.prevent.stop="$refs.tempDialog.open()">{{ tempTables.total_tables }} temporary table{{ tempTables.total_tables > 1 ? "s" : "" }}</a>
@@ -53,7 +48,7 @@
 <script>
 import { api } from "../../api";
 import socket from "../../socket";
-import { HEALTH_SPANS, formatUptime, healthTiles } from "../../utils/health";
+import { HEALTH_SPANS, diskTiles, formatUptime, healthTiles } from "../../utils/health";
 import HealthSessions from "./HealthSessions.vue";
 import HealthTile from "./HealthTile.vue";
 import TempTablesDialog from "../TempTablesDialog.vue";
@@ -70,22 +65,28 @@ function readHours() {
   }
 }
 
-// The Health tab of Instance details: the OS and DB metrics this server sampled in the chosen span
+// The Health tabs of Instance details, one per group (os: the rapo server, db: the database), the same instance for
+// both so a tab switch reloads nothing: the OS or DB metrics this server sampled in the chosen span
 // (get-instance-health: the samples for 1 hour, minute aggregates beyond), then each new sample or closed minute pushed
 // to the room "health" while the tab is shown. Nothing polls.
 export default {
   name: "InstanceHealth",
   components: { HealthSessions, HealthTile, TempTablesDialog },
+  props: {
+    group: { type: String, default: "os" },
+  },
   emits: ["navigate"],
   data() {
     return { state: null, error: null, drill: null, tempTables: {}, request: 0, hours: readHours() };
   },
   computed: {
-    osTiles() {
-      return healthTiles("os");
+    // The group's tiles, the Disk template expanded into one tile per file system.
+    tiles() {
+      const points = this.state[this.group] || [];
+      return healthTiles(this.group).flatMap((tile) => (tile.perMount ? diskTiles(points, this.state.thresholds) : [tile]));
     },
-    dbTiles() {
-      return healthTiles("db");
+    sectionLabel() {
+      return this.group === "db" ? this.databaseLabel : this.serverLabel;
     },
     spanOptions() {
       const spans = (this.state && this.state.spans) || HEALTH_SPANS;
@@ -103,7 +104,7 @@ export default {
       return this.last("db");
     },
     stepText() {
-      const minutes = Math.round(this.state.step.os / 60);
+      const minutes = Math.round(this.state.step[this.group] / 60);
       return minutes > 1 ? `${minutes} minutes` : "minute";
     },
     // When the history starts inside the span: the server started since.
@@ -125,6 +126,10 @@ export default {
     },
   },
   watch: {
+    // Sessions and Locks are database tiles: their list closes with the tab.
+    group() {
+      this.drill = null;
+    },
     hours(hours) {
       try {
         localStorage.setItem(HOURS_KEY, String(hours));
@@ -149,7 +154,7 @@ export default {
     tileProps(tile) {
       return {
         tile,
-        points: this.state[tile.group],
+        points: tile.points || this.state[tile.group],
         levels: this.state.levels,
         thresholds: this.state.thresholds,
         access: tile.group === "db" ? this.state.access : null,
@@ -235,10 +240,28 @@ export default {
   color: var(--rapo-strong)
   margin-bottom: 4px
 
+// The tiles fill the height of the tab (the parent's fixed height), each row at least $health-row high; with a session
+// list open, or more tiles than fit, the rows keep that height and the tab scrolls.
+$health-row: 116px
+
+.instance-health
+  display: flex
+  flex-direction: column
+  height: 100%
+
+  &.instance-health-drill
+    height: auto
+
 .health-grid
+  flex: 1 1 auto
   display: grid
   gap: 8px 12px
   grid-template-columns: repeat(2, minmax(0, 1fr))
+  grid-auto-rows: minmax($health-row, 1fr)
+
+.instance-health-drill .health-grid
+  flex: none
+  grid-auto-rows: $health-row
 
 @media (max-width: 760px)
   .health-grid

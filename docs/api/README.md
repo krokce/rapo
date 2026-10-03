@@ -1103,8 +1103,11 @@ step: {os, db}, history_since, thresholds, os: [...], db: [...], footprint, acce
 - `labels`: `{server, database}`, the host name and `user@host:port/service` (or the `path`) of `[DATABASE]`.
 - `os` points (every `os_interval` s) are this server's host and its process tree (the server, its runs, analysis
   and scan workers): `cpu`, `cpu_rapo` (% of all cores), `cpus`, `load`, `memory`, `memory_rapo` (%),
-  `memory_rapo_gb`, `memory_total_gb`, `swap`, `processes`, `processes_rapo`, `disk` (used % of the fullest of the
-  file systems in `disks`, those of the log directory and the folder of `rapo.ini`), `fds_rapo`, `net_rx_mbs`,
+  `memory_rapo_gb`, `memory_total_gb`, `swap`, `processes`, `processes_rapo`, `disk` (used % of the fullest of
+  `disks`), `disks` (one per file system holding the log directory, the folder of `rapo.ini` or a datasource's input
+  or archive directory, matched by mount point name only, the datasources read every `footprint_interval` s:
+  `{mount, device, roles: {logs, home, input, archive}` (directories held), `used_percent`, `used_gb`, `free_gb`,
+  `total_gb}`, or `error` when it did not answer in 2 s), `fds_rapo`, `net_rx_mbs`,
   `net_tx_mbs` (all interfaces but `lo`, `null` at the first sample), `net_errors`, `net_drops` (since the sample
   before), `tcp_established`, `tcp_close_wait`, `tcp_time_wait` (the host's TCP connections), `rapo_db_sockets` (the
   process tree's connections to `[DATABASE] port`), `uptime` and `rapo_uptime` (seconds since the host booted and
@@ -1113,7 +1116,8 @@ step: {os, db}, history_since, thresholds, os: [...], db: [...], footprint, acce
   `cpu_count`, `pga_limit_gb`, `db_cpu` (% of `cpu_count`, last minute), `db_cpu_cores`, `aas` (average active
   sessions), `sessions`, `sessions_active`, `sessions_rapo`, `sessions_rapo_active` (sessions with module `rapo`),
   `locks` (sessions blocked by another), `locks_wait` (longest wait, s), `sga_gb`, `pga_gb`, `pga_percent`,
-  `storage` (used % of the fullest of `tablespaces`, the user's default and temporary ones, autoextend counted),
+  `storage` (used % of the fullest of `tablespaces`, the user's default and temporary ones, autoextend counted, each
+  `{name, used_percent, used_gb, size_gb, default}`), `storage_gb` (used GB of the default tablespace),
   `rapo_gb` and `rapo_segments` (`RAPO_RES*`/`RAPO_TEMP_*` segments, read every `footprint_interval` s),
   `io_read_mbs`, `io_write_mbs` (physical reads and writes of all files), `redo_mbs`, `commits` (per second, last
   minute), `db_uptime` (seconds since the instance started, by the database's clock), `errors`.

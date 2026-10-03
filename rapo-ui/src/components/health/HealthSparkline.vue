@@ -17,8 +17,9 @@
 const WIDTH = 200;
 const HEIGHT = 40;
 
-// A compact time chart of sampled points: x is time over the window ending at `end`, so the history of a restarted
-// server starts where it started, and a missed sample (longer than 2.5 intervals) breaks the line.
+// A time chart of sampled points, stretched to the box its parent gives it (at least 40px high): x is time over the
+// window ending at `end`, so the history of a restarted server starts where it started, and a missed sample (longer
+// than 2.5 intervals) breaks the line.
 export default {
   name: "HealthSparkline",
   props: {
@@ -133,9 +134,11 @@ export default {
 <style lang="sass">
 .sparkline
   position: relative
-  height: 40px
+  min-height: 40px
 
 .sparkline-svg
+  position: absolute
+  inset: 0
   display: block
   width: 100%
   height: 100%
@@ -183,8 +186,8 @@ export default {
 
 .sparkline-tip
   position: absolute
-  bottom: calc(100% + 4px)
-  transform: translateX(-10%)
+  top: 2px
+  margin-left: 6px
   padding: 3px 6px
   border-radius: 3px
   background: var(--rapo-header-text)
@@ -196,5 +199,6 @@ export default {
   z-index: 2
 
   &.sparkline-tip-left
-    transform: translateX(-90%)
+    transform: translateX(-100%)
+    margin-left: -6px
 </style>

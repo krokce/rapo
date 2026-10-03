@@ -238,7 +238,7 @@ _add('HEALTH', 'history_hours', 'int', 24,
 HEALTH_LEVELS = [
     ('cpu', 80, 95, 'host CPU %, average of the last 3 samples'),
     ('memory', 85, 95, 'host memory used %'),
-    ('disk', 85, 95, 'used % of the fullest log or rapo file system'),
+    ('disk', 85, 95, 'used % of the fullest file system of the logs, rapo or the datasource directories'),
     ('close_wait', 50, None, 'host TCP connections in CLOSE_WAIT'),
     ('db_cpu', 80, 95, 'database CPU % of cpu_count'),
     ('db_memory', 85, 95, 'PGA allocated, % of pga_aggregate_limit'),

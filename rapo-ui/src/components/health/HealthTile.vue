@@ -14,6 +14,7 @@
     </template>
     <template v-else-if="last">
       <health-sparkline
+        class="health-tile-chart"
         :points="points"
         :series="tile.series"
         :end="end"
@@ -35,7 +36,8 @@
 import HealthSparkline from "./HealthSparkline.vue";
 import { LEVEL_TEXT, missingGrants, tileLevel } from "../../utils/health";
 
-// One metric of the instance health: its current value, the last hour as a sparkline, and a line of details.
+// One metric of the instance health: its current value, the span as a chart filling the tile's height, and a line of
+// details.
 export default {
   name: "HealthTile",
   components: { HealthSparkline },
@@ -77,14 +79,15 @@ export default {
       const messages = Object.values(errors);
       return messages.length ? messages[0] : null;
     },
+    // A disk tile brings its own level (utils/health.js diskTiles).
     level() {
-      return tileLevel(this.tile, this.levels);
+      return "level" in this.tile ? this.tile.level : tileLevel(this.tile, this.levels);
     },
     levelText() {
       return LEVEL_TEXT[this.level];
     },
     threshold() {
-      const rule = this.tile.rules[0];
+      const rule = !this.tile.noThreshold && this.tile.rules[0];
       const values = rule && this.thresholds[rule];
       return values && values[0] !== null ? values[0] : null;
     },
@@ -103,6 +106,9 @@ export default {
   border-radius: 4px
   background: var(--rapo-surface)
   min-width: 0
+  min-height: 0
+  display: flex
+  flex-direction: column
 
   &.health-tile-warn
     border-left-color: var(--rapo-warn)
@@ -137,13 +143,18 @@ export default {
   color: var(--rapo-header-text)
   white-space: nowrap
 
+.health-tile-chart
+  flex: 1 1 auto
+  margin-top: 2px
+
 .health-tile-sub
   font-size: 11px
   line-height: 1.6
   color: var(--rapo-muted)
 
 .health-tile-empty
-  height: 58px
+  flex: 1 1 auto
+  min-height: 58px
   display: flex
   align-items: center
   font-size: 12px
