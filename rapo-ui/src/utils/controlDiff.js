@@ -192,3 +192,101 @@ export function consecutiveDuplicates(versions) {
   });
   return duplicates;
 }
+
+// Payload fields that buildControlPayload derives from others: their rows cannot be reverted alone, and say what
+// they follow instead.
+export const DERIVED_FIELDS = {
+  need_a: "rule_config.need_issues_a / need_recons_a",
+  need_b: "rule_config.need_issues_b / need_recons_b",
+};
+
+// Payload fields set together by one form input: reverting one reverts the other.
+const PAIRED_FIELDS = { with_deletion: "with_drop", with_drop: "with_deletion" };
+
+// The keys and indexes of a diff row's path below its top-level field: "a.b[2].c" -> ["a", "b", 2, "c"].
+function parsePath(path) {
+  return [...path.matchAll(/\[(\d+)\]|([^.[\]]+)/g)].map((match) => (match[1] !== undefined ? Number(match[1]) : match[2]));
+}
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function valueAt(value, tokens) {
+  return tokens.reduce((current, token) => (current !== null && typeof current === "object" ? current[token] : undefined), value);
+}
+
+// Sets the value at tokens inside target (an object or array), or removes it there when value is undefined: a key
+// is deleted, an array item spliced out. A restored array item past the end is appended.
+function setAt(target, tokens, value) {
+  const parent = valueAt(target, tokens.slice(0, -1));
+  const last = tokens[tokens.length - 1];
+  if (parent === null || typeof parent !== "object") {
+    return;
+  }
+  if (Array.isArray(parent)) {
+    if (value === undefined) {
+      parent.splice(last, 1);
+    } else if (last >= parent.length) {
+      parent.push(value);
+    } else {
+      parent[last] = value;
+    }
+  } else if (value === undefined) {
+    delete parent[last];
+  } else {
+    parent[last] = value;
+  }
+}
+
+// The payload with the value of one diffControl row path put back to the saved one (savedJson). A JSON column is
+// decoded, changed at the path and encoded again; once it holds the saved configuration, the saved text itself is
+// taken, so that the key order matches and the form is no longer dirty.
+export function revertControlPath(savedJson, payload, path) {
+  const saved = savedJson ? JSON.parse(savedJson) : {};
+  const result = { ...payload };
+  const [key, ...rest] = parsePath(path);
+  const restore = (field) => {
+    if (field in saved) {
+      result[field] = saved[field];
+    } else {
+      delete result[field];
+    }
+  };
+  if (!rest.length) {
+    restore(key);
+    if (PAIRED_FIELDS[key]) {
+      restore(PAIRED_FIELDS[key]);
+    }
+    return result;
+  }
+  const savedValue = decode(saved[key], payload[key]);
+  const current = clone(decode(payload[key], saved[key]));
+  setAt(current, rest, clone(valueAt(savedValue, rest)));
+  result[key] = same(sorted(current), sorted(savedValue)) ? saved[key] : JSON.stringify(current);
+  return result;
+}
+
+// The KPI rows with one diffKpis row path put back to the saved rows (savedKpiJson): a whole KPI type re-added or
+// removed, or one of its values. Back to the saved rows as a whole, the saved rows themselves are taken.
+export function revertKpiPath(savedKpiJson, kpis, path) {
+  const saved = JSON.parse(savedKpiJson);
+  const current = clone(kpis || []);
+  const type = [...saved, ...current].map((item) => item.kpi_type).find((code) => path === `KPI ${code}` || path.startsWith(`KPI ${code}.`));
+  if (type === undefined) {
+    return current;
+  }
+  const savedIndex = saved.findIndex((item) => item.kpi_type === type);
+  const index = current.findIndex((item) => item.kpi_type === type);
+  const rest = parsePath(path.slice(`KPI ${type}`.length));
+  if (!rest.length || index < 0) {
+    if (index >= 0) {
+      current.splice(index, 1);
+    } else if (savedIndex >= 0) {
+      current.splice(Math.min(savedIndex, current.length), 0, clone(saved[savedIndex]));
+    }
+  } else {
+    setAt(current[index], rest, clone(valueAt(saved[savedIndex], rest)));
+  }
+  return same(sorted(current), sorted(saved)) ? saved : current;
+}

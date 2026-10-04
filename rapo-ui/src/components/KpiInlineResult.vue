@@ -86,9 +86,12 @@ export default {
 .kpi-inline__error
   min-width: 0
 .kpi-inline__value
-  width: 120px
+  width: 130px
   flex: none
   font-size: 18px
+  padding: 0 6px
+  border-radius: 4px
+  background: var(--rapo-highlight)
 .kpi-inline__unit
   width: 48px
   flex: none

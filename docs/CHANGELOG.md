@@ -31,9 +31,9 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   `set-config-option`.
 - **Calculate KPIs** (editor KPIs tab, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
-  stored value; the KPIs tab shows each KPI's value, alarm or error in its row for the run picked there; *Last
-  runs* backtests up to 30 runs; *Re-ingest* stores a run's KPIs with the package. Read-only single queries,
-  `[KPI] calculate_timeout`. New routes `calculate-kpi`, `get-kpi-history|runs`, `reingest-kpis`.
+  stored value, one row per KPI with details on demand; the KPIs tab shows each KPI's value (pale yellow), alarm
+  or error in its row for the run picked there; *Last runs* backtests up to 30 runs; *Re-ingest* stores a run's
+  KPIs with the package. Read-only single queries, `[KPI] calculate_timeout`. New routes `calculate-kpi`, `get-kpi-history|runs`, `reingest-kpis`.
 - **Orphaned KPIs** (Controls header chip): KPIs configured for a name no control has, assigned to a control or
   deleted. Deleting a control deletes its KPIs (ticked option, `delete_kpis`); stored values are kept.
 - **KPIs follow a rename or clone:** the editor rewrites `RAPO_REST|RESA|RESB_<name>` in the control's KPI statements
@@ -74,6 +74,8 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   *via X* / *for X*; an editor-to-editor link reloads the form (unsaved changes asked first).
 - **Editor Run log = Results table:** same columns, menus, number menus and totals (chips not filters); sortable,
   day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
+- **Editor unsaved changes:** undo one change per row in the *Unsaved changes* dialog, *Discard all changes* (with
+  Redo), and *Save* when leaving the editor with unsaved changes.
 
 ---
 

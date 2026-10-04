@@ -502,7 +502,7 @@ export default {
 }
 .kpi-result {
   flex: none;
-  width: 280px;
+  width: 290px;
 }
 .run-select {
   min-width: 260px;

@@ -129,20 +129,22 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - **KPIs tab:** each KPI row shows its value, unit and alarm level, or the error (hover for all of it, click to
      copy), calculated for the run picked in the tab's header (the latest done one by default): every KPI when the
      tab first opens, every KPI again when another run is picked, a KPI as it is added, and a row again with its ▶.
-     A result is dimmed once its statements are edited. The rerun fields are labeled *On alarm* and *On new data*;
-     the unit follows the description; a KPI's chip opens its statements.
+     The value sits on a pale yellow field. A result is dimmed once its statements are edited. The rerun fields are
+     labeled *On alarm* and *On new data*; the unit follows the description; a KPI's chip opens its statements.
    - The calculation is the one `RACS_KPI_PKG` makes: the KPI statement gets `:v_processid`, its first column of the
      first row is the value (**0 when there is no row**, said under it), rounded to 4 places and shown with the type's
      decimal places and unit; the alarm statement gets it as `:v_kpi_value`. The alarm level is a chip: 3 red, 2
      orange, 1 blue, none for 0.
-   - Next to it, what the package **stored** for that run (value, alarm, status, time), highlighted when it differs;
-     a stored `ERROR` shows the end of its log. Per KPI: where each statement came from (as edited, saved, type
-     default), the time each took, the statements with their bound values, and the error of a failing one.
+   - **Dialog:** one row per KPI, laid out like the KPIs tab: code, description, calculated value (pale yellow) with
+     unit and alarm, then what the package **stored** for that run (value and alarm, orange when they differ, status
+     and time on hover) and the time the statements took. A row's chevron shows its details: the error of a failing
+     statement, notes, a stored `ERROR`'s log, and the statements with their source (as edited, saved, type default)
+     and bound values. The dialog is as tall as its rows (up to 90% of the window).
    - From the editor the statements are the ones **as edited**, saved or not; from *Results* the saved ones. Both
      open the same dialog; *Recalculate* (Ctrl+Enter) calculates again.
    - **Run:** any run of the control, the latest done one by default. **Last runs:** the latest N (10, at most 30)
-     runs that ended D at once, a table per KPI with the stored values and how often each alarm level fires, to tune
-     thresholds.
+     runs that ended D at once, a table per KPI with the stored values and how often each alarm level fires (on the
+     KPI's title line), to tune thresholds.
    - **Re-ingest** (one run that ended D, saved statements, no unsaved changes) stores the KPIs for real: it calls
      `racs_kpi_pkg.ingest_rapo_control` after a confirmation, which overwrites the run's stored KPIs and posts the run
      to the dashboard, as after a run. Refused for a control aliased `TEST...`, as the package would skip it.
@@ -354,3 +356,12 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
     offers. Controls, Results, KPI types, Datasources, Files and the file log now show a grey chip after the filter
     chips while a column sort is set (*↑ Name*, its tooltip naming the default); its ✕ restores the default order
     (Results: the latest start first). The orange *Filter* badge still removes only the filters.
+
+16. **Undo single changes in the control editor.** *Unsaved changes* in the editor's footer lists what Apply would
+    change; each row now ends with an undo button that puts that value (an option, a column, a KPI, a whole SQL text)
+    back to the saved one and leaves the list. Rows the form derives from others (*need_a*/*need_b* from the result
+    types of a reconciliation) say what they follow instead; *with_deletion*/*with_drop* revert together. *Discard all
+    changes* at the bottom of the dialog returns the form and its KPIs to the saved control, with *Redo* in its
+    notification. Leaving the editor with unsaved changes now asks *Keep editing*, *Discard* or **Save**: Save saves
+    as the Save button does and goes on to where you were going; a failed check or save (or a control changed
+    meanwhile) keeps the editor open.

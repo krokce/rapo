@@ -21,6 +21,12 @@
         <strong v-else-if="row.kind === 'added'">{{ display(row.new) }}</strong>
         <span v-else class="diff-table__old">{{ display(row.old) }}</span>
       </td>
+      <td v-if="undoable" class="diff-table__undo">
+        <span v-if="row.follows" class="diff-table__follows">follows {{ row.follows }}</span>
+        <q-btn v-else flat round dense size="sm" icon="fas fa-undo" aria-label="Undo" @click="$emit('undo', row)">
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Revert to the saved value</q-tooltip>
+        </q-btn>
+      </td>
     </tr>
   </table>
 </template>
@@ -28,13 +34,16 @@
 <script>
 const KIND_COLORS = { added: "positive", removed: "negative", changed: "orange-8" };
 
-// The rows of utils/controlDiff.js: one per changed value, by path, with a line diff for multi-line texts.
+// The rows of utils/controlDiff.js: one per changed value, by path, with a line diff for multi-line texts. With
+// undoable, each row ends with an Undo button (emits undo), or what it follows when it cannot be reverted alone.
 export default {
   name: "DiffTable",
   props: {
     rows: { type: Array, required: true },
     emptyText: { type: String, default: "No differences." },
+    undoable: { type: Boolean, default: false },
   },
+  emits: ["undo"],
   data() {
     return { KIND_COLORS };
   },
@@ -80,6 +89,14 @@ export default {
 .diff-table__value
   width: 100%
   word-break: break-word
+
+.diff-table__undo
+  padding-right: 0
+  text-align: right
+  white-space: nowrap
+
+.diff-table__follows
+  color: var(--rapo-muted)
 
 .diff-table__old
   color: var(--rapo-muted)

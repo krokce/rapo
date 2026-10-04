@@ -1008,7 +1008,13 @@
       @drop="dropOrphan"
       @update="applySchema('update')"
       @recreate="(tables) => applySchema('recreate', tables)" />
-    <control-diff-dialog ref="controlDiffDialog" :diff="unsavedChanges" :busy="saving" @apply="persist('stay')" />
+    <control-diff-dialog
+      ref="controlDiffDialog"
+      :diff="unsavedChanges"
+      :busy="saving"
+      @apply="persist('stay')"
+      @undo="undoChange"
+      @discard="discardAll" />
     <control-versions-dialog
       ref="versionsDialog"
       :current="savedVersionRow"
@@ -1047,7 +1053,8 @@ import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
-import { diffControl, diffKpis } from "../utils/controlDiff";
+import { diffControl, diffKpis, revertControlPath, revertKpiPath } from "../utils/controlDiff";
+import UnsavedChangesDialog from "./UnsavedChangesDialog.vue";
 import { escapeHtml, toDateTimeString } from "../utils/format";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
@@ -1792,6 +1799,66 @@ export default {
       await this.$nextTick();
       this.initializing = false;
     },
+    // Puts a payload into the form as loadControl does, but keeps the saved state, the version and the KPIs: an undo
+    // or a discard of unsaved changes. The *_columns copies are derived anew from the output_table* columns.
+    async applyPayload(payload) {
+      const data = JSON.parse(JSON.stringify(payload));
+      for (const key of ["output_table_columns", "output_table_a_columns", "output_table_b_columns"]) {
+        delete data[key];
+      }
+      for (const key of ["control_id", "created_by", "created_date", "updated_by", "updated_date"]) {
+        data[key] = this.control[key];
+      }
+      this.initializing = true;
+      this.control = data;
+      this.initializeControl();
+      await this.$nextTick();
+      this.initializing = false;
+    },
+    // Reverts one row of the Unsaved changes dialog to the saved value. A row the form derives from other fields
+    // comes straight back, which is said.
+    async undoChange(row) {
+      if (row.path.startsWith("KPI ")) {
+        this.kpiConfigObject = revertKpiPath(this.savedKpiJson, this.kpiConfigObject, row.path);
+        return;
+      }
+      await this.applyPayload(revertControlPath(this.savedControlJson, this.buildControlPayload(), row.path));
+      if (this.unsavedChanges().some((item) => item.path === row.path)) {
+        this.$q.notify({ color: "grey-7", message: `${row.path} follows other settings of the form and cannot be reverted alone.` });
+      }
+    },
+    // Back to the saved control and KPIs, with a Redo of the form as it was.
+    async discardAll() {
+      const before = {
+        payload: this.buildControlPayload(),
+        kpis: JSON.parse(JSON.stringify(this.kpiConfigObject)),
+        kpiTableName: this.kpiTableName,
+        kpiRenames: this.kpiRenames,
+      };
+      await this.applyPayload(JSON.parse(this.savedControlJson));
+      if (this.savedKpiJson !== null) {
+        this.kpiConfigObject = JSON.parse(this.savedKpiJson);
+      }
+      // The saved KPIs refer to the saved name: nothing for the name watcher to rewrite.
+      this.kpiTableName = this.control.control_name;
+      this.kpiRenames = [];
+      this.$q.notify({
+        type: "warning",
+        message: "Changes discarded",
+        actions: [
+          {
+            label: "Redo",
+            color: "white",
+            handler: async () => {
+              await this.applyPayload(before.payload);
+              this.kpiConfigObject = before.kpis;
+              this.kpiTableName = before.kpiTableName;
+              this.kpiRenames = before.kpiRenames;
+            },
+          },
+        ],
+      });
+    },
     deletionDropChanged() {
       if (this.withDeletionDrop === "N") {
         this.control.with_deletion = "N";
@@ -2121,12 +2188,15 @@ export default {
       if (result.renamed_dependents && result.renamed_dependents.length) {
         this.$q.notify({ message: `The datasources of ${result.renamed_dependents.join(", ")} now read the renamed result tables.` });
       }
-      if (mode === "close") {
+      // "leave": saved on leaving with unsaved changes, the route guard goes on to where it was going.
+      if (mode === "close" || mode === "leave") {
         this.savedControlJson = JSON.stringify(this.buildControlPayload());
         this.savedKpiJson = null;
         this.saving = false;
         this.$q.notify({ type: "positive", message: "Control: " + this.control.control_name + " was saved successfully." });
-        this.$router.push({ name: "controls" });
+        if (mode === "close") {
+          this.$router.push({ name: "controls" });
+        }
         return true;
       }
       await this.afterSave(result, true);
@@ -2188,7 +2258,8 @@ export default {
         })
         .onOk(async (choice) => {
           if (choice === "overwrite") {
-            await this.submit(mode, false);
+            // A save on leaving was refused and the navigation canceled: the editor stays.
+            await this.submit(mode === "leave" ? "stay" : mode, false);
             return;
           }
           try {
@@ -2608,15 +2679,21 @@ export default {
     }
     this.$options.beforeRouteLeave.call(this, to, from, next);
   },
-  // Leaving with unsaved changes (Cancel, the side menu, back) asks first.
+  // Leaving with unsaved changes (Cancel, the side menu, back) asks first: save, discard or keep editing. A save that
+  // fails (validation, conflict, error) keeps the editor open.
   beforeRouteLeave(to, from, next) {
     if (!this.dirty || this.saving) {
       next();
       return;
     }
     this.$q
-      .dialog({ title: "Unsaved changes", message: "Discard your unsaved changes?", ok: { label: "Discard", color: "negative" }, cancel: { label: "Keep editing", flat: true }, persistent: true })
-      .onOk(() => {
+      .dialog({ component: UnsavedChangesDialog })
+      .onOk(async (choice) => {
+        if (choice === "save") {
+          const saved = this.validate() && (await this.submit("leave", true));
+          next(saved ? undefined : false);
+          return;
+        }
         this.$q.notify({ type: "warning", message: "Changes discarded" });
         next();
       })
