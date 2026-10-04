@@ -4,27 +4,67 @@
       <div class="row items-center q-ma-xs">
         <q-item-label>KPIs</q-item-label>
         <q-space />
-        <q-btn v-if="calculable && kpiConfigObject.length" size="sm" outline color="primary" icon="fas fa-play" label="Calculate KPIs" @click="$emit('calculate', null)">
-          <q-tooltip>Calculate the KPIs as edited for a past run, without storing them</q-tooltip>
-        </q-btn>
+        <template v-if="calculable && kpiConfigObject.length">
+          <span v-if="!runs.length && !runsLoading" class="text-grey-7">No runs to calculate the KPIs of</span>
+          <q-select
+            v-else
+            v-model="processId"
+            :options="runOptions"
+            emit-value
+            map-options
+            outlined
+            dense
+            options-dense
+            class="run-select"
+            :loading="runsLoading"
+            @popup-show="loadRuns">
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section avatar>
+                  <q-icon :name="runStatus(scope.opt.status).icon" :color="runStatus(scope.opt.status).color" size="xs" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>
+                    <span class="text-mono">{{ scope.opt.value }}</span>
+                    <span class="text-grey-7 q-ml-sm">{{ scope.opt.window }}</span>
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template v-slot:selected-item="scope">
+              <span class="ellipsis">
+                <q-icon :name="runStatus(scope.opt.status).icon" :color="runStatus(scope.opt.status).color" size="xs" class="q-mr-xs" />
+                <span class="text-mono">{{ scope.opt.value }}</span>
+                <span class="text-grey-7 q-ml-sm">{{ scope.opt.window }}</span>
+              </span>
+            </template>
+            <q-tooltip anchor="top middle" self="bottom middle">The run the KPIs are calculated for, as edited and without storing them</q-tooltip>
+          </q-select>
+        </template>
       </div>
 
       <q-card-section class="q-gutter-xs">
-        <div class="row q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
+        <div class="row no-wrap q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
           <div class="col-auto">
-            <q-chip size="18px" class="kpi-code" :title="typeUnit(item.kpi_type) || 'No unit'">
+            <q-chip size="18px" class="kpi-code" clickable :title="`Show the statements of ${item.kpi_type} below`" @click="kpiTab = item.kpi_type">
               <q-avatar :icon="kpiIcon" :color="kpiUnitColor(typeUnit(item.kpi_type))" text-color="white" />
               {{ item.kpi_type }}
             </q-chip>
           </div>
-          <q-input outlined readonly class="col-4" :model-value="typeDescription(item.kpi_type)" label="Description" />
-          <q-input outlined readonly class="col-1" :model-value="typeUnit(item.kpi_type)" label="Unit" />
           <q-input
             outlined
-            class="col-2"
+            readonly
+            class="kpi-description"
+            :model-value="typeDescription(item.kpi_type)"
+            :suffix="typeUnit(item.kpi_type)"
+            label="Description"
+            :title="typeDescription(item.kpi_type)" />
+          <q-input
+            outlined
+            class="kpi-rerun-alarm"
             type="number"
             v-model.number="kpiConfigObject[index].rerun_on_alarm_days_back"
-            label="Rerun on alarm">
+            label="On alarm">
             <template v-slot:prepend>
               <q-icon name="fas fa-bell" @click.stop.prevent />
             </template>
@@ -35,10 +75,10 @@
           </q-input>
           <q-input
             outlined
-            class="col-2"
+            class="kpi-rerun-data"
             type="number"
             v-model.number="kpiConfigObject[index].rerun_on_new_data_days_back"
-            label="Rerun on new data">
+            label="On new data">
             <template v-slot:prepend>
               <q-icon name="fas fa-database" @click.stop.prevent />
             </template>
@@ -47,10 +87,9 @@
               <br />Leave empty or 0 to never rerun.
             </q-tooltip>
           </q-input>
-          <q-btn v-if="calculable" aria-label="Calculate this KPI" size="sm" color="primary" flat round icon="fas fa-play" @click="$emit('calculate', item.kpi_type)">
-            <q-tooltip>Calculate this KPI as edited for a past run</q-tooltip>
-          </q-btn>
           <q-btn aria-label="Remove row" size="sm" color="primary" flat round icon="fas fa-minus" @click="removeKpi(index)" />
+          <!-- The slot is kept on every row, so the ▶ buttons stay in one column. -->
+          <div class="kpi-button-slot">
           <q-btn aria-label="Add row"
             v-if="index == kpiConfigObject.length - 1"
             size="sm"
@@ -75,6 +114,22 @@
               </q-list>
             </q-menu>
           </q-btn>
+          </div>
+          <template v-if="calculable">
+            <q-btn
+              aria-label="Calculate this KPI"
+              size="sm"
+              color="primary"
+              flat
+              round
+              icon="fas fa-play"
+              :loading="!!(inline[item.kpi_type] && inline[item.kpi_type].pending)"
+              :disable="processId === null"
+              @click="calculateInline(item)">
+              <q-tooltip>Calculate this KPI as edited for the run picked above, without storing it</q-tooltip>
+            </q-btn>
+            <kpi-inline-result class="kpi-result" :cell="inline[item.kpi_type]" :stale="isStale(item)" :run="runOf(inline[item.kpi_type])" />
+          </template>
         </div>
 
         <q-btn v-if="kpiConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add KPI" :disable="unusedTypes.length == 0">
@@ -174,11 +229,19 @@
 
 <script>
 import { mapState } from "vuex";
-import { api } from "../api";
+import { api, notifyError } from "../api";
 import CodeBox from "./CodeBox.vue";
+import KpiInlineResult from "./KpiInlineResult.vue";
 import { examplesFor } from "../utils/codeExamples";
-import { checkKpiStatement } from "../utils/kpi";
-import { KPI_ICON, kpiUnitColor } from "../constants";
+import { calculateKpi, checkKpiStatement, defaultRunId, runWindow } from "../utils/kpi";
+import { KPI_ICON, kpiUnitColor, runStatus } from "../constants";
+
+const RUN_LIMIT = 200;
+
+// What an inline result was calculated from, to dim it once the statements are edited.
+function statementsKey(item) {
+  return JSON.stringify([item.kpi_sql_statement, item.alarm_sql_statement]);
+}
 
 // The two statements of a KPI, as RACS_KPI_PKG runs them: the KPI value for a run, then the alarm level for
 // that value. A NULL column means the type's default is used, which is what the "Use type default" toggle
@@ -205,15 +268,17 @@ const STATEMENTS = [
 // racs_kpi_config of a control: one row per KPI, linked to the control by name. modelValue is the parent's
 // array and is edited in place, like the other editor boxes.
 export default {
-  components: { CodeBox },
+  components: { CodeBox, KpiInlineResult },
   props: {
     modelValue: { type: Array, required: true },
     controlName: String,
     controlType: String,
-    // Whether the KPIs can be calculated for a past run (a saved control); Calculate emits calculate(kpiType | null).
+    // Whether the KPIs can be calculated for a past run (a saved control): each row shows its KPI calculated for the
+    // run picked in the header, all of them once the runs are loaded, again with the row's ▶.
     calculable: { type: Boolean, default: false },
+    // The saved name of the control, whose runs are offered (the form's name may be an unsaved rename).
+    runsControlName: String,
   },
-  emits: ["calculate"],
   data() {
     return {
       statements: STATEMENTS,
@@ -224,6 +289,14 @@ export default {
       // than in created(): the resultTableNames watcher below is immediate, and immediate watchers run before
       // created() does, so this would still be undefined when the first fetch fires.
       columnRequests: {},
+      // get-kpi-runs of the control, newest first, and the run a row's ▶ calculates for.
+      runs: [],
+      runsLoading: false,
+      processId: null,
+      // {kpi_type: {id, pending, result, error, processId, statements}}: the inline results of the ▶ buttons.
+      inline: {},
+      // Numbers the inline calculations, so a late answer for a superseded one is dropped.
+      calculations: 0,
     };
   },
   computed: {
@@ -235,6 +308,12 @@ export default {
     unusedTypes() {
       const used = this.kpiConfigObject.map((item) => item.kpi_type);
       return this.kpiTypes.filter((type) => !used.includes(type.kpi_type));
+    },
+    runOptions() {
+      return this.runs.map((run) => ({ value: run.process_id, label: String(run.process_id), status: run.status, window: runWindow(run) }));
+    },
+    runsKey() {
+      return this.calculable ? this.runsControlName || null : null;
     },
     // The uppercase result table(s) this control's own KPI SQL runs against: one RAPO_REST_ table, or a
     // RAPO_RESA_/RAPO_RESB_ pair for REC. Unquoted Oracle identifiers fold to uppercase, and get-datasource-columns
@@ -255,6 +334,21 @@ export default {
     },
   },
   watch: {
+    runsKey: {
+      immediate: true,
+      handler() {
+        this.processId = null;
+        this.runs = [];
+        this.loadRuns();
+      },
+    },
+    // Rows already calculated follow the run picked in the header.
+    // Every KPI is calculated for the run picked: the default one once the runs are loaded (the box is built when the
+    // tab first opens), then each run picked in the header.
+    processId(processId) {
+      if (processId === null) return;
+      this.kpiConfigObject.forEach((item) => this.calculateInline(item));
+    },
     // The parent swaps the array on load, clone and version switch.
     modelValue() {
       this.selectFirstTab();
@@ -280,6 +374,48 @@ export default {
   },
   methods: {
     kpiUnitColor,
+    runStatus,
+    // Loads the runs (again when the menu opens, so new runs show up), keeping the picked one while it is listed.
+    async loadRuns() {
+      const name = this.runsKey;
+      if (!name) return;
+      this.runsLoading = true;
+      try {
+        const runs = await api("get-kpi-runs", { params: { control_name: name, limit: RUN_LIMIT }, loadingBar: false });
+        if (name !== this.runsKey) return;
+        this.runs = runs;
+        if (!runs.some((run) => run.process_id === this.processId)) this.processId = defaultRunId(runs);
+      } catch (error) {
+        notifyError("Loading the runs failed", error);
+      } finally {
+        this.runsLoading = false;
+      }
+    },
+    runOf(cell) {
+      return cell ? this.runs.find((run) => run.process_id === cell.processId) || null : null;
+    },
+    isStale(item) {
+      const cell = this.inline[item.kpi_type];
+      return !!cell && cell.statements !== statementsKey(item);
+    },
+    // Calculates one KPI with its statements as edited for the picked run, without storing it.
+    async calculateInline(item) {
+      const processId = this.processId;
+      if (processId === null) return;
+      const id = ++this.calculations;
+      const kpiType = item.kpi_type;
+      const kpi = { ...item };
+      this.inline[kpiType] = { id, pending: true, processId, statements: statementsKey(kpi) };
+      let cell;
+      try {
+        const result = await calculateKpi(processId, kpiType, kpi);
+        cell = { result, error: result.error };
+      } catch (error) {
+        cell = { result: null, error: error.message };
+      }
+      const current = this.inline[kpiType];
+      if (current && current.id === id) this.inline[kpiType] = { ...current, ...cell, pending: false };
+    },
     type(code) {
       return this.kpiTypes.find((type) => type.kpi_type == code) || {};
     },
@@ -315,10 +451,12 @@ export default {
         rerun_on_new_data_days_back: null,
       });
       this.kpiTab = code;
+      if (this.calculable) this.calculateInline(this.kpiConfigObject[this.kpiConfigObject.length - 1]);
     },
     removeKpi(index) {
       const removed = this.kpiConfigObject[index].kpi_type;
       this.kpiConfigObject.splice(index, 1);
+      delete this.inline[removed];
       if (this.kpiTab == removed) {
         const neighbour = this.kpiConfigObject[Math.min(index, this.kpiConfigObject.length - 1)];
         this.kpiTab = neighbour ? neighbour.kpi_type : null;
@@ -334,6 +472,42 @@ export default {
 </script>
 
 <style scoped>
+/* Fixed widths, so the ▶ buttons and the inline results line up from row to row; the description gives way first. */
+.kpi-description {
+  flex: 1 1 0;
+  min-width: 80px;
+}
+.kpi-rerun-alarm,
+.kpi-rerun-data {
+  flex: none;
+  width: 152px;
+}
+/* Days are typed, so the number inputs show no up/down arrows; numbers align right. */
+.kpi-rerun-alarm :deep(input),
+.kpi-rerun-data :deep(input) {
+  text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.kpi-rerun-alarm :deep(input::-webkit-outer-spin-button),
+.kpi-rerun-alarm :deep(input::-webkit-inner-spin-button),
+.kpi-rerun-data :deep(input::-webkit-outer-spin-button),
+.kpi-rerun-data :deep(input::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.kpi-button-slot {
+  flex: none;
+  width: 32px;
+}
+.kpi-result {
+  flex: none;
+  width: 280px;
+}
+.run-select {
+  min-width: 260px;
+}
+
 /* Wide enough for a four-character code, so the rows stay aligned with the least gap before the description. */
 .kpi-code {
   min-width: 6em;

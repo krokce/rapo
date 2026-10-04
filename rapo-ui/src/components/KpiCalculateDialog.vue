@@ -199,8 +199,8 @@ import { mapActions, mapState } from "vuex";
 import { QIcon } from "quasar";
 import { api, notifyError } from "../api";
 import { KPI_ICON, kpiUnitColor, runStatus } from "../constants";
-import { alarmLevel, calculateKpi, formatKpiValue, sameKpiValue } from "../utils/kpi";
-import { toDateString, toDateTimeString } from "../utils/format";
+import { alarmLevel, calculateKpi, defaultRunId, formatKpiValue, kpiNotes, kpiTiming, runWindow, sameKpiValue } from "../utils/kpi";
+import { toDateTimeString } from "../utils/format";
 
 const CONCURRENCY = 2;
 const MAX_BACKTEST = 30;
@@ -248,7 +248,6 @@ export default {
       draft: null,
       // Why Re-ingest is not offered now, or null.
       reingestReason: null,
-      only: null,
       savedKpis: [],
       kpisLoading: false,
       runs: [],
@@ -275,12 +274,9 @@ export default {
     kpis() {
       return this.draft ? this.draft() || [] : this.savedKpis;
     },
-    shownKpis() {
-      return this.only ? this.kpis.filter((kpi) => kpi.kpi_type === this.only) : this.kpis;
-    },
     // One card per KPI: the cell of the calculated run, or one row per run of the last runs.
     cards() {
-      return this.shownKpis.map((kpi) => ({
+      return this.kpis.map((kpi) => ({
         kpi,
         cell: this.cellOf(kpi.kpi_type, this.calculatedRun),
         stored: this.storedOf(kpi.kpi_type, this.calculatedRun),
@@ -301,7 +297,7 @@ export default {
       return this.runs.filter((run) => run.status === "D");
     },
     canCalculate() {
-      return this.shownKpis.length > 0 && (this.mode === "backtest" ? this.doneRuns.length > 0 : this.processId !== null);
+      return this.kpis.length > 0 && (this.mode === "backtest" ? this.doneRuns.length > 0 : this.processId !== null);
     },
     reingestBlocked() {
       return typeof this.reingestReason === "function" ? this.reingestReason() : this.reingestReason;
@@ -313,12 +309,11 @@ export default {
     kpiUnitColor,
     alarmLevel,
     formatKpiValue,
-    // options: { controlName, draft: () => rows | null, only, processId, reingestReason: string | () => string }
+    // options: { controlName, draft: () => rows | null, processId, reingestReason: string | () => string }
     async open(options) {
       this.generation++;
       this.controlName = options.controlName;
       this.draft = options.draft || null;
-      this.only = options.only || null;
       this.reingestReason = options.reingestReason || null;
       this.mode = "run";
       this.cells = {};
@@ -347,8 +342,7 @@ export default {
         this.runsLoading = false;
       }
       const wanted = this.runs.find((run) => run.process_id === Number(processId));
-      const latest = this.doneRuns[0] || this.runs[0];
-      this.processId = wanted ? wanted.process_id : latest ? latest.process_id : null;
+      this.processId = wanted ? wanted.process_id : defaultRunId(this.runs);
     },
     async loadSavedKpis() {
       this.kpisLoading = true;
@@ -363,7 +357,7 @@ export default {
     async calculate() {
       if (!this.canCalculate) return;
       const generation = ++this.generation;
-      const kpis = this.shownKpis.map((kpi) => ({ ...kpi }));
+      const kpis = this.kpis.map((kpi) => ({ ...kpi }));
       const runs =
         this.mode === "backtest"
           ? this.doneRuns.slice(0, Math.max(1, Math.min(MAX_BACKTEST, Number(this.backtestCount) || 10)))
@@ -434,27 +428,12 @@ export default {
       }
       return Object.values(counts).sort((a, b) => b.label.localeCompare(a.label));
     },
-    notes(result) {
-      const notes = [];
-      if (!result.kpi_source) notes.push("No KPI statement, own or default: the package stores 0.");
-      if (result.no_rows) notes.push("The KPI statement returned no row: the package stores 0.");
-      if (result.value === null) notes.push("The KPI statement returned NULL.");
-      if (!result.alarm_source) notes.push("No alarm statement, own or default: the alarm level is 0.");
-      return notes;
-    },
-    timing(result) {
-      return [result.kpi_ms !== null ? `KPI ${result.kpi_ms} ms` : null, result.alarm_ms !== null ? `alarm ${result.alarm_ms} ms` : null]
-        .filter(Boolean)
-        .join(" · ");
-    },
+    notes: kpiNotes,
+    timing: kpiTiming,
     sourceLabel(source) {
       return SOURCE_LABELS[source] || source;
     },
-    windowOf(run) {
-      const from = toDateString(run.date_from);
-      const to = toDateString(run.date_to);
-      return to && to !== from ? `${from} – ${to}` : from;
-    },
+    windowOf: runWindow,
     typeOf(kpiType) {
       return this.kpiTypes.find((type) => type.kpi_type === kpiType) || {};
     },

@@ -124,8 +124,13 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
    - `get-control-runs` takes `control_name` and `days` for this, and answers `added` and `end_date` for every run.
 
 6. **Calculate KPIs.** KPI and alarm statements can be tried on a past run before they are saved, without storing
-   anything: *Calculate KPIs* in the header of the editor's *KPIs* tab (all KPIs), a ▶ button on each KPI row (that
-   KPI), and *Calculate KPIs* in the row menu of the editor's *Run log* and of *Results* (controls with KPIs).
+   anything: in the editor's *KPIs* tab, and in a dialog opened by *Calculate KPIs* in the row menu of the editor's
+   *Run log* and of *Results* (controls with KPIs).
+   - **KPIs tab:** each KPI row shows its value, unit and alarm level, or the error (hover for all of it, click to
+     copy), calculated for the run picked in the tab's header (the latest done one by default): every KPI when the
+     tab first opens, every KPI again when another run is picked, a KPI as it is added, and a row again with its ▶.
+     A result is dimmed once its statements are edited. The rerun fields are labeled *On alarm* and *On new data*;
+     the unit follows the description; a KPI's chip opens its statements.
    - The calculation is the one `RACS_KPI_PKG` makes: the KPI statement gets `:v_processid`, its first column of the
      first row is the value (**0 when there is no row**, said under it), rounded to 4 places and shown with the type's
      decimal places and unit; the alarm statement gets it as `:v_kpi_value`. The alarm level is a chip: 3 red, 2

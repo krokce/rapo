@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { toDateString } from "./format";
 
 // Parses a KPI or alarm statement (`statement.kind` is "kpi" or "alarm") on the server without executing it. The result
 // is informative only: a control that never ran has no result table yet, and a type's default may name a table that
@@ -41,6 +42,36 @@ export function calculateKpi(processId, kpiType, kpi) {
     body.alarm_sql_statement = kpi.alarm_sql_statement;
   }
   return api("calculate-kpi", { method: "POST", body, loadingBar: false });
+}
+
+// The notes under a calculated KPI: why the package would store 0, a NULL value, a missing alarm statement.
+export function kpiNotes(result) {
+  const notes = [];
+  if (!result.kpi_source) notes.push("No KPI statement, own or default: the package stores 0.");
+  if (result.no_rows) notes.push("The KPI statement returned no row: the package stores 0.");
+  if (result.value === null) notes.push("The KPI statement returned NULL.");
+  if (!result.alarm_source) notes.push("No alarm statement, own or default: the alarm level is 0.");
+  return notes;
+}
+
+// How long the statements of a calculated KPI took, e.g. "KPI 12 ms · alarm 3 ms".
+export function kpiTiming(result) {
+  return [result.kpi_ms !== null ? `KPI ${result.kpi_ms} ms` : null, result.alarm_ms !== null ? `alarm ${result.alarm_ms} ms` : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// The date or period a run (a get-kpi-runs row) covered.
+export function runWindow(run) {
+  const from = toDateString(run.date_from);
+  const to = toDateString(run.date_to);
+  return to && to !== from ? `${from} – ${to}` : from;
+}
+
+// The run KPIs are calculated for by default: the newest one that ended D, else the newest one. runs are newest first.
+export function defaultRunId(runs) {
+  const run = runs.find((row) => row.status === "D") || runs[0];
+  return run ? run.process_id : null;
 }
 
 // Points the result table names of a control in a statement to its new name: whole RAPO_REST_/RAPO_RESA_/RAPO_RESB_

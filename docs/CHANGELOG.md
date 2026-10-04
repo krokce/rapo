@@ -29,10 +29,11 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   paths), filter; options that need no restart are changed in place (pencil on hover), written to their line of
   `rapo.ini` after a `rapo.ini.bak-*` backup and applied at once. New routes `get-config-catalogue`,
   `set-config-option`.
-- **Calculate KPIs** (editor KPIs tab, row ▶, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
+- **Calculate KPIs** (editor KPIs tab, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
-  stored value; *Last runs* backtests up to 30 runs; *Re-ingest* stores a run's KPIs with the package. Read-only
-  single queries, `[KPI] calculate_timeout`. New routes `calculate-kpi`, `get-kpi-history|runs`, `reingest-kpis`.
+  stored value; the KPIs tab shows each KPI's value, alarm or error in its row for the run picked there; *Last
+  runs* backtests up to 30 runs; *Re-ingest* stores a run's KPIs with the package. Read-only single queries,
+  `[KPI] calculate_timeout`. New routes `calculate-kpi`, `get-kpi-history|runs`, `reingest-kpis`.
 - **Orphaned KPIs** (Controls header chip): KPIs configured for a name no control has, assigned to a control or
   deleted. Deleting a control deletes its KPIs (ticked option, `delete_kpis`); stored values are kept.
 - **KPIs follow a rename or clone:** the editor rewrites `RAPO_REST|RESA|RESB_<name>` in the control's KPI statements

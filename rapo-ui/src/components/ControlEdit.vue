@@ -884,7 +884,7 @@
                     :control-name="control.control_name"
                     :control-type="control.control_type"
                     :calculable="schemaEnabled"
-                    @calculate="(kpiType) => openKpiCalculate(null, kpiType)">
+                    :runs-control-name="savedControlName">
                   </kpi-config-box>
                 </div>
               </div>
@@ -1193,6 +1193,11 @@ export default {
     window.addEventListener("resize", this.sizeLogTable);
   },
   computed: {
+    // The control's name as saved: its runs are found by it, whatever the form calls it now.
+    savedControlName() {
+      const saved = this.controlCatalogueById(this.control.control_id);
+      return saved ? saved.control_name : this.control.control_name;
+    },
     // The Example menus of the code boxes, for this control's type and name.
     codeExamples() {
       const context = { controlType: this.control.control_type, controlName: this.control.control_name };
@@ -1639,12 +1644,10 @@ export default {
       return this.getControlLogs(this.control.control_name, this.log_days_back);
     },
     // Calculate KPIs with the statements as edited. The runs are the saved control's, whatever the form calls it now.
-    openKpiCalculate(processId, kpiType) {
-      const saved = this.controlCatalogueById(this.control.control_id);
+    openKpiCalculate(processId) {
       this.$refs.kpiCalculate.open({
-        controlName: saved ? saved.control_name : this.control.control_name,
+        controlName: this.savedControlName,
         draft: () => this.kpiConfigObject,
-        only: kpiType,
         processId,
         reingestReason: () => (this.dirty ? "Apply your changes first: Re-ingest uses the saved KPIs" : null),
       });
