@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-md'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-md'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
         <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
@@ -60,7 +60,7 @@
         </div>
       </div>
     </div>
-    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${rows.length} of ${allRowsCount} datasources`" class="q-mb-sm" @clear="clearFilters" />
+    <filter-chips v-if="hasDay" :filters="activeFilters" :sort="sortChip" :shown="`${rows.length} of ${allRowsCount} datasources`" class="q-mb-sm" @clear="clearFilters" />
 
     <!-- The header search finds files (?name prefix, #ID) of any day; the rows narrow to their datasources. -->
     <div v-if="fileSearchActive" class="row items-center q-mb-sm text-blue-grey-8">
@@ -303,7 +303,7 @@ import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { compactNumber, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { clockLabel, dayPosition } from "../utils/clock";
-import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 // The Datasources page's issues this page shows too (on today).
@@ -348,6 +348,9 @@ const TRAILING_COLUMNS = [
   { key: "change", label: "Trend", align: "right", width: 80, title: "The day's files against the same day a week earlier (today: up to this time)" },
 ];
 
+// No column: the day's datasources unsorted.
+const DEFAULT_SORT = { key: null, dir: "asc" };
+
 // The PDI Core file log of one day, by datasource, like Results is for control runs: /files?date=YYYY-MM-DD (plain =
 // the database's today). Built from aggregates (get-files-day), so that every filter applies at once; a datasource
 // opens its files (/files-log/<id>). Kept alive (App.vue): activated/deactivated start and stop its live refresh.
@@ -374,10 +377,7 @@ export default {
         // Only the datasources with files flagged as duplicates.
         duplicates: false,
       },
-      sort: {
-        key: null,
-        dir: "asc",
-      },
+      sort: { ...DEFAULT_SORT },
     };
   },
   computed: {
@@ -542,6 +542,9 @@ export default {
       const names = this.hasDay ? datasourceRows(this.fileDay, this.datasources, () => true, () => true, true).map((row) => row.sourcename) : [];
       const width = textWidth(names, "bold 16px Roboto, sans-serif");
       return Math.max(width + 32, 200);
+    },
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, Object.fromEntries(this.tableColumns.filter((column) => column.sort).map((column) => [column.key, column.label])), "unsorted");
     },
     activeFilters() {
       const filter = this.filter;

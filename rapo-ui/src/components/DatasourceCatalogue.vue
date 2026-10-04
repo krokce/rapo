@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Datasources</div>
         <div v-else>{{ countTitle }}</div>
@@ -31,7 +31,7 @@
         </div>
       </div>
     </div>
-    <filter-chips v-if="!showSkeleton" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
+    <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -283,7 +283,7 @@ import { ISSUES, issuesOf, splitDirectories } from "../utils/datasources";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { escapeHtml, formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
-import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
 
 const COLUMNS = [
@@ -298,6 +298,9 @@ const COLUMNS = [
   { key: "files_load_parallel", label: "Parallel", align: "center", sort: true, title: "Files are loaded in parallel" },
   { key: "input_scan_subdirs", label: "Subdirs", align: "center", sort: true, title: "Subdirectories of the input directories are scanned too" },
 ];
+
+// No column: the server's order, by name.
+const DEFAULT_SORT = { key: null, dir: "asc" };
 
 // The PDI Core datasources (pdi_core_ds_config), flagged by the issues of their setup and of the server's last scan of
 // their directories (get-ds-status). Kept alive (App.vue): activated/deactivated start and stop its live refresh.
@@ -320,10 +323,7 @@ export default {
         lanes: [],
         issues: [],
       },
-      sort: {
-        key: null,
-        dir: "asc",
-      },
+      sort: { ...DEFAULT_SORT },
     };
   },
   computed: {
@@ -375,6 +375,9 @@ export default {
     },
     stalledMinutes() {
       return (this.datasourceStatus && this.datasourceStatus.stalled_minutes) || 60;
+    },
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, Object.fromEntries(this.columns.filter((column) => column.sort).map((column) => [column.key, column.label])), "by name");
     },
     activeFilters() {
       const filter = this.filter;

@@ -123,7 +123,7 @@ No change to Rapo's own schema; redeploy the `PL` engine's `RAPO_USAGE_RULE`. PD
   (`get-schema-drift` level `source_missing`).
 - **Fix:** the Scheduler's running list names the control of the run in progress (upstream, iteration, cascade).
 - **Active filters** on every list page as a badge and removable chips; filters, sort and search are kept for the
-  browser session.
+  browser session; a grey sort chip restores the default order (Controls: last modified first).
 - **Analysis:** a dataset switch between Source A/B and Discrepancies A/B of a run; *Hide all*, *Key fields* and a
   search in the *Columns* menu; the editor's run log opens *Copy SQL* and *Data analysis* with the server's SQL.
 - **UI load time:** the editors and the file log page load on first visit, halving the vendor bundle of the first

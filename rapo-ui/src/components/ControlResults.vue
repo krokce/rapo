@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
         <div><day-navigator :day="day" :today="serverToday" :calendar="loadCalendar" :legend="{ count: 'runs', errors: 'errors' }" @go="goToDay" /></div>
@@ -25,7 +25,7 @@
         @filter-trigger="toggleTrigger" />
     </div>
 
-    <filter-chips v-if="hasDay" :filters="activeFilters" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-sm" @clear="clearFilters" />
+    <filter-chips v-if="hasDay" :filters="activeFilters" :sort="sortChip" :shown="`${filteredControlResults.length} of ${controlResults.length} runs`" class="q-mb-sm" @clear="clearFilters" />
 
     <!-- Runs per hour, following every filter but the hour, which a click picks. -->
     <hour-heatmap
@@ -78,11 +78,14 @@ import { runStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { dayTitle, toDateString } from "../utils/format";
 import { hourRange } from "../utils/files";
-import { runHeatmapRows, runHour, runMatchesSearch, triggerKey, triggerOfKey } from "../utils/runs";
+import { RUN_SORT_LABELS, runHeatmapRows, runHour, runMatchesSearch, triggerKey, triggerOfKey } from "../utils/runs";
+import { sortChip } from "../utils/sort";
 import { fillViewportToBottom } from "../utils/layout";
 import { clockLabel, dayPosition } from "../utils/clock";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import persistFilters from "../mixins/persistFilters";
+
+const DEFAULT_SORT = { key: "start_date", dir: "desc" };
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
 export default {
@@ -111,10 +114,7 @@ export default {
       },
       // The process ID found to have no run by "Go to its day".
       missingRun: null,
-      sort: {
-        key: "start_date",
-        dir: "desc",
-      },
+      sort: { ...DEFAULT_SORT },
       // The browser's time, moved on every minute for the heatmap's Now marker.
       now: Date.now(),
       // The ids of the controls with KPIs, which the row menu offers Calculate KPIs for; null without KPI tables.
@@ -226,6 +226,9 @@ export default {
       return Boolean(this.day) && this.controlResultsDay === this.day;
     },
     ...mapGetters(["getSearch", "getEnvInfo"]),
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, RUN_SORT_LABELS, "latest start first");
+    },
     activeFilters() {
       const filter = this.filter;
       return [

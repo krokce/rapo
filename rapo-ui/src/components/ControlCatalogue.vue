@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Controls</div>
         <div v-else>{{ countTitle }}</div>
@@ -64,7 +64,7 @@
         </div>
       </div>
     </div>
-    <filter-chips v-if="!showSkeleton" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
+    <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -494,8 +494,12 @@ import { sendsEmail } from "../utils/email";
 import { formatNumber, toDateTimeString, toMillis } from "../utils/format";
 import { scheduleFrequency, scheduleText, scheduleUnits, windowLabel } from "../utils/schedule";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
-import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+
+// No column: the server's order, last modified first.
+const DEFAULT_SORT = { key: null, dir: "asc" };
+const SORT_LABELS = { control_type: "Type", control_name: "Name", control_description: "Description", next_fire: "Scheduler" };
 
 // Kept alive (App.vue), so it is built once; activated/deactivated start and stop its live refresh.
 export default {
@@ -546,10 +550,7 @@ export default {
         other_attributes: [],
         system: null,
       },
-      sort: {
-        key: null,
-        dir: "asc",
-      },
+      sort: { ...DEFAULT_SORT },
     };
   },
   methods: {
@@ -811,6 +812,9 @@ export default {
       const shown = this.filteredControlCatalogueLen;
       const count = this.activeFilters.length ? `${shown} of ${total}` : String(shown);
       return `${count} Control${(this.activeFilters.length ? total : shown) === 1 ? "" : "s"}`;
+    },
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, SORT_LABELS, "last modified first");
     },
     activeFilters() {
       const filter = this.filter;

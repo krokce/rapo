@@ -131,3 +131,22 @@ export function runSortValue(run, key) {
 export function startsNewDay(runs, index) {
   return index > 0 && toDateString(runs[index - 1].start_date) !== toDateString(runs[index].start_date);
 }
+
+// RunTable's column headers by sort key, for the sort chip of the Results page.
+export const RUN_SORT_LABELS = {
+  control_type: "Type",
+  start_date: "Start",
+  duration_minutes: "Runtime",
+  process_id: "PID",
+  control_name: "Processname",
+  date_from: "Run from",
+  date_to: "Run to",
+  fetched_number_a: "Fetched A",
+  fetched_number_b: "Fetched B",
+  error_number_a: "Discr. A",
+  error_number_b: "Discr. B",
+  error_level_a: "Err. lvl A [%]",
+  error_level_b: "Err. lvl B [%]",
+  prerequisite_value: "PV",
+  status: "Status",
+};

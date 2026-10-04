@@ -343,3 +343,9 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       them; a file opens its datasource's file log on the file's day.
     - API: `search-files` takes `text` (start of `INPUTFILENAME`, case-sensitive, using its index) or `id`, of any day;
       `date` is gone and `text` no longer matches inside a name.
+
+15. **A sort chip brings back the default order.** Once a column header is clicked, a list kept that sort for the
+    browser session with no way back to its own order: on Controls the last modified first, a column no header
+    offers. Controls, Results, KPI types, Datasources, Files and the file log now show a grey chip after the filter
+    chips while a column sort is set (*↑ Name*, its tooltip naming the default); its ✕ restores the default order
+    (Results: the latest start first). The orange *Filter* badge still removes only the filters.

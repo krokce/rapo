@@ -2,7 +2,7 @@
   <div class="column no-wrap">
     <!-- Laid out like Results: the title with the day, the day's totals and status chips on the right,
          the active filters under it (led by the Filter badge), then the filter row with the day buttons, and the table. -->
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
       <component :is="embedded ? 'div' : 'h2'" class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none" :class="{ 'text-h6': embedded }">
         <slot name="title" />
         <div class="text-grey-7" :class="{ 'page-subject': !embedded }">{{ dayTitle }}</div>
@@ -37,7 +37,7 @@
         </div>
       </div>
     </div>
-    <filter-chips :filters="activeFilters" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" class="q-mb-md" @clear="clearFilters" />
+    <filter-chips :filters="activeFilters" :sort="sortChip" :shown="`${formatNumber(shownFiles.length)} of ${formatNumber(files.length)} files`" class="q-mb-md" @clear="clearFilters" />
 
     <!-- Files per hour, as on the Files page: one row per status and a total, following the other filters. -->
     <hour-heatmap
@@ -245,7 +245,7 @@ import { copyAndNotify } from "../runActions";
 import { hourRange, loadHour, statusHeatmapRows } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
 import { compactNumber, dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
-import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import { clockLabel, clockOffset, dayPosition } from "../utils/clock";
 import persistFilters from "../mixins/persistFilters";
 
@@ -267,6 +267,9 @@ const COLUMNS = [
   { key: "recordsreject", label: "Rejected", align: "right", title: "Records rejected while loading" },
   { key: "duplicate", label: "Duplicate", align: "center", title: "Whether PDI Core flagged the file as a duplicate" },
 ];
+
+// No column: the server's order, newest load first.
+const DEFAULT_SORT = { key: null, dir: "asc" };
 
 export default {
   name: "FileLogTable",
@@ -303,7 +306,7 @@ export default {
       duplicate: null,
       columns: COLUMNS,
       // No key: the order of the file log, newest load first.
-      sort: { key: null, dir: "asc" },
+      sort: { ...DEFAULT_SORT },
       // The hour of the day picked in the heatmap (load start, the database's clock), or null.
       hour: null,
       selected: new Set(),
@@ -352,6 +355,9 @@ export default {
     },
     dayTitle() {
       return dayTitle(this.day);
+    },
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, Object.fromEntries(this.columns.map((column) => [column.key, column.label])), "newest load first");
     },
     activeFilters() {
       return [

@@ -34,3 +34,24 @@ export function sortIcon(sort) {
 export function ariaSort(sort, key) {
   return sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
 }
+
+// The sort chip of a list's FilterChips: null while `sort` is the page's `defaultSort` (or names a column not in
+// `labels`, which the page ignores), else { label, icon, title, clear }. `clear()` puts the default back in place.
+export function sortChip(sort, defaultSort, labels, defaultText) {
+  if (sort.key === defaultSort.key && (sort.key == null || sort.dir === defaultSort.dir)) {
+    return null;
+  }
+  const label = labels[sort.key];
+  if (!label) {
+    return null;
+  }
+  return {
+    label,
+    icon: sortIcon(sort),
+    title: `Sorted by ${label}, ${sort.dir === "asc" ? "ascending" : "descending"}; remove to restore the default order (${defaultText})`,
+    clear() {
+      sort.key = defaultSort.key;
+      sort.dir = defaultSort.dir;
+    },
+  };
+}

@@ -1,12 +1,12 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
       <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">KPI types</div>
         <div v-else>{{ countTitle }}</div>
       </h2>
     </div>
-    <filter-chips v-if="loaded" :filters="activeFilters" class="q-mb-md" @clear="clearFilters" />
+    <filter-chips v-if="loaded" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
       <q-btn
@@ -156,8 +156,13 @@ import { api, notifyError } from "../api";
 import { KPI_ICON, kpiUnitColor } from "../constants";
 import { searchFilter, valueFilter } from "../utils/filters";
 import { fillViewportToBottom } from "../utils/layout";
-import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+
+// No column: the server's order, by priority.
+const DEFAULT_SORT = { key: null, dir: "asc" };
+const SORT_LABELS = { kpi_type: "Code", kpi_type_desc: "Description", kpi_value_unit: "Unit", kpi_priority: "Priority", kpi_decimal_places: "Decimals", usage_count: "Used by" };
+
 
 export default {
   mixins: [persistFilters("kpi_types", ["filter", "sort"])],
@@ -177,10 +182,7 @@ export default {
         unit: null,
         used: null,
       },
-      sort: {
-        key: null,
-        dir: "asc",
-      },
+      sort: { ...DEFAULT_SORT },
       menuTarget: false,
       menuKpiType: null,
     };
@@ -239,6 +241,9 @@ export default {
       const shown = this.filteredKpiTypesLen;
       const count = this.activeFilters.length ? `${shown} of ${total}` : String(shown);
       return `${count} KPI type${(this.activeFilters.length ? total : shown) === 1 ? "" : "s"}`;
+    },
+    sortChip() {
+      return sortChip(this.sort, DEFAULT_SORT, SORT_LABELS, "by priority");
     },
     activeFilters() {
       const filter = this.filter;
