@@ -6,9 +6,10 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
-## v0.8.5 — unreleased
+## v0.8.5 — 2026-10-05
 
-No schema change; new Python dependency `phik` (installed by `install.sh`).
+No change to Rapo's own schema; new Python dependency `phik` (installed by `install.sh`). From the `v0.8.4` tag: redeploy
+the `PL` engine's `RAPO_USAGE_RULE` (the tag predates the last changes of the v0.8.4 notes, which this release contains).
 
 - **Discrepancy analysis page** (run number menu, Data analysis button): what sets a run's discrepancies apart from
   its normal records (fetched less discrepancies), per side, for ANL/REC/CMP. Every column binned (values, deciles,
@@ -17,7 +18,6 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   Findings as sentences, butterfly charts, weekday × hour heatmaps; every bin opens its records in Data analysis. REC
   per result type. Preliminary results at once from a block sample, then refined in one (parallel) scan; options
   `[ANALYSIS] discrepancy_*`. New routes `start-|get-|stop-discrepancy-analysis`.
-
 - **Instance health** (*Instance details* → *Health Rapo server* / *Health Database*, charts filling the dialog):
   server (CPU, memory, a disk per file system (symlinks followed) of the logs, rapo and datasource input/archive directories, network,
   TCP connections, processes) and database (CPU, PGA/SGA, storage in GB, I/O, sessions, locks), each under its name and
@@ -35,8 +35,6 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   concurrent change). The previous DDL goes to the server log only. The editor then rereads the view's columns,
   keeping its choices. `[VIEWS] edit|preview_max_rows|preview_timeout`; routes `get-|check-|preview-|compile-|
   format-view`, `get-object-columns`, `get-datasources?types=true`.
-- **SQL boxes:** line numbers no longer stop after the first screenful; `alias.` completes the aliased table's
-  columns (subqueries and `WITH` included), names match in any case and complete in upper case.
 - **Calculate KPIs** (editor KPIs tab, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
   stored value, one row per KPI with details on demand; the KPIs tab shows each KPI's value (pale yellow), alarm
@@ -84,6 +82,10 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 - **Editor unsaved changes:** undo one change per row in the *Unsaved changes* dialog, *Discard all changes* (with
   Redo), and *Save* when leaving the editor with unsaved changes.
+- **SQL boxes:** line numbers no longer stop after the first screenful; `alias.` completes the aliased table's
+  columns (subqueries and `WITH` included), names match in any case and complete in upper case.
+- **Sort chip:** a grey chip under the title while a list is sorted by a column; its ✕ restores the default order
+  (Controls: last modified first).
 - **Fix:** opening *Data and logic* of a reconciliation saved without per-side output limits no longer marks the
   editor as changed.
 
