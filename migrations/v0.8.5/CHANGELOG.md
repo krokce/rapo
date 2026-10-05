@@ -397,3 +397,11 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
       datasource. A scratch view left by an interrupted check is listed and dropped with the temporary tables.
     - Check: the database user needs no new privilege for views of its own schema (`CREATE VIEW` it has).
 
+19. **SQL boxes: line numbers on every line, completion after aliases.** The line numbers of the editor's SQL boxes
+    (filters, SQL scripts, KPIs, email, the view dialog) stopped after the first screenful of a long text; they now
+    run to the last line. Where a box completes table names (SQL scripts, KPI and email SQL, the view dialog),
+    `alias.` now completes the columns of the aliased table (`FROM DEMO_BILLING_USAGE b` … `b.`), also inside
+    subqueries and `WITH` parts, and table names match whatever case they are typed in; `OWNER.TABLE.` works too.
+    No keywords are offered right after `name.`. Table and column names are completed in upper case, as the
+    dictionary names them.
+

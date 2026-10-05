@@ -35,6 +35,8 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   concurrent change). The previous DDL goes to the server log only. The editor then rereads the view's columns,
   keeping its choices. `[VIEWS] edit|preview_max_rows|preview_timeout`; routes `get-|check-|preview-|compile-|
   format-view`, `get-object-columns`, `get-datasources?types=true`.
+- **SQL boxes:** line numbers no longer stop after the first screenful; `alias.` completes the aliased table's
+  columns (subqueries and `WITH` included), names match in any case and complete in upper case.
 - **Calculate KPIs** (editor KPIs tab, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
   stored value, one row per KPI with details on demand; the KPIs tab shows each KPI's value (pale yellow), alarm

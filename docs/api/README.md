@@ -215,7 +215,7 @@ the own schema.
   DDL cannot be split around it. `aliases` lists the view's column names when its column list renames the query's
   columns (then kept, and the query must return as many), else null. `columns` `[{column_name, data_type}]`,
   `data_type` as in DDL (`VARCHAR2(40)`, `NUMBER(10,2)`); `errors` from `user_errors`; `dependencies` `{name:
-  [column]}` of the tables and views it reads (lower case unless quoting is needed, `owner.name` for another schema),
+  [column]}` of the tables and views it reads (as the dictionary names them, quoted unless plain, `owner.name` for another schema),
   for autocomplete; `dependents` `{controls: [control_name], objects: [{owner, name, type}]}` (controls whose
   `source_name*` is the view, objects of `all_dependencies`).
 - `POST /api/check-view` body `{name, body}`: creates the view as `RAPO_TEMP_VIEW_<16 hex>` with the new query,

@@ -354,7 +354,8 @@ export default {
         const found = await api("get-object-columns", { params: { names: names.join(",") }, loadingBar: false });
         const tables = {};
         for (const [name, columns] of Object.entries(found)) {
-          tables[name.toLowerCase()] = columns;
+          // As the dictionary names it: upper case, a quoted part as written.
+          tables[name.replace(/"[^"]*"|[^".]+/g, (part) => (part.startsWith('"') ? part : part.toUpperCase()))] = columns;
         }
         this.typedTables = { ...this.typedTables, ...tables };
       } catch (error) {

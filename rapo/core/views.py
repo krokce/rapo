@@ -450,9 +450,9 @@ def _dependencies(name):
 
 
 def _completion(identifier):
-    """How a name is written in a query: lower case unless it must be quoted."""
+    """How a name is written in a query: as it is, quoted unless plain."""
     if PLAIN_NAME.fullmatch(identifier):
-        return identifier.lower()
+        return identifier
     return f'"{identifier}"'
 
 

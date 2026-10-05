@@ -69,11 +69,12 @@
 <script>
 import { Codemirror } from "vue-codemirror";
 import { EditorState } from "@codemirror/state";
-import { sql, PLSQL } from "@codemirror/lang-sql";
+import { PLSQL, keywordCompletionSource, schemaCompletionSource } from "@codemirror/lang-sql";
 import { Dark } from "quasar";
 import { notifyError } from "../api";
 import { darkExtensions } from "../utils/codeTheme";
 import { escapeHtml } from "../utils/format";
+import { tableCompletionSource } from "../utils/sqlCompletion";
 
 // One line for the answer of a check: the error, the warning, or what the statement returns.
 function describeCheck(result) {
@@ -98,7 +99,7 @@ const BIND_LABELS = {
 };
 
 // A completion source for the fixed set of Oracle bind variables a statement is run with (e.g. RACS_KPI_PKG's
-// :v_processid). It only activates right after a ":", independently of the schema/keyword sources sql() adds.
+// :v_processid). It only activates right after a ":", independently of the schema/keyword sources.
 function bindCompletionSource(binds) {
   return (context) => {
     const match = context.matchBefore(/:\w*/);
@@ -187,21 +188,13 @@ export default {
     extensions() {
       const config = { dialect: PLSQL };
       const tableNames = this.tables && Object.keys(this.tables);
+      const extensions = [];
       if (tableNames && tableNames.length) {
-        // Real table names (e.g. a control's own RAPO_REST_/RAPO_RESA_/RAPO_RESB_ table): they're valid bare
-        // schema keys, so they're offered as completions themselves, and typing one then "." completes its
-        // own columns.
-        config.schema = this.tables;
-        if (tableNames.length === 1) {
-          // A single table also becomes the default, so its columns complete unqualified too.
-          config.defaultTable = tableNames[0];
-        } else {
-          // Several tables (REC's two sides): CodeMirror's defaultTable only takes one name, and typing
-          // table.column for everything is unwieldy, so every table's columns are also offered unqualified,
-          // deduplicated across tables, on top of the qualified per-table completions above.
-          const merged = [...new Set(tableNames.flatMap((name) => this.tables[name]))];
-          config.tables = merged.map((column) => ({ label: column, type: "property" }));
-        }
+        // Table names (e.g. a control's own RAPO_REST_/RAPO_RESA_/RAPO_RESB_ table, or the tables a view reads) and
+        // their columns, unqualified or after "table." / "alias.", whatever the case they are typed in. lang-sql's own
+        // schema completion is left out (no `schema`): it matches names case-sensitively and misses the aliases of
+        // subqueries.
+        extensions.push(PLSQL.language.data.of({ autocomplete: tableCompletionSource(this.tables) }));
       } else if (this.columns && this.columns.length) {
         // Filters are unqualified WHERE-clause fragments, not queries against a named table, and real
         // datasource names (schema-qualified, @dblink) aren't valid bare schema keys, so columns are offered
@@ -210,7 +203,16 @@ export default {
         config.schema = {};
         config.tables = this.columns.map((column) => ({ label: column, type: "property" }));
       }
-      const extensions = [sql(config), EditorState.readOnly.of(Boolean(this.readonly))];
+      // What sql(config) sets up, except that keywords are not offered right after "name.", where only a column fits.
+      const keywords = keywordCompletionSource(PLSQL);
+      extensions.push(
+        PLSQL.extension,
+        PLSQL.language.data.of({ autocomplete: (context) => (context.matchBefore(/\.[\w$#]*$/) ? null : keywords(context)) }),
+        EditorState.readOnly.of(Boolean(this.readonly)),
+      );
+      if (config.schema) {
+        extensions.push(PLSQL.language.data.of({ autocomplete: schemaCompletionSource(config) }));
+      }
       if (this.binds && this.binds.length) {
         extensions.push(PLSQL.language.data.of({ autocomplete: bindCompletionSource(this.binds) }));
       }
@@ -315,9 +317,15 @@ export default {
 }
 
 .cm-gutters {
-  min-height: 56px !important; /* Matches the min-height of .cm-editor */
   border-right: 1px solid var(--rapo-code-border);
-  box-sizing: border-box; /* Ensures padding and borders are included in the height calculation */
+}
+
+/* The min-height of .cm-editor less its borders. CodeMirror sizes .cm-gutters to the content's height itself (an
+   inline min-height); overriding that cut the line numbers off after the first screenful. Its own theme sets
+   min-height: 100% on these with two classes, hence three here. */
+.cm-editor .cm-scroller .cm-content,
+.cm-editor .cm-scroller .cm-gutter {
+  min-height: 54px;
 }
 
 .cm-editor:hover {
