@@ -46,7 +46,7 @@
           Line {{ error.line }}, position {{ error.position }}: {{ error.text }}
         </div>
 
-        <CodeBox ref="code" v-model="body" class="view-edit__code" label="Query (the text after AS)" :tables="completionTables" :readonly="!view.editable">
+        <CodeBox ref="code" v-model="body" class="view-edit__code" :class="{ 'view-edit__code--split': preview }" label="Query (the text after AS)" :tables="completionTables" :readonly="!view.editable">
           <template #actions>
             <q-btn flat size="sm" label="Format" :disable="!view.editable || !body.trim()" :loading="formatting" @click="format">
               <q-tooltip>Format in rapo's style (Ctrl+Z undoes it)</q-tooltip>
@@ -76,12 +76,12 @@
           <q-input v-model.number="rows" dense outlined type="number" min="1" :max="maxRows" style="width: 110px" label="Rows" />
           <q-space />
           <div v-if="!compileReady && view.editable" class="text-caption text-grey-7">Check the query to compile it.</div>
-          <q-btn unelevated color="primary" label="Compile" icon="fas fa-hammer" :disable="!compileReady" :loading="compiling" @click="confirmCompile">
+          <q-btn unelevated color="primary" label="Compile" icon="fas fa-cogs" :disable="!compileReady" :loading="compiling" @click="confirmCompile">
             <q-tooltip>Replace the view in the database with this query</q-tooltip>
           </q-btn>
         </div>
 
-        <div v-if="preview" class="col column no-wrap view-edit__preview">
+        <div v-if="preview" class="column no-wrap view-edit__preview">
           <div class="text-caption text-grey-7 q-mb-xs">
             {{ preview.rows.length }} row(s){{ preview.more ? ` (the first ${preview.limit})` : "" }} in {{ preview.elapsed }} ms
           </div>
@@ -378,11 +378,22 @@ export default {
 <style lang="sass" scoped>
 .view-edit__body
   min-height: 0
+// The query fills the dialog; once a preview is shown, it takes 2/3 of the space and the preview 1/3. CodeMirror's
+// own wrapper is display: contents, so .cm-editor is a flex item of the box.
+.view-edit__code
+  display: flex
+  flex-direction: column
+  flex: 1 1 0
+  min-height: 0
+.view-edit__code--split
+  flex-grow: 2
 .view-edit__code :deep(.cm-editor)
+  flex: 1 1 0
+  min-height: 0
   max-height: none
-  height: 40vh
 .view-edit__preview
-  min-height: 160px
+  flex: 1 1 0
+  min-height: 0
 .check-error
   white-space: pre-wrap
 </style>
