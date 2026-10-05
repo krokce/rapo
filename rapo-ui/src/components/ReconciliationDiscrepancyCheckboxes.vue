@@ -237,12 +237,15 @@ export default {
     },
   },
   mounted() {
-    // Older configs kept one output_limit for both sides.
-    if (!this.ruleConfigObject.output_limit_a) {
-      this.ruleConfigObject.output_limit_a = this.control.output_limit;
-    }
-    if (!this.ruleConfigObject.output_limit_b) {
-      this.ruleConfigObject.output_limit_b = this.control.output_limit;
+    // Older configs kept one output_limit for both sides. Only a set one is copied: adding empty keys on mount would
+    // make an unchanged form dirty.
+    if (this.control.output_limit) {
+      if (this.ruleConfigObject.output_limit_a == null) {
+        this.ruleConfigObject.output_limit_a = this.control.output_limit;
+      }
+      if (this.ruleConfigObject.output_limit_b == null) {
+        this.ruleConfigObject.output_limit_b = this.control.output_limit;
+      }
     }
   },
 };

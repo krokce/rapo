@@ -76,6 +76,8 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   day separators, fills the tab. `get-control-runs` takes `control_name`/`days`.
 - **Editor unsaved changes:** undo one change per row in the *Unsaved changes* dialog, *Discard all changes* (with
   Redo), and *Save* when leaving the editor with unsaved changes.
+- **Fix:** opening *Data and logic* of a reconciliation saved without per-side output limits no longer marks the
+  editor as changed.
 
 ---
 

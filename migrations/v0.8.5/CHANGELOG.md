@@ -365,3 +365,8 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
     notification. Leaving the editor with unsaved changes now asks *Keep editing*, *Discard* or **Save**: Save saves
     as the Save button does and goes on to where you were going; a failed check or save (or a control changed
     meanwhile) keeps the editor open.
+
+17. **Fix: a reconciliation marked as changed by opening *Data and logic*.** A REC control whose rule configuration
+    has no per-side output limits (saved through the API or a script) showed *Unsaved changes* as soon as the tab
+    opened, which disabled Run and Send test: the tab added empty `output_limit_a`/`output_limit_b`. It now copies
+    only an older control's single *Output limit* into empty sides, and keeps an explicit limit of 0.
