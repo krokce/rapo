@@ -18,7 +18,6 @@ UI.
 """
 
 import re
-import time
 
 import sqlalchemy as sa
 
@@ -445,28 +444,13 @@ class Kpi:
     def guard_query(self, statement):
         """Tell why a statement may not be executed as a KPI preview.
 
-        Only one plain query passes: no FOR UPDATE lock, no PL/SQL declared in
-        a WITH clause and nothing after the first statement. The preview also
-        runs it read only, so DML in the same transaction is refused by Oracle;
-        a function with an autonomous transaction is the one thing neither
-        check can stop.
-
         Returns
         -------
         problem : str or None
         """
-        if sqlcheck.first_keyword(statement) not in sqlcheck.QUERY_KEYWORDS:
-            return ('A KPI or alarm statement must be a query (select) '
-                    'returning one number.')
-        code = _code_only(sqlcheck.strip_query(statement))
-        if re.match(r'[\s(]*with\s+(function|procedure)\b', code,
-                    flags=re.I):
-            return 'PL/SQL declared in a WITH clause is not allowed.'
-        if ';' in code:
-            return 'Only one statement is allowed.'
-        if re.search(r'\bfor\s+update\b', code, flags=re.I):
-            return 'FOR UPDATE is not allowed: it locks rows.'
-        return None
+        return sqlcheck.guard_query(
+            statement, 'A KPI or alarm statement must be a query (select) '
+                       'returning one number.')
 
     def calculate(self, process_id, kpi_type, kpi_sql_statement=None,
                   alarm_sql_statement=None, saved=False):
@@ -564,13 +548,7 @@ class Kpi:
         return result
 
     def _query(self, statement, bind, value):
-        """Run one KPI or alarm statement read only and get its first row.
-
-        The connection is the pool's own driver connection, so its timeout
-        is put back and the read-only transaction is always rolled back. A
-        statement interrupted by the timeout leaves the connection unusable,
-        so after any failure it is dropped from the pool.
-        """
+        """Run one KPI or alarm statement read only and get its first row."""
         problem = self.guard_query(statement)
         if problem:
             raise ValueError(problem)
@@ -580,37 +558,10 @@ class Kpi:
                              'to bind it.')
         section = config.get('KPI') or {}
         timeout = section.get('calculate_timeout') or CALCULATE_TIMEOUT
-        connection = db.engine.raw_connection()
-        driver = (getattr(connection, 'dbapi_connection', None)
-                  or connection.connection)
-        previous = driver.call_timeout
-        failed = False
-        try:
-            driver.rollback()
-            driver.call_timeout = int(float(timeout) * 1000)
-            cursor = driver.cursor()
-            cursor.execute('set transaction read only')
-            started = time.monotonic()
-            cursor.execute(statement, {bind: value})
-            row = cursor.fetchone()
-            elapsed = round((time.monotonic() - started) * 1000)
-            row = tuple(_plain(item) for item in row) if row else None
-            return row, elapsed
-        except Exception as error:
-            failed = True
-            if 'DPY-4024' in str(error):
-                raise TimeoutError(f'Stopped after {timeout} s ([KPI] '
-                                   'calculate_timeout).') from error
-            raise
-        finally:
-            try:
-                driver.rollback()
-                driver.call_timeout = previous
-            except Exception:
-                failed = True
-            if failed:
-                connection.invalidate()
-            connection.close()
+        _, rows, elapsed = sqlcheck.run_read_only(
+            statement, {bind: value}, timeout, '[KPI] calculate_timeout')
+        row = rows[0] if rows else None
+        return row, elapsed
 
     def _number_of(self, value):
         """Turn the first column into the number the package defines."""
@@ -828,13 +779,6 @@ def rename_table_references(text, old_name, new_name):
         return f'{quote}{prefix}{name}{quote}'
 
     return pattern.subn(replace, text)
-
-
-def _code_only(statement):
-    """Drop comments and string literals, which may hold any word."""
-    text = re.sub(r'/\*.*?\*/', ' ', statement, flags=re.S)
-    text = re.sub(r'--[^\n]*', ' ', text)
-    return re.sub(r"'(?:[^']|'')*'", "''", text)
 
 
 def _plain(value):

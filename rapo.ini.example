@@ -150,6 +150,17 @@ discrepancy_timeout_minutes=20
 # statement is stopped.
 calculate_timeout=120
 
+[VIEWS]
+# The control editor offers to edit the SQL (the query) of a datasource that
+# is a view of the own schema: check it on a scratch view, preview its first
+# rows and replace the view (CREATE OR REPLACE VIEW, refused while the new SQL
+# is invalid). The previous DDL is written to the server log. False hides it.
+edit=True
+# A preview runs the edited SQL read only, fetching at most preview_max_rows
+# rows and stopped after preview_timeout seconds.
+preview_max_rows=1000
+preview_timeout=30
+
 [DATASOURCES]
 # The Datasources page edits the PDI Core datasources (PDI_CORE_DS_CONFIG and
 # PDI_CORE_DS_TABLES), shown where the database user can read them, in its own

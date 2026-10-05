@@ -13,6 +13,7 @@ sample value first.
 
 import re
 import json
+import time
 import string
 import datetime as dt
 
@@ -81,6 +82,111 @@ def strip_query(statement):
     if first_keyword(statement) not in PLSQL_KEYWORDS:
         statement = statement.rstrip().rstrip(';').rstrip()
     return statement
+
+
+def code_only(statement):
+    """Drop comments and string literals, which may hold any word."""
+    text = re.sub(r'/\*.*?\*/', ' ', statement, flags=re.S)
+    text = re.sub(r'--[^\n]*', ' ', text)
+    return re.sub(r"'(?:[^']|'')*'", "''", text)
+
+
+def guard_query(statement, not_query):
+    """Tell why a statement may not be run as a read-only preview.
+
+    Only one plain query passes: no FOR UPDATE lock, no PL/SQL declared in a
+    WITH clause and nothing after the first statement. run_read_only() also
+    runs it read only, so DML in the same transaction is refused by Oracle; a
+    function with an autonomous transaction is the one thing neither check can
+    stop.
+
+    Parameters
+    ----------
+    statement : str
+    not_query : str
+        The answer for a statement that is not a query.
+
+    Returns
+    -------
+    problem : str or None
+    """
+    if first_keyword(statement) not in QUERY_KEYWORDS:
+        return not_query
+    code = code_only(strip_query(statement))
+    if re.match(r'[\s(]*with\s+(function|procedure)\b', code, flags=re.I):
+        return 'PL/SQL declared in a WITH clause is not allowed.'
+    if ';' in code:
+        return 'Only one statement is allowed.'
+    if re.search(r'\bfor\s+update\b', code, flags=re.I):
+        return 'FOR UPDATE is not allowed: it locks rows.'
+    return None
+
+
+def run_read_only(statement, params, timeout, timeout_option, rows=1):
+    """Run a guarded query read only and get its first rows.
+
+    The connection is the pool's own driver connection, so its timeout is put
+    back and the read-only transaction is always rolled back. A statement
+    interrupted by the timeout leaves the connection unusable, so after any
+    failure it is dropped from the pool.
+
+    Parameters
+    ----------
+    statement : str
+    params : dict
+        Bind values.
+    timeout : float
+        Seconds before the statement is stopped.
+    timeout_option : str
+        The option setting the timeout, named in the TimeoutError.
+    rows : int
+        Rows fetched at most.
+
+    Returns
+    -------
+    description : list
+        The cursor's description.
+    rows : list of tuple
+        LOBs read.
+    elapsed : int
+        Milliseconds the statement and the fetch took.
+    """
+    connection = db.engine.raw_connection()
+    driver = (getattr(connection, 'dbapi_connection', None)
+              or connection.connection)
+    previous = driver.call_timeout
+    failed = False
+    try:
+        driver.rollback()
+        driver.call_timeout = int(float(timeout) * 1000)
+        cursor = driver.cursor()
+        cursor.execute('set transaction read only')
+        started = time.monotonic()
+        cursor.execute(statement, params)
+        fetched = cursor.fetchmany(rows)
+        elapsed = round((time.monotonic() - started) * 1000)
+        fetched = [tuple(_read_lob(item) for item in row) for row in fetched]
+        return list(cursor.description or []), fetched, elapsed
+    except Exception as error:
+        failed = True
+        if 'DPY-4024' in str(error):
+            raise TimeoutError(f'Stopped after {timeout} s '
+                               f'({timeout_option}).') from error
+        raise
+    finally:
+        try:
+            driver.rollback()
+            driver.call_timeout = previous
+        except Exception:
+            failed = True
+        if failed:
+            connection.invalidate()
+        connection.close()
+
+
+def _read_lob(value):
+    read = getattr(value, 'read', None)
+    return read() if read else value
 
 
 def first_keyword(statement):

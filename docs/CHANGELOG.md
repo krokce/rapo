@@ -29,6 +29,12 @@ No schema change; new Python dependency `phik` (installed by `install.sh`).
   paths), filter; options that need no restart are changed in place (pencil on hover), written to their line of
   `rapo.ini` after a `rapo.ini.bak-*` backup and applied at once. New routes `get-config-catalogue`,
   `set-config-option`.
+- **Edit a view datasource's SQL** (pencil in the editor's datasource field when it is a view): the query with
+  autocomplete, Check on a scratch view (column diff), Preview of the first rows (read only), Format, and Compile
+  (`CREATE OR REPLACE VIEW`, never while invalid; confirms naming other controls and objects using the view; 409 on a
+  concurrent change). The previous DDL goes to the server log only. The editor then rereads the view's columns,
+  keeping its choices. `[VIEWS] edit|preview_max_rows|preview_timeout`; routes `get-|check-|preview-|compile-|
+  format-view`, `get-object-columns`, `get-datasources?types=true`.
 - **Calculate KPIs** (editor KPIs tab, Run log and Results run menu): runs the KPI and alarm SQL as edited (or
   saved) for a past run without storing it, as RACS_KPI_PKG would (0 without a row, alarm 3/2/1 chips), beside the
   stored value, one row per KPI with details on demand; the KPIs tab shows each KPI's value (pale yellow), alarm

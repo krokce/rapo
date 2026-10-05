@@ -370,3 +370,30 @@ schema; one Python package is added (`phik`). The upgrade steps are in the [migr
     has no per-side output limits (saved through the API or a script) showed *Unsaved changes* as soon as the tab
     opened, which disabled Run and Send test: the tab added empty `output_limit_a`/`output_limit_b`. It now copies
     only an older control's single *Output limit* into empty sides, and keeps an explicit limit of 0.
+
+18. **Edit the SQL of a view datasource from the control editor.** When a datasource of *Data and logic* (also A or
+    B) is a view of Rapo's own schema, a pencil in its field opens the view's query (the text after `AS`) as stored,
+    comments and layout included, in a code editor that completes the columns of the tables it reads and of tables
+    typed into it.
+    - **Check** creates the view under a scratch name (`RAPO_TEMP_VIEW_<16 hex>`, dropped at once), so it finds
+      every error a real compile would, and puts the cursor on the error; when valid it shows the columns added,
+      removed and changing type. **Preview** runs the edited query read only and shows its first rows (10 by default,
+      up to `[VIEWS] preview_max_rows`). **Format** formats it in Rapo's style, **Revert** brings back the stored text.
+    - **Compile** replaces the view (`CREATE OR REPLACE VIEW`), only after a passing Check of the same text, and the
+      server checks it again: an invalid view is never compiled. The confirmation names removed or retyped columns,
+      the other controls reading the view and the database objects depending on it, since they all see the change.
+      A view changed by someone else since it was opened asks to Reload or Overwrite.
+    - Only the query is edited: the view's name, its column list (kept when it renames the query's columns, so the
+      query must then return as many) and its other clauses stay as they are. A query must be one select/with,
+      without `FOR UPDATE` or PL/SQL in a `WITH` clause.
+    - **The previous DDL is kept only in the server log** (`rapo-server_<date>.log`, *View X is replaced ... Previous
+      DDL*); there is no version history of views.
+    - After a compile the editor reads the view's columns again for every side reading it and keeps its choices;
+      a date or key field or output column the view no longer has is cleared, and a notice names it and the
+      columns gone, which criteria and filters may still use. The result-table schema check runs again.
+    - New section `[VIEWS]`: `edit` (default `True`; `False` hides the pencil and refuses the routes),
+      `preview_max_rows` (1000), `preview_timeout` (30 s). New routes `get-view`, `check-view`, `preview-view`,
+      `compile-view`, `format-view`, `get-object-columns`; `get-datasources?types=true` returns the type of each
+      datasource. A scratch view left by an interrupted check is listed and dropped with the temporary tables.
+    - Check: the database user needs no new privilege for views of its own schema (`CREATE VIEW` it has).
+

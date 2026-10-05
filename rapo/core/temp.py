@@ -37,9 +37,10 @@ KINDS = (
     'FDB', 'MA', 'NMA', 'NF_A', 'NF_B', 'RES_A', 'RES_B',
 )
 RUN_NAME = re.compile(rf'RAPO_TEMP_(?:{"|".join(KINDS)})_([0-9]+)')
-# Executor.expected_output_schema: rapo_temp_schema_<16 hex digits>.
-SCRATCH_NAME = re.compile(r'RAPO_TEMP_SCHEMA_[0-9A-F]{16}')
-# A schema check drops its scratch table within seconds.
+# Executor.expected_output_schema: rapo_temp_schema_<16 hex digits>; the
+# view check of views.check_view: rapo_temp_view_<16 hex digits>.
+SCRATCH_NAME = re.compile(r'RAPO_TEMP_(?:SCHEMA|VIEW)_[0-9A-F]{16}')
+# A schema or view check drops its scratch table or view within seconds.
 SCRATCH_AGE = dt.timedelta(hours=1)
 # A voided run (status NULL) is still being killed by its owner.
 ACTIVE = ('I', 'W', 'S', 'P', 'F', None)
@@ -154,12 +155,14 @@ def _drop(item):
         raise ValueError(f'{name} is not a temporary table')
     if item['type'] == 'MATERIALIZED VIEW':
         db.execute(f'DROP MATERIALIZED VIEW "{name}"')
+    elif item['type'] == 'VIEW':
+        db.execute(f'DROP VIEW "{name}"')
     else:
         db.execute(f'DROP TABLE "{name}" PURGE')
 
 
 def _candidates():
-    """Get every RAPO_TEMP_* table and materialized view of the own schema.
+    """Get every RAPO_TEMP_* table, view and materialized view of the schema.
 
     A materialized view has a TABLE object of the same name, so each name is
     one entry, typed as the view. The size adds the table's index and LOB
@@ -168,7 +171,8 @@ def _candidates():
     query = sa.text(
         "select o.object_name name, "
         "case when max(case when o.object_type = 'MATERIALIZED VIEW' "
-        "then 1 else 0 end) = 1 then 'MATERIALIZED VIEW' else 'TABLE' end "
+        "then 1 else 0 end) = 1 then 'MATERIALIZED VIEW' "
+        "when max(o.object_type) = 'VIEW' then 'VIEW' else 'TABLE' end "
         "type, "
         "min(o.created) created, max(s.bytes) bytes "
         "from user_objects o "
@@ -180,7 +184,7 @@ def _candidates():
         "group by nvl(i.table_name, nvl(l.table_name, g.segment_name))) s "
         "on s.table_name = o.object_name "
         r"where o.object_name like 'RAPO\_TEMP\_%' escape '\' "
-        "and o.object_type in ('TABLE', 'MATERIALIZED VIEW') "
+        "and o.object_type in ('TABLE', 'VIEW', 'MATERIALIZED VIEW') "
         "group by o.object_name")
     return db.execute(query, as_table=True)
 

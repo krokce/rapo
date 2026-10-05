@@ -33,6 +33,7 @@ from ...core import sqlcheck
 from ...core import drift
 from ...core import temp
 from ...core import chain
+from ...core import views
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming, next_fires
@@ -195,6 +196,8 @@ def info():
         'config_path': CONFIG_PATH,
         'log_directory': LOG_DIR,
         'kpi_available': kpi.available,
+        'view_edit': views.enabled(),
+        'view_preview_max_rows': options.get('VIEWS', 'preview_max_rows'),
         **datasource_capabilities()
     }
     return output_dict
@@ -766,9 +769,9 @@ def read_control_logs(control_name: str | None = None, days: int = 31,
 
 
 @api.get('/get-datasources')
-def get_datasources():
-    """Get list of all DB datasources in JSON."""
-    return reader.read_datasources()
+def get_datasources(types: bool = False):
+    """Get list of all DB datasources in JSON, with types [{name, type}]."""
+    return reader.read_datasources(types=types)
 
 
 @api.get('/get-datasource-columns')
@@ -777,6 +780,75 @@ def get_datasource_columns(datasource_name: str | None = None):
     if datasource_name is None:
         return []
     return reader.read_datasource_columns(datasource_name)
+
+
+def view_call(function, *args, **kwargs):
+    """Run a views function, answering a ViewError with its status."""
+    try:
+        if not views.enabled():
+            raise views.ViewError('Editing views is switched off on this '
+                                  'server ([VIEWS] edit).', 403)
+        return function(*args, **kwargs)
+    except views.ViewError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+    except (ValueError, TypeError) as error:
+        raise fastapi.HTTPException(status_code=400, detail=str(error))
+
+
+@api.get('/get-view')
+def get_view(name: str):
+    """Get a view datasource's query, columns, dependencies and dependents."""
+    return view_call(views.read_view, name)
+
+
+@api.post('/check-view')
+def check_view(data: dict = fastapi.Body(...)):
+    """Check a new query of a view on a scratch view.
+
+    The body is {name, body}.
+    """
+    return view_call(views.check_view, data.get('name'), data.get('body'))
+
+
+@api.post('/preview-view')
+def preview_view(data: dict = fastapi.Body(...)):
+    """Get the first rows of a view query, run read only.
+
+    The body is {body, rows}.
+    """
+    return view_call(views.preview_view, data.get('body'),
+                     data.get('rows') or 10)
+
+
+@api.post('/compile-view')
+def compile_view(data: dict = fastapi.Body(...)):
+    """Replace the query of a view; refused while the new one is invalid.
+
+    The body is {name, body, expected_ddl_time, force, control_name}.
+    """
+    result = view_call(views.compile_view, data.get('name'), data.get('body'),
+                       expected_ddl_time=data.get('expected_ddl_time'),
+                       force=bool(data.get('force')),
+                       control_name=data.get('control_name'))
+    events.poke()
+    return result
+
+
+@api.post('/format-view')
+def format_view(data: dict = fastapi.Body(...)):
+    """Format a view query in rapo's style. The body is {body}."""
+    return {'body': view_call(views.format_body, data.get('body'))}
+
+
+@api.get('/get-object-columns')
+def get_object_columns(names: str = ''):
+    """Get the columns of tables and views named in a query (autocomplete).
+
+    `names` is a comma-separated list of NAME or OWNER.NAME.
+    """
+    names = [name.strip() for name in names.split(',') if name.strip()]
+    return view_call(views.read_object_columns, names[:50])
 
 
 @api.get('/get-kpi-types')

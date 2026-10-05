@@ -198,10 +198,42 @@ also lists the `version_ids` that would be (`count` is their number). `422` with
 `older_than_days`, `400` for a malformed `version_id`. The UI sends at most 100 `version_id`s per request.
 
 #### `GET /api/get-datasources`
-Names of the tables and views visible to the Rapo database user.
+Names of the tables and views of the Rapo database user's schema. With `types=true`, `[{"name", "type"}]` instead,
+`type` `TABLE` or `VIEW` (the editor offers *Edit view SQL* for a view).
 
 #### `GET /api/get-datasource-columns`
 `column_name` and `data_type` of one datasource (`datasource_name`), in column order.
+
+#### View datasources
+The control editor edits the query of a view of the own schema (its `user_views.text`, the text after `AS`); the
+rest of its DDL (column alias list, editioning, clauses) is kept as `dbms_metadata.get_ddl` gives it, and the view is
+created without `FORCE`. All routes answer `403` while `[VIEWS] edit` is off, `404` for a name that is not a view of
+the own schema.
+
+- `GET /api/get-view?name=`: `{name, status, last_ddl_time, body, editable, reason, aliases, columns, errors,
+  dependencies, dependents}`. `editable` is false (with `reason`) when the query is not a plain select/with or the
+  DDL cannot be split around it. `aliases` lists the view's column names when its column list renames the query's
+  columns (then kept, and the query must return as many), else null. `columns` `[{column_name, data_type}]`,
+  `data_type` as in DDL (`VARCHAR2(40)`, `NUMBER(10,2)`); `errors` from `user_errors`; `dependencies` `{name:
+  [column]}` of the tables and views it reads (lower case unless quoting is needed, `owner.name` for another schema),
+  for autocomplete; `dependents` `{controls: [control_name], objects: [{owner, name, type}]}` (controls whose
+  `source_name*` is the view, objects of `all_dependencies`).
+- `POST /api/check-view` body `{name, body}`: creates the view as `RAPO_TEMP_VIEW_<16 hex>` with the new query,
+  reads its columns and drops it. `{valid: true, columns, diff: {added: [name], removed: [name], retyped:
+  [{column_name, old, new}]}}`, or `{valid: false, error, error_offset}` (`error_offset`: position in the query,
+  when Oracle tells). A query must be one select/with, without `FOR UPDATE` or PL/SQL in a `WITH` clause.
+- `POST /api/preview-view` body `{body, rows}`: runs the query read only (`select * from (<query>) fetch first
+  :n rows only`), `rows` (default 10) capped at `[VIEWS] preview_max_rows`, stopped after `preview_timeout`.
+  `{columns: [{name, type}], rows: [[value]], elapsed, limit, more}`; dates as naive ISO strings, integers beyond
+  2^53 as text, RAW as hex. `400` with Oracle's message.
+- `POST /api/compile-view` body `{name, body, expected_ddl_time, force, control_name}`: checks the query as
+  `check-view` (`400` "The view is not replaced: ..." when invalid), then `CREATE OR REPLACE VIEW`. `409` when the
+  view's `last_ddl_time` is not `expected_ddl_time` (as `get-view` gave it) unless `force`. The previous DDL is
+  written to the server log (naming `control_name`), the only copy kept. Answers `get-view` of the new view plus
+  `diff`.
+- `POST /api/format-view` body `{body}`: `{body}` formatted in Rapo's style (`db.formatter`).
+- `GET /api/get-object-columns?names=a,owner.b`: `{name as given: [column]}` of the named tables/views (at most 50),
+  names without columns left out; the editor asks for the tables typed into a query.
 
 ### Configuration
 
@@ -363,8 +395,9 @@ datasource.
 #### `GET /api/get-temp-tables`
 The temporary tables runs left behind. A run drops its `RAPO_TEMP_*` tables only when it ends `D` without debug
 mode, so failed, canceled and debug runs keep them. Only objects of the connected schema are read (`user_objects`,
-tables and materialized views), and only names Rapo creates (`RAPO_TEMP_<kind>_<process_id>`, current and legacy
-kinds, and the scratch `RAPO_TEMP_SCHEMA_<16 hex>` of a schema check) are recognized:
+tables, views and materialized views), and only names Rapo creates (`RAPO_TEMP_<kind>_<process_id>`, current and
+legacy kinds, the scratch `RAPO_TEMP_SCHEMA_<16 hex>` of a schema check and the scratch view `RAPO_TEMP_VIEW_<16 hex>`
+of a view check, `type` `VIEW`) are recognized:
 
 ```json
 {"runs": [{"process_id": 1000003094, "control_id": 45, "control_name": "TESST", "status": "E",
@@ -1043,6 +1076,7 @@ Answers a list of datetimes, `[]` for a schedule that never fires. `422` when th
 #### `GET /api/info`
 What this instance is: `instance_name`, `schema_name`, `database_server`, `database_name`, and the computed paths
 `config_path` (the `rapo.ini` actually loaded) and `log_directory`. Also what the UI may offer: `kpi_available`,
+`view_edit` (`[VIEWS] edit`) with `view_preview_max_rows`,
 and for the PDI Core datasources `datasources_available`, `datasources_writable`, `datasources_deletable`,
 `datasources_log` (the file log is readable), `datasources_file_actions` (files can be recycled, reloaded, deleted),
 `datasources_file_download` (files can be downloaded: the file log is readable and `[DATASOURCES] file_download` on),

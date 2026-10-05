@@ -68,7 +68,7 @@
         </template>
 
         <template v-if="scratch.length">
-          <div class="text-subtitle2 q-mt-md q-mb-xs">Schema check leftovers ({{ scratch.length }})</div>
+          <div class="text-subtitle2 q-mt-md q-mb-xs">Schema and view check leftovers ({{ scratch.length }})</div>
           <q-markup-table dense flat bordered separator="horizontal">
             <tbody>
               <tr v-for="table in scratch" :key="table.table">
@@ -171,11 +171,11 @@ export default {
       );
     },
     dropScratch(table) {
-      this.confirmDrop(`<div>${escapeHtml(`${table.table}, the scratch table of a schema check that did not finish.`)}</div>`, { process_ids: [], tables: [table.table] });
+      this.confirmDrop(`<div>${escapeHtml(`${table.table}, the scratch ${table.type === "VIEW" ? "view of a view" : "table of a schema"} check that did not finish.`)}</div>`, { process_ids: [], tables: [table.table] });
     },
     dropAll() {
       const { runs, count, mb } = this.allTargets;
-      const scratch = this.scratch.length ? `, ${this.scratch.length} schema check leftover(s)` : "";
+      const scratch = this.scratch.length ? `, ${this.scratch.length} schema or view check leftover(s)` : "";
       const debug = this.debugRuns.length && !this.includeDebug ? "<div class='q-mt-sm'>Debug runs are kept.</div>" : "";
       this.confirmDrop(`<div>${escapeHtml(`${count} temporary table(s) of ${runs.length} run(s)${scratch}, ${formatNumber(round(mb, 1), 1)} MB.`)}</div>${debug}`, {
         process_ids: runs.map((run) => run.process_id),

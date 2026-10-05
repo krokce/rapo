@@ -417,9 +417,15 @@ class Reader:
         answerset = db.execute(select, as_table=True)
         return answerset
 
-    def read_datasources(self):
-        """Get list of all datasources in the DB."""
-        answerset = db.execute("select object_name from user_objects where object_type in ('VIEW', 'TABLE') order by 1", as_table=True)
+    def read_datasources(self, types=False):
+        """Get list of all datasources in the DB.
+
+        Names only, or with `types` [{name, type}], type TABLE or VIEW.
+        """
+        answerset = db.execute("select object_name, object_type from user_objects where object_type in ('VIEW', 'TABLE') order by 1", as_table=True)
+        if types:
+            return [{'name': record['object_name'],
+                     'type': record['object_type']} for record in answerset]
         object_names = [record['object_name'] for record in answerset]
         return object_names
 

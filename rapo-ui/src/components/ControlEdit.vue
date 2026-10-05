@@ -259,6 +259,11 @@
                     <template v-slot:prepend>
                       <q-icon name="fas fa-table" @click.stop.prevent />
                     </template>
+                    <template v-if="canEditView(control.source_name)" v-slot:append>
+                      <q-btn aria-label="Edit view SQL" flat round dense size="sm" icon="fas fa-pen" @click.stop.prevent="openViewEditor(control.source_name)">
+                        <q-tooltip>Edit the SQL of view {{ control.source_name }}</q-tooltip>
+                      </q-btn>
+                    </template>
                     <template v-slot:no-option>
                       <q-item>
                         <q-item-section class="text-grey"> No datasources found </q-item-section>
@@ -312,6 +317,11 @@
                     @filter="filterDatasourceList">
                     <template v-slot:prepend>
                       <q-icon name="fas fa-table" @click.stop.prevent />
+                    </template>
+                    <template v-if="canEditView(control.source_name_a)" v-slot:append>
+                      <q-btn aria-label="Edit view SQL" flat round dense size="sm" icon="fas fa-pen" @click.stop.prevent="openViewEditor(control.source_name_a)">
+                        <q-tooltip>Edit the SQL of view {{ control.source_name_a }}</q-tooltip>
+                      </q-btn>
                     </template>
                     <template v-slot:no-option>
                       <q-item>
@@ -374,6 +384,11 @@
                     @filter="filterDatasourceList">
                     <template v-slot:prepend>
                       <q-icon name="fas fa-table" @click.stop.prevent />
+                    </template>
+                    <template v-if="canEditView(control.source_name_b)" v-slot:append>
+                      <q-btn aria-label="Edit view SQL" flat round dense size="sm" icon="fas fa-pen" @click.stop.prevent="openViewEditor(control.source_name_b)">
+                        <q-tooltip>Edit the SQL of view {{ control.source_name_b }}</q-tooltip>
+                      </q-btn>
                     </template>
                     <template v-slot:no-option>
                       <q-item>
@@ -997,6 +1012,7 @@
       </q-card>
     </div>
 
+    <view-edit-dialog ref="viewDialog" :control-name="savedControlName" @compiled="viewCompiled" />
     <schema-diff-dialog
       ref="schemaDialog"
       :check="schemaCheck"
@@ -1048,6 +1064,7 @@ import CaseConfigBox from "./CaseConfigBox.vue";
 import IterationConfigBox from "./IterationConfigBox.vue";
 import KpiConfigBox from "./KpiConfigBox.vue";
 import KpiCalculateDialog from "./KpiCalculateDialog.vue";
+import ViewEditDialog from "./ViewEditDialog.vue";
 import { renameKpiTables } from "../utils/kpi";
 import EmailConfigBox from "./EmailConfigBox.vue";
 import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
@@ -1110,6 +1127,7 @@ export default {
     IterationConfigBox,
     KpiConfigBox,
     KpiCalculateDialog,
+    ViewEditDialog,
     EmailConfigBox,
     ComparisonCriteriaBox,
     ComparisonOutputTableBox,
@@ -1146,6 +1164,8 @@ export default {
       datasourceBNumColumns: null,
       datasourceList: null,
       datasourceListOptions: null,
+      // {NAME: "TABLE" | "VIEW"} of the datasource list; a view gets the Edit view SQL button.
+      datasourceTypes: {},
       withDeletionDrop: "N",
       scheduleObject: defaultSchedule(),
       ruleConfigObject: {},
@@ -1211,7 +1231,7 @@ export default {
       const fields = ["filter", "error_definition", "case_definition", "preparation", "prerequisite", "completion"];
       return Object.fromEntries(fields.map((field) => [field, examplesFor({ ...context, field })]));
     },
-    ...mapGetters(["controlCatalogueById"]),
+    ...mapGetters(["controlCatalogueById", "getEnvInfo"]),
     ...mapState(["kpiTypes"]),
     // The PL-SQL engine implements reconciliation only, so it is offered there.
     controlEngineOptions() {
@@ -1496,10 +1516,77 @@ export default {
     },
     async getDatasources() {
       try {
-        this.datasourceList = await api("get-datasources");
+        const datasources = await api("get-datasources", { params: { types: true } });
+        this.datasourceList = datasources.map((datasource) => datasource.name);
+        this.datasourceTypes = Object.fromEntries(datasources.map((datasource) => [datasource.name, datasource.type]));
       } catch (error) {
         notifyError("Failed to load datasources.", error);
       }
+    },
+    canEditView(name) {
+      return Boolean(name && this.getEnvInfo && this.getEnvInfo.view_edit && this.datasourceTypes[name.toUpperCase()] === "VIEW");
+    },
+    openViewEditor(name) {
+      this.$refs.viewDialog.open(name);
+    },
+    // After a view datasource was replaced: its columns are read anew for every side reading it. The picks are kept,
+    // except those of columns it no longer has (or a date field no longer a date), which are cleared and named.
+    async viewCompiled({ name, diff }) {
+      const upper = name.toUpperCase();
+      for (const key of Object.keys(this.columnRequests)) {
+        if (key.toUpperCase() === upper) delete this.columnRequests[key];
+      }
+      const reads = (field) => Boolean(this.control[field]) && this.control[field].toUpperCase() === upper;
+      const cleared = [];
+      const keepOne = (field, columns) => {
+        const value = this.control[field];
+        if (value && value !== "TAG" && !columns.includes(value)) {
+          cleared.push(value);
+          this.control[field] = null;
+        }
+      };
+      const keepMany = (field, columns) => {
+        const value = this.control[field];
+        if (Array.isArray(value) && value.some((column) => !columns.includes(column))) {
+          cleared.push(...value.filter((column) => !columns.includes(column)));
+          this.control[field] = value.filter((column) => columns.includes(column));
+        }
+      };
+      const load = (source) => Promise.all(["", "date", "numeric"].map((kind) => this.getDatasourceColumns(this.control[source], kind || undefined)));
+      const type = this.control.control_type;
+      if ((type === "ANL" || type === "REP") && reads("source_name")) {
+        const [columns, dates] = await load("source_name");
+        this.datasourceColumns = columns;
+        this.datasourceDateColumns = dates;
+        keepOne("source_date_field", dates);
+        keepMany("output_table_columns", columns);
+      }
+      if (type === "REC" || type === "CMP") {
+        for (const side of ["a", "b"]) {
+          if (!reads(`source_name_${side}`)) continue;
+          const [columns, dates, numbers] = await load(`source_name_${side}`);
+          const prefix = side === "a" ? "datasourceA" : "datasourceB";
+          this[`${prefix}Columns`] = columns;
+          this[`${prefix}DateColumns`] = dates;
+          this[`${prefix}NumColumns`] = numbers;
+          keepOne(`source_date_field_${side}`, dates);
+          if (type === "REC") {
+            keepOne(`source_key_field_${side}`, columns);
+            keepMany(`output_table_${side}_columns`, columns);
+          }
+        }
+      }
+      const notes = [];
+      if (cleared.length) {
+        notes.push(`Cleared from the form: ${[...new Set(cleared)].join(", ")}.`);
+      }
+      if (diff && diff.removed.length) {
+        notes.push(`${upper} no longer returns ${diff.removed.join(", ")}: check the criteria, filters and SQL using them.`);
+      }
+      if (notes.length) {
+        this.$q.notify({ type: "warning", message: notes.join(" "), timeout: 10000, multiLine: true });
+      }
+      this.checkSchema(0, true);
     },
     // Column names of a datasource, optionally only those of one kind ("numeric", "string", "date").
     // Each datasource's columns are fetched once per page and shared by all kinds.
@@ -2282,6 +2369,10 @@ export default {
     onKeydown(event) {
       if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "s" || event.key === "S")) {
         event.preventDefault();
+        // The view dialog does not save the control.
+        if (this.$refs.viewDialog && this.$refs.viewDialog.visible) {
+          return;
+        }
         if (this.ready) {
           this.persist("stay");
         }

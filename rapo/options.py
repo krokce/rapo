@@ -28,6 +28,7 @@ SECTIONS = collections.OrderedDict([
     ('EMAIL', 'Sending of control results per email'),
     ('ANALYSIS', 'Data analysis and discrepancy analysis of run records'),
     ('KPI', 'KPI calculation from the control editor and the run menus'),
+    ('VIEWS', 'Editing the SQL of view datasources from the control editor'),
     ('DATASOURCES', 'PDI Core datasources and files pages'),
     ('HEALTH', 'Instance health: sampling, history and warning levels'),
 ])
@@ -193,6 +194,14 @@ _add('ANALYSIS', 'discrepancy_timeout_minutes', 'int', 20,
 # [KPI]
 _add('KPI', 'calculate_timeout', 'int', 120,
      'Seconds a KPI or alarm statement may run in Calculate KPIs', minimum=1)
+
+# [VIEWS]
+_add('VIEWS', 'edit', 'bool', True,
+     'Allow replacing the SQL of a view datasource from the control editor')
+_add('VIEWS', 'preview_max_rows', 'int', 1000,
+     'Rows a view preview may fetch at most', minimum=1)
+_add('VIEWS', 'preview_timeout', 'int', 30,
+     'Seconds a view preview may run', minimum=1)
 
 # [DATASOURCES]
 _add('DATASOURCES', 'scan_interval', 'int', 60,
