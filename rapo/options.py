@@ -230,6 +230,24 @@ _add('DATASOURCES', 'file_download', 'bool', True,
      'Allow downloading loaded files from the file log')
 _add('DATASOURCES', 'max_download_mb', 'int', 500,
      'Largest download (one file or a ZIP of several)', minimum=1)
+_add('DATASOURCES', 'view_lines', 'int', 100,
+     'Lines the file viewer reads at a time', minimum=1)
+_add('DATASOURCES', 'view_max_lines', 'int', 50000,
+     'Lines the file viewer keeps at most; further: search or download',
+     minimum=100)
+_add('DATASOURCES', 'view_line_chars', 'int', 10000,
+     'Characters of a line the file viewer shows and searches; longer cut',
+     minimum=100)
+_add('DATASOURCES', 'view_grep_seconds', 'int', 20,
+     'Seconds one search of the file viewer may read before it pauses',
+     minimum=1)
+_add('DATASOURCES', 'view_grep_matches', 'int', 500,
+     'Matching lines one search of the file viewer returns at most',
+     minimum=1)
+_add('DATASOURCES', 'file_upload', 'bool', False,
+     'Allow uploading files into the input directory of a datasource')
+_add('DATASOURCES', 'max_upload_mb', 'int', 2048,
+     'Largest uploaded file', minimum=1)
 
 # [HEALTH]
 _add('HEALTH', 'enabled', 'bool', True,

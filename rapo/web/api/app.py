@@ -10,6 +10,7 @@ import traceback
 
 import fastapi
 import fastapi.responses
+import fastapi.concurrency
 import socketio
 from starlette.background import BackgroundTask
 import sqlalchemy as sa
@@ -46,6 +47,8 @@ from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
 from ...pdi import files as ds_files
 from ...pdi import download as ds_download
+from ...pdi import upload as ds_upload
+from ...pdi import viewer as ds_viewer
 from ...health import sampler as health, read_sessions
 
 
@@ -209,6 +212,11 @@ def datasource_capabilities():
         capabilities = pdi.capabilities()
         capabilities['datasources_file_download'] = (
             capabilities['datasources_log'] and ds_download.enabled())
+        capabilities['datasources_view_max_lines'] = (
+            ds_files.number_option('view_max_lines'))
+        capabilities['datasources_file_upload'] = (
+            capabilities.get('datasources_available', False)
+            and ds_upload.enabled())
         return capabilities
     except Exception:
         logger.error()
@@ -1219,6 +1227,64 @@ def download_ds_files(data: dict = fastapi.Body(...)):
     return fastapi.responses.StreamingResponse(
         ds_download.stream_zip(download), media_type='application/zip',
         headers=headers)
+
+
+@api.get('/view-ds-file')
+def view_ds_file(id: int, offset: int = 0, line: int = 1,
+                 lines: int | None = None):
+    """Read lines of a loaded file from where PDI Core kept it.
+
+    The file is one a download would send. `offset` is the uncompressed byte
+    offset to read from (the `next_offset` of the previous answer, 0 the
+    start), `line` its line number (only shown) and `lines` how many lines
+    ([DATASOURCES] view_lines). A gzip or ZIP is read decompressed.
+    """
+    with datasource_errors():
+        return ds_viewer.read(id, offset=offset, line=line, lines=lines)
+
+
+@api.get('/grep-ds-file')
+def grep_ds_file(id: int, pattern: str, regex: bool = False,
+                 case: bool = False, offset: int = 0, line: int = 1):
+    """Find the lines of a loaded file containing a text or expression.
+
+    It reads from `offset` (and `line`) until [DATASOURCES]
+    view_grep_matches lines matched, the file ended or view_grep_seconds
+    passed; `next_offset` and `next_line` go on from there. `regex` takes
+    `pattern` as a regular expression, `case` matches case.
+    """
+    with datasource_errors():
+        return ds_viewer.grep(id, pattern, regex=regex, case=case,
+                              offset=offset, line=line)
+
+
+@api.post('/check-ds-upload')
+def check_ds_upload(data: dict = fastapi.Body(...)):
+    """Check files to upload to a datasource: the body is {id, names}."""
+    with datasource_errors():
+        return ds_upload.check(data.get('id'), data.get('names'))
+
+
+@api.put('/upload-ds-file')
+async def upload_ds_file(request: fastapi.Request, id: int, name: str):
+    """Upload a file into the first input directory of a datasource.
+
+    The body is the file itself (application/octet-stream). It is written
+    under a temporary name and renamed when complete; a file of the name
+    already in the directory is not overwritten (409), a file over
+    [DATASOURCES] max_upload_mb is refused (413).
+    """
+    run = fastapi.concurrency.run_in_threadpool
+    with datasource_errors():
+        upload = await run(ds_upload.Upload, id, name)
+        try:
+            async for chunk in request.stream():
+                if chunk:
+                    await run(upload.write, chunk)
+            return await run(upload.finish)
+        except BaseException:
+            await run(upload.abort)
+            raise
 
 
 @api.get('/get-pdi-state')

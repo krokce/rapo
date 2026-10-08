@@ -39,8 +39,8 @@ section and answer 404 otherwise. Redoc is disabled.
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
   `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `calculate-kpi`, `validate-sql`,
-  `validate-analysis-where` and `download-ds-files`, which take a JSON body, and `analysis-start`, which takes an
-  optional one.
+  `validate-analysis-where`, `download-ds-files` and `check-ds-upload`, which take a JSON body, `analysis-start`,
+  which takes an optional one, and `upload-ds-file`, whose body is the file.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -50,7 +50,8 @@ section and answer 404 otherwise. Redoc is disabled.
   | 401  | Missing or wrong token.                                                             |
   | 400  | The request was understood but could not be performed (bad control, failed save).   |
   | 404  | No such run, control, record or log file.                                           |
-  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, or an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use. |
+  | 413  | An uploaded file over `[DATASOURCES] max_upload_mb`.                                |
+  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use, or an `upload-ds-file` of a file already in the input directory. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
   | 500  | An unexpected error in the route. `detail` is `<ErrorType>: <message>`, and the traceback is written to the server log (`rapo-server_YYYYMMDD.log`). |
   | 503  | The run manager is not running, so no run can be accepted (likewise analysis sessions and jobs while the server starts or stops). |
@@ -977,6 +978,76 @@ readable file log.
 ```bash
 curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: application/json" \
   -d '{"ids": [101, 102]}' -o files.zip http://rapo-host:7005/api/download-ds-files
+```
+
+#### `GET /api/view-ds-file`
+Reads lines of a loaded file, for the file viewer of the file log. The file is one `download-ds-files` would send
+(same rules and `[DATASOURCES] file_download` switch). A gzip (by its magic bytes) or the first file of a ZIP is read
+decompressed. Nothing is kept between requests: each one reads from an uncompressed byte offset, the `next_offset` of
+the previous answer (a gzip is decompressed up to it).
+
+| Parameter | Type | Default | Meaning                                                                          |
+|-----------|------|---------|----------------------------------------------------------------------------------|
+| `id`      | int  | -       | File ID of `PDI_CORE_FILE_LOG`. Required.                                         |
+| `offset`  | int  | `0`     | Uncompressed byte offset of the first line to read (a line start).                |
+| `line`    | int  | `1`     | Number of the line at `offset`, only shown.                                      |
+| `lines`   | int  | `[DATASOURCES] view_lines` (100) | Lines to read, at most 5,000.                           |
+
+Answers the file's facts, `id`, `name`, `size` (bytes on disk), `compression` (`gzip`, `zip:<member>` or `plain`),
+`encoding` (`utf-8`, or `latin-1` when the first 64 KB are no UTF-8), `binary` (a NUL byte in the first 64 KB: no
+lines) and `header` (line 1), then `lines` `[{no, offset, text, cut}]`, `next_offset`, `next_line` and `eof`. A line is
+cut after `[DATASOURCES] view_line_chars` (10,000) characters; `cut` counts the bytes left out.
+
+`400` when the file can not be shown (the reason is named); `403` with `file_download=False`; `404` for a file ID not
+in the file log.
+
+#### `GET /api/grep-ds-file`
+Finds the lines of a loaded file containing a text or matching a regular expression (Python's `re`), from a cursor
+like `view-ds-file`'s. It reads until `[DATASOURCES] view_grep_matches` (500) lines matched, the file ended, or
+`view_grep_seconds` (20) passed; the next request goes on from `next_offset`/`next_line`. A line is matched on the part
+shown (`view_line_chars`), on its own (a match across lines is no match).
+
+| Parameter | Type | Default | Meaning                                            |
+|-----------|------|---------|-----------------------------------------------------|
+| `id`      | int  | -       | File ID. Required.                                  |
+| `pattern` | str  | -       | The text or expression. Required.                   |
+| `regex`   | bool | `false` | `pattern` is a regular expression.                  |
+| `case`    | bool | `false` | Match case.                                         |
+| `offset`  | int  | `0`     | Uncompressed byte offset to search from.            |
+| `line`    | int  | `1`     | Number of the line at `offset`.                     |
+
+Answers the file's facts (as `view-ds-file`), `matches` `[{no, offset, text, cut, spans}]` (`spans`: `[start, end]` of
+each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scanned_lines` and `stopped` (`matches`,
+`time` or `null`). `400` for an invalid expression; otherwise the codes of `view-ds-file`.
+
+#### `POST /api/check-ds-upload`
+JSON body `{id, names}`: checks files before they are uploaded to datasource `id`. Answers `sourcename`, `directory`
+(the first path of the saved `INPUT_DIRECTORY`), `exists`, `writable` (of the directory), `active` (`ISACTIVE` other
+than 0), `max_bytes` (`[DATASOURCES] max_upload_mb`) and `files` `[{name, error, exists, matches_mask}]`: `error` why
+the name can not be used (a path, a leading dot, control characters, over 255 bytes), `exists` a file of the name
+already in the directory, `matches_mask` whether `FILES_MASK` matches it (whole name). `403` with
+`[DATASOURCES] file_upload=False` (the default); `404` for an unknown datasource.
+
+#### `PUT /api/upload-ds-file`
+Uploads one file into the first input directory of a saved datasource. The body is the file itself
+(`application/octet-stream`), streamed to disk. It is written under a temporary name `FILES_MASK` does not match
+(`.rapo-upload-<hex>.part`, or in a `.rapo-upload` folder when the mask matches that and subdirectories are not
+scanned) and renamed when complete, so PDI Core never picks up a partial file; a file of the name already in the
+directory is never overwritten. A canceled or failed upload removes the temporary file. Each upload is written to
+the server log. A disabled datasource (`ISACTIVE=0`) takes files too.
+
+| Parameter | Type | Default | Meaning                                      |
+|-----------|------|---------|-----------------------------------------------|
+| `id`      | int  | -       | Datasource ID. Required.                      |
+| `name`    | str  | -       | File name (no path). Required.                |
+
+Answers `{status, path, bytes, matches_mask}`. `400` for a bad name or a missing directory; `403` with
+`file_upload=False`; `404` for an unknown datasource; `409` when the file is already in the directory; `413` past
+`[DATASOURCES] max_upload_mb` (2048 by default).
+
+```bash
+curl -T TAF_20261008.csv.gz -H "Authorization: Bearer $RAPO_TOKEN" \
+  "http://rapo-host:7005/api/upload-ds-file?id=152&name=TAF_20261008.csv.gz"
 ```
 
 ### Scheduler

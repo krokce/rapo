@@ -48,6 +48,46 @@ export async function api(path, { method = "GET", params, body, loadingBar = tru
   }
 }
 
+// Sends a file as the raw body of a PUT, as api() would (Bearer token, null params dropped, FastAPI's `detail` thrown,
+// 401 signs out), through XMLHttpRequest, as fetch tells nothing of an upload's progress. Answers {promise, abort}:
+// onProgress(loaded, total) follows the upload, and an aborted upload rejects with `aborted` set.
+export function apiUpload(path, { params, file, onProgress } = {}) {
+  const entries = Object.entries(params || {}).filter(([, value]) => value != null);
+  const xhr = new XMLHttpRequest();
+  const promise = new Promise((resolve, reject) => {
+    xhr.open("PUT", "/api/" + path + "?" + new URLSearchParams(entries));
+    xhr.setRequestHeader("Authorization", `Bearer ${store.getters.getToken}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => onProgress && onProgress(event.loaded, event.lengthComputable ? event.total : file.size);
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // Not JSON: the status text is the message.
+      }
+      if (xhr.status === 401) {
+        signOut();
+        reject(new Error("Token rejected, please reconnect."));
+      } else if (xhr.status < 200 || xhr.status >= 300) {
+        const error = new Error(typeof data.detail === "string" ? data.detail : `${xhr.status} ${xhr.statusText}`);
+        error.status = xhr.status;
+        reject(error);
+      } else {
+        resolve(data);
+      }
+    };
+    xhr.onerror = () => reject(new Error("The connection failed."));
+    xhr.onabort = () => {
+      const error = new Error("Canceled.");
+      error.aborted = true;
+      reject(error);
+    };
+    xhr.send(file);
+  });
+  return { promise, abort: () => xhr.abort() };
+}
+
 export function notifyError(message, error) {
   Notify.create({ type: "negative", message: `${message} ${error.message}` });
 }

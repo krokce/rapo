@@ -1,5 +1,5 @@
 <template>
-  <div class="column no-wrap">
+  <div class="column no-wrap relative-position" @dragenter="dragEnter" @dragover="dragOverPage" @dragleave="dragLeave" @drop="dropFiles">
     <!-- Laid out like Results: the title with the day, the day's totals and status chips on the right,
          the active filters under it (led by the Filter badge), then the filter row with the day buttons, and the table. -->
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
@@ -85,6 +85,9 @@
       </q-select>
 
       <q-space />
+      <q-btn v-if="canUpload" class="q-mb-md q-mr-sm upload-btn" outline no-caps color="primary" icon="fas fa-upload" label="Upload" @click="openUpload([])">
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]">Upload files into the input directory of the datasource (or drop them here)</q-tooltip>
+      </q-btn>
       <q-btn aria-label="Next day" v-if="day && day < today" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="shiftDay(1)">
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
       </q-btn>
@@ -164,8 +167,25 @@
               {{ fileStatus(file.filestatus).label }}
             </q-chip>
           </td>
-          <td class="text-left ellipsis text-mono" :title="file.inputfullfilename">
-            <q-icon v-if="file.outfiledeleted" name="fas fa-archive" color="grey-5" size="12px" class="q-mr-xs" title="The archived file is deleted" />{{ file.inputfilename }}
+          <td class="text-left text-mono file-name-cell" :title="file.inputfullfilename">
+            <div class="row no-wrap items-center">
+              <span class="col ellipsis">
+                <q-icon v-if="file.outfiledeleted" name="fas fa-archive" color="grey-5" size="12px" class="q-mr-xs" title="The archived file is deleted" />{{ file.inputfilename }}
+              </span>
+              <q-btn
+                v-if="canView(file)"
+                aria-label="View the file"
+                flat
+                round
+                dense
+                size="sm"
+                color="blue-grey-6"
+                icon="fas fa-eye"
+                class="view-btn"
+                @click.stop="$refs.viewer.open(file)">
+                <q-tooltip>View the archived file</q-tooltip>
+              </q-btn>
+            </div>
           </td>
           <td class="text-right number-cell">{{ formatBytes(file.filesize) }}</td>
           <!-- Dates like the Start column of Results: the day bold, the time small beside it. -->
@@ -203,6 +223,13 @@
       </template>
     </q-virtual-scroll>
 
+    <file-viewer-dialog ref="viewer" />
+    <file-upload-dialog ref="upload" />
+    <div v-if="dragging" class="absolute-full drop-overlay column items-center justify-center">
+      <q-icon name="fas fa-cloud-upload-alt" size="40px" class="q-mb-sm" />
+      <div class="text-h6">Drop the files to upload them into the input directory</div>
+    </div>
+
     <q-dialog v-model="logVisible">
       <q-card class="column no-wrap" style="width: 1200px; max-width: 95vw; max-height: 85vh">
         <q-card-section class="row items-center q-py-sm">
@@ -238,13 +265,16 @@
 import { mapGetters } from "vuex";
 import HourHeatmap from "./HourHeatmap.vue";
 import FilterChips from "./FilterChips.vue";
+import FileUploadDialog from "./FileUploadDialog.vue";
+import FileViewerDialog from "./FileViewerDialog.vue";
 import { api, notifyError } from "../api";
 import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { copyAndNotify } from "../runActions";
+import { downloadFiles } from "../utils/datasources";
 import { hourRange, loadHour, statusHeatmapRows } from "../utils/files";
 import { listFilter, valueFilter } from "../utils/filters";
-import { compactNumber, dayTitle, downloadBlob, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, dayTitle, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import { clockLabel, clockOffset, dayPosition } from "../utils/clock";
 import persistFilters from "../mixins/persistFilters";
@@ -257,7 +287,7 @@ import persistFilters from "../mixins/persistFilters";
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
   { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log" },
-  { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it" },
+  { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it, the eye to view the archived file" },
   { key: "filesize", label: "Size", align: "right", title: "The size of the input file" },
   { key: "filedate", label: "File date", align: "left", title: "The date of the input file" },
   { key: "startloaddate", label: "Load start", align: "left", title: "When PDI Core started loading the file" },
@@ -274,7 +304,7 @@ const DEFAULT_SORT = { key: null, dir: "asc" };
 export default {
   name: "FileLogTable",
   mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
-  components: { HourHeatmap, FilterChips },
+  components: { HourHeatmap, FilterChips, FileUploadDialog, FileViewerDialog },
   props: {
     datasourceId: { type: Number, required: true },
     // YYYY-MM-DD to start with; null for the database's today.
@@ -317,6 +347,7 @@ export default {
       logFile: null,
       logText: null,
       logLoading: false,
+      dragging: false,
     };
   },
   computed: {
@@ -412,6 +443,9 @@ export default {
     },
     canDownload() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_download);
+    },
+    canUpload() {
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_upload);
     },
     eligibleDownload() {
       return this.eligibleFor(FILE_DOWNLOAD, null);
@@ -606,12 +640,10 @@ export default {
       const files = this.eligibleDownload;
       this.downloading = true;
       try {
-        const response = await api("download-ds-files", { method: "POST", body: { ids: files.map((file) => file.id) }, raw: true });
-        const disposition = response.headers.get("Content-Disposition") || "";
-        const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
-        const name = match ? decodeURIComponent(match[1] || match[2]) : files.length === 1 ? files[0].inputfilename : "files.zip";
-        const skipped = Number(response.headers.get("X-Rapo-Skipped") || 0);
-        downloadBlob(await response.blob(), name);
+        const skipped = await downloadFiles(
+          files.map((file) => file.id),
+          files.length === 1 ? files[0].inputfilename : "files.zip",
+        );
         if (skipped) {
           this.$q.notify({
             type: "warning",
@@ -622,6 +654,45 @@ export default {
         notifyError("The files were not downloaded.", error);
       } finally {
         this.downloading = false;
+      }
+    },
+    // A file a download would send: its status, an archived file kept.
+    canView(file) {
+      return this.canDownload && FILE_DOWNLOAD.from.includes(file.filestatus) && !file.outfiledeleted;
+    },
+    openUpload(files) {
+      this.$refs.upload.open(this.datasourceId, files);
+    },
+    // Files dragged from the desktop over the file log: an overlay, and a drop opens the upload dialog with them.
+    draggingFiles(event) {
+      return this.canUpload && event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+    },
+    dragEnter(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = (this.dragDepth || 0) + 1;
+        this.dragging = true;
+      }
+    },
+    dragOverPage(event) {
+      if (this.draggingFiles(event)) {
+        event.preventDefault();
+      }
+    },
+    dragLeave(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = Math.max((this.dragDepth || 1) - 1, 0);
+        this.dragging = this.dragDepth > 0;
+      }
+    },
+    dropFiles(event) {
+      if (!this.draggingFiles(event)) {
+        return;
+      }
+      event.preventDefault();
+      this.dragDepth = 0;
+      this.dragging = false;
+      if (event.dataTransfer.files.length) {
+        this.openUpload([...event.dataTransfer.files]);
       }
     },
     async openLog(file) {
@@ -702,6 +773,12 @@ export default {
 .file-log-table--selectable th:nth-child(9) { width: 110px; }
 .file-log-table--selectable th:nth-child(10) { width: 90px; }
 .file-log-table--selectable th:nth-child(11) { width: 80px; }
+.file-name-cell .view-btn {
+  margin: -4px 0;
+}
+.upload-btn {
+  height: 51px;
+}
 .log-text {
   font-size: 12px;
   white-space: pre-wrap;

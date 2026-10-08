@@ -40,6 +40,16 @@
   --rapo-heat-warning: #ff8f00
   // The Now marker of an hour heatmap.
   --rapo-now: #c2185b
+  // The file viewer: the columns of a delimited file (repeating by column), and a search match.
+  --rapo-csv-0: #1565c0
+  --rapo-csv-1: #2e7d32
+  --rapo-csv-2: #c62828
+  --rapo-csv-3: #6a1b9a
+  --rapo-csv-4: #e65100
+  --rapo-csv-5: #00838f
+  --rapo-csv-6: #ad1457
+  --rapo-csv-7: #5d4037
+  --rapo-match: #ffe082
   // The one fixed-width font (bundled, see quasar-user-options.js) of paths, code, patterns and numbers in tables.
   --rapo-font-mono: "Roboto Mono", monospace
 
@@ -81,6 +91,15 @@ body.body--dark
   --rapo-heat-error: #ef5350
   --rapo-heat-warning: #ffb300
   --rapo-now: #f48fb1
+  --rapo-csv-0: #82aaff
+  --rapo-csv-1: #c3e88d
+  --rapo-csv-2: #f07178
+  --rapo-csv-3: #c792ea
+  --rapo-csv-4: #ffcb6b
+  --rapo-csv-5: #89ddff
+  --rapo-csv-6: #f78c6c
+  --rapo-csv-7: #bcaaa4
+  --rapo-match: rgba(255, 193, 7, 0.4)
 
 .sortable
   cursor: pointer
@@ -93,6 +112,31 @@ code, pre, kbd, samp
 // same specificity, hence !important.
 .cm-editor .cm-scroller
   font-family: var(--rapo-font-mono) !important
+
+// The file viewer (FileViewerDialog, utils/csvView.js): its marks are inside CodeMirror, hence global.
+@for $i from 0 through 7
+  .cm-csv-c#{$i}
+    color: var(--rapo-csv-#{$i})
+
+.cm-csv-sep
+  color: var(--rapo-muted)
+
+.cm-viewer-match
+  background: var(--rapo-match)
+  border-radius: 2px
+
+.cm-viewer-cut
+  color: var(--rapo-muted)
+  font-style: italic
+
+// Files dragged over a place that uploads them (the file log, the editor's Input files).
+.drop-overlay
+  z-index: 10
+  border: 2px dashed var(--rapo-teal)
+  border-radius: 6px
+  background: var(--rapo-teal-soft)
+  color: var(--rapo-teal)
+  pointer-events: none
 
 .text-mono
   font-family: var(--rapo-font-mono)

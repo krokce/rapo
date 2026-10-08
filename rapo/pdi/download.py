@@ -5,7 +5,8 @@ file system of this server, and only when its real path lies in the archive,
 error or duplicate directory of its datasource, so that a file log row can
 not name any other file of the server. Only SUCCESS and ERROR files whose
 archived file is kept (OUTFILEDELETED = 0) are sent. Several files are sent
-as one ZIP, written while it is sent.
+as one ZIP, written while it is sent. The viewer (viewer.py) reads files
+under the same rules (locate).
 """
 
 import os
@@ -82,6 +83,32 @@ def prepare(ids):
             f'than the {limit} MB a download may have ([DATASOURCES] '
             'max_download_mb).')
     return {'files': files, 'skipped': skipped, 'bytes': total}
+
+
+def locate(id):
+    """Find one file of the file log that can be sent, for the viewer.
+
+    Returns
+    -------
+    file : dict
+        `{id, path, name, size, sourcename, day}`. Raises DatasourceError
+        naming why the file can not be sent.
+    """
+    if not enabled():
+        raise DatasourceError('File downloads are switched off on this '
+                              'server ([DATASOURCES] file_download).', 403)
+    ids, rows = pdi.read_download_files([id])
+    row = rows.get(ids[0])
+    if row is None:
+        raise DatasourceError(f'File {id} is not in the file log.', 404)
+    reason, path, size = _check(row, _roots(row['sourceid']))
+    if reason:
+        raise DatasourceError(f'The file can not be shown: {reason}.')
+    day = row['startloaddate']
+    return {'id': row['id'], 'path': path, 'size': size,
+            'name': os.path.basename(row['outputfullfilename']),
+            'sourcename': row['sourcename'],
+            'day': day.strftime('%Y%m%d') if day else None}
 
 
 def _roots(sourceid):

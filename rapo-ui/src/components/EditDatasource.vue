@@ -102,7 +102,18 @@
                     </div>
                   </q-card-section>
                 </q-card>
-                <q-card class="q-pa-sm" flat bordered>
+                <q-card
+                  class="q-pa-sm relative-position"
+                  flat
+                  bordered
+                  @dragenter="dragEnter"
+                  @dragover="dragOver"
+                  @dragleave="dragLeave"
+                  @drop="dropFiles">
+                  <div v-if="dragging" class="absolute-full drop-overlay column items-center justify-center">
+                    <q-icon name="fas fa-cloud-upload-alt" size="32px" class="q-mb-sm" />
+                    <div class="text-subtitle1">{{ dirty ? "Save the datasource first" : "Drop the files to upload them into the input directory" }}</div>
+                  </div>
                   <q-item-section class="q-ma-xs">
                     <q-item-label>Input files</q-item-label>
                   </q-item-section>
@@ -197,6 +208,15 @@
                           @click="openFiles('clean')">
                           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                             The small files the clean-up file pattern names, e.g. the FIN markers of completed transfers
+                          </q-tooltip>
+                        </q-btn>
+                        <q-btn v-if="canUpload" outline color="primary" icon="fas fa-upload" label="Upload files" class="icon-button" :disable="dirty" @click="openUpload([])">
+                          <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
+                            {{
+                              dirty
+                                ? "Save the datasource first: files go into the saved input directory"
+                                : "Upload files into the first saved input directory (or drop them on this box)"
+                            }}
                           </q-tooltip>
                         </q-btn>
                       </div>
@@ -442,6 +462,7 @@
     </q-dialog>
 
     <file-list-dialog ref="fileDialog" />
+    <file-upload-dialog ref="uploadDialog" @uploaded="refreshStatus" />
     <mask-check-dialog ref="maskDialog" />
   </q-page>
 </template>
@@ -454,6 +475,7 @@ import DiffTable from "./DiffTable.vue";
 import DirectoryListBox from "./DirectoryListBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import FileListDialog from "./FileListDialog.vue";
+import FileUploadDialog from "./FileUploadDialog.vue";
 import FileLogTable from "./FileLogTable.vue";
 import MaskCheckDialog from "./MaskCheckDialog.vue";
 import { api, notifyError } from "../api";
@@ -483,7 +505,7 @@ const YES_NO_NUMBER_OPTIONS = [
 // saved datasource, which is also the lock of a save: a datasource changed meanwhile, by anyone, is not overwritten.
 export default {
   name: "EditDatasource",
-  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, FileLogTable, MaskCheckDialog },
+  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, FileLogTable, FileUploadDialog, MaskCheckDialog },
   props: ["id"],
   data() {
     return {
@@ -503,6 +525,7 @@ export default {
       archiveFields: ARCHIVE_FIELDS,
       dupOptions: DUP_HANDLING_OPTIONS,
       yesNoOptions: YES_NO_NUMBER_OPTIONS,
+      dragging: false,
     };
   },
   computed: {
@@ -513,6 +536,9 @@ export default {
     },
     deletable() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_deletable);
+    },
+    canUpload() {
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_upload);
     },
     logAvailable() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_log);
@@ -806,6 +832,44 @@ export default {
     },
     refreshStatus() {
       return this.updateDatasourceStatus().catch(() => null);
+    },
+    openUpload(files) {
+      this.$refs.uploadDialog.open(this.saved.id, files);
+    },
+    // Files dragged from the desktop over Input files of a saved datasource: an overlay, and a drop opens the upload
+    // dialog with them (only once the datasource is saved, as they go into the saved directory).
+    draggingFiles(event) {
+      return this.canUpload && this.saved && event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+    },
+    dragEnter(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = (this.dragDepth || 0) + 1;
+        this.dragging = true;
+      }
+    },
+    dragOver(event) {
+      if (this.draggingFiles(event)) {
+        event.preventDefault();
+      }
+    },
+    dragLeave(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = Math.max((this.dragDepth || 1) - 1, 0);
+        this.dragging = this.dragDepth > 0;
+      }
+    },
+    dropFiles(event) {
+      if (!this.draggingFiles(event)) {
+        return;
+      }
+      event.preventDefault();
+      this.dragDepth = 0;
+      this.dragging = false;
+      if (this.dirty) {
+        this.$q.notify({ type: "warning", message: "Save the datasource first: files go into its saved input directory." });
+      } else if (event.dataTransfer.files.length) {
+        this.openUpload([...event.dataTransfer.files]);
+      }
     },
     openFiles(kind) {
       this.$refs.fileDialog.open(this.saved, kind, this.maskOverrides());

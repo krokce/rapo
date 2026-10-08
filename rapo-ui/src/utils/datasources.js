@@ -1,4 +1,5 @@
 // PDI Core datasources (pdi_core_ds_config and its pdi_core_ds_tables rows), shared by the Datasources list and editor.
+import { api } from "../api";
 import { downloadBlob } from "./format";
 
 // A new datasource: the column defaults of pdi_core_ds_config.
@@ -133,4 +134,16 @@ export function toCsv(rows, columns) {
 
 export function downloadText(text, filename, type = "text/csv") {
   downloadBlob(new Blob([text], { type }), filename);
+}
+
+// Downloads loaded files (download-ds-files): one file as it is, several as a ZIP, saved under the name the server
+// gives. Answers how many were left out.
+export async function downloadFiles(ids, fallbackName) {
+  const response = await api("download-ds-files", { method: "POST", body: { ids }, raw: true });
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+  const name = match ? decodeURIComponent(match[1] || match[2]) : fallbackName;
+  const skipped = Number(response.headers.get("X-Rapo-Skipped") || 0);
+  downloadBlob(await response.blob(), name);
+  return skipped;
 }

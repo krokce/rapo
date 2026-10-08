@@ -6,6 +6,22 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
+## v0.8.6 — unreleased
+
+No schema change and no new dependency; new `[DATASOURCES]` options (uploads are off until `file_upload=True`).
+
+- **File viewer** (eye icon on a file log row): the archived file a download would send, read a few lines at a time
+  (100, more on scrolling or *Load 1,000 more*, at most 50,000 kept) from gzip, ZIP or plain files of any size, with
+  the file's line numbers, monospace, columns of a delimited file colored (delimiter detected or picked, header name on
+  hover). A search reads the whole file on the server (text or regular expression, match case), lists the matching
+  lines with their numbers and goes on with *Find more*; a click shows the file from that line. Options
+  `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
+- **Upload files** into the first input directory of a datasource: *Upload* on the file log and *Upload files* in the
+  editor's Input files box, or drop files on either. Per-file progress; a file not matching the file name pattern is
+  flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so
+  PDI Core never loads a partial file. `[DATASOURCES] file_upload` (off), `max_upload_mb`; routes `check-ds-upload`,
+  `upload-ds-file`.
+
 ## v0.8.5 — 2026-10-05
 
 No change to Rapo's own schema; new Python dependency `phik` (installed by `install.sh`). From the `v0.8.4` tag: redeploy
