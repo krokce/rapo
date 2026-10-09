@@ -1,5 +1,15 @@
 // Shared helpers of the data analysis page: dataset names, value formatting, viewer filters and chart options.
+import store from "../store";
 import { formatNumber, toDateTimeString } from "./format";
+
+// Closes an analysis session without waiting, also while the tab is being closed (keepalive).
+export function closeAnalysisSession(sessionId) {
+  fetch(`/api/analysis-close?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST",
+    keepalive: true,
+    headers: { Authorization: `Bearer ${store.getters.getToken}` },
+  }).catch(() => {});
+}
 
 // The number of a Results row each dataset stands for. A REP saves what it fetched, so its fetched number is its
 // result table (the server resolves that).
@@ -44,6 +54,9 @@ export function kindInfo(column) {
 export function datasetLabel(meta) {
   if (!meta) {
     return "";
+  }
+  if (meta.kind === "file") {
+    return meta.table_name;
   }
   const sided = meta.control_type === "REC" || meta.control_type === "CMP";
   if (meta.control_type === "REP") {

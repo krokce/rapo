@@ -301,7 +301,7 @@ export default {
       links.push({ icon: "fas fa-clock", text: "Scheduler", route: "/scheduler", routes: ["scheduler"], gap: true });
       // PDI Core datasources, where their tables are readable; spaced from the lists of rapo's own objects.
       if (this.getEnvInfo && this.getEnvInfo.datasources_available) {
-        links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log"], gap: true });
+        links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log", "file-analysis"], gap: true });
         links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
       return links;

@@ -193,7 +193,8 @@ class SessionManager:
         for session in sessions:
             session.close()
 
-    def create(self, process_id, dataset, pushdown=None, random=True):
+    def create(self, process_id, dataset, pushdown=None, random=True,
+               file_id=None):
         """Resolve the dataset and start a session on it.
 
         `pushdown` ({filters, search, where}) is applied by the database, so
@@ -201,6 +202,9 @@ class SessionManager:
         sample reads the records in random order, so it is uniform at any
         size, Extend included; Oracle sorts the whole dataset first. Otherwise
         the sample is the first records as the database returns them.
+
+        With `file_id` the dataset is the records a file of the PDI Core file
+        log loaded into table `dataset` (datasets.resolve_file).
         """
         if not self.active:
             raise SessionError('Analysis is not available', 503)
@@ -212,7 +216,10 @@ class SessionManager:
                     'this server are in use. Close an analysis page or '
                     'try again later.', 409)
         try:
-            sql, meta = datasets.resolve(process_id, dataset)
+            if file_id is not None:
+                sql, meta = datasets.resolve_file(file_id, dataset)
+            else:
+                sql, meta = datasets.resolve(process_id, dataset)
             shown = datasets.display(sql, meta)
             pushdown = {key: value for key, value in (pushdown or {}).items()
                         if key in ('filters', 'search', 'where') and value}
@@ -220,7 +227,7 @@ class SessionManager:
                 sql, shown = datasets.pushdown(sql, shown=shown, **pushdown)
                 # A result table is read by its index, so its count is
                 # cheap; a datasource's could be a scan of the whole window.
-                exact = meta['kind'] == 'result'
+                exact = meta['kind'] in ('result', 'file')
                 meta['total'] = datasets.count(sql) if exact else None
                 meta['total_exact'] = exact
             meta['pushdown'] = pushdown or None
@@ -236,7 +243,8 @@ class SessionManager:
         with self.lock:
             self.sessions[session.id] = session
         logger.info(f"Analysis session {session.id[:8]} started on "
-                    f"{meta['control_name']} PID {process_id} {dataset} "
+                    f"{meta['control_name']} "
+                    f"{f'file {file_id}' if file_id is not None else f'PID {process_id}'} {dataset} "
                     f"({'random' if random else 'first rows'}) "
                     f'(worker PID {session.process.pid})')
         return session

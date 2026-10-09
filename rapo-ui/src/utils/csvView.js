@@ -5,13 +5,12 @@ import { formatBytes } from "./format";
 // The file viewer's columns and matches (FileViewerDialog). The lines of the editor are the rows the viewer loaded,
 // one per line, so a decoration finds its row by the line number; only the visible lines are decorated.
 
-export const DELIMITER_OPTIONS = [
-  { label: "Auto", value: "auto" },
-  { label: "Semicolon ;", value: ";" },
-  { label: "Comma ,", value: "," },
-  { label: "Pipe |", value: "|" },
-  { label: "Tab", value: "\t" },
-  { label: "None", value: "none" },
+// The presets of the viewer's Delimiter field, as typed in it (a tab as \t).
+export const DELIMITER_PRESETS = [
+  { label: "Semicolon", text: ";" },
+  { label: "Comma", text: "," },
+  { label: "Pipe", text: "|" },
+  { label: "Tab", text: "\\t" },
 ];
 const CANDIDATES = [";", ",", "|", "\t"];
 const COLORS = 8;
@@ -82,9 +81,62 @@ export function detectDelimiter(lines) {
   return best && best.delimiter;
 }
 
-export function delimiterLabel(delimiter) {
-  const option = DELIMITER_OPTIONS.find((item) => item.value === delimiter);
-  return option ? option.label : "None";
+// A delimiter as the Delimiter field shows it (a tab as \t).
+export function delimiterText(delimiter) {
+  return delimiter ? delimiter.replace(/\t/g, "\\t") : "";
+}
+
+// What the Delimiter field says: {kind, delimiter, widths, error}. Digits separated by commas (10,5,8) are the
+// widths of fixed-width columns, in characters; anything else is a delimiter of any length (\t a tab); empty is none.
+export function parseLayout(text) {
+  const value = text || "";
+  if (!value) {
+    return { kind: "none" };
+  }
+  // Digits, commas and spaces only: widths, or a mistake in them (a lone comma is a delimiter).
+  if (/^[\d,\s]+$/.test(value) && /\d/.test(value)) {
+    if (!/^\s*\d+(\s*,\s*\d+)*\s*$/.test(value)) {
+      return { kind: "none", error: "Widths are numbers separated by commas, e.g. 10,5,8" };
+    }
+    const widths = value.split(",").map((part) => Number(part.trim()));
+    if (widths.some((width) => width < 1)) {
+      return { kind: "none", error: "Every width is 1 or more" };
+    }
+    return { kind: "widths", widths };
+  }
+  return { kind: "delimiter", delimiter: value.replace(/\\t/g, "\t") };
+}
+
+// The [start, end) of each field of a line by a layout; with widths, the characters after the last width are one
+// more field (`rest`).
+export function fieldRanges(text, layout) {
+  if (layout.kind === "delimiter") {
+    return splitFields(text, layout.delimiter);
+  }
+  if (layout.kind !== "widths") {
+    return [];
+  }
+  const fields = [];
+  let start = 0;
+  for (const width of layout.widths) {
+    if (start >= text.length) {
+      break;
+    }
+    fields.push([start, Math.min(start + width, text.length)]);
+    start += width;
+  }
+  if (start < text.length) {
+    fields.push([start, text.length, "rest"]);
+  }
+  return fields;
+}
+
+// The names of the columns from line 1, by a layout.
+export function headerNames(header, layout) {
+  if (!header || layout.kind === "none") {
+    return [];
+  }
+  return fieldRanges(header, layout).map(([start, end]) => header.slice(start, end).trim().replace(/^"|"$/g, ""));
 }
 
 // Dispatched when what the decorations show changed without the text (delimiter, header, highlight).
@@ -104,8 +156,8 @@ function visibleLines(view, callback) {
   }
 }
 
-// Colors the fields of each line by their column; `source.delimiter()` is the delimiter or null, `source.header()`
-// the field names of line 1 (shown on hover).
+// Colors the fields of each line by their column; `source.layout()` is a parseLayout() result, `source.header()` the
+// field names of line 1 (shown on hover).
 export function columnColors(source) {
   return ViewPlugin.fromClass(
     class {
@@ -119,30 +171,41 @@ export function columnColors(source) {
       }
       build(view) {
         const builder = new RangeSetBuilder();
-        const delimiter = source.delimiter();
-        if (!delimiter) {
+        const layout = source.layout();
+        if (layout.kind === "none") {
           return builder.finish();
         }
         const header = source.header() || [];
+        const widths = layout.kind === "widths" ? layout.widths : null;
         const marks = [];
-        const mark = (index) =>
-          marks[index] ||
-          (marks[index] = Decoration.mark({
-            class: `cm-csv-c${index % COLORS}`,
-            attributes: { title: `Column ${index + 1}${header[index] ? `: ${header[index]}` : ""}` },
-          }));
+        const mark = (index) => {
+          if (!marks[index]) {
+            let title = `Column ${index + 1}`;
+            if (widths) {
+              const start = widths.slice(0, index).reduce((total, width) => total + width, 0);
+              title += ` (characters ${start + 1}–${start + widths[index]})`;
+            }
+            marks[index] = Decoration.mark({
+              class: `cm-csv-c${index % COLORS}`,
+              attributes: { title: header[index] ? `${title}: ${header[index]}` : title },
+            });
+          }
+          return marks[index];
+        };
+        const rest = Decoration.mark({ class: "cm-csv-rest", attributes: { title: "Beyond the widths" } });
         const separator = Decoration.mark({ class: "cm-csv-sep" });
+        const gap = widths ? 0 : layout.delimiter.length;
         visibleLines(view, (line) => {
-          const fields = splitFields(line.text, delimiter);
+          const fields = fieldRanges(line.text, layout);
           if (fields.length < 2) {
             return;
           }
-          fields.forEach(([start, end], index) => {
-            if (index > 0) {
-              builder.add(line.from + start - delimiter.length, line.from + start, separator);
+          fields.forEach(([start, end, kind], index) => {
+            if (index > 0 && gap) {
+              builder.add(line.from + start - gap, line.from + start, separator);
             }
             if (end > start) {
-              builder.add(line.from + start, line.from + end, mark(index));
+              builder.add(line.from + start, line.from + end, kind === "rest" ? rest : mark(index));
             }
           });
         });

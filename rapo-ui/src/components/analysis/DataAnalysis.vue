@@ -19,7 +19,8 @@
       <template #action>
         <q-btn v-if="pushdown" flat color="red-9" label="Without the database filter" @click="startWith(null)" />
         <q-btn flat color="red-9" label="Try again" @click="start" />
-        <q-btn flat color="red-9" label="Back to results" :to="{ name: 'results' }" />
+        <q-btn v-if="isFile" flat color="red-9" label="Back" @click="$router.back()" />
+        <q-btn v-else flat color="red-9" label="Back to results" :to="{ name: 'results' }" />
       </template>
     </q-banner>
 
@@ -111,7 +112,7 @@
           @click="extend">
           <q-tooltip anchor="top middle" self="bottom middle">Fetch the next rows of the dataset into the sample</q-tooltip>
         </q-btn>
-        <q-btn aria-label="SQL filter, applied by the database" v-if="session" flat dense round size="sm" color="blue-grey-7" icon="fas fa-code" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
+        <q-btn aria-label="SQL filter, applied by the database" v-if="session && !isFile" flat dense round size="sm" color="blue-grey-7" icon="fas fa-code" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
           <q-tooltip anchor="top middle" self="bottom middle">SQL filter, applied by the database</q-tooltip>
         </q-btn>
         <q-btn aria-label="Copy SQL to clipboard" v-if="meta" flat dense round size="sm" color="blue-grey-7" icon="fas fa-copy" @click="copySql">
@@ -120,7 +121,7 @@
       </q-card-section>
     </q-card>
     <counterpart-dialog v-if="session" ref="counterpart" :session-id="session.session_id" :columns="state.columns || []" :side="meta.side || 'A'" />
-    <sql-filter-dialog v-if="meta" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
+    <sql-filter-dialog v-if="meta && !isFile" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
 
     <template v-if="session">
       <q-tabs v-model="tab" dense inline-label align="left" class="text-blue-grey-8" active-color="primary" indicator-color="primary" no-caps>
@@ -129,7 +130,7 @@
         <q-tab name="correlations" icon="fas fa-project-diagram" label="Correlations" />
         <q-tab name="missing" icon="fas fa-th" label="Missing values" />
         <q-tab name="duplicates" icon="fas fa-clone" label="Duplicates" />
-        <q-tab name="compare" icon="fas fa-balance-scale" label="Compare">
+        <q-tab v-if="!isFile" name="compare" icon="fas fa-balance-scale" label="Compare">
           <q-badge v-if="compare.target" color="deep-orange-5" floating>B</q-badge>
         </q-tab>
         <q-tab name="data" icon="fas fa-table" label="Data">
@@ -152,7 +153,7 @@
       </div>
       <q-tab-panels v-show="!tabError" v-model="tab" class="col analysis-panels" keep-alive>
         <q-tab-panel name="overview" class="scroll-panel">
-          <run-trend class="q-mb-lg" :process-id="meta.process_id" :dataset="meta.dataset" :report-only="meta.control_type === 'REP'" />
+          <run-trend v-if="!isFile" class="q-mb-lg" :process-id="meta.process_id" :dataset="meta.dataset" :report-only="meta.control_type === 'REP'" />
           <result-breakdown v-if="hasBreakdown" class="q-mb-lg" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
           <analysis-overview :overview="sectionData('overview')" @show-rows="showRows" @show-column="showColumn" />
         </q-tab-panel>
@@ -208,11 +209,10 @@
 <script>
 import socket from "../../socket";
 import { api, notifyError } from "../../api";
-import store from "../../store";
 import { copyAndNotify } from "../../runActions";
 import { formatNumber } from "../../utils/format";
 import { fillViewportToBottom } from "../../utils/layout";
-import { DATASETS, datasetLabel, describeFilter } from "../../utils/analysis";
+import { DATASETS, closeAnalysisSession as closeSession, datasetLabel, describeFilter } from "../../utils/analysis";
 import AnalysisColumns from "./AnalysisColumns.vue";
 import AnalysisHeader from "./AnalysisHeader.vue";
 import AnalysisCorrelations from "./AnalysisCorrelations.vue";
@@ -226,17 +226,10 @@ import ResultBreakdown from "./ResultBreakdown.vue";
 import RunTrend from "./RunTrend.vue";
 import SqlFilterDialog from "./SqlFilterDialog.vue";
 
+// The routes of this page: a run's dataset, or the records a file loaded into a table.
+const ROUTES = ["data-analysis", "file-analysis"];
 const TABS = ["overview", "columns", "correlations", "missing", "duplicates", "compare", "data"];
 const BREAKDOWN_COLUMNS = ["rapo_result_type", "rapo_result_value", "rapo_discrepancy_description"];
-
-// Closes a session without waiting, also while the tab is being closed (keepalive).
-function closeSession(sessionId) {
-  fetch(`/api/analysis-close?session_id=${encodeURIComponent(sessionId)}`, {
-    method: "POST",
-    keepalive: true,
-    headers: { Authorization: `Bearer ${store.getters.getToken}` },
-  }).catch(() => {});
-}
 
 function parseQuery(value, fallback) {
   if (!value) {
@@ -298,8 +291,14 @@ export default {
     };
   },
   computed: {
+    // The records of a file (file-analysis) rather than a run's dataset: no other datasets, trend, comparison or SQL
+    // filter, and the first rows by default.
+    isFile() {
+      return this.$route.name === "file-analysis";
+    },
     routeKey() {
-      return `${this.$route.params.processId}/${this.$route.params.dataset}`;
+      const params = this.$route.params;
+      return this.isFile ? `file/${params.fileId}/${params.table}` : `${params.processId}/${params.dataset}`;
     },
     // The route and the parts of the query that need a new sample: the database filter and the sampling.
     fullKey() {
@@ -324,6 +323,9 @@ export default {
       return (this.session && this.session.options) || {};
     },
     datasetTitle() {
+      if (this.isFile) {
+        return this.$route.params.table;
+      }
       const dataset = DATASETS[this.$route.params.dataset];
       return dataset ? `${dataset.kind === "fetched" ? "Fetched" : "Discrepancies"} ${dataset.side}` : "";
     },
@@ -420,10 +422,17 @@ export default {
       return failed ? this.sectionErrors[failed] : "";
     },
     storageKey() {
-      return this.meta ? `rapo_analysis_columns_${this.meta.control_name}_${this.meta.dataset}` : null;
+      if (!this.meta) {
+        return null;
+      }
+      // The file viewer's records pane keeps the columns of a table under the same key.
+      return this.meta.kind === "file" ? `rapo_analysis_columns_file_${this.meta.table_name}` : `rapo_analysis_columns_${this.meta.control_name}_${this.meta.dataset}`;
     },
     exportName() {
-      return this.meta ? `${this.meta.control_name}_${this.meta.process_id}_${this.meta.dataset}` : "data";
+      if (!this.meta) {
+        return "data";
+      }
+      return this.meta.export_name || `${this.meta.control_name}_${this.meta.process_id}_${this.meta.dataset}`;
     },
     // The view as URL query parameters, the defaults left out.
     viewQuery() {
@@ -435,14 +444,14 @@ export default {
       if (this.view.group) query.g = JSON.stringify(this.view.group);
       if (this.scope) query.sc = JSON.stringify(this.scope);
       if (this.pushdown) query.pd = JSON.stringify(this.pushdown);
-      if (!this.random) query.rnd = "0";
+      if (this.random !== !this.isFile) query.rnd = this.random ? "1" : "0";
       if (this.compare.target) query.cmp = JSON.stringify(this.compare.target);
       return query;
     },
   },
   watch: {
     fullKey() {
-      if (this.active && this.$route.name === "data-analysis" && this.fullKey !== this.sessionKey) {
+      if (this.active && ROUTES.includes(this.$route.name) && this.fullKey !== this.sessionKey) {
         this.start();
       }
     },
@@ -455,7 +464,7 @@ export default {
       this.syncSections();
     },
     viewQuery(query) {
-      if (!this.active || this.$route.name !== "data-analysis") {
+      if (!this.active || !ROUTES.includes(this.$route.name)) {
         return;
       }
       clearTimeout(this.queryTimer);
@@ -523,7 +532,7 @@ export default {
       };
       this.scope = parseQuery(query.sc, null);
       this.pushdown = parseQuery(query.pd, null);
-      this.random = query.rnd !== "0";
+      this.random = query.rnd ? query.rnd !== "0" : !this.isFile;
       const target = parseQuery(query.cmp, null);
       await this.open();
       if (target && this.session) {
@@ -558,8 +567,9 @@ export default {
     async open() {
       // The tabs are unmounted with the old session before it is closed, so nothing asks it any more.
       const previous = this.session;
-      const { processId, dataset } = this.$route.params;
-      const key = `${this.routeKey}|${this.pushdown ? JSON.stringify(this.pushdown) : ""}|${this.random ? "" : "0"}`;
+      const { processId, dataset, fileId, table } = this.$route.params;
+      const rnd = this.random === !this.isFile ? "" : this.random ? "1" : "0";
+      const key = `${this.routeKey}|${this.pushdown ? JSON.stringify(this.pushdown) : ""}|${rnd}`;
       this.session = null;
       if (previous) {
         closeSession(previous.session_id);
@@ -575,11 +585,17 @@ export default {
       this.startError = null;
       this.starting = true;
       try {
-        const session = await api("analysis-start", {
-          method: "POST",
-          params: { process_id: processId, dataset, random: this.random },
-          body: this.pushdown || undefined,
-        });
+        const session = this.isFile
+          ? await api("analysis-start-file", {
+              method: "POST",
+              params: { file_id: fileId, table, random: this.random },
+              body: this.pushdown || undefined,
+            })
+          : await api("analysis-start", {
+              method: "POST",
+              params: { process_id: processId, dataset, random: this.random },
+              body: this.pushdown || undefined,
+            });
         if (this.sessionKey !== key) {
           closeSession(session.session_id);
           return;

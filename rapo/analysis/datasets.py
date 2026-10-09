@@ -91,6 +91,44 @@ def resolve(process_id, dataset):
     return sql, meta
 
 
+def resolve_file(file_id, table):
+    """Get the SQL and the description of the records a file of the PDI Core
+    file log loaded into one of its datasource's tables (FILE_ID)."""
+    from ..pdi import records
+    from ..pdi.store import DatasourceError
+    try:
+        sql, file, table_name = records.select(file_id, table)
+    except DatasourceError as error:
+        if error.status == 404:
+            raise DatasetError(str(error))
+        raise ValueError(str(error))
+    meta = {
+        'process_id': None,
+        'control_id': None,
+        'control_name': file['sourcename'],
+        'control_type': None,
+        'status': file['filestatus'],
+        'dataset': table_name,
+        'kind': 'file',
+        'side': None,
+        'file_id': file['id'],
+        'sourceid': file['sourceid'],
+        'sourcename': file['sourcename'],
+        'file_name': file['inputfilename'],
+        'records_write': file['recordswrite'],
+        'records_reject': file['recordsreject'],
+        'start_date': file['startloaddate'],
+        'table_name': table_name,
+        'total': count(sql),
+        'total_exact': True,
+        'stale': False,
+        'datasets': [],
+        'key_fields': [],
+        'export_name': f'{table_name}_FILE_{file["id"]}',
+    }
+    return sql, meta
+
+
 IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_$#]*')
 
 
@@ -167,7 +205,7 @@ def display(sql, meta):
     Only for showing: the formatter lower-cases identifiers, which would
     break a quoted mixed-case name, so the raw statement is the one run.
     """
-    if meta['kind'] == 'result':
+    if meta['kind'] in ('result', 'file'):
         return sql
     return db.formatter(sql)
 

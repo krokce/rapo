@@ -182,8 +182,21 @@
                 color="blue-grey-6"
                 icon="fas fa-eye"
                 class="view-btn"
-                @click.stop="$refs.viewer.open(file)">
+                @click.stop="openViewer(file, 'file')">
                 <q-tooltip>View the archived file</q-tooltip>
+              </q-btn>
+              <q-btn
+                v-if="hasRecords(file)"
+                aria-label="Show the loaded records"
+                flat
+                round
+                dense
+                size="sm"
+                color="blue-grey-6"
+                icon="fas fa-database"
+                class="view-btn"
+                @click.stop="openViewer(file, 'db')">
+                <q-tooltip>Show the records loaded in the database</q-tooltip>
               </q-btn>
             </div>
           </td>
@@ -287,7 +300,7 @@ import persistFilters from "../mixins/persistFilters";
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
   { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log" },
-  { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it, the eye to view the archived file" },
+  { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it, the eye to view the archived file, the database icon for the records loaded from it" },
   { key: "filesize", label: "Size", align: "right", title: "The size of the input file" },
   { key: "filedate", label: "File date", align: "left", title: "The date of the input file" },
   { key: "startloaddate", label: "Load start", align: "left", title: "When PDI Core started loading the file" },
@@ -443,6 +456,9 @@ export default {
     },
     canDownload() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_download);
+    },
+    logAvailable() {
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_log);
     },
     canUpload() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_upload);
@@ -659,6 +675,13 @@ export default {
     // A file a download would send: its status, an archived file kept.
     canView(file) {
       return this.canDownload && FILE_DOWNLOAD.from.includes(file.filestatus) && !file.outfiledeleted;
+    },
+    // Records PDI Core wrote or rejected, in the tables of the datasource.
+    hasRecords(file) {
+      return this.logAvailable && this.tables.length > 0 && (file.recordswrite > 0 || file.recordsreject > 0);
+    },
+    openViewer(file, layout) {
+      this.$refs.viewer.open(file, { datasourceId: this.datasourceId, layout, viewable: this.canView(file), hasTables: this.tables.length > 0 });
     },
     openUpload(files) {
       this.$refs.upload.open(this.datasourceId, files);

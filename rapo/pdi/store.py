@@ -583,6 +583,18 @@ class Store:
         return [{key: self._value(value) for key, value in row.items()}
                 for row in db.execute(statement, as_table=True)]
 
+    def read_file(self, file_id):
+        """Get one file of the file log with its record counts, or None."""
+        self.check()
+        if not self.log_available:
+            raise DatasourceError('The file log is not available.', 404)
+        statement = sa.text(
+            'select id, sourceid, sourcename, inputfilename, filestatus, '
+            'recordsread, recordswrite, recordsreject, startloaddate '
+            f'from {LOG_TABLE} where id = :id').bindparams(id=int(file_id))
+        row = db.execute(statement, as_dict=True)
+        return self._normalize(row) if row else None
+
     def set_file_status(self, ids, status):
         """Ask PDI Core to recycle, reload or delete loaded files.
 

@@ -20,7 +20,27 @@
       </div>
     </h2>
     <q-space />
-    <div v-if="meta" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
+    <!-- The records of a file: the datasource, the file and its status in the file log. -->
+    <div v-if="meta && meta.kind === 'file'" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
+      <router-link class="control-link text-weight-bold" :to="{ name: 'edit-datasource', params: { id: meta.sourceid } }">
+        {{ meta.sourcename }}
+      </router-link>
+      <router-link class="control-link text-mono" :to="{ name: 'files-log', params: { id: meta.sourceid }, query: fileLogQuery }">
+        {{ meta.file_name }}
+      </router-link>
+      <div>
+        File ID <strong>{{ meta.file_id }}</strong>
+      </div>
+      <q-chip>
+        <q-avatar :icon="fileStatus(meta.status).icon" :color="fileStatus(meta.status).color" text-color="white" />
+        {{ fileStatus(meta.status).label }}
+      </q-chip>
+      <slot />
+      <q-btn aria-label="Copy a link to this view" flat dense round size="sm" color="blue-grey-7" icon="fas fa-link" @click="$emit('copy-link')">
+        <q-tooltip anchor="top middle" self="bottom middle">Copy a link to this view</q-tooltip>
+      </q-btn>
+    </div>
+    <div v-else-if="meta" class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
       <q-chip>
         <q-avatar :icon="controlType(meta.control_type).icon" :color="controlType(meta.control_type).color" text-color="white" />
         {{ meta.control_type }}
@@ -48,7 +68,7 @@
 </template>
 
 <script>
-import { controlType, runStatus } from "../../constants";
+import { controlType, fileStatus, runStatus } from "../../constants";
 import { toDateTimeString } from "../../utils/format";
 
 // The header of the analysis pages: the title with the switch between the run's datasets (or sides), and the run's
@@ -64,6 +84,11 @@ export default {
   },
   emits: ["update:modelValue", "copy-link"],
   computed: {
+    // The file log of the file's day, the file marked.
+    fileLogQuery() {
+      const day = this.meta.start_date ? String(this.meta.start_date).substring(0, 10) : null;
+      return day ? { date: day, file: this.meta.file_id } : { file: this.meta.file_id };
+    },
     windowText() {
       if (!this.meta) {
         return "";
@@ -75,6 +100,7 @@ export default {
   },
   methods: {
     controlType,
+    fileStatus,
     runStatus,
   },
 };

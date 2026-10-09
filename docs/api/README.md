@@ -796,6 +796,15 @@ the database returns them. `meta.random` says which; `meta.sql` never has the ra
 `initial_rows` are fetched at once, then the columns and the overview are profiled. 409 when all sessions are in use, 404 for an unknown
 dataset or a filter that does not parse, 503 while the server starts or stops.
 
+#### `POST /api/analysis-start-file`
+`file_id`, `table`, `random` (default **false**), and the optional pushdown body of `analysis-start`. Starts a session
+on the records a file of `PDI_CORE_FILE_LOG` loaded into `table`: `select * from <table> where file_id = <file_id>`,
+read as the `FILE_ID` index returns them (load order), no sort. `table` must be one of the tables of the file's
+datasource (`PDI_CORE_DS_TABLES`), never any other. `meta` has `kind: "file"`, `file_id`, `sourceid`, `sourcename`,
+`file_name`, `records_write`, `records_reject`, `table_name` and the exact `total`. The other `analysis-*` routes
+work on its `session_id` as usual. 400 for a table that is no table of the datasource or can not be read, 403 without
+a readable file log, 404 for a file not in the file log.
+
 #### `GET /api/analysis-status`
 `session_id`. Answers the same as `analysis-start`, with the current state.
 
@@ -1019,6 +1028,12 @@ shown (`view_line_chars`), on its own (a match across lines is no match).
 Answers the file's facts (as `view-ds-file`), `matches` `[{no, offset, text, cut, spans}]` (`spans`: `[start, end]` of
 each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scanned_lines` and `stopped` (`matches`,
 `time` or `null`). `400` for an invalid expression; otherwise the codes of `view-ds-file`.
+
+#### `GET /api/get-file-tables`
+`file_id`. The tables of the file's datasource (`PDI_CORE_DS_TABLES`, in their order), each with the rows of the
+file (`count(*) where file_id = :id`, read by the index): `{file, tables: [{table_name, count, reason}]}`. `file` is
+the file log row with `recordsread`, `recordswrite` and `recordsreject`. `count` is null and `reason` says why when a
+table does not exist, has no `FILE_ID` column or can not be read. 404 for a file not in the file log.
 
 #### `POST /api/check-ds-upload`
 JSON body `{id, names}`: checks files before they are uploaded to datasource `id`. Answers `sourcename`, `directory`

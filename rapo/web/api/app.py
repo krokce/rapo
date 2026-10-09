@@ -47,6 +47,7 @@ from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
 from ...pdi import files as ds_files
 from ...pdi import download as ds_download
+from ...pdi import records as ds_records
 from ...pdi import upload as ds_upload
 from ...pdi import viewer as ds_viewer
 from ...health import sampler as health, read_sessions
@@ -1287,6 +1288,14 @@ async def upload_ds_file(request: fastapi.Request, id: int, name: str):
             raise
 
 
+@api.get('/get-file-tables')
+def get_file_tables(file_id: int):
+    """Get the tables of a file's datasource with the file's records in each
+    (FILE_ID), and the file's record counts of the file log."""
+    with datasource_errors():
+        return ds_records.tables(file_id)
+
+
 @api.get('/get-pdi-state')
 def get_pdi_state():
     """Get the lane locks of PDI Core (PDI_CORE_STATE)."""
@@ -1779,6 +1788,28 @@ def analysis_start(process_id: int, dataset: str, random: bool = True,
     return session.describe()
 
 
+@api.post('/analysis-start-file')
+def analysis_start_file(file_id: int, table: str, random: bool = False,
+                        pushdown: dict | None = fastapi.Body(None)):
+    """Start an analysis session on the records a file of the PDI Core file
+    log loaded into one of its datasource's tables (FILE_ID).
+
+    The optional JSON body {filters, search, where} is applied by the
+    database, as for analysis-start. The sample is the first records unless
+    `random` is true.
+    """
+    if not (pdi.available and pdi.log_available):
+        raise fastapi.HTTPException(status_code=403,
+                                    detail='The file log is not available.')
+    try:
+        session = sessions.create(None, table, pushdown, random,
+                                  file_id=file_id)
+    except SessionError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+    return session.describe()
+
+
 @api.get('/analysis-status')
 def analysis_status(session_id: str):
     """Get an analysis session with the state of its sample."""
@@ -1959,7 +1990,8 @@ def analysis_export(session_id: str, format: str = 'xlsx',
                               columns=parse_json('columns', columns),
                               timeout=900)
     meta = session.meta
-    name = f"{meta['control_name']}_{meta['process_id']}_{meta['dataset']}"
+    name = meta.get('export_name') or (
+        f"{meta['control_name']}_{meta['process_id']}_{meta['dataset']}")
     media_type = ('text/csv' if format == 'csv' else
                   'application/vnd.openxmlformats-officedocument.'
                   'spreadsheetml.sheet')

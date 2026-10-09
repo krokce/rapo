@@ -37,6 +37,13 @@ const router = createRouter({
       meta: { searchPlaceholder: "Search control name or process ID" },
     },
     {
+      // The records a file of the PDI Core file log loaded into a table of its datasource (FILE_ID), on the same page.
+      name: "file-analysis",
+      path: "/analysis/file/:fileId/:table",
+      meta: { hideSearch: true },
+      component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
+    },
+    {
       // Its own chunk, so ECharts and the analysis components load only when a dataset is analysed.
       name: "data-analysis",
       path: "/analysis/:processId/:dataset",
