@@ -4,8 +4,19 @@
       <q-card-section class="row items-center no-wrap q-py-sm q-gutter-x-sm">
         <q-icon :name="layout === 'db' ? 'fas fa-database' : 'fas fa-file-alt'" color="blue-grey-6" size="20px" />
         <div class="text-h6 ellipsis" :title="file && file.inputfilename">{{ (info && info.name) || (file && file.inputfilename) }}</div>
-        <div v-if="info && layout !== 'db'" class="text-caption text-grey-7 text-no-wrap">{{ facts }}</div>
+        <div v-if="info && layout !== 'db' && viewAs === 'text'" class="text-caption text-grey-7 text-no-wrap">{{ facts }}</div>
         <q-space />
+        <q-btn-toggle
+          v-if="viewable && layout !== 'db'"
+          :model-value="viewAs"
+          dense
+          no-caps
+          unelevated
+          toggle-color="blue-grey-7"
+          color="grey-3"
+          text-color="grey-8"
+          :options="viewOptions"
+          @update:model-value="setViewAs" />
         <q-btn-toggle
           v-if="layoutOptions.length > 1"
           :model-value="layout"
@@ -28,7 +39,8 @@
            moved), the split only sizes the two. -->
       <div ref="panes" class="col column no-wrap viewer-panes">
         <div v-show="layout !== 'db'" class="column no-wrap file-pane" :style="filePaneStyle">
-          <q-card-section class="row items-start q-gutter-sm q-py-sm">
+          <asn1-pane v-if="viewAs === 'asn1' && asn1Shown" :key="`${file.id}|${settingsVersion}`" class="col" :file-id="file.id" :datasource-id="datasourceId" :saved="settings.asn1 || null" @saved="settingsSaved" />
+          <q-card-section v-show="viewAs === 'text'" class="row items-start q-gutter-sm q-py-sm">
             <q-input
               v-model="search"
               class="col"
@@ -63,6 +75,19 @@
               input-class="text-mono"
               @update:model-value="typeLayout">
               <template #append>
+                <q-btn
+                  v-if="layoutUnsaved"
+                  aria-label="Save the delimiter for the datasource"
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  icon="fas fa-save"
+                  :color="layoutLocalOnly ? 'orange-9' : 'primary'"
+                  :loading="savingLayout"
+                  @click="saveLayout">
+                  <q-tooltip max-width="320px">{{ layoutLocalOnly ? "Saved only in this browser: save it for the datasource (for everyone)" : "Save for the datasource: its files open with this delimiter (for everyone)" }}</q-tooltip>
+                </q-btn>
                 <q-badge v-if="layoutAuto" color="blue-grey-6" text-color="white" label="auto" class="q-mr-xs">
                   <q-tooltip>Detected from the first lines; type to change it</q-tooltip>
                 </q-badge>
@@ -101,7 +126,7 @@
             </q-input>
           </q-card-section>
 
-          <div class="row items-center q-px-md q-pb-sm q-gutter-x-sm text-caption text-grey-8 viewer-status">
+          <div v-show="viewAs === 'text'" class="row items-center q-px-md q-pb-sm q-gutter-x-sm text-caption text-grey-8 viewer-status">
             <q-chip v-if="savedGrep" dense clickable color="orange-1" text-color="orange-10" icon="fas fa-arrow-left" class="q-ml-none" @click="backToResults">
               Back to results
               <q-tooltip>The search results, as they were</q-tooltip>
@@ -110,7 +135,7 @@
             <q-spinner v-if="loading" size="14px" color="primary" />
           </div>
 
-          <div class="col relative-position viewer-body">
+          <div v-show="viewAs === 'text'" class="col relative-position viewer-body">
             <div v-if="!viewable" class="absolute-center text-grey-7 text-center">
               <q-icon name="fas fa-archive" size="32px" class="q-mb-sm" /><br />
               The archived file can not be shown.
@@ -118,11 +143,16 @@
             <div ref="editor" class="file-viewer" />
             <div v-if="info && info.binary" class="absolute-center text-grey-7 text-center">
               <q-icon name="fas fa-file-excel" size="32px" class="q-mb-sm" /><br />
-              A binary file: download it instead.
+              A binary file that does not start as ASN.1.
+              <div class="q-mt-md">
+                <q-btn outline no-caps color="primary" icon="fas fa-sitemap" label="Decode as ASN.1" @click="setViewAs('asn1')">
+                  <q-tooltip max-width="320px">Read it as BER anyway, e.g. after a header: set the start offset there</q-tooltip>
+                </q-btn>
+              </div>
             </div>
           </div>
 
-          <q-card-actions class="q-px-md">
+          <q-card-actions v-show="viewAs === 'text'" class="q-px-md">
             <span v-if="capped" class="text-orange-9 text-caption">
               The viewer keeps {{ formatNumber(maxLines) }} lines at most: search or download the file to see further.
             </span>
@@ -155,12 +185,14 @@ import { columnColors, DELIMITER_PRESETS, delimiterText, detectDelimiter, header
 import { downloadFiles } from "../utils/datasources";
 import { formatBytes, formatNumber } from "../utils/format";
 import FileRecordsPane from "./FileRecordsPane.vue";
+import Asn1Pane from "./asn1/Asn1Pane.vue";
 
 const BIG_STEP = 1000;
 // Pixels from the bottom at which scrolling loads the next lines.
 const NEAR_BOTTOM = 300;
 const DEFAULT_MAX_LINES = 50000;
-// The layout of the last viewer (whether split, and the file pane's share), and the delimiter of each datasource.
+// The layout of the last viewer (whether split, and the file pane's share), and the delimiter each datasource had in
+// this browser before the server kept it (get-viewer-settings), only read to offer saving it.
 const SPLIT_KEY = "rapo_viewer_split";
 const LAYOUT_KEY = "rapo_viewer_layout_";
 
@@ -191,7 +223,7 @@ function writeStorage(key, value) {
 // rows behind them are kept outside Vue's reactivity, as are the editor and its view.
 export default {
   name: "FileViewerDialog",
-  components: { FileRecordsPane },
+  components: { Asn1Pane, FileRecordsPane },
   data() {
     return {
       BIG_STEP,
@@ -229,10 +261,36 @@ export default {
       stopped: null,
       // The search results left by clicking a line, restored by Back to results.
       savedGrep: null,
+      // text: the lines; asn1: the nodes (Asn1Pane). Chosen by the user, else set by the file (asn1 when it looks
+      // like BER or the datasource decodes as ASN.1).
+      viewAs: "text",
+      viewChosen: false,
+      asn1Shown: false,
+      // The datasource's viewer settings ({layout, asn1}), and a delimiter only this browser remembered.
+      settings: {},
+      settingsVersion: 0,
+      localLayout: null,
+      savingLayout: false,
     };
   },
   computed: {
     ...mapGetters(["getEnvInfo"]),
+    viewOptions() {
+      return [
+        { value: "text", label: "Text", attrs: { title: "The file as lines of text" } },
+        { value: "asn1", label: "ASN.1", attrs: { title: "The file as ASN.1 (BER, DER, CER) nodes" } },
+      ];
+    },
+    // The delimiter as it would be saved: null when detected.
+    layoutValue() {
+      return this.layoutAuto ? null : this.typedLayout;
+    },
+    layoutUnsaved() {
+      return this.datasourceId !== null && this.layoutValue !== (this.settings.layout === undefined ? null : this.settings.layout);
+    },
+    layoutLocalOnly() {
+      return this.localLayout !== null && this.layoutValue === this.localLayout && this.settings.layout === undefined;
+    },
     maxLines() {
       return (this.getEnvInfo && this.getEnvInfo.datasources_view_max_lines) || DEFAULT_MAX_LINES;
     },
@@ -240,7 +298,7 @@ export default {
       return this.count >= this.maxLines && !this.eof;
     },
     canLoadMore() {
-      return Boolean(this.info && !this.info.binary && !this.eof && !this.capped && !this.loading);
+      return Boolean(this.viewAs === "text" && this.info && !this.info.binary && !this.eof && !this.capped && !this.loading);
     },
     detectedText() {
       return delimiterText(this.detected);
@@ -332,9 +390,15 @@ export default {
         this.layout = split.split && hasTables ? "split" : "file";
       }
       this.recordsShown = this.layout !== "file";
-      const saved = datasourceId !== null ? readStorage(LAYOUT_KEY + datasourceId) : null;
-      this.layoutAuto = !saved || typeof saved.text !== "string";
-      this.typedLayout = this.layoutAuto ? "" : saved.text;
+      const local = datasourceId !== null ? readStorage(LAYOUT_KEY + datasourceId) : null;
+      this.localLayout = local && typeof local.text === "string" ? local.text : null;
+      this.layoutAuto = this.localLayout === null;
+      this.typedLayout = this.localLayout || "";
+      this.settings = {};
+      this.viewAs = "text";
+      this.viewChosen = false;
+      this.asn1Shown = false;
+      this.loadSettings();
       this.info = null;
       this.search = "";
       this.matchCase = false;
@@ -351,6 +415,52 @@ export default {
       if (this.layout !== "db") {
         this.startFile();
       }
+    },
+    // The datasource's delimiter and ASN.1 decoding: they replace what the viewer started with, unless already changed.
+    async loadSettings() {
+      const datasourceId = this.datasourceId;
+      if (datasourceId === null) {
+        return;
+      }
+      try {
+        const result = await api("get-viewer-settings", { params: { sourceid: datasourceId }, loadingBar: false });
+        if (datasourceId !== this.datasourceId || !this.visible) {
+          return;
+        }
+        this.settings = result.settings || {};
+        this.settingsVersion += 1;
+        if (typeof this.settings.layout === "string" && (this.layoutAuto || this.typedLayout === this.localLayout)) {
+          this.layoutAuto = false;
+          this.typedLayout = this.settings.layout;
+        }
+        if (this.settings.asn1 && !this.viewChosen) {
+          this.showAsn1();
+        }
+      } catch (error) {
+        // Without the settings the viewer works as before (e.g. the table is not created yet).
+        this.settings = {};
+      }
+    },
+    setViewAs(value) {
+      this.viewChosen = true;
+      if (value === "asn1") {
+        this.showAsn1();
+      } else {
+        this.viewAs = "text";
+        this.$nextTick(() => {
+          this.startFile();
+          if (this.view) {
+            this.view.requestMeasure();
+          }
+        });
+      }
+    },
+    showAsn1() {
+      this.viewAs = "asn1";
+      this.asn1Shown = true;
+    },
+    settingsSaved(settings) {
+      this.settings = settings || {};
     },
     startFile() {
       if (this.view || !this.viewable) {
@@ -392,11 +502,10 @@ export default {
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", stop);
     },
-    // The Delimiter field as typed, remembered for the datasource.
+    // The Delimiter field as typed; Save keeps it for the datasource.
     typeLayout(value) {
       this.layoutAuto = false;
       this.typedLayout = value || "";
-      this.saveLayout();
     },
     pickLayout(text) {
       this.typeLayout(text);
@@ -414,16 +523,26 @@ export default {
     resetLayout() {
       this.layoutAuto = true;
       this.typedLayout = "";
-      this.saveLayout();
     },
-    saveLayout() {
-      if (this.datasourceId !== null) {
-        writeStorage(LAYOUT_KEY + this.datasourceId, this.layoutAuto ? null : { text: this.typedLayout });
+    async saveLayout() {
+      this.savingLayout = true;
+      try {
+        const result = await api("save-viewer-settings", { method: "POST", body: { sourceid: this.datasourceId, layout: this.layoutValue } });
+        this.settings = result.settings || {};
+        writeStorage(LAYOUT_KEY + this.datasourceId, null);
+        this.localLayout = null;
+        this.$q.notify({ type: "positive", message: "The datasource's files open with this delimiter now." });
+      } catch (error) {
+        notifyError("The delimiter was not saved.", error);
+      } finally {
+        this.savingLayout = false;
       }
     },
     close() {
       this.request += 1;
       this.recordsShown = false;
+      this.asn1Shown = false;
+      this.viewAs = "text";
       this.dialogShown = false;
       if (this.view) {
         this.view.destroy();
@@ -540,6 +659,9 @@ export default {
         }
         this.searchError = null;
         this.info = result;
+        if (result.binary && result.asn1 && !this.viewChosen) {
+          this.showAsn1();
+        }
         const rows = grep ? result.matches : result.lines;
         const room = this.maxLines - (append ? this.count : 0);
         this.setRows(rows.slice(0, room), append);

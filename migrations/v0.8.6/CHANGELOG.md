@@ -3,8 +3,10 @@
 ## Annotation
 A file of the file log can be viewed in the browser, however large, and searched as a whole on the server. Files can
 be uploaded into a datasource's input directory from the file log and the datasource editor, and the records a
-file loaded are shown below it or on the Data analysis page. There is no change to
-Rapo's own schema and no new Python package. The upgrade steps are in the [migration instructions](README.md).
+file loaded are shown below it or on the Data analysis page. A binary file is shown as ASN.1 (BER, DER, CER): its
+tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. The
+release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools`). The upgrade steps are in the
+[migration instructions](README.md).
 
 1. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
    found on this server within the datasource's archive, error or duplicate directory) has an eye icon opening the
@@ -13,7 +15,8 @@ Rapo's own schema and no new Python package. The upgrade steps are in the [migra
      more* a thousand. A gzip (recognized by its content, not its name), the first file of a ZIP, or a plain file is
      read decompressed, without unpacking it anywhere: the server keeps nothing between requests and reads each
      page from where the previous one ended (a gzip is decompressed up to that point, which is fast: a jump to line
-     5 million of a 300 MB file takes about half a second). The viewer keeps at most 50,000 lines; further, search or
+     5 million of a 300 MB file takes about half a second; the server keeps a checkpoint every 8 MB of the 8 gzips
+     read last, so a jump back into one costs at most 8 MB). The viewer keeps at most 50,000 lines; further, search or
      download the file. The header shows the file's size, compression and encoding (UTF-8, else Latin-1); a binary
      file is not shown. A line longer than 10,000 characters is cut, with a note of the bytes left out.
    - **Look.** Like the SQL boxes: monospace, read-only, the file's own line numbers, in light and dark mode.
@@ -23,8 +26,10 @@ Rapo's own schema and no new Python package. The upgrade steps are in the [migra
      marked *auto*. Typing in it sets any delimiter, also of several characters (`||`, `\t` for a tab); digits
      separated by commas (`10,5,8`) are **fixed column widths** in characters (characters after the last width are
      shown as one more, muted column, and hovering names the character positions). Its menu has the usual delimiters,
-     *Fixed widths…* (widths that split line 1 as its delimiter does, to edit), *None* and *Detect*. The choice is
-     remembered for the datasource in the browser.
+     *Fixed widths…* (widths that split line 1 as its delimiter does, to edit), *None* and *Detect*. The save icon
+     in the field keeps the delimiter for the datasource, for everyone (it was kept per browser before: a delimiter
+     only this browser remembers shows an orange save icon, *Saved only in this browser*, and is never saved by
+     itself).
    - **Search.** Text in the search field searches the **whole file** on the server, not only the lines loaded: the
      matching lines are listed with their line numbers and the matches highlighted; *Find more* (or scrolling) goes
      on. A search stops after 500 matching lines or 20 seconds of reading and says how far it got; plain text is
@@ -67,3 +72,44 @@ Rapo's own schema and no new Python package. The upgrade steps are in the [migra
      canceled or failed upload leaves nothing behind. Each upload is written to the server log.
    - New options `[DATASOURCES] file_upload` (**off by default**) and `max_upload_mb` (2048 MB per file). New routes
      `check-ds-upload` and `upload-ds-file`.
+4. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
+   its first bytes read as BER; the header's *Text* / *ASN.1* switch changes the view of any file, and a binary file
+   that does not start as ASN.1 offers *Decode as ASN.1* (set a *Start offset* to skip a file header).
+   - **Tree.** On the left, the file's TLVs as a tree, `Tag : [20]` as common ASN.1 viewers show them (a folder for a
+     constructed node, a page for a primitive one, its value after it). A node's children are read from the file
+     when it is opened, 500 at a time (scrolling to the end of a level reads the next ones), so a TAP file of
+     100,000 calls or a CDR file of millions of records opens at once. The arrow keys move the selection and open
+     or close a node. Bytes between records that are 00 or FF (the padding of block-written files) are skipped;
+     bytes that are no TLV show as an orange *Undecodable* node and the reading goes on at the next record, so a
+     damaged file is shown as far as it can be. Lengths may be definite or indefinite (CER).
+   - **Bytes.** On the right, the **whole file** in hex, 16 bytes a row with the address and the bytes as text, read
+     64 KB at a time as you scroll, however large the file. The selected node's bytes are colored: the tag orange,
+     the length green, the value blue. A click on a byte selects the deepest node holding it and opens the tree down
+     to it.
+   - **Tabs** under the bytes: *Hex*, *XML* (the selected node and its children as XML, with tags, offsets, lengths,
+     types, values and hex) and *Text* (an indented listing: offset, header and value length, name, tag, type,
+     value), each with Copy and Download; at most 5,000 nodes (`asn1_render_nodes`). Below, the selected node's
+     details: offset, tag and form, length, field and type, and what its value reads as (by its type with a
+     grammar; else every reading that fits: integer, text, TBCD digits as in an IMSI, an address with its TON/NPI, a
+     3GPP time stamp, a PLMN, an IP address) with its bytes.
+   - **Grammars.** *Grammars…* uploads ASN.1 modules (one or more .asn files, as one named grammar, at most
+     `asn1_grammar_max_kb`): checked at once (an error names the file, line and column), listed with their modules
+     and the datasources using them, replaced or deleted. Picking a *Grammar* names the nodes (`servedIMSI [3]`) and
+     reads their values by type (`recordType [0] sGWRecord (84)`); the *Type* of the file's records (e.g.
+     `GPRSRecord`, `DataInterChange`) is guessed from the first one and can be picked. A grammar needs not be
+     complete: a type it lacks (e.g. one imported from a module not uploaded) leaves those fields unnamed, and a
+     tag it does not expect is shown in orange. A file of type assignments without a module header (as some copies
+     of the GSMA TDs are) is read as one module with IMPLICIT TAGS. No grammar is shipped with Rapo (the GSMA texts
+     are not public): upload the ones you use.
+   - **Search.** *Field* finds nodes by name or tag, or a path of them (`servedIMSI`, `[20]/[3]`,
+     `listOfTrafficVolumes/dataVolumeGPRSUplink`), optionally with a value (contains, or `=` the whole value, in any
+     reading or the hex); *Hex* finds bytes (`80 04 0A F9`). Like the text search it reads the whole file on the
+     server, 500 hits or 20 seconds at a time, and a hit opens the tree at its node.
+   - **Save for datasource** keeps the grammar, type and start offset for the datasource: its files open with them,
+     for everyone.
+   - New table `rapo_viewer_config` (grammars and the viewer settings of each datasource), new Python package
+     `asn1tools` (MIT; only its ASN.1 parser is used). New options `[DATASOURCES] asn1_page_nodes`,
+     `asn1_render_nodes`, `asn1_grammar_max_kb`. New routes `get-ds-file-asn1`, `get-ds-file-asn1-node`,
+     `locate-ds-file-asn1`, `render-ds-file-asn1`, `search-ds-file-asn1`, `get-ds-file-bytes`, `get-asn1-grammars`,
+     `get-asn1-grammar-types`, `save-asn1-grammar`, `delete-asn1-grammar`, `get-viewer-settings`,
+     `save-viewer-settings`. Grammar and settings changes are written to the server log.

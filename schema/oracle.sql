@@ -413,6 +413,18 @@ create table rapo_web_api (
 insert into rapo_web_api (id, status) values ('RAPO.WEB.API', 'N');
 commit;
 
+-- Settings of the file viewer: ASN.1 grammars (GRAMMAR, by name: the .asn
+-- files as JSON) and per datasource (DATASOURCE, by SOURCEID: delimiter and
+-- ASN.1 decoding as JSON).
+create table rapo_viewer_config (
+  config_type  varchar2(10 char) not null,
+  config_name  varchar2(128 char) not null,
+  content      clob not null,
+  created_date date default sysdate not null,
+  updated_date date default sysdate not null,
+  constraint rapo_viewer_config_pk primary key (config_type, config_name)
+);
+
 create or replace function rapo_prerun_control_hook (in_process_id number) return varchar2
 as
   v_control_name varchar2(20);

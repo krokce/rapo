@@ -3,20 +3,27 @@
 A file is read from where PDI Core kept it, under the same rules as a
 download (download.locate), and sent a few lines at a time. Archived files
 are mostly gzipped and may have gigabytes, so nothing is kept between
-requests: each one opens the file and seeks to the uncompressed byte offset
-the previous one ended at (a gzip is decompressed up to it, which is fast in
-C), so a request costs the lines it sends plus the bytes before them.
+requests but a few checkpoints of the gzips read last: each request opens the
+file and seeks to the uncompressed byte offset the previous one ended at (a
+gzip is decompressed from the checkpoint before it, see _GzipReader), so a
+request costs the lines it sends plus at most CHECKPOINT_BYTES before them.
 """
 
 import codecs
+import collections
 import gzip
+import io
+import os
 import re
+import threading
 import time
 import zipfile
+import zlib
 
 from ..logger import logger
 
 from . import download
+from .asn1 import ber
 from .files import number_option
 from .store import DatasourceError
 
@@ -27,6 +34,13 @@ MAX_LINES = 5000
 BYTES_PER_CHAR = 4
 # A search reads blocks of whole lines of about this size.
 BLOCK_BYTES = 1024 * 1024
+# A gzip keeps the state of its decompressor every this many uncompressed
+# bytes, for the GZIP_FILES files read last.
+CHECKPOINT_BYTES = 8 * 1024 * 1024
+GZIP_FILES = 8
+GZIP_INPUT = 64 * 1024
+GZIP_OUTPUT = 1024 * 1024
+GZIP_WBITS = zlib.MAX_WBITS | 16
 
 
 def read(id, offset=0, line=1, lines=None):
@@ -197,9 +211,12 @@ class _open:
             with open(self.path, 'rb') as probe:
                 magic = probe.read(4)
             if magic[:2] == b'\x1f\x8b':
-                stream = gzip.open(self.path, 'rb')
+                raw = _GzipReader(self.path)
+                self.handles.append(raw)
+                stream = io.BufferedReader(raw, GZIP_INPUT)
                 self.handles.append(stream)
                 self.kind = 'gzip'
+                stream.data_size = raw.size_hint
             elif magic == b'PK\x03\x04':
                 archive = zipfile.ZipFile(self.path)
                 self.handles.append(archive)
@@ -210,10 +227,14 @@ class _open:
                 stream = archive.open(members[0])
                 self.handles.append(stream)
                 self.kind = f'zip:{members[0].filename}'
+                size = members[0].file_size
+                stream.data_size = lambda: size
             else:
                 stream = open(self.path, 'rb')
                 self.handles.append(stream)
                 self.kind = 'plain'
+                size = os.path.getsize(self.path)
+                stream.data_size = lambda: size
         except (OSError, zipfile.BadZipFile) as error:
             self.__exit__(None, None, None)
             raise DatasourceError(f'The file is not readable: '
@@ -230,17 +251,182 @@ class _open:
         self.handles = []
         if args[0] is not None and issubclass(
                 args[0], (OSError, EOFError, zipfile.BadZipFile,
-                          gzip.BadGzipFile)):
+                          gzip.BadGzipFile, zlib.error)):
             raise DatasourceError(f'The file is not readable: {args[1]}.')
         return False
+
+
+class _GzipIndex:
+    """The checkpoints of one gzip: `(uncompressed offset, compressed offset,
+    decompressor, at a member's start)` in ascending order, and its size once
+    read to the end."""
+
+    def __init__(self):
+        self.points = []
+        self.size = None
+        self.lock = threading.Lock()
+
+    def before(self, offset):
+        """Get the last checkpoint at or before an uncompressed offset."""
+        with self.lock:
+            found = None
+            for point in self.points:
+                if point[0] > offset:
+                    break
+                found = point
+            return found
+
+    def add(self, offset, position, decompressor, member_start):
+        with self.lock:
+            last = self.points[-1][0] if self.points else 0
+            if offset >= last + CHECKPOINT_BYTES:
+                self.points.append((offset, position, decompressor.copy(),
+                                    member_start))
+
+
+_gzip_indexes = collections.OrderedDict()
+_gzip_lock = threading.Lock()
+
+
+def _gzip_index(path):
+    """Get the checkpoints of a gzip, kept for the GZIP_FILES read last; a
+    file changed since (size, mtime) starts anew."""
+    status = os.stat(path)
+    key = (path, status.st_size, status.st_mtime_ns)
+    with _gzip_lock:
+        index = _gzip_indexes.pop(key, None) or _GzipIndex()
+        _gzip_indexes[key] = index
+        while len(_gzip_indexes) > GZIP_FILES:
+            _gzip_indexes.popitem(last=False)
+    return index
+
+
+class _GzipReader(io.RawIOBase):
+    """Read a gzip (one member or several) as its uncompressed bytes.
+
+    A seek goes on from the checkpoint before the offset, or from where the
+    reader is when that is nearer, and checkpoints are added while reading.
+    A decompressor state is consistent with the compressed position of the
+    input it has not consumed yet (`pending`), so a copy resumes exactly.
+    Bytes after a complete member that are no gzip (zero padding) end it.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.file = open(path, 'rb')
+        self.index = _gzip_index(path)
+        self._start(None)
+
+    def _start(self, point):
+        if point is None:
+            point = (0, 0, zlib.decompressobj(GZIP_WBITS), False)
+        offset, position, decompressor, member_start = point
+        self.file.seek(position)
+        self.decompressor = decompressor.copy()
+        self.member_start = member_start
+        self.pending = b''
+        self.output = b''
+        self.offset = offset
+        self.eof = False
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def tell(self):
+        return self.offset
+
+    def size_hint(self):
+        """Get the uncompressed size: known once read to the end, else the
+        ISIZE of the last member (the size modulo 4 GB of a one-member
+        file), or None."""
+        if self.index.size is not None:
+            return self.index.size
+        try:
+            with open(self.path, 'rb') as file:
+                file.seek(-4, os.SEEK_END)
+                return int.from_bytes(file.read(4), 'little')
+        except OSError:
+            return None
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        if whence == io.SEEK_CUR:
+            offset += self.offset
+        elif whence == io.SEEK_END:
+            raise io.UnsupportedOperation('seek from the end of a gzip')
+        offset = max(offset, 0)
+        point = self.index.before(offset)
+        if offset < self.offset or (
+                point is not None and point[0] > self.offset):
+            self._start(point)
+        while self.offset < offset:
+            if not self.output and not self._fill():
+                break
+            skip = min(offset - self.offset, len(self.output))
+            self.output = self.output[skip:]
+            self.offset += skip
+        return self.offset
+
+    def readinto(self, buffer):
+        if not self.output and not self._fill():
+            return 0
+        size = min(len(buffer), len(self.output))
+        buffer[:size] = self.output[:size]
+        self.output = self.output[size:]
+        self.offset += size
+        return size
+
+    def _fill(self):
+        """Decompress the next piece into `output`; False at the end."""
+        while not self.output:
+            if self.eof:
+                return False
+            if not self.pending:
+                self.pending = self.file.read(GZIP_INPUT)
+                if not self.pending:
+                    self._finish()
+                    return False
+            decompressor = self.decompressor
+            try:
+                self.output = decompressor.decompress(self.pending,
+                                                      GZIP_OUTPUT)
+            except zlib.error:
+                if self.member_start:
+                    self._finish()
+                    return False
+                raise
+            self.member_start = False
+            if decompressor.eof:
+                self.pending = decompressor.unused_data
+                self.decompressor = zlib.decompressobj(GZIP_WBITS)
+                self.member_start = True
+            else:
+                self.pending = decompressor.unconsumed_tail
+            self.index.add(self.offset + len(self.output),
+                           self.file.tell() - len(self.pending),
+                           self.decompressor, self.member_start)
+        return True
+
+    def _finish(self):
+        self.eof = True
+        self.index.size = self.offset
+
+    def close(self):
+        try:
+            self.file.close()
+        finally:
+            super().close()
 
 
 def _meta(file, stream):
     """Get what a page shows of a file, read from its first 64 KB.
 
     `encoding` is UTF-8 when they decode as it, else Latin-1 (any byte is a
-    character); `binary` when they hold a NUL byte; `header` is the first
-    line, for the names of the columns.
+    character); `binary` when they hold a NUL byte; `asn1` when a binary
+    file looks like BER; `header` is the first line, for the names of the
+    columns.
     """
     sniff = stream.read(SNIFF_BYTES)
     binary = b'\x00' in sniff
@@ -256,7 +442,8 @@ def _meta(file, stream):
         header = header[:_line_chars()]
     return {'id': file['id'], 'name': file['name'], 'size': file['size'],
             'compression': stream.kind, 'encoding': encoding,
-            'binary': binary, 'header': header}
+            'binary': binary, 'asn1': binary and ber.sniff(sniff),
+            'header': header}
 
 
 def _seek(stream, offset):

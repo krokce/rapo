@@ -50,6 +50,8 @@ from ...pdi import download as ds_download
 from ...pdi import records as ds_records
 from ...pdi import upload as ds_upload
 from ...pdi import viewer as ds_viewer
+from ...pdi import viewer_config as ds_viewer_config
+from ...pdi.asn1 import view as ds_asn1
 from ...health import sampler as health, read_sessions
 
 
@@ -1257,6 +1259,144 @@ def grep_ds_file(id: int, pattern: str, regex: bool = False,
     with datasource_errors():
         return ds_viewer.grep(id, pattern, regex=regex, case=case,
                               offset=offset, line=line)
+
+
+@api.get('/get-ds-file-asn1')
+def get_ds_file_asn1(id: int, parent: int | None = None,
+                     state: str | None = None, ordinal: int = 0,
+                     count: int | None = None, start_offset: int = 0,
+                     grammar: str | None = None, top: str | None = None):
+    """Get a page of the ASN.1 (BER) nodes of a loaded file.
+
+    Without `parent` the nodes of the root (the TLVs from `start_offset`),
+    else the children of the node at that offset, whose `state` (as answered
+    with it) names them with the `grammar` (an uploaded one) and its `top`
+    type (guessed when not given). `ordinal` is the first child, `count`
+    how many ([DATASOURCES] asn1_page_nodes).
+    """
+    with datasource_errors():
+        return ds_asn1.nodes(id, parent=parent, state=state, ordinal=ordinal,
+                             count=count, start_offset=start_offset,
+                             grammar=grammar, top=top)
+
+
+@api.get('/get-ds-file-asn1-node')
+def get_ds_file_asn1_node(id: int, offset: int, state: str | None = None,
+                          start_offset: int = 0, grammar: str | None = None,
+                          top: str | None = None):
+    """Get one ASN.1 node of a loaded file with what its value reads as."""
+    with datasource_errors():
+        return ds_asn1.node(id, offset, state=state,
+                            start_offset=start_offset, grammar=grammar,
+                            top=top)
+
+
+@api.get('/locate-ds-file-asn1')
+def locate_ds_file_asn1(id: int, offset: int, start_offset: int = 0,
+                        grammar: str | None = None, top: str | None = None):
+    """Get the ASN.1 nodes holding a byte of a loaded file, from the root
+    down to the deepest."""
+    with datasource_errors():
+        return ds_asn1.locate(id, offset, start_offset=start_offset,
+                              grammar=grammar, top=top)
+
+
+@api.get('/get-ds-file-bytes')
+def get_ds_file_bytes(id: int, offset: int = 0, size: int = 65536):
+    """Get uncompressed bytes of a loaded file (at most 64 KB), as
+    application/octet-stream; `X-Rapo-Data-Size` is the uncompressed size
+    when known."""
+    with datasource_errors():
+        data, data_size = ds_asn1.read_bytes(id, offset, size)
+    headers = {'X-Rapo-Offset': str(offset)}
+    if data_size is not None:
+        headers['X-Rapo-Data-Size'] = str(data_size)
+    return fastapi.Response(content=data,
+                            media_type='application/octet-stream',
+                            headers=headers)
+
+
+@api.get('/render-ds-file-asn1')
+def render_ds_file_asn1(id: int, offset: int, state: str | None = None,
+                        format: str = 'xml', start_offset: int = 0,
+                        grammar: str | None = None, top: str | None = None):
+    """Get an ASN.1 node and its subtree as XML or text (`format`), at most
+    [DATASOURCES] asn1_render_nodes nodes."""
+    with datasource_errors():
+        return ds_asn1.render(id, offset, state=state, format=format,
+                              start_offset=start_offset, grammar=grammar,
+                              top=top)
+
+
+@api.get('/search-ds-file-asn1')
+def search_ds_file_asn1(id: int, field: str | None = None,
+                        value: str | None = None, match: str = 'contains',
+                        hex: str | None = None, offset: int = 0,
+                        start_offset: int = 0, grammar: str | None = None,
+                        top: str | None = None):
+    """Find the ASN.1 nodes of a loaded file by field (names or tags) and
+    value, or by hex bytes, from `offset` until [DATASOURCES]
+    view_grep_matches hits or view_grep_seconds passed."""
+    with datasource_errors():
+        return ds_asn1.search(id, field=field, value=value, match=match,
+                              hex=hex, offset=offset,
+                              start_offset=start_offset, grammar=grammar,
+                              top=top)
+
+
+@api.get('/get-asn1-grammars')
+def get_asn1_grammars():
+    """Get the uploaded ASN.1 grammars (without their texts)."""
+    with datasource_errors():
+        return {'grammars': ds_viewer_config.grammars()}
+
+
+@api.get('/get-asn1-grammar-types')
+def get_asn1_grammar_types(name: str):
+    """Get the types a file can be decoded with by a grammar."""
+    with datasource_errors():
+        return ds_viewer_config.grammar_types(name)
+
+
+@api.post('/save-asn1-grammar')
+def save_asn1_grammar(data: dict = fastapi.Body(...)):
+    """Save an ASN.1 grammar: the body is {name, files: [{name, text}],
+    replace}. It is parsed first (400 naming the file and line); an
+    existing name is replaced only with `replace` (else 409)."""
+    with datasource_errors():
+        result = ds_viewer_config.save_grammar(
+            data.get('name'), data.get('files'),
+            replace=bool(data.get('replace')))
+    return {'status': 200, **result}
+
+
+@api.post('/delete-asn1-grammar')
+def delete_asn1_grammar(name: str):
+    """Delete an ASN.1 grammar no datasource decodes with (else 409)."""
+    with datasource_errors():
+        ds_viewer_config.delete_grammar(name)
+    return {'status': 200}
+
+
+@api.get('/get-viewer-settings')
+def get_viewer_settings(sourceid: int):
+    """Get the file viewer settings of a datasource: the delimiter
+    (`layout`) and the ASN.1 decoding (`asn1`)."""
+    with datasource_errors():
+        return {'sourceid': sourceid,
+                'settings': ds_viewer_config.settings(sourceid)}
+
+
+@api.post('/save-viewer-settings')
+def save_viewer_settings(data: dict = fastapi.Body(...)):
+    """Save file viewer settings of a datasource: the body is {sourceid,
+    layout?, asn1?}; the keys given replace theirs (null removes one)."""
+    with datasource_errors():
+        settings = ds_viewer_config.save_settings(
+            data.get('sourceid'),
+            {key: value for key, value in data.items()
+             if key in ('layout', 'asn1')})
+    return {'status': 200, 'settings': settings}
 
 
 @api.post('/check-ds-upload')

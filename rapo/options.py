@@ -244,6 +244,14 @@ _add('DATASOURCES', 'view_grep_seconds', 'int', 20,
 _add('DATASOURCES', 'view_grep_matches', 'int', 500,
      'Matching lines one search of the file viewer returns at most',
      minimum=1)
+_add('DATASOURCES', 'asn1_page_nodes', 'int', 500,
+     'ASN.1 nodes the file viewer lists at a time under one node',
+     minimum=1)
+_add('DATASOURCES', 'asn1_render_nodes', 'int', 5000,
+     'ASN.1 nodes the XML and Text tabs of the file viewer show at most',
+     minimum=1)
+_add('DATASOURCES', 'asn1_grammar_max_kb', 'int', 2048,
+     'Largest uploaded ASN.1 grammar (all its files)', minimum=1)
 _add('DATASOURCES', 'file_upload', 'bool', False,
      'Allow uploading files into the input directory of a datasource')
 _add('DATASOURCES', 'max_upload_mb', 'int', 2048,

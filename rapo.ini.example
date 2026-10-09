@@ -199,8 +199,8 @@ lock_stale_minutes=30
 file_download=True
 max_download_mb=500
 # The file viewer of the file log shows the files a download would send, read
-# in steps of view_lines (a gzip is decompressed up to where the viewer is, so
-# nothing is kept between requests), at most view_max_lines in the browser, and
+# in steps of view_lines (a gzip is decompressed up to where the viewer is,
+# from a checkpoint kept every 8 MB), at most view_max_lines in the browser, and
 # line by line only the first view_line_chars characters of a line. A search
 # reads on until view_grep_matches lines matched or view_grep_seconds passed.
 # It is allowed with file_download.
@@ -209,6 +209,13 @@ view_max_lines=50000
 view_line_chars=10000
 view_grep_seconds=20
 view_grep_matches=500
+# A binary file is shown as ASN.1 (BER, DER, CER) when it parses as one: the
+# viewer lists asn1_page_nodes nodes of a level at a time, its XML and Text
+# tabs show asn1_render_nodes nodes at most, and an uploaded grammar (field
+# names and types) has at most asn1_grammar_max_kb.
+asn1_page_nodes=500
+asn1_render_nodes=5000
+asn1_grammar_max_kb=2048
 # Uploads of files into the first input directory of a datasource, from the
 # file log and the datasource editor, at most max_upload_mb each. A file is
 # written under a temporary name and renamed when complete, so PDI Core never

@@ -39,8 +39,8 @@ section and answer 404 otherwise. Redoc is disabled.
 
 * **Parameters are query parameters**, including on `POST` and `DELETE`. The exceptions are `save-control`,
   `check-control-schema`, `save-kpi-type`, `validate-kpi-sql`, `calculate-kpi`, `validate-sql`,
-  `validate-analysis-where`, `download-ds-files` and `check-ds-upload`, which take a JSON body, `analysis-start`,
-  which takes an optional one, and `upload-ds-file`, whose body is the file.
+  `validate-analysis-where`, `download-ds-files`, `check-ds-upload`, `save-asn1-grammar` and `save-viewer-settings`,
+  which take a JSON body, `analysis-start`, which takes an optional one, and `upload-ds-file`, whose body is the file.
 * **Mutations answer `{"status": 200}`.** `save-control` adds the saved row's `control_id` and `updated_date`.
   Reads answer their payload directly.
 * **Errors are real HTTP codes** with FastAPI's `detail`:
@@ -993,7 +993,8 @@ curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: applicatio
 Reads lines of a loaded file, for the file viewer of the file log. The file is one `download-ds-files` would send
 (same rules and `[DATASOURCES] file_download` switch). A gzip (by its magic bytes) or the first file of a ZIP is read
 decompressed. Nothing is kept between requests: each one reads from an uncompressed byte offset, the `next_offset` of
-the previous answer (a gzip is decompressed up to it).
+the previous answer (a gzip is decompressed up to it, from the nearest checkpoint the server keeps every 8 MB for the
+8 gzips read last).
 
 | Parameter | Type | Default | Meaning                                                                          |
 |-----------|------|---------|----------------------------------------------------------------------------------|
@@ -1004,7 +1005,7 @@ the previous answer (a gzip is decompressed up to it).
 
 Answers the file's facts, `id`, `name`, `size` (bytes on disk), `compression` (`gzip`, `zip:<member>` or `plain`),
 `encoding` (`utf-8`, or `latin-1` when the first 64 KB are no UTF-8), `binary` (a NUL byte in the first 64 KB: no
-lines) and `header` (line 1), then `lines` `[{no, offset, text, cut}]`, `next_offset`, `next_line` and `eof`. A line is
+lines), `asn1` (a binary file whose first bytes read as BER: the viewer opens it as ASN.1) and `header` (line 1), then `lines` `[{no, offset, text, cut}]`, `next_offset`, `next_line` and `eof`. A line is
 cut after `[DATASOURCES] view_line_chars` (10,000) characters; `cut` counts the bytes left out.
 
 `400` when the file can not be shown (the reason is named); `403` with `file_download=False`; `404` for a file ID not
@@ -1028,6 +1029,69 @@ shown (`view_line_chars`), on its own (a match across lines is no match).
 Answers the file's facts (as `view-ds-file`), `matches` `[{no, offset, text, cut, spans}]` (`spans`: `[start, end]` of
 each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scanned_lines` and `stopped` (`matches`,
 `time` or `null`). `400` for an invalid expression; otherwise the codes of `view-ds-file`.
+
+#### ASN.1 view
+A loaded file read as ASN.1 BER (DER and CER too), for the viewer's ASN.1 view. The file is one `download-ds-files`
+would send, decompressed as by `view-ds-file`. From `start_offset` it is a series of TLVs (the *root*); 00 and FF
+bytes between them are skipped, bytes that are no TLV become an `undecodable` node and the reading goes on at the next
+TLV. Nothing is decoded ahead: a request reads the headers of one page of one node's children; the server notes every
+256th child's offset of the files read last, so a later page starts near it. With a `grammar` (an uploaded one, see
+`get-asn1-grammars`) and a `top` type (`Module.Type`, guessed from the first TLV when not given) the nodes get their
+field names and types; a tag the grammar does not expect leaves the node (and its children) unnamed (`unknown`).
+
+Common parameters: `id` (file ID, required), `start_offset` (`0`: bytes to skip, e.g. a file header), `grammar` and
+`top`. A **node** is `{offset, end, ordinal, undecodable, cls, number, tag, constructed, indefinite, tag_len,
+header_len, length, has_children}` (`length` of the content; `tag` as `[3]`, `[APPLICATION 1]` or `SEQUENCE`), with a
+grammar `name`, `alternatives` (the CHOICE alternatives it is), `type`, `state` (sent back to read its children) and
+`unknown`, and for a primitive one `preview` (its likeliest reading) or `preview_hex`. Errors as `view-ds-file`.
+
+* `GET /api/get-ds-file-asn1`: a page of nodes, of the root or (`parent`: its offset, `state`: its state) of a
+  constructed node. `ordinal` (`0`) the first child, `count` (`[DATASOURCES] asn1_page_nodes`, 500) how many, at most
+  5,000. Answers the file's facts (`id`, `name`, `size`, `compression`, `data_size` (uncompressed, null when unknown),
+  `start_offset`, `grammar`, `top`), `nodes` and `eof`.
+* `GET /api/get-ds-file-asn1-node`: one node by `offset` (and `state`) with `readings` `[{label, value}]` (what its
+  value reads as: by its type with a grammar, else every reading that fits, e.g. integer, text, TBCD digits, address,
+  3GPP time stamp, IP address), `hex` (its first 4 KB) and `type_chain` (the types it is defined as).
+* `GET /api/locate-ds-file-asn1`: the nodes holding the byte at `offset`, `levels` `[{parent, node}]` from the root
+  (`parent` null) down to the deepest.
+* `GET /api/render-ds-file-asn1`: a node (`offset`, `state`) and its subtree as `format` `xml` or `text` (one line per
+  node: offset, header and content length, then the indented name, tag, type and value), at most `[DATASOURCES]
+  asn1_render_nodes` (5,000) nodes and 2 MB: `{text, nodes, truncated}`.
+* `GET /api/search-ds-file-asn1`: finds nodes from `offset` (`0`) until `[DATASOURCES] view_grep_matches` hits or
+  `view_grep_seconds` passed. `field` is a name or tag, or a path of them ending at the node (`servedIMSI`, `[3]`,
+  `listOfTrafficVolumes/dataVolumeGPRSUplink`); `value` matches (`match` `contains` or `equals`, any case) a primitive
+  node's readings or hex; `hex` (`80 04 0A F9`) finds bytes instead and answers the deepest node holding each. Answers
+  `hits` `[{offset, path, preview}]` (+ `match`, the byte offset of a hex hit), `next_offset`, `eof`, `scanned_bytes`
+  and `stopped`. 400 without a field, value or valid hex.
+
+#### `GET /api/get-ds-file-bytes`
+`id`, `offset` (`0`), `size` (65536, at most 64 KB): uncompressed bytes of a loaded file as `application/octet-stream`
+(fewer at its end), for the viewer's hex pane. `X-Rapo-Data-Size` is the uncompressed size when known. Errors as
+`view-ds-file`.
+
+#### ASN.1 grammars
+Uploaded grammars (one or more ASN.1 modules) that name the fields of a file, kept in `rapo_viewer_config`. Only the
+modules are parsed (asn1tools), never compiled, so a grammar needs not be complete: a type it lacks leaves its fields
+unnamed. A file of type assignments only, without a module header, is read as a module named after the file with
+IMPLICIT TAGS (`wrapped`). Every write is logged to the server log with what it replaces.
+
+* `GET /api/get-asn1-grammars`: `{grammars: [{name, files: [{name, size}], modules, wrapped, created_date,
+  updated_date, used_by}]}` (`used_by`: the datasources whose files open with it).
+* `GET /api/get-asn1-grammar-types`: `name`; `{name, tops, preferred}`: the types to decode a file with, as
+  `Module.Type`, the first `preferred` of them being the structured types no other type refers to.
+* `POST /api/save-asn1-grammar`: JSON body `{name, files: [{name, text}], replace}`. Parsed first: 400 naming the
+  file, line and column of an error; 409 for an existing name without `replace`; 413 past `[DATASOURCES]
+  asn1_grammar_max_kb` (2048). Answers `{status, name, modules, tops, preferred, wrapped}`.
+* `POST /api/delete-asn1-grammar`: `name`. 409 while a datasource opens its files with it, 404 for an unknown name.
+
+All answer 503 while `rapo_viewer_config` does not exist (run `migrations/v0.8.6/upgrade.sql`).
+
+#### Viewer settings
+* `GET /api/get-viewer-settings`: `sourceid`; `{sourceid, settings}`, `settings` `{layout, asn1: {grammar, top,
+  start_offset}}` (keys left out when not set): what the viewer opens the datasource's files with.
+* `POST /api/save-viewer-settings`: JSON body `{sourceid, layout?, asn1?}`; each key given replaces its value (`null`
+  removes it), the others are kept. `layout` is the *Delimiter* field's text; `asn1.grammar` must exist (404) and
+  `asn1.top` be one of its types (400). Answers `{status, settings}`.
 
 #### `GET /api/get-file-tables`
 `file_id`. The tables of the file's datasource (`PDI_CORE_DS_TABLES`, in their order), each with the rows of the
