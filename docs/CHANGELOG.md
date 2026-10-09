@@ -36,7 +36,7 @@ options (uploads are off until `file_upload=True`).
   shows them on the full page (`/analysis/file/:fileId/:table`). Routes `get-file-tables`, `get-file-records`,
   `analysis-start-file`.
 - **Upload files** into the first input directory of a datasource: *Upload* on the file log and *Upload files* in the
-  editor's Input files box, or drop files on either. Per-file progress; a file not matching the file name pattern is
+  editor's Input files box and the input files dialog, or drop files on any of them. Per-file progress; a file not matching the file name pattern is
   flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so
   PDI Core never loads a partial file. `[DATASOURCES] file_upload` (off), `max_upload_mb`; routes `check-ds-upload`,
   `upload-ds-file`.

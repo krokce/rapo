@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="visible">
-    <q-card class="column no-wrap" style="width: 1400px; max-width: 95vw; height: 85vh">
+    <q-card class="column no-wrap relative-position" style="width: 1400px; max-width: 95vw; height: 85vh" @dragenter="dragEnter" @dragover="dragOverPage" @dragleave="dragLeave" @drop="dropFiles">
       <q-card-section class="row items-center q-py-sm q-gutter-sm">
         <div class="text-h6">{{ title }}</div>
         <q-btn-toggle
@@ -14,6 +14,9 @@
           :options="kindOptions"
           @update:model-value="load" />
         <q-space />
+        <q-btn v-if="canUpload" outline dense no-caps class="q-px-sm icon-button" color="primary" icon="fas fa-upload" label="Upload files" @click="openUpload([])">
+          <q-tooltip>Upload files into the first input directory (or drop them on this window)</q-tooltip>
+        </q-btn>
         <q-btn aria-label="Read the directories again" flat round dense icon="fas fa-sync" :loading="loading" @click="load">
           <q-tooltip>Read the directories again</q-tooltip>
         </q-btn>
@@ -107,12 +110,20 @@
           </template>
         </q-virtual-scroll>
       </q-card-section>
+
+      <file-upload-dialog ref="upload" @uploaded="load" />
+      <div v-if="dragging" class="absolute-full drop-overlay column items-center justify-center">
+        <q-icon name="fas fa-cloud-upload-alt" size="40px" class="q-mb-sm" />
+        <div class="text-h6">Drop the files to upload them into the input directory</div>
+      </div>
     </q-card>
   </q-dialog>
 </template>
 
 <script>
+import { mapGetters } from "vuex";
 import { api, notifyError } from "../api";
+import FileUploadDialog from "./FileUploadDialog.vue";
 import { copyAndNotify } from "../runActions";
 import { formatBytes, formatNumber, toDateTimeString } from "../utils/format";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -139,6 +150,7 @@ const COLUMNS = [
 // unsaved masks, so they can be tried before a save; the directories are always the saved ones.
 export default {
   name: "FileListDialog",
+  components: { FileUploadDialog },
   data() {
     return {
       visible: false,
@@ -150,9 +162,14 @@ export default {
       sort: { key: null, dir: "asc" },
       result: emptyResult(),
       columns: COLUMNS,
+      dragging: false,
     };
   },
   computed: {
+    ...mapGetters(["getEnvInfo"]),
+    canUpload() {
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_upload);
+    },
     title() {
       return this.datasource ? this.datasource.sourcename : "Files";
     },
@@ -193,6 +210,8 @@ export default {
       this.overrides = overrides;
       this.search = "";
       this.result = emptyResult();
+      this.dragDepth = 0;
+      this.dragging = false;
       this.visible = true;
       this.load();
     },
@@ -206,6 +225,41 @@ export default {
         notifyError("The files could not be listed.", error);
       } finally {
         this.loading = false;
+      }
+    },
+    openUpload(files) {
+      this.$refs.upload.open(this.datasource.id, files);
+    },
+    // Files dragged from the desktop over the dialog: an overlay, and a drop opens the upload dialog with them.
+    draggingFiles(event) {
+      return this.canUpload && event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+    },
+    dragEnter(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = (this.dragDepth || 0) + 1;
+        this.dragging = true;
+      }
+    },
+    dragOverPage(event) {
+      if (this.draggingFiles(event)) {
+        event.preventDefault();
+      }
+    },
+    dragLeave(event) {
+      if (this.draggingFiles(event)) {
+        this.dragDepth = Math.max((this.dragDepth || 1) - 1, 0);
+        this.dragging = this.dragDepth > 0;
+      }
+    },
+    dropFiles(event) {
+      if (!this.draggingFiles(event)) {
+        return;
+      }
+      event.preventDefault();
+      this.dragDepth = 0;
+      this.dragging = false;
+      if (event.dataTransfer.files.length) {
+        this.openUpload([...event.dataTransfer.files]);
       }
     },
     directoryIcon(directory) {
@@ -243,6 +297,10 @@ function emptyResult() {
 </script>
 
 <style scoped>
+/* Font Awesome icons are wide; at the default size they outweigh the label. */
+.icon-button :deep(.q-icon) {
+  font-size: 1.2em;
+}
 .directory-line {
   font-size: 13px;
 }

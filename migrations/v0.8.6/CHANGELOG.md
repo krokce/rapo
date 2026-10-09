@@ -59,8 +59,10 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
    - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
      read.
 3. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
-   editor's *Input files* box open a dialog to choose files, or files are dropped on either place. They go into the
-   **first** directory of the saved *Input directory* (in the editor, save changes first).
+   editor's *Input files* box and the input files dialog (*Matching files* / *All files*, Incoming counts on the Files
+   page) open a dialog to choose files, or files are dropped on any of these places. They go into the **first**
+   directory of the saved *Input directory* (in the editor, save changes first); the input files dialog lists the
+   directories again after an upload.
    - Each file is listed with its size; one whose name the file name pattern does not match is flagged in orange
      (PDI Core will not pick it up) but can be uploaded; one already waiting in the directory is left out, as are
      names with a path, a leading dot or control characters, and files over `max_upload_mb`.
