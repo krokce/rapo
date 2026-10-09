@@ -802,7 +802,7 @@ on the records a file of `PDI_CORE_FILE_LOG` loaded into `table`: `select * from
 read as the `FILE_ID` index returns them (load order), no sort. `table` must be one of the tables of the file's
 datasource (`PDI_CORE_DS_TABLES`), never any other. `meta` has `kind: "file"`, `file_id`, `sourceid`, `sourcename`,
 `file_name`, `records_write`, `records_reject`, `table_name` and the exact `total`. The other `analysis-*` routes
-work on its `session_id` as usual. 400 for a table that is no table of the datasource or can not be read, 403 without
+work on its `session_id` as usual. Used by *Open in Data analysis*; the viewer's own pane reads `get-file-records`. 400 for a table that is no table of the datasource or can not be read, 403 without
 a readable file log, 404 for a file not in the file log.
 
 #### `GET /api/analysis-status`
@@ -1034,6 +1034,23 @@ each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scan
 file (`count(*) where file_id = :id`, read by the index): `{file, tables: [{table_name, count, reason}]}`. `file` is
 the file log row with `recordsread`, `recordswrite` and `recordsreject`. `count` is null and `reason` says why when a
 table does not exist, has no `FILE_ID` column or can not be read. 404 for a file not in the file log.
+
+#### `GET /api/get-file-records`
+A page of the records a file loaded into one table of its datasource, read straight from the database (no analysis
+session), for the viewer's records pane. The rows are in `ROWID` order, so the pages of one search follow each other.
+
+| Parameter | Type | Default | Meaning                                                                              |
+|-----------|------|---------|--------------------------------------------------------------------------------------|
+| `file_id` | int  | -       | File ID of `PDI_CORE_FILE_LOG`. Required.                                             |
+| `table`   | str  | -       | A table of the file's datasource (`PDI_CORE_DS_TABLES`). Required.                    |
+| `search`  | str  | -       | Case-insensitive *contains* over every column as text (dates `YYYY-MM-DD HH24:MI:SS`). |
+| `offset`  | int  | `0`     | Rows to skip.                                                                        |
+| `limit`   | int  | `200`   | Rows to read, at most 500.                                                           |
+| `count`   | bool | `false` | Also count the rows of the search (`total`).                                         |
+
+Answers `{columns: [{name, kind}], rows, offset, total}`: `rows` are lists in column order, `total` is null without
+`count`. Text and LOBs are cut to 4,000 characters. 400 for a table that is no table of the datasource or can not be
+read, 404 for a file not in the file log.
 
 #### `POST /api/check-ds-upload`
 JSON body `{id, names}`: checks files before they are uploaded to datasource `id`. Answers `sourcename`, `directory`

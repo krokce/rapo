@@ -7,6 +7,8 @@ synonym), and only through a statement built here, so a request can never
 name another table or carry its own SQL.
 """
 
+import datetime as dt
+import decimal
 import re
 
 import sqlalchemy as sa
@@ -15,6 +17,8 @@ from ..database import db
 
 from .store import DatasourceError, pdi
 
+PAGE_MAX = 500
+TEXT_MAX = 4000
 TABLE_NAME = re.compile(r'[A-Za-z][A-Za-z0-9_$#]*(\.[A-Za-z][A-Za-z0-9_$#]*)?')
 FILE_COLUMN = 'file_id'
 
@@ -67,6 +71,69 @@ def select(file_id, table):
     sql = (f'select * from {_name(wanted)} '
            f'where {FILE_COLUMN} = {int(file["id"])}')
     return sql, file, wanted
+
+
+def rows(file_id, table, search=None, offset=0, limit=200, count=False):
+    """Get a page of a file's records in one of its datasource's tables.
+
+    The records are in ROWID order, so the pages of one search follow each
+    other; a search is a case-insensitive contains over every column as
+    text, applied by the database.
+
+    Returns
+    -------
+    page : dict
+        `columns`, `[{name, kind}]`, `rows`, lists in column order,
+        `offset` and, with `count`, `total`, the records of the search.
+    """
+    from ..analysis import datasets
+    sql, file, table_name = select(file_id, table)
+    offset = max(int(offset or 0), 0)
+    limit = min(max(int(limit or 200), 1), PAGE_MAX)
+    try:
+        columns = datasets.describe(sql)
+    except datasets.DatasetError as error:
+        raise DatasourceError(str(error))
+    condition = (datasets.search_condition(columns, search)
+                 if search and search.strip() else None)
+    where = f' where {condition}' if condition else ''
+    inner = (f'select t.*, t.rowid rapo_rowid from {_name(table_name)} t '
+             f'where t.{FILE_COLUMN} = {int(file["id"])}')
+    names = [column['name'] for column in columns]
+    listed = ', '.join(f'q."{name}"' for name in names)
+    statement = (f'select {listed} from ({inner}) q{where} '
+                 f'order by q.rapo_rowid offset {offset} rows '
+                 f'fetch next {limit} rows only')
+    try:
+        records = db.execute(sa.text(statement), as_records=True)
+        total = None
+        if count:
+            total = db.execute(sa.text(
+                f'select count(*) from ({inner}) q{where}'), as_scalar=True)
+    except sa.exc.DatabaseError as error:
+        raise DatasourceError(_reason(error))
+    return {'columns': columns, 'offset': offset, 'total': total,
+            'rows': [[_value(value) for value in record]
+                     for record in records]}
+
+
+def _value(value):
+    """A value as JSON takes it: whole numbers as int, datetimes without
+    microseconds, LOBs read and cut."""
+    if isinstance(value, decimal.Decimal):
+        return int(value) if value == value.to_integral_value() else float(
+            value)
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dt.datetime):
+        return value.replace(microsecond=0).isoformat()
+    if hasattr(value, 'read'):
+        value = value.read()
+    if isinstance(value, bytes):
+        return value[:TEXT_MAX].hex()
+    if isinstance(value, str) and len(value) > TEXT_MAX:
+        return value[:TEXT_MAX]
+    return value
 
 
 def _file(file_id):

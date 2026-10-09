@@ -18,10 +18,11 @@ No schema change and no new dependency; new `[DATASOURCES]` options (uploads are
   takes any delimiter (several characters too) or fixed column widths (`10,5,8`), remembered per datasource. Options
   `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
 - **Loaded records** (database icon on a file log row, or *Database* / *Split* in the viewer): the rows PDI Core
-  loaded from the file (`FILE_ID`) in each table of the datasource (a select with each table's count), in the Data
-  tab of Data analysis (search, filters, Group by, export, *Load from database*), alone or below the file in a
-  draggable split; counts checked against the file log; *Open in Data analysis* shows them on the full page
-  (`/analysis/file/:fileId/:table`). Routes `get-file-tables`, `analysis-start-file`.
+  loaded from the file (`FILE_ID`) in each table of the datasource (a select with each table's count), as a plain
+  table read page by page from the database and searched there in all columns (no sampling), with the columns to
+  show; alone or below the file in a draggable split; counts checked against the file log; *Open in Data analysis*
+  shows them on the full page (`/analysis/file/:fileId/:table`). Routes `get-file-tables`, `get-file-records`,
+  `analysis-start-file`.
 - **Upload files** into the first input directory of a datasource: *Upload* on the file log and *Upload files* in the
   editor's Input files box, or drop files on either. Per-file progress; a file not matching the file name pattern is
   flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so

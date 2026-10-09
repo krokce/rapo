@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="visible" @show="shown" @hide="close">
-    <q-card class="column no-wrap file-viewer-card" :class="{ 'file-viewer-card--wide': layout !== 'file' }">
+    <q-card class="column no-wrap file-viewer-card">
       <q-card-section class="row items-center no-wrap q-py-sm q-gutter-x-sm">
         <q-icon :name="layout === 'db' ? 'fas fa-database' : 'fas fa-file-alt'" color="blue-grey-6" size="20px" />
         <div class="text-h6 ellipsis" :title="file && file.inputfilename">{{ (info && info.name) || (file && file.inputfilename) }}</div>
@@ -625,11 +625,6 @@ export default {
 
 <style scoped>
 .file-viewer-card {
-  width: 1400px;
-  max-width: 95vw;
-  height: 90vh;
-}
-.file-viewer-card--wide {
   width: 98vw;
   max-width: 98vw;
   height: 95vh;

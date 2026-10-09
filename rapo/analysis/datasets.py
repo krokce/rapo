@@ -629,11 +629,9 @@ def pushdown(sql, filters=None, search=None, where=None, shown=None):
     for item in filters or []:
         predicates.append(_predicate(item, names))
     if search:
-        term = _like_literal(f'%{search}%')
-        texts = [f'upper({_text_expression(column)}) like upper({term}) '
-                 "escape '\\'" for column in columns]
-        if texts:
-            predicates.append('(' + '\n        or '.join(texts) + ')')
+        condition = search_condition(columns, search)
+        if condition:
+            predicates.append(condition)
     if where and where.strip():
         condition = where.strip().rstrip(';').strip()
         if ';' in condition:
@@ -649,6 +647,15 @@ def pushdown(sql, filters=None, search=None, where=None, shown=None):
     indented = shown.replace('\n', '\n        ')
     return result, f'select *\n  from ({indented}) q\n where {condition}'
 
+
+
+def search_condition(columns, search):
+    """Get the condition of a search of all columns: a case-insensitive
+    contains on each column as text, or None without columns."""
+    term = _like_literal(f'%{search}%')
+    texts = [f'upper({_text_expression(column)}) like upper({term}) '
+             "escape '\\'" for column in columns]
+    return '(' + '\n        or '.join(texts) + ')' if texts else None
 
 
 def describe(sql):

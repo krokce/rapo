@@ -1296,6 +1296,16 @@ def get_file_tables(file_id: int):
         return ds_records.tables(file_id)
 
 
+@api.get('/get-file-records')
+def get_file_records(file_id: int, table: str, search: str | None = None,
+                     offset: int = 0, limit: int = 200, count: bool = False):
+    """Get a page of the records a file loaded into a table of its
+    datasource (FILE_ID), in ROWID order, searched in all columns."""
+    with datasource_errors():
+        return ds_records.rows(file_id, table, search=search, offset=offset,
+                               limit=limit, count=count)
+
+
 @api.get('/get-pdi-state')
 def get_pdi_state():
     """Get the lane locks of PDI Core (PDI_CORE_STATE)."""

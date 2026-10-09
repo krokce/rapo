@@ -44,12 +44,14 @@ Rapo's own schema and no new Python package. The upgrade steps are in the [migra
      a table that does not exist or has no `FILE_ID` is listed but can not be chosen. The first table with rows is
      shown. Next to it the rows are checked against the file log's written and rejected counts (orange when the
      tables hold a different number).
-   - **Data.** The rows are shown as in the *Data* tab of Data analysis: search all columns, filters by column, sort,
-     columns to show, Group by and export, on the first rows of the file (up to the `[ANALYSIS]` sample size,
-     *Extend* for more). *Load from database* applies the search and filters in the database, to all of the file's
-     rows. *Open in Data analysis* opens them on the full page (Overview, Columns, Correlations, Missing values,
+   - **Rows.** The rows are a plain table read straight from the database, 200 at a time as you scroll, so every
+     row of the file can be reached; nothing is sampled or analysed. *Search all columns* searches all of the file's
+     rows in the database (case-insensitive, numbers and dates as text) and shows `N of M rows`. *Columns* chooses and
+     orders the columns shown (the same choice as on the Data analysis page for that table). *Open in Data analysis*
+     opens the rows (the search included) on the full page (Overview, Columns, Correlations, Missing values,
      Duplicates, Data), at `/analysis/file/<file ID>/<table>`, a link that can be shared.
-   - New routes `get-file-tables` and `analysis-start-file`. Only tables linked to the file's datasource are ever
+   - The viewer is as large in every layout.
+   - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
      read.
 3. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
    editor's *Input files* box open a dialog to choose files, or files are dropped on either place. They go into the
