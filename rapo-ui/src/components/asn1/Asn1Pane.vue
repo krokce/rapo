@@ -18,7 +18,7 @@
         <q-tooltip anchor="top middle" self="bottom middle" :delay="600">The ASN.1 modules that name the fields; none shows the tags only</q-tooltip>
       </q-select>
       <q-select
-        v-if="grammar"
+        v-if="grammar && grammarKind !== 'tagmap'"
         :model-value="shownTop"
         :options="topOptions"
         dense
@@ -60,6 +60,26 @@
           Bytes to skip before the first TLV, e.g. a file header that is no ASN.1 (decimal, or hex as 0x…)
         </q-tooltip>
       </q-input>
+      <q-input
+        :model-value="recordHeaderText"
+        dense
+        outlined
+        label="Record header"
+        class="offset-input"
+        input-class="text-mono"
+        :error="recordHeaderError"
+        hide-bottom-space
+        debounce="600"
+        @update:model-value="typeRecordHeader">
+        <q-tooltip anchor="top middle" self="bottom middle" :delay="600" max-width="320px">
+          Bytes before each record to skip, e.g. 4 for Huawei SBC files (shown grey in the bytes, part of the record)
+        </q-tooltip>
+      </q-input>
+      <q-select :model-value="filler" :options="FILLERS" emit-value map-options dense outlined options-dense label="Filler" class="filler-select" @update:model-value="pickFiller">
+        <q-tooltip anchor="top middle" self="bottom middle" :delay="600" max-width="340px">
+          Padding bytes skipped between records. FF only when a record header may start with 00 (Huawei SBC)
+        </q-tooltip>
+      </q-select>
       <q-btn outline no-caps color="primary" icon="fas fa-book" label="Grammars…" class="toolbar-btn" @click="$refs.grammars.open()" />
       <q-btn
         v-if="canSave && changed"
@@ -128,7 +148,7 @@
 <script>
 import { api, notifyError } from "../../api";
 import { copyText, downloadBlob, formatBytes, formatNumber } from "../../utils/format";
-import { nodeName, nodeRanges } from "../../utils/asn1";
+import { decodingParams, FILLERS, nodeName, nodeRanges } from "../../utils/asn1";
 import Asn1CodeView from "./Asn1CodeView.vue";
 import Asn1Details from "./Asn1Details.vue";
 import Asn1Search from "./Asn1Search.vue";
@@ -157,7 +177,8 @@ function parseOffset(text) {
 }
 
 // A file of the file log as ASN.1: the tree of its nodes with a search on the left, its bytes (or the selected node as
-// XML or text) and the selected node's details on the right. `decoding` ({grammar, top, start_offset}) is what the
+// XML or text) and the selected node's details on the right. `decoding` ({grammar, top, start_offset, record_header,
+// filler}) is what the
 // server reads the file with; it starts from the datasource's saved settings, and Save for datasource stores it.
 export default {
   name: "Asn1Pane",
@@ -165,17 +186,21 @@ export default {
   props: {
     fileId: { type: Number, required: true },
     datasourceId: { type: Number, default: null },
-    // The datasource's saved decoding ({grammar, top, start_offset}) or null.
+    // The datasource's saved decoding ({grammar, top, start_offset, record_header, filler}) or null.
     saved: { type: Object, default: null },
   },
   emits: ["saved"],
   data() {
     const saved = this.saved || {};
     return {
+      FILLERS,
       grammar: saved.grammar || null,
+      grammarKind: null,
       top: saved.top || null,
       startOffsetText: saved.start_offset ? String(saved.start_offset) : "",
-      decoding: { grammar: saved.grammar || null, top: saved.top || null, start_offset: saved.start_offset || 0 },
+      recordHeaderText: saved.record_header ? String(saved.record_header) : "",
+      filler: saved.filler || "00ff",
+      decoding: { grammar: saved.grammar || null, top: saved.top || null, start_offset: saved.start_offset || 0, record_header: saved.record_header || 0, filler: saved.filler || "00ff" },
       grammarNames: [],
       grammarsLoading: false,
       tops: [],
@@ -202,16 +227,33 @@ export default {
     offsetError() {
       return parseOffset(this.startOffsetText) === null;
     },
+    recordHeaderError() {
+      const value = parseOffset(this.recordHeaderText);
+      return value === null || value > 1024;
+    },
     // The type shown: the picked one, else the one the server guessed.
     shownTop() {
       return this.top || (this.meta && this.meta.grammar === this.grammar ? this.meta.top : null);
     },
     current() {
-      return { grammar: this.grammar || null, top: this.grammar ? this.shownTop || null : null, start_offset: this.decoding.start_offset || 0 };
+      return {
+        grammar: this.grammar || null,
+        top: this.grammar && this.grammarKind !== "tagmap" ? this.shownTop || null : null,
+        start_offset: this.decoding.start_offset || 0,
+        record_header: this.decoding.record_header || 0,
+        filler: this.decoding.filler || "00ff",
+      };
     },
     changed() {
       const saved = this.saved || {};
-      return (saved.grammar || null) !== this.current.grammar || (saved.top || null) !== this.current.top || (saved.start_offset || 0) !== this.current.start_offset;
+      const current = this.current;
+      return (
+        (saved.grammar || null) !== current.grammar ||
+        (saved.top || null) !== current.top ||
+        (saved.start_offset || 0) !== current.start_offset ||
+        (saved.record_header || 0) !== current.record_header ||
+        (saved.filler || "00ff") !== current.filler
+      );
     },
     ranges() {
       return nodeRanges(this.selected);
@@ -255,6 +297,7 @@ export default {
         if (name !== this.grammar) {
           return;
         }
+        this.grammarKind = result.kind || "asn1";
         this.tops = result.tops;
         this.preferred = new Set(result.tops.slice(0, result.preferred));
         this.topOptions = this.tops;
@@ -272,6 +315,7 @@ export default {
     },
     pickGrammar(name) {
       this.grammar = name || null;
+      this.grammarKind = null;
       this.top = null;
       this.tops = [];
       if (this.grammar) {
@@ -289,10 +333,26 @@ export default {
         this.apply();
       }
     },
+    typeRecordHeader(text) {
+      this.recordHeaderText = text || "";
+      if (!this.recordHeaderError) {
+        this.apply();
+      }
+    },
+    pickFiller(value) {
+      this.filler = value || "00ff";
+      this.apply();
+    },
     // The decoding the tree and search read with: a change reads the file anew.
     apply() {
-      const next = { grammar: this.grammar, top: this.grammar ? this.top : null, start_offset: parseOffset(this.startOffsetText) || 0 };
-      if (next.grammar === this.decoding.grammar && next.top === this.decoding.top && next.start_offset === this.decoding.start_offset) {
+      const next = {
+        grammar: this.grammar,
+        top: this.grammar ? this.top : null,
+        start_offset: parseOffset(this.startOffsetText) || 0,
+        record_header: this.recordHeaderError ? this.decoding.record_header : parseOffset(this.recordHeaderText) || 0,
+        filler: this.filler,
+      };
+      if (JSON.stringify(next) === JSON.stringify(this.decoding)) {
         return;
       }
       this.decoding = next;
@@ -334,7 +394,7 @@ export default {
       this.renderSelected();
     },
     decodingParams() {
-      return { start_offset: this.decoding.start_offset || 0, grammar: this.decoding.grammar || null, top: this.decoding.top || null };
+      return decodingParams(this.decoding);
     },
     async renderSelected() {
       const format = this.tab;
@@ -432,13 +492,16 @@ export default {
   flex-wrap: wrap;
 }
 .grammar-select {
-  width: 220px;
+  width: 260px;
 }
 .type-select {
   min-width: 260px;
   max-width: 420px;
 }
 .offset-input {
+  width: 130px;
+}
+.filler-select {
   width: 130px;
 }
 .toolbar-btn {

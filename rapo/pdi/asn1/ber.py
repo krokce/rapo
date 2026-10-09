@@ -1,8 +1,9 @@
 """Contains a tolerant reader of BER (and so DER and CER) encodings.
 
 A file is read as TLVs one after another from a start offset (the root),
-skipping 00 and FF bytes between them (the padding of block-written CDR
-files); a TLV is a node, the TLVs inside a constructed one its children.
+skipping filler bytes between them (00 and FF by default: the padding of
+block-written CDR files) and a record header of a fixed length before each
+(as Huawei SBC files have 4 bytes); a TLV is a node, the TLVs inside a constructed one its children.
 Nothing is decoded ahead: a request reads the headers of one page of the
 children of one node. Bytes that are no TLV become an undecodable node, so a
 broken file is shown as far as it can be.
@@ -33,6 +34,9 @@ UNIVERSAL_NAMES = {
 }
 CLASSES = ('UNIVERSAL', 'APPLICATION', 'CONTEXT', 'PRIVATE')
 FILLER = b'\x00\xff'
+# The filler choices of the viewer.
+FILLERS = {'00ff': b'\x00\xff', 'ff': b'\xff', 'none': b''}
+MAX_RECORD_HEADER = 1024
 # Bytes the source reads at once; headers of nearby TLVs come from them.
 WINDOW = 256 * 1024
 # A child offset is noted every this many children.
@@ -171,14 +175,19 @@ def content_end(item):
 class Node:
     """A TLV, or bytes that are none (`undecodable`), as listed."""
 
-    __slots__ = ('item', 'offset', 'end', 'ordinal', 'undecodable')
+    __slots__ = ('item', 'offset', 'end', 'ordinal', 'undecodable',
+                 'record_offset')
 
-    def __init__(self, item, offset, end, ordinal, undecodable=False):
+    def __init__(self, item, offset, end, ordinal, undecodable=False,
+                 record_offset=None):
         self.item = item
         self.offset = offset
         self.end = end
         self.ordinal = ordinal
         self.undecodable = undecodable
+        # Where a root record starts: its record header before the TLV.
+        self.record_offset = offset if record_offset is None \
+            else record_offset
 
     def value(self, source, limit=PREVIEW_BYTES):
         """Get the first `limit` bytes of a primitive TLV's value."""
@@ -191,9 +200,11 @@ class Node:
         item = self.item
         if self.undecodable or item is None:
             return {'offset': self.offset, 'end': self.end,
+                    'record_offset': self.record_offset,
                     'ordinal': self.ordinal, 'undecodable': True,
                     'length': self.end - self.offset}
         return {'offset': self.offset, 'end': self.end,
+                'record_offset': self.record_offset,
                 'ordinal': self.ordinal, 'undecodable': False,
                 'cls': CLASSES[item.cls], 'number': item.number,
                 'constructed': item.constructed,
@@ -207,12 +218,16 @@ class Node:
 class Parent:
     """Where the children of a node (or the root) are read from."""
 
-    def __init__(self, key, start, limit, root=False):
-        # key: the parent's offset (None for the root).
+    def __init__(self, key, start, limit, root=False, record_header=0,
+                 filler=FILLER):
+        # key: the parent's offset (None for the root). Only the root has
+        # filler and record headers between its children.
         self.key = key
         self.start = start
         self.limit = limit
         self.root = root
+        self.record_header = record_header if root else 0
+        self.filler = filler if root else b''
 
     @classmethod
     def of(cls, source, item):
@@ -271,22 +286,25 @@ def index(key):
     return found
 
 
-def _skip_filler(source, position, limit):
+def _skip_filler(source, position, limit, filler=FILLER):
     """Get the offset of the first byte from `position` that is no filler."""
+    if not filler:
+        return position
     while limit is None or position < limit:
         data = source.read(position, 4096)
         if not data:
             return position
-        stripped = data.lstrip(FILLER)
+        stripped = data.lstrip(filler)
         position += len(data) - len(stripped)
         if stripped:
             return position
     return position
 
 
-def _valid_root_tlv(source, position, first=None):
+def _valid_root_tlv(source, position, first=None, parent=None):
     """Get the header of a whole TLV at a root offset, or None: its end must
-    be in the file and followed by the end, filler or another header."""
+    be in the file and followed by the end, or by filler, the record header
+    and another header."""
     if first is not None and source.byte(position) != first:
         return None
     item = header(source, position)
@@ -295,18 +313,24 @@ def _valid_root_tlv(source, position, first=None):
     if item.end > position + item.header_len and \
             not source.read(item.end - 1, 1):
         return None
-    following = source.read(item.end, 16)
-    if following and following[0] not in FILLER and \
-            header(source, item.end) is None:
+    filler = FILLER if parent is None else parent.filler
+    record_header = 0 if parent is None else parent.record_header
+    after = _skip_filler(source, item.end, None, filler)
+    if source.at_end(after) or (record_header == 0 and after > item.end):
+        return item
+    if header(source, after + record_header) is None:
         return None
     return item
 
 
-def _resync(source, position, first):
-    """Get the next root offset after `position` where a whole TLV starts
-    (with the tag byte of the root's first TLV, when known), or None."""
+def _resync(source, position, first, parent):
+    """Get the next root offset after the record at `position` where a
+    record starts: a whole TLV (with the tag byte of the root's first TLV,
+    when known) after its record header; or None."""
+    record_header = parent.record_header
+    start = position
     stop = position + RESYNC_BYTES
-    position += 1
+    position += 1 + record_header
     while position < stop:
         data = source.read(position, 64 * 1024)
         if not data:
@@ -320,8 +344,11 @@ def _resync(source, position, first):
                 candidates.append(at)
                 at = data.find(bytes([first]), at + 1)
         for at in candidates:
-            if _valid_root_tlv(source, position + at, first) is not None:
-                return position + at
+            if position + at - record_header <= start:
+                continue
+            if _valid_root_tlv(source, position + at, first,
+                               parent) is not None:
+                return position + at - record_header
         position += len(data)
     return None
 
@@ -338,13 +365,16 @@ def _children_from(source, parent, notes, ordinal, position):
     limit = parent.limit
     while True:
         if parent.root:
-            position = _skip_filler(source, position, limit)
+            position = _skip_filler(source, position, limit, parent.filler)
         if (limit is not None and position >= limit) or \
                 source.at_end(position):
             return
         notes.note(parent.key, ordinal, position)
+        record = position
         if parent.root:
-            item = _valid_root_tlv(source, position)
+            position = record + parent.record_header
+            item = None if source.at_end(position) else _valid_root_tlv(
+                source, position, None, parent)
             if item is not None and notes.first is None:
                 notes.first = item.first
         else:
@@ -352,17 +382,18 @@ def _children_from(source, parent, notes, ordinal, position):
             if item is not None and end_of(source, item, limit) is None:
                 item = None
         if item is None:
-            end = _resync(source, position, notes.first) \
+            end = _resync(source, record, notes.first, parent) \
                 if parent.root else None
             if end is None:
                 end = limit if limit is not None else _file_end(source,
-                                                                position)
-            yield Node(None, position, end, ordinal, undecodable=True)
-            if end is None or end <= position:
+                                                                record)
+            yield Node(None, record, end, ordinal, undecodable=True)
+            if end is None or end <= record:
                 return
             position = end
         else:
-            yield Node(item, position, item.end, ordinal)
+            yield Node(item, position, item.end, ordinal,
+                       record_offset=record)
             position = item.end
         ordinal += 1
 
@@ -403,7 +434,7 @@ def child_at(source, parent, notes, offset):
     """Get the child of a parent that holds an offset, or None."""
     ordinal, position = notes.before_offset(parent.key, offset)
     for node in _children_from(source, parent, notes, ordinal, position):
-        if node.offset > offset:
+        if node.record_offset > offset:
             return None
         if node.end is not None and offset < node.end:
             return node

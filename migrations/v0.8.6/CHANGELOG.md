@@ -74,7 +74,11 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
      `check-ds-upload` and `upload-ds-file`.
 4. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
    its first bytes read as BER; the header's *Text* / *ASN.1* switch changes the view of any file, and a binary file
-   that does not start as ASN.1 offers *Decode as ASN.1* (set a *Start offset* to skip a file header).
+   that does not start as ASN.1 offers *Decode as ASN.1*.
+   - **Record layout.** *Start offset* skips a file header that is no ASN.1; *Record header* skips that many bytes
+     before **each** record (Huawei SBC files: 50 and 4); *Filler* picks the padding skipped between records: 00 and
+     FF (the default), FF only (needed when a record header may start with 00, as Huawei's), or none. A record's
+     header bytes are shown grey in the bytes and belong to it (a click on one selects the record).
    - **Tree.** On the left, the file's TLVs as a tree, `Tag : [20]` as common ASN.1 viewers show them (a folder for a
      constructed node, a page for a primitive one, its value after it). A node's children are read from the file
      when it is opened, 500 at a time (scrolling to the end of a level reads the next ones), so a TAP file of
@@ -101,12 +105,19 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
      tag it does not expect is shown in orange. A file of type assignments without a module header (as some copies
      of the GSMA TDs are) is read as one module with IMPLICIT TAGS. No grammar is shipped with Rapo (the GSMA texts
      are not public): upload the ones you use.
+   - **Tag maps.** The field definitions of a Pentaho ASN.1 decoder can be uploaded as a grammar as they are (its
+     `props.put("82.4.1","nodeAddress,ia5,4");` lines, or `82.4.1=nodeAddress,ia5`): nodes are named by their tag
+     path as the decoder builds it (the tag numbers of the TLVs that are not UNIVERSAL), and values decoded as the
+     decoder does by type (`bcdstring`, `ebcdstring`, `tbcdstring`, `rbcdstring`, `integer`, `octstring`, `ia5`), so the
+     viewer shows what the load job writes.
+   - **Full tag.** A node's details show its full tag, the path of tags from its record (`(Full tag: SEQ.1.4.0)`:
+     numbers, SEQ/SET for UNIVERSAL ones), and with a tag map its map path when it differs.
    - **Search.** *Field* finds nodes by name or tag, or a path of them (`servedIMSI`, `[20]/[3]`,
      `listOfTrafficVolumes/dataVolumeGPRSUplink`), optionally with a value (contains, or `=` the whole value, in any
      reading or the hex); *Hex* finds bytes (`80 04 0A F9`). Like the text search it reads the whole file on the
      server, 500 hits or 20 seconds at a time, and a hit opens the tree at its node.
-   - **Save for datasource** keeps the grammar, type and start offset for the datasource: its files open with them,
-     for everyone.
+   - **Save for datasource** keeps the grammar, type, start offset, record header and filler for the datasource: its
+     files open with them, for everyone.
    - New table `rapo_viewer_config` (grammars and the viewer settings of each datasource), new Python package
      `asn1tools` (MIT; only its ASN.1 parser is used). New options `[DATASOURCES] asn1_page_nodes`,
      `asn1_render_nodes`, `asn1_grammar_max_kb`. New routes `get-ds-file-asn1`, `get-ds-file-asn1-node`,

@@ -58,6 +58,7 @@
 <script>
 import { api, notifyError } from "../../api";
 import { formatBytes, formatNumber } from "../../utils/format";
+import { decodingParams } from "../../utils/asn1";
 
 // Finds ASN.1 nodes of the file on the server (search-ds-file-asn1): by field (names or tags) and value, or by bytes. A
 // request reads on from where the last one stopped (`next_offset`), at most the search budgets; a hit opens the tree at
@@ -141,9 +142,7 @@ export default {
       const params = {
         id: this.fileId,
         offset: this.nextOffset,
-        start_offset: this.decoding.start_offset || 0,
-        grammar: this.decoding.grammar || null,
-        top: this.decoding.top || null,
+        ...decodingParams(this.decoding),
       };
       if (this.mode === "hex") {
         params.hex = this.hex;

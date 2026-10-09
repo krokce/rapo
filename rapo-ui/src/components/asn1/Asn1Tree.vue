@@ -43,7 +43,7 @@
 <script>
 import { api, notifyError } from "../../api";
 import { formatNumber } from "../../utils/format";
-import { nodeName, nodePreview, nodeTag, parentKey } from "../../utils/asn1";
+import { decodingParams, fullTagSegment, nodeName, nodePreview, nodeTag, parentKey } from "../../utils/asn1";
 
 const ROW_HEIGHT = 22;
 // Children read at once, and before a node revealed out of the read ones.
@@ -57,7 +57,7 @@ export default {
   name: "Asn1Tree",
   props: {
     fileId: { type: Number, required: true },
-    // {start_offset, grammar, top}: a change reads the tree anew.
+    // {start_offset, record_header, filler, grammar, top}: a change reads the tree anew.
     decoding: { type: Object, required: true },
     selectedOffset: { type: Number, default: null },
   },
@@ -150,9 +150,7 @@ export default {
         state: parent ? parent.state : null,
         ordinal,
         count,
-        start_offset: this.decoding.start_offset || 0,
-        grammar: this.decoding.grammar || null,
-        top: this.decoding.top || null,
+        ...decodingParams(this.decoding),
       };
     },
     reload() {
@@ -171,6 +169,11 @@ export default {
         const result = await api("get-ds-file-asn1", { params: this.params(parent, ordinal, count), loadingBar: false });
         if (request !== this.request) {
           return null;
+        }
+        // The full tag (SEQ.1.4.0) of each node, from its parent's.
+        for (const node of result.nodes) {
+          const segment = fullTagSegment(node);
+          node.fullTag = parent && parent.fullTag ? `${parent.fullTag}.${segment}` : segment;
         }
         const level = this.levels[key];
         if (mode === "append") {
@@ -245,7 +248,7 @@ export default {
     async reveal(offset) {
       let result;
       try {
-        result = await api("locate-ds-file-asn1", { params: { id: this.fileId, offset, start_offset: this.decoding.start_offset || 0, grammar: this.decoding.grammar || null, top: this.decoding.top || null }, loadingBar: false });
+        result = await api("locate-ds-file-asn1", { params: { id: this.fileId, offset, ...decodingParams(this.decoding) }, loadingBar: false });
       } catch (error) {
         notifyError("The node was not found.", error);
         return null;

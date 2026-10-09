@@ -1,5 +1,34 @@
 // The ASN.1 view of the file viewer: what a node (as get-ds-file-asn1 answers it) shows, and the parts of its bytes.
 
+// The fillers between records the server skips (ber.FILLERS).
+export const FILLERS = [
+  { value: "00ff", label: "00 and FF" },
+  { value: "ff", label: "FF only" },
+  { value: "none", label: "None" },
+];
+
+// The request parameters of a decoding ({grammar, top, start_offset, record_header, filler}).
+export function decodingParams(decoding) {
+  return {
+    start_offset: decoding.start_offset || 0,
+    record_header: decoding.record_header || 0,
+    filler: decoding.filler || "00ff",
+    grammar: decoding.grammar || null,
+    top: decoding.top || null,
+  };
+}
+
+// A node's segment of its full tag: the number of a tag of a class, the short name of a UNIVERSAL one (SEQ, SET).
+export function fullTagSegment(node) {
+  if (node.undecodable) {
+    return "?";
+  }
+  if (node.cls !== "UNIVERSAL") {
+    return String(node.number);
+  }
+  return node.number === 16 ? "SEQ" : node.number === 17 ? "SET" : node.tag;
+}
+
 // The label of a node: its name (or the CHOICE alternative it is), else its tag.
 export function nodeName(node) {
   if (node.undecodable) {
@@ -37,6 +66,7 @@ export function nodeRanges(node) {
   }
   const valueStart = node.offset + node.header_len;
   const ranges = [
+    { kind: "prefix", from: node.record_offset != null ? node.record_offset : node.offset, to: node.offset },
     { kind: "tag", from: node.offset, to: node.offset + node.tag_len },
     { kind: "len", from: node.offset + node.tag_len, to: valueStart },
     { kind: "value", from: valueStart, to: valueStart + node.length },

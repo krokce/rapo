@@ -39,7 +39,7 @@ export default {
     fileId: { type: Number, required: true },
     // The uncompressed size when known.
     dataSize: { type: Number, default: null },
-    // Byte ranges to color: [{kind: tag|len|value|hit, from, to}].
+    // Byte ranges to color: [{kind: prefix|tag|len|value|hit, from, to}] (prefix: a record header).
     ranges: { type: Array, default: () => [] },
   },
   emits: ["byte"],
@@ -308,6 +308,9 @@ export default {
 }
 .hex-missing {
   color: var(--rapo-muted);
+}
+.hex-prefix {
+  background: var(--rapo-asn1-prefix);
 }
 .hex-tag {
   background: var(--rapo-asn1-tag);

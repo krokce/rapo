@@ -1265,40 +1265,50 @@ def grep_ds_file(id: int, pattern: str, regex: bool = False,
 def get_ds_file_asn1(id: int, parent: int | None = None,
                      state: str | None = None, ordinal: int = 0,
                      count: int | None = None, start_offset: int = 0,
+                     record_header: int = 0, filler: str = '00ff',
                      grammar: str | None = None, top: str | None = None):
     """Get a page of the ASN.1 (BER) nodes of a loaded file.
 
-    Without `parent` the nodes of the root (the TLVs from `start_offset`),
-    else the children of the node at that offset, whose `state` (as answered
+    Without `parent` the nodes of the root (the TLVs from `start_offset`,
+    each after `record_header` bytes, `filler` skipped between them), else
+    the children of the node at that offset, whose `state` (as answered
     with it) names them with the `grammar` (an uploaded one) and its `top`
     type (guessed when not given). `ordinal` is the first child, `count`
     how many ([DATASOURCES] asn1_page_nodes).
     """
+    layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
         return ds_asn1.nodes(id, parent=parent, state=state, ordinal=ordinal,
-                             count=count, start_offset=start_offset,
-                             grammar=grammar, top=top)
+                             count=count, grammar=grammar, top=top, **layout)
+
+
+def asn1_layout(start_offset, record_header, filler):
+    """The record layout of an ASN.1 request, as the view takes it."""
+    return {'start_offset': start_offset, 'record_header': record_header,
+            'filler': filler}
 
 
 @api.get('/get-ds-file-asn1-node')
 def get_ds_file_asn1_node(id: int, offset: int, state: str | None = None,
-                          start_offset: int = 0, grammar: str | None = None,
+                          start_offset: int = 0, record_header: int = 0,
+                          filler: str = '00ff', grammar: str | None = None,
                           top: str | None = None):
     """Get one ASN.1 node of a loaded file with what its value reads as."""
+    layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.node(id, offset, state=state,
-                            start_offset=start_offset, grammar=grammar,
-                            top=top)
+        return ds_asn1.node(id, offset, state=state, grammar=grammar,
+                            top=top, **layout)
 
 
 @api.get('/locate-ds-file-asn1')
 def locate_ds_file_asn1(id: int, offset: int, start_offset: int = 0,
+                        record_header: int = 0, filler: str = '00ff',
                         grammar: str | None = None, top: str | None = None):
     """Get the ASN.1 nodes holding a byte of a loaded file, from the root
     down to the deepest."""
+    layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.locate(id, offset, start_offset=start_offset,
-                              grammar=grammar, top=top)
+        return ds_asn1.locate(id, offset, grammar=grammar, top=top, **layout)
 
 
 @api.get('/get-ds-file-bytes')
@@ -1319,29 +1329,31 @@ def get_ds_file_bytes(id: int, offset: int = 0, size: int = 65536):
 @api.get('/render-ds-file-asn1')
 def render_ds_file_asn1(id: int, offset: int, state: str | None = None,
                         format: str = 'xml', start_offset: int = 0,
+                        record_header: int = 0, filler: str = '00ff',
                         grammar: str | None = None, top: str | None = None):
     """Get an ASN.1 node and its subtree as XML or text (`format`), at most
     [DATASOURCES] asn1_render_nodes nodes."""
+    layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
         return ds_asn1.render(id, offset, state=state, format=format,
-                              start_offset=start_offset, grammar=grammar,
-                              top=top)
+                              grammar=grammar, top=top, **layout)
 
 
 @api.get('/search-ds-file-asn1')
 def search_ds_file_asn1(id: int, field: str | None = None,
                         value: str | None = None, match: str = 'contains',
                         hex: str | None = None, offset: int = 0,
-                        start_offset: int = 0, grammar: str | None = None,
+                        start_offset: int = 0, record_header: int = 0,
+                        filler: str = '00ff', grammar: str | None = None,
                         top: str | None = None):
     """Find the ASN.1 nodes of a loaded file by field (names or tags) and
     value, or by hex bytes, from `offset` until [DATASOURCES]
     view_grep_matches hits or view_grep_seconds passed."""
+    layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
         return ds_asn1.search(id, field=field, value=value, match=match,
-                              hex=hex, offset=offset,
-                              start_offset=start_offset, grammar=grammar,
-                              top=top)
+                              hex=hex, offset=offset, grammar=grammar,
+                              top=top, **layout)
 
 
 @api.get('/get-asn1-grammars')

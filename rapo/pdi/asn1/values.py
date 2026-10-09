@@ -93,6 +93,8 @@ def _safe(decoder, data, info=None):
 
 
 def _typed(data, info):
+    if info['chain'][0].startswith('tagmap:'):
+        return [tagmap_value(data, info['chain'][0][7:])]
     names = set(info['chain'])
     base = info['chain'][-1] if info['chain'] else None
     for types, decoder in ((ADDRESS_TYPES, address), (TBCD_TYPES, tbcd),
@@ -337,3 +339,46 @@ UNIVERSAL_DECODERS.update({
     12: text, 13: oid, 18: text, 19: text, 20: text, 21: text, 22: text,
     23: text, 24: text, 25: text, 26: text, 27: text, 28: universal_string,
     30: bmp, 7: text, 14: text, 31: text, 32: text, 33: text, 34: text})
+
+
+# The decoders of tag maps, as the Pentaho ASN.1 decoders' Java writes them
+# (OutputList.write), so the viewer shows what such a job loads.
+
+def _nibble(value):
+    return '0123456789ABCDEF'[value]
+
+
+def _java_bcd(data, swapped):
+    """decodeBCD/decodeTBCD: both nibbles, high first (TBCD: low first),
+    only the low one of a byte whose high nibble is F; a last F dropped."""
+    text = []
+    for byte in data:
+        high, low = byte >> 4, byte & 0x0f
+        if high != 0x0f:
+            text += [_nibble(low), _nibble(high)] if swapped else [
+                _nibble(high), _nibble(low)]
+        else:
+            text.append(_nibble(low))
+    if text and text[-1] == 'F':
+        text.pop()
+    return ''.join(text)
+
+
+def tagmap_value(data, kind):
+    """Get the reading of a value as a tag map's type decodes it."""
+    label = f'As {kind}'
+    if kind in ('bcdstring', 'ebcdstring'):
+        return {'label': label, 'value': _java_bcd(data, False)}
+    if kind == 'tbcdstring':
+        return {'label': label, 'value': _java_bcd(data, True)}
+    if kind == 'integer' and len(data) <= 8:
+        return {'label': label, 'value': str(int.from_bytes(
+            data.rjust(8, b'\x00'), 'big', signed=True))}
+    if kind == 'octstring':
+        return {'label': label,
+                'value': ''.join(_nibble(byte & 0x0f) for byte in data)}
+    if kind == 'ia5':
+        return {'label': label, 'value': data.decode('utf-8', 'replace')}
+    if kind == 'rbcdstring':
+        return {'label': label, 'value': data.hex().upper()}
+    return {'label': f'As {kind} (hex)', 'value': data.hex().upper()}

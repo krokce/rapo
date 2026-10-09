@@ -149,6 +149,8 @@ def load(files):
 class Grammar:
     """Parsed modules, and how they name the nodes of a BER encoding."""
 
+    kind = 'asn1'
+
     def __init__(self, modules):
         self.modules = modules
         self.layer_cache = {}
@@ -412,6 +414,12 @@ class Grammar:
                 else:
                     rest.append(full)
         return sorted(first) + sorted(second) + sorted(rest), len(first)
+
+    def dump_state(self, state):
+        return dump_state(state)
+
+    def load_state(self, text):
+        return load_state(self, text)
 
     def guess_top(self, tag):
         """Get the first of `tops()` a root TLV with a tag matches, or

@@ -13,7 +13,18 @@
         <div>
           <span class="text-mono">{{ node.tag }}</span>
           <span class="text-grey-7"> · {{ nodeForm(node) }}</span>
+          <span v-if="node.fullTag" class="text-grey-7">
+            (Full tag: <span class="text-mono full-tag">{{ node.fullTag }}</span>)
+          </span>
         </div>
+        <template v-if="detail && detail.map_path && detail.map_path !== node.fullTag">
+          <div class="details-label">Map path</div>
+          <div class="text-mono full-tag">{{ detail.map_path }}</div>
+        </template>
+        <template v-if="node.record_offset != null && node.record_offset < node.offset">
+          <div class="details-label">Record</div>
+          <div>header of {{ node.offset - node.record_offset }} bytes from offset {{ formatNumber(node.record_offset) }}</div>
+        </template>
         <div class="details-label">Length</div>
         <div>{{ formatNumber(node.length) }} bytes <span class="text-grey-7">(header {{ node.header_len }})</span></div>
         <template v-if="name || node.type">
@@ -99,6 +110,9 @@ export default {
 }
 .reading-value {
   word-break: break-all;
+}
+.full-tag {
+  user-select: all;
 }
 .hex-value {
   word-break: break-all;

@@ -23,7 +23,8 @@ from .. import download, viewer, viewer_config
 from ..files import number_option
 from ..store import DatasourceError
 from . import ber, values
-from .grammar import GrammarError, dump_state, load_state
+from .ber import FILLERS, MAX_RECORD_HEADER
+from .grammar import GrammarError
 
 MAX_BYTES = 64 * 1024
 DETAIL_BYTES = 4096
@@ -53,12 +54,21 @@ def _number(value, name):
 
 
 class _File:
-    """A file of the file log read as BER from a start offset, and the
+    """A file of the file log read as BER from a start offset (with a record
+    header before each record and the filler between records), and the
     grammar (and top type) naming its nodes."""
 
-    def __init__(self, id, start_offset=0, grammar=None, top=None):
+    def __init__(self, id, start_offset=0, grammar=None, top=None,
+                 record_header=0, filler='00ff'):
         self.file = download.locate(id)
         self.start = _number(start_offset, 'start_offset')
+        self.record_header = _number(record_header, 'record_header')
+        if self.record_header > MAX_RECORD_HEADER:
+            raise DatasourceError(f'record_header is at most '
+                                  f'{MAX_RECORD_HEADER} bytes.')
+        if (filler or '00ff') not in FILLERS:
+            raise DatasourceError('filler is 00ff, ff or none.')
+        self.filler = filler or '00ff'
         self.grammar_name = grammar or None
         self.grammar = viewer_config.load_grammar(grammar) \
             if grammar else None
@@ -76,7 +86,8 @@ class _File:
             self.source = ber.Source(self.stream)
             status = os.stat(self.file['path'])
             self.notes = ber.index((self.file['path'], status.st_size,
-                                    status.st_mtime_ns, self.start))
+                                    status.st_mtime_ns, self.start,
+                                    self.record_header, self.filler))
         except Exception:
             self.opener.__exit__(None, None, None)
             raise
@@ -89,11 +100,16 @@ class _File:
         return {'id': self.file['id'], 'name': self.file['name'],
                 'size': self.file['size'], 'compression': self.stream.kind,
                 'data_size': self.stream.data_size(),
-                'start_offset': self.start, 'grammar': self.grammar_name,
+                'start_offset': self.start,
+                'record_header': self.record_header, 'filler': self.filler,
+                'grammar': self.grammar_name,
+                'grammar_kind': self.grammar.kind if self.grammar else None,
                 'top': self.top}
 
     def root(self):
-        return ber.Parent(None, self.start, None, root=True)
+        return ber.Parent(None, self.start, None, root=True,
+                          record_header=self.record_header,
+                          filler=FILLERS[self.filler])
 
     def guess_top(self):
         """Take the first top type the file's first TLV matches, when a
@@ -105,7 +121,8 @@ class _File:
             self.top = self.grammar.guess_top(found[0].item.tag)
 
     def root_info(self, node):
-        if self.grammar is None or not self.top or node.item is None:
+        if self.grammar is None or node.item is None or (
+                not self.top and self.grammar.kind == 'asn1'):
             return None
         return self.grammar.top(self.top, node.item.tag)
 
@@ -132,7 +149,7 @@ class _File:
             if info is not None:
                 result['name'] = info['name']
                 result['alternatives'] = info['alternatives']
-                result['state'] = dump_state(info['state'])
+                result['state'] = self.grammar.dump_state(info['state'])
                 description = self.grammar.describe(info['state'])
                 result['type'] = description['type']
         if not item.constructed:
@@ -149,7 +166,10 @@ class _File:
                 result['hex'] = data.hex()
                 result['hex_cut'] = length > len(data)
         if detail and description is not None:
-            result['type_chain'] = description['chain']
+            result['type_chain'] = [name for name in description['chain']
+                                    if not name.startswith('tagmap:')]
+            if description.get('map_path'):
+                result['map_path'] = description['map_path']
         return result
 
     def node_at(self, offset):
@@ -180,7 +200,8 @@ class _File:
 
 
 def nodes(id, parent=None, state=None, ordinal=0, count=None,
-          start_offset=0, grammar=None, top=None):
+          start_offset=0, grammar=None, top=None, record_header=0,
+          filler='00ff'):
     """Get a page of the children of a node (`parent`: its offset), or of the
     root.
 
@@ -194,7 +215,8 @@ def nodes(id, parent=None, state=None, ordinal=0, count=None,
     count = min(max(int(count or number_option('asn1_page_nodes')), 1),
                 MAX_PAGE)
     ordinal = _number(ordinal, 'ordinal')
-    with _File(id, start_offset, grammar, top) as file:
+    with _File(id, start_offset, grammar, top, record_header,
+               filler) as file:
         if parent is None:
             file.guess_top()
             holder = file.root()
@@ -206,7 +228,7 @@ def nodes(id, parent=None, state=None, ordinal=0, count=None,
             if holder is None:
                 raise DatasourceError(f'There is no constructed node at '
                                       f'offset {parent}.')
-            info = file.child_info(load_state(file.grammar, state)
+            info = file.child_info(file.grammar.load_state(state)
                                    if file.grammar is not None else None)
         found, eof = ber.page(file.source, holder, file.notes, ordinal,
                               count)
@@ -215,20 +237,23 @@ def nodes(id, parent=None, state=None, ordinal=0, count=None,
                 'eof': eof}
 
 
-def node(id, offset, state=None, start_offset=0, grammar=None, top=None):
+def node(id, offset, state=None, start_offset=0, grammar=None, top=None,
+         record_header=0, filler='00ff'):
     """Get one node with what its value reads as (the details pane)."""
-    with _File(id, start_offset, grammar, top) as file:
+    with _File(id, start_offset, grammar, top, record_header,
+               filler) as file:
         found = file.node_at(_number(offset, 'offset'))
         info = None
         if file.grammar is not None:
-            loaded = load_state(file.grammar, state)
+            loaded = file.grammar.load_state(state)
             if loaded is not None:
                 info = {'name': None, 'alternatives': [], 'state': loaded}
         return {**file.meta(), 'node': file.describe(found, info,
                                                      detail=True)}
 
 
-def locate(id, offset, start_offset=0, grammar=None, top=None):
+def locate(id, offset, start_offset=0, grammar=None, top=None,
+           record_header=0, filler='00ff'):
     """Get the nodes holding an offset, from the root down to the deepest.
 
     Returns
@@ -238,7 +263,8 @@ def locate(id, offset, start_offset=0, grammar=None, top=None):
         offset of the node the node is a child of, None for the root).
     """
     offset = _number(offset, 'offset')
-    with _File(id, start_offset, grammar, top) as file:
+    with _File(id, start_offset, grammar, top, record_header,
+               filler) as file:
         file.guess_top()
         levels = []
         for parent, found, info in _chain(file, offset):
@@ -283,7 +309,7 @@ def read_bytes(id, offset, size=MAX_BYTES):
 
 
 def render(id, offset, state=None, format='xml', start_offset=0,
-           grammar=None, top=None):
+           grammar=None, top=None, record_header=0, filler='00ff'):
     """Get a node's subtree as XML or as an indented text listing, at most
     [DATASOURCES] asn1_render_nodes nodes and RENDER_CHARS characters.
 
@@ -295,11 +321,12 @@ def render(id, offset, state=None, format='xml', start_offset=0,
     if format not in ('xml', 'text'):
         raise DatasourceError('format is xml or text.')
     limit = max(number_option('asn1_render_nodes'), 1)
-    with _File(id, start_offset, grammar, top) as file:
+    with _File(id, start_offset, grammar, top, record_header,
+               filler) as file:
         root = file.node_at(_number(offset, 'offset'))
         info = None
         if file.grammar is not None:
-            loaded = load_state(file.grammar, state)
+            loaded = file.grammar.load_state(state)
             if loaded is not None:
                 info = {'name': None, 'alternatives': [], 'state': loaded}
         lines, count = [], 0
@@ -398,7 +425,8 @@ def _text_line(file, depth, event, node, info):
 
 
 def search(id, field=None, value=None, match='contains', hex=None,
-           offset=0, start_offset=0, grammar=None, top=None):
+           offset=0, start_offset=0, grammar=None, top=None, record_header=0,
+           filler='00ff'):
     """Find nodes by field and value, or byte sequences, from an offset.
 
     `field` is a path of names or tags (`servedIMSI`, `[20]/[3]`,
@@ -431,7 +459,8 @@ def search(id, field=None, value=None, match='contains', hex=None,
     limit = max(number_option('view_grep_matches'), 1)
     deadline = time.monotonic() + max(number_option('view_grep_seconds'), 1)
     started = time.monotonic()
-    with _File(id, start_offset, grammar, top) as file:
+    with _File(id, start_offset, grammar, top, record_header,
+               filler) as file:
         file.guess_top()
         if pattern is not None:
             result = _search_bytes(file, pattern, offset, limit, deadline)

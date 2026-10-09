@@ -2,10 +2,12 @@
 
 Two kinds of rows, the content JSON:
 
-    GRAMMAR     by name: an ASN.1 grammar, `{files: [{name, text}]}`
-    DATASOURCE  by SOURCEID: `{layout, asn1: {grammar, top, start_offset}}`,
-                the delimiter (or fixed widths) and the ASN.1 decoding the
-                viewer starts with for the files of the datasource
+    GRAMMAR     by name: ASN.1 modules or a tag map, `{kind, files: [{name,
+                text}], modules | entries}`
+    DATASOURCE  by SOURCEID: `{layout, asn1: {grammar, top, start_offset,
+                record_header, filler}}`, the delimiter (or fixed widths) and
+                the ASN.1 decoding the viewer starts with for the files of the
+                datasource
 
 This module is the only code that knows the table. Every write is logged
 with the value it replaces.
@@ -20,7 +22,9 @@ import sqlalchemy as sa
 from ..database import db
 from ..logger import logger
 
+from .asn1 import ber
 from .asn1 import grammar as asn1_grammar
+from .asn1 import tagmap
 from .files import number_option
 from .store import DatasourceError
 
@@ -103,6 +107,8 @@ def grammars():
         files = row['content'].get('files') or []
         result.append({
             'name': row['config_name'],
+            'kind': row['content'].get('kind') or 'asn1',
+            'entries': row['content'].get('entries'),
             'files': [{'name': item['name'], 'size': len(item['text'])}
                       for item in files],
             'modules': row['content'].get('modules') or [],
@@ -115,11 +121,24 @@ def grammars():
 
 def grammar_files(name):
     """Get the files `[(name, text)]` of a grammar; 404 when none."""
+    return _grammar_row(name)[1]
+
+
+def _grammar_row(name):
+    """Get the kind and files of a grammar; 404 when none."""
     rows = _rows(GRAMMAR, name)
     if not rows:
         raise DatasourceError(f'There is no grammar {name}.', 404)
-    return [(item['name'], item['text'])
-            for item in rows[0]['content'].get('files') or []]
+    content = rows[0]['content']
+    return content.get('kind') or 'asn1', [
+        (item['name'], item['text']) for item in content.get('files') or []]
+
+
+def _load(kind, files):
+    """Get the Grammar or TagMap of files."""
+    if kind == 'tagmap':
+        return tagmap.TagMap(tagmap.parse(files))
+    return asn1_grammar.load(files)
 
 
 def load_grammar(name):
@@ -141,7 +160,7 @@ def load_grammar(name):
     if grammar is not None:
         return grammar
     try:
-        grammar = asn1_grammar.load(grammar_files(name))
+        grammar = _load(*_grammar_row(name))
     except asn1_grammar.GrammarError as error:
         raise DatasourceError(f'The grammar {name} is not usable: {error}')
     with _loaded_lock:
@@ -156,13 +175,14 @@ _loaded_lock = threading.Lock()
 
 
 def save_grammar(name, files, replace=False):
-    """Save a grammar of files `[{name, text}]`, parsed first (400 naming the
-    file and line); an existing name only with `replace` (else 409).
+    """Save a grammar of files `[{name, text}]`: ASN.1 modules, or a tag map
+    (tagmap.py) when every file is one. Parsed first (400 naming the file
+    and line); an existing name only with `replace` (else 409).
 
     Returns
     -------
     result : dict
-        `{name, modules, tops, preferred, wrapped}`.
+        `{name, kind, modules, entries, tops, preferred, wrapped}`.
     """
     name = (name or '').strip()
     if not NAME_PATTERN.fullmatch(name):
@@ -185,28 +205,40 @@ def save_grammar(name, files, replace=False):
         raise DatasourceError(f'The grammar has {size // 1024} KB; at most '
                               f'{limit // 1024} KB are allowed '
                               f'([DATASOURCES] asn1_grammar_max_kb).', 413)
+    maps = [tagmap.looks_like(text) for _, text in pairs]
+    if any(maps) and not all(maps):
+        raise DatasourceError('A grammar is ASN.1 modules or a tag map, not '
+                              'both: upload them as two grammars.')
+    kind = 'tagmap' if all(maps) else 'asn1'
+    files = [{'name': file_name, 'text': text} for file_name, text in pairs]
     try:
-        parsed = asn1_grammar.parse(pairs)
+        if kind == 'tagmap':
+            parsed = tagmap.parse(pairs)
+            content = {'kind': kind, 'files': files,
+                       'entries': len(parsed['entries']), 'modules': [],
+                       'wrapped': []}
+        else:
+            parsed = asn1_grammar.parse(pairs)
+            content = {'kind': kind, 'files': files,
+                       'modules': sorted(parsed['modules']),
+                       'wrapped': parsed['wrapped']}
     except asn1_grammar.GrammarError as error:
         raise DatasourceError(f'The grammar can not be read: {error}')
     old = _rows(GRAMMAR, name)
     if old and not replace:
         raise DatasourceError(f'A grammar {name} exists already.', 409)
-    content = {'files': [{'name': file_name, 'text': text}
-                         for file_name, text in pairs],
-               'modules': sorted(parsed['modules']),
-               'wrapped': parsed['wrapped']}
     _write(GRAMMAR, name, content, old[0] if old else None)
-    loaded = asn1_grammar.load(pairs)
-    tops, preferred = loaded.tops()
+    tops, preferred = _load(kind, pairs).tops()
+    what = f'{content["entries"]} tag map entries' if kind == 'tagmap' \
+        else f'modules {", ".join(content["modules"])}'
     logger.info(f'ASN.1 grammar {"replaced" if old else "added"}: {name} '
-                f'({", ".join(file_name for file_name, _ in pairs)}; '
-                f'modules {", ".join(content["modules"])})'
+                f'({", ".join(file_name for file_name, _ in pairs)}; {what})'
                 + (f'; it had files '
                    f'{", ".join(f["name"] for f in old[0]["content"].get("files") or [])}'
                    if old else ''))
-    return {'name': name, 'modules': content['modules'], 'tops': tops,
-            'preferred': preferred, 'wrapped': parsed['wrapped']}
+    return {'name': name, 'kind': kind, 'modules': content['modules'],
+            'entries': content.get('entries'), 'tops': tops,
+            'preferred': preferred, 'wrapped': content['wrapped']}
 
 
 def delete_grammar(name):
@@ -229,8 +261,10 @@ def delete_grammar(name):
 def grammar_types(name):
     """Get the types of a grammar to decode a file with: `{tops, preferred}`
     (the first `preferred` are those no other type refers to)."""
-    tops, preferred = load_grammar(name).tops()
-    return {'name': name, 'tops': tops, 'preferred': preferred}
+    grammar = load_grammar(name)
+    tops, preferred = grammar.tops()
+    return {'name': name, 'kind': grammar.kind, 'tops': tops,
+            'preferred': preferred}
 
 
 def _grammar_usage():
@@ -310,11 +344,23 @@ def _check_asn1(value):
     if offset < 0:
         raise DatasourceError('The start offset is a number of bytes.')
     result['start_offset'] = offset
+    try:
+        record_header = int(value.get('record_header') or 0)
+    except (TypeError, ValueError):
+        record_header = -1
+    if not 0 <= record_header <= ber.MAX_RECORD_HEADER:
+        raise DatasourceError(f'The record header is 0 to '
+                              f'{ber.MAX_RECORD_HEADER} bytes.')
+    result['record_header'] = record_header
+    filler = value.get('filler') or '00ff'
+    if filler not in ber.FILLERS:
+        raise DatasourceError('The filler is 00ff, ff or none.')
+    result['filler'] = filler
     name = value.get('grammar')
     if name:
         grammar = load_grammar(name)
         top = value.get('top')
-        if top:
+        if top and grammar.kind == 'asn1':
             try:
                 grammar.top_handle(top)
             except asn1_grammar.GrammarError as error:

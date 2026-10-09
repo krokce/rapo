@@ -13,13 +13,14 @@
         <div class="text-grey-7 q-mb-md">
           A grammar is one or more ASN.1 modules (.asn files) that name the fields of a file and their types: TAP and RAP (GSMA TD.57, TD.32), NRTRDE (TD.35), 3GPP TS 32.298 CDRs
           or a vendor's own. Upload all the modules it imports in one grammar; a type the grammar lacks just leaves its fields unnamed. A file of type assignments only, without a
-          module header, is read as one module with IMPLICIT TAGS.
+          module header, is read as one module with IMPLICIT TAGS. A <b>tag map</b> of a Pentaho ASN.1 decoder (its <span class="text-mono">props.put("82.4.1","nodeAddress,ia5,4");</span>
+          lines, or <span class="text-mono">82.4.1=nodeAddress,ia5</span>) names fields by tag path instead and decodes their values as the decoder does.
         </div>
 
         <div class="row items-start q-gutter-sm q-mb-md upload-row">
           <q-input v-model="newName" dense outlined label="Grammar name" class="col-3" :error="Boolean(nameError)" :error-message="nameError" hide-bottom-space />
           <q-btn outline no-caps color="primary" icon="fas fa-folder-open" label="Choose .asn files" class="pick-btn" @click="$refs.input.click()" />
-          <input ref="input" type="file" multiple accept=".asn,.asn1,.txt,.ASN,.ASN1" class="hidden" @change="picked" />
+          <input ref="input" type="file" multiple accept=".asn,.asn1,.txt,.ASN,.ASN1,.properties,.java" class="hidden" @change="picked" />
           <div class="col text-caption text-grey-8 picked">
             <template v-if="files.length">{{ files.map((file) => `${file.name} (${formatBytes(file.size)})`).join(", ") }}</template>
             <template v-else>No files chosen</template>
@@ -38,7 +39,7 @@
             <tr>
               <th class="text-left" title="The grammar's name, picked in the viewer">Name</th>
               <th class="text-left" title="The .asn files of the grammar">Files</th>
-              <th class="text-left" title="The ASN.1 modules they define">Modules</th>
+              <th class="text-left" title="The ASN.1 modules they define, or the entries of a tag map">Modules</th>
               <th class="text-left" title="The datasources whose files the viewer decodes with it">Used by</th>
               <th class="text-left" title="When the grammar was last uploaded">Updated</th>
               <th style="width: 180px"></th>
@@ -49,7 +50,8 @@
               <td class="text-weight-medium">{{ grammar.name }}</td>
               <td class="text-grey-8 text-mono cell-wrap">{{ grammar.files.map((file) => file.name).join(", ") }}</td>
               <td class="text-grey-8 cell-wrap">
-                {{ grammar.modules.join(", ") }}
+                <template v-if="grammar.kind === 'tagmap'">Tag map, {{ grammar.entries }} entries</template>
+                <template v-else>{{ grammar.modules.join(", ") }}</template>
                 <q-icon v-if="grammar.wrapped.length" name="fas fa-info-circle" color="blue-grey-5" size="12px">
                   <q-tooltip>Without a module header (read as IMPLICIT TAGS): {{ grammar.wrapped.join(", ") }}</q-tooltip>
                 </q-icon>
@@ -158,7 +160,7 @@ export default {
           files.push({ name: file.name, text: await readText(file) });
         }
         const result = await api("save-asn1-grammar", { method: "POST", body: { name, files, replace } });
-        this.$q.notify({ type: "positive", message: `Grammar ${name} saved: ${result.modules.join(", ")}` });
+        this.$q.notify({ type: "positive", message: `Grammar ${name} saved: ${result.kind === "tagmap" ? `tag map of ${result.entries} entries` : result.modules.join(", ")}` });
         this.files = [];
         this.newName = "";
         await this.load();

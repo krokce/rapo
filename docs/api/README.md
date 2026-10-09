@@ -1032,16 +1032,18 @@ each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scan
 
 #### ASN.1 view
 A loaded file read as ASN.1 BER (DER and CER too), for the viewer's ASN.1 view. The file is one `download-ds-files`
-would send, decompressed as by `view-ds-file`. From `start_offset` it is a series of TLVs (the *root*); 00 and FF
-bytes between them are skipped, bytes that are no TLV become an `undecodable` node and the reading goes on at the next
+would send, decompressed as by `view-ds-file`. From `start_offset` it is a series of records (the *root*), each a TLV
+after `record_header` bytes (e.g. 4 in Huawei SBC files); `filler` bytes between them are skipped (`00ff`, the default:
+00 and FF; `ff`: FF only, for headers that may start with 00; `none`), bytes that are no TLV become an `undecodable` node and the reading goes on at the next
 TLV. Nothing is decoded ahead: a request reads the headers of one page of one node's children; the server notes every
 256th child's offset of the files read last, so a later page starts near it. With a `grammar` (an uploaded one, see
 `get-asn1-grammars`) and a `top` type (`Module.Type`, guessed from the first TLV when not given) the nodes get their
 field names and types; a tag the grammar does not expect leaves the node (and its children) unnamed (`unknown`).
 
-Common parameters: `id` (file ID, required), `start_offset` (`0`: bytes to skip, e.g. a file header), `grammar` and
-`top`. A **node** is `{offset, end, ordinal, undecodable, cls, number, tag, constructed, indefinite, tag_len,
-header_len, length, has_children}` (`length` of the content; `tag` as `[3]`, `[APPLICATION 1]` or `SEQUENCE`), with a
+Common parameters: `id` (file ID, required), `start_offset` (`0`: bytes to skip, e.g. a file header), `record_header`
+(`0`, at most 1024), `filler`, `grammar` and `top`. A **node** is `{offset, end, record_offset, ordinal, undecodable, cls, number, tag, constructed, indefinite, tag_len,
+header_len, length, has_children}` (`length` of the content; `tag` as `[3]`, `[APPLICATION 1]` or `SEQUENCE`;
+`record_offset` where a root record starts, its record header, else `offset`), with a
 grammar `name`, `alternatives` (the CHOICE alternatives it is), `type`, `state` (sent back to read its children) and
 `unknown`, and for a primitive one `preview` (its likeliest reading) or `preview_hex`. Errors as `view-ds-file`.
 
@@ -1051,7 +1053,8 @@ grammar `name`, `alternatives` (the CHOICE alternatives it is), `type`, `state` 
   `start_offset`, `grammar`, `top`), `nodes` and `eof`.
 * `GET /api/get-ds-file-asn1-node`: one node by `offset` (and `state`) with `readings` `[{label, value}]` (what its
   value reads as: by its type with a grammar, else every reading that fits, e.g. integer, text, TBCD digits, address,
-  3GPP time stamp, IP address), `hex` (its first 4 KB) and `type_chain` (the types it is defined as).
+  3GPP time stamp, IP address), `hex` (its first 4 KB), `type_chain` (the types it is defined as) and, with a tag map,
+  `map_path`.
 * `GET /api/locate-ds-file-asn1`: the nodes holding the byte at `offset`, `levels` `[{parent, node}]` from the root
   (`parent` null) down to the deepest.
 * `GET /api/render-ds-file-asn1`: a node (`offset`, `state`) and its subtree as `format` `xml` or `text` (one line per
@@ -1070,25 +1073,31 @@ grammar `name`, `alternatives` (the CHOICE alternatives it is), `type`, `state` 
 `view-ds-file`.
 
 #### ASN.1 grammars
-Uploaded grammars (one or more ASN.1 modules) that name the fields of a file, kept in `rapo_viewer_config`. Only the
-modules are parsed (asn1tools), never compiled, so a grammar needs not be complete: a type it lacks leaves its fields
-unnamed. A file of type assignments only, without a module header, is read as a module named after the file with
-IMPLICIT TAGS (`wrapped`). Every write is logged to the server log with what it replaces.
+Uploaded grammars that name the fields of a file, kept in `rapo_viewer_config`, of two kinds:
+* `asn1`: one or more ASN.1 modules. Only parsed (asn1tools), never compiled, so a grammar needs not be complete: a type
+  it lacks leaves its fields unnamed. A file of type assignments only, without a module header, is read as a module
+  named after the file with IMPLICIT TAGS (`wrapped`).
+* `tagmap`: the field definitions of a Pentaho ASN.1 decoder, `props.put("82.4.1","nodeAddress,ia5,4");` lines or
+  `82.4.1=nodeAddress,ia5`. A node's path is the tag numbers of its TLVs that are not UNIVERSAL (as the decoder's
+  `ObjectParser` builds it); `_ROW` marks the record. Values are decoded as the decoder does by type (`bcdstring`,
+  `ebcdstring`, `tbcdstring`, `rbcdstring`, `integer`, `octstring`, `ia5`; another type as hex). No top type.
 
-* `GET /api/get-asn1-grammars`: `{grammars: [{name, files: [{name, size}], modules, wrapped, created_date,
-  updated_date, used_by}]}` (`used_by`: the datasources whose files open with it).
-* `GET /api/get-asn1-grammar-types`: `name`; `{name, tops, preferred}`: the types to decode a file with, as
+The kind is detected from the files (all of one kind). Every write is logged to the server log with what it replaces.
+
+* `GET /api/get-asn1-grammars`: `{grammars: [{name, kind, files: [{name, size}], modules, entries, wrapped,
+  created_date, updated_date, used_by}]}` (`entries`: of a tag map) (`used_by`: the datasources whose files open with it).
+* `GET /api/get-asn1-grammar-types`: `name`; `{name, kind, tops, preferred}` (a tag map has none): the types to decode a file with, as
   `Module.Type`, the first `preferred` of them being the structured types no other type refers to.
 * `POST /api/save-asn1-grammar`: JSON body `{name, files: [{name, text}], replace}`. Parsed first: 400 naming the
   file, line and column of an error; 409 for an existing name without `replace`; 413 past `[DATASOURCES]
-  asn1_grammar_max_kb` (2048). Answers `{status, name, modules, tops, preferred, wrapped}`.
+  asn1_grammar_max_kb` (2048). Answers `{status, name, kind, modules, entries, tops, preferred, wrapped}`.
 * `POST /api/delete-asn1-grammar`: `name`. 409 while a datasource opens its files with it, 404 for an unknown name.
 
 All answer 503 while `rapo_viewer_config` does not exist (run `migrations/v0.8.6/upgrade.sql`).
 
 #### Viewer settings
 * `GET /api/get-viewer-settings`: `sourceid`; `{sourceid, settings}`, `settings` `{layout, asn1: {grammar, top,
-  start_offset}}` (keys left out when not set): what the viewer opens the datasource's files with.
+  start_offset, record_header, filler}}` (keys left out when not set): what the viewer opens the datasource's files with.
 * `POST /api/save-viewer-settings`: JSON body `{sourceid, layout?, asn1?}`; each key given replaces its value (`null`
   removes it), the others are kept. `layout` is the *Delimiter* field's text; `asn1.grammar` must exist (404) and
   `asn1.top` be one of its types (400). Answers `{status, settings}`.
