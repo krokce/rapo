@@ -44,7 +44,7 @@
           <div class="q-mx-lg q-mt-md q-gutter-y-sm fill-column">
             <div class="text-grey-7 text-caption q-px-sm">
               The runs of this server<span v-if="status && status.runner"> ({{ status.runner.runner }})</span>, running first, then those waiting for a free
-              slot; other servers run their own.
+              slot (or for a run of their own control, as its instance limit allows); other servers run their own.
             </div>
             <!-- The columns of History, so the two tables read alike: Queued and Started stand for Recorded and Scheduled for,
                  the state for the event. -->
@@ -68,7 +68,7 @@
                     <th title="The start of the run's data window" class="text-left">Run from</th>
                     <th title="The end of the run's data window" class="text-left">Run to</th>
                     <th title="What started the run: schedule, manual, catch-up, iteration, cascade or chain" class="text-left">Trigger</th>
-                    <th title="Running, or queued for a free slot (control_parallelism)" class="text-left">State</th>
+                    <th title="Running, queued for a free slot (control_parallelism), or held in the queue while its control already runs as many jobs as its instance limit on this server" class="text-left">State</th>
                     <th title="The operating system's process ID of the worker running it" class="text-center">OS PID</th>
                     <th></th>
                   </tr>
@@ -106,6 +106,7 @@
                         text-color="white" />
                       {{ job.state === "running" ? "Running" : "Queued" }}
                     </q-chip>
+                    <span v-if="job.held === 'instance_limit'" class="text-grey-7 text-no-wrap" title="Its control already runs as many jobs as its instance limit on this server; the run takes a slot when one of them ends">· instance limit</span>
                   </td>
                   <td class="text-center text-blue-grey-7 number-cell">{{ job.pid }}</td>
                   <td>

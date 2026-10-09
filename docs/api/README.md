@@ -1175,7 +1175,8 @@ The state of the scheduler, of its lease and of the run manager of **this** serv
   date_from, date_to}` (`date_from`/`date_to`: the data window of the run performed now).
   `process_id`, `control_name` and `control_type` are those of the run the job process performs now, which is an
   upstream run of a chain, an iteration or a cascade child while those run; `job_control_name` is the control the
-  job was submitted for.
+  job was submitted for. A `queued` job also has `held`: `instance_limit` while its control already runs as many
+  jobs as its `instance_limit` on this server (it is passed over until one ends), else `null`.
 
 #### `POST /api/scheduler-stop` and `POST /api/scheduler-start`
 Stop or resume scheduling. The switch is stored in the database, so it survives a restart and applies to every

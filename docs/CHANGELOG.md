@@ -40,6 +40,9 @@ options (uploads are off until `file_upload=True`).
   flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so
   PDI Core never loads a partial file. `[DATASOURCES] file_upload` (off), `max_upload_mb`; routes `check-ds-upload`,
   `upload-ds-file`.
+- **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
+  the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
+  order and are not timed out while held. The limit also counts active runs older than a day.
 
 ## v0.8.5 — 2026-10-05
 

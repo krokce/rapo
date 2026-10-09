@@ -3,7 +3,9 @@
 All control runs of the server, scheduled or requested from the UI, go
 through one run manager. Each run is initiated at once, so it is visible in
 the UI, then waits in a FIFO queue for one of `control_parallelism`
-execution slots and is performed in its own spawned OS process. The cascade
+execution slots and is performed in its own spawned OS process. A queued run
+whose control already runs `instance_limit` jobs on this server is held and
+passed over, so that it never takes a slot only to wait for its own control. The cascade
 and the iterations a run asks for are performed in the same process after
 the run itself.
 
@@ -59,6 +61,19 @@ def _waiting_since(job, state):
     return max(moments) if moments else None
 
 
+def _count_jobs(jobs):
+    """Count the given jobs by the control they were submitted for."""
+    return collections.Counter(job.control.name for job in jobs)
+
+
+def _is_held(job, counts):
+    """Check that the job's control runs its instance limit of jobs."""
+    limit = job.control.config['instance_limit']
+    if not isinstance(limit, int) or limit < 1:
+        return False
+    return counts[job.control.name] >= limit
+
+
 def get_runner_name():
     """Get stable name of this server used to mark the runs it owns."""
     port = config['API'].get('port') if config.check('API') else None
@@ -85,6 +100,7 @@ class Job:
         # a chain, an iteration or a cascade child), cached by process ID.
         self.current_control = None
         self.canceled = False
+        self.held = False
 
     @property
     def process_id(self):
@@ -276,7 +292,11 @@ class RunManager:
         with self.condition:
             pending = list(self.pending)
             running = list(self.running)
-        pending = [job.describe() for job in pending]
+        counts = _count_jobs(running)
+        pending = [dict(job.describe(),
+                        held='instance_limit' if _is_held(job, counts)
+                        else None)
+                   for job in pending]
         running = [job.describe() for job in running]
         return {
             'runner': self.name,
@@ -304,12 +324,16 @@ class RunManager:
     def _dispatch(self):
         while True:
             with self.condition:
-                while self.active and (not self.pending or
-                                       len(self.running) >= self.capacity):
+                while True:
+                    if not self.active:
+                        return
+                    job = None
+                    if len(self.running) < self.capacity:
+                        job = self._admit()
+                    if job:
+                        break
                     self.condition.wait()
-                if not self.active:
-                    return
-                job = self.pending.popleft()
+                self.pending.remove(job)
                 self.running.append(job)
             try:
                 self._spawn(job)
@@ -328,6 +352,24 @@ class RunManager:
                 except Exception:
                     logger.error()
             self._notify()
+
+    def _admit(self):
+        """Get the first queued job its control's instance limit lets run.
+
+        A job counts as one instance of the control it was submitted for
+        until its process exits, whatever run it performs. Runs of other
+        servers are not seen here: the run process still waits for them.
+        """
+        counts = _count_jobs(self.running)
+        for job in self.pending:
+            if not _is_held(job, counts):
+                return job
+            if not job.held:
+                job.held = True
+                logger.info(f'{job.control} Held in queue by its instance '
+                            f'limit ({counts[job.control.name]} running on '
+                            'this server)')
+        return None
 
     def _spawn(self, job):
         control = job.control

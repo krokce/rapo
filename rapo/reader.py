@@ -237,7 +237,8 @@ class Reader:
             Ordinary list with currently running control run logs.
         """
         statuses = ['W', 'S', 'P', 'F']
-        return self.read_control_logs(control_name, days=1, statuses=statuses)
+        return self.read_control_logs(control_name, days=None,
+                                      statuses=statuses)
 
     def read_running_controls(self):
         """Get list of running controls."""

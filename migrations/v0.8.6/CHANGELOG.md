@@ -130,3 +130,12 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
      `locate-ds-file-asn1`, `render-ds-file-asn1`, `search-ds-file-asn1`, `get-ds-file-bytes`, `get-asn1-grammars`,
      `get-asn1-grammar-types`, `save-asn1-grammar`, `delete-asn1-grammar`, `get-viewer-settings`,
      `save-viewer-settings`. Grammar and settings changes are written to the server log.
+5. **Instance limit no longer blocks the queue.** A queued run whose control already runs as many jobs as its
+   `instance_limit` on this server is held in the queue and passed over, so other controls take the free slots.
+   Before, ten runs of one control with `instance_limit = 1` filled every `control_parallelism` slot while only one of
+   them worked. Held runs start in the order they were queued (before, in no particular order) and, like any queued
+   run, are not timed out while held (before, a run waiting for its own control could end canceled by its
+   `timeout`). The Scheduler's *Running* tab shows them as *Queued · instance limit*, and `scheduler-status` marks
+   them with `held: "instance_limit"`. The limit also counts active runs started more than a day ago (they were
+   ignored). Runs of the control on another server, or as another control's cascade or chain source, are still waited
+   for inside the run's process, holding its slot, as before.
