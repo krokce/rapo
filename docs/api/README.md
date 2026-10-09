@@ -1088,8 +1088,12 @@ The kind is detected from the files (all of one kind). Every write is logged to 
   created_date, updated_date, used_by}]}` (`entries`: of a tag map) (`used_by`: the datasources whose files open with it).
 * `GET /api/get-asn1-grammar-types`: `name`; `{name, kind, tops, preferred}` (a tag map has none): the types to decode a file with, as
   `Module.Type`, the first `preferred` of them being the structured types no other type refers to.
-* `POST /api/save-asn1-grammar`: JSON body `{name, files: [{name, text}], replace}`. Parsed first: 400 naming the
-  file, line and column of an error; 409 for an existing name without `replace`; 413 past `[DATASOURCES]
+* `GET /api/get-asn1-grammar`: `name`; the grammar with its files' texts, `{name, kind, files: [{name, text}],
+  modules, entries, wrapped, updated_date, used_by}`, for the editor. 404 for an unknown name.
+* `POST /api/save-asn1-grammar`: JSON body `{name, files: [{name, text}], replace, old_name}`. Parsed first: 400 naming
+  the file, line and column of an error; 409 for an existing name without `replace`. With `old_name` it edits that
+  grammar (404 when gone): a different `name` renames it (409 when taken), and the datasources opening their files
+  with it follow the new name, in one transaction; 413 past `[DATASOURCES]
   asn1_grammar_max_kb` (2048). Answers `{status, name, kind, modules, entries, tops, preferred, wrapped}`.
 * `POST /api/delete-asn1-grammar`: `name`. 409 while a datasource opens its files with it, 404 for an unknown name.
 

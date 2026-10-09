@@ -1,127 +1,171 @@
 <template>
-  <q-dialog v-model="visible">
-    <q-card class="column no-wrap" style="width: 1000px; max-width: 95vw; max-height: 90vh">
-      <q-card-section class="row items-center q-py-sm">
-        <q-icon name="fas fa-book" color="blue-grey-6" size="20px" class="q-mr-sm" />
+  <q-dialog v-model="visible" :maximized="maximized">
+    <q-card class="column no-wrap" :style="maximized ? '' : 'width: 1200px; max-width: 95vw; height: 90vh'">
+      <q-card-section class="row items-center q-py-sm no-wrap">
+        <q-icon name="fas fa-book" size="sm" class="q-mr-sm text-blue-grey-7" />
         <div class="text-h6">ASN.1 grammars</div>
+        <div class="q-ml-md text-caption text-grey-7">{{ countText }}</div>
         <q-space />
+        <q-btn flat round :icon="maximized ? 'fas fa-compress' : 'fas fa-expand'" :aria-label="maximized ? 'Restore' : 'Maximize'" @click="maximized = !maximized">
+          <q-tooltip>{{ maximized ? "Restore" : "Maximize" }}</q-tooltip>
+        </q-btn>
         <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
       </q-card-section>
       <q-separator />
 
-      <q-card-section class="col scroll">
-        <div class="text-grey-7 q-mb-md">
-          A grammar is one or more ASN.1 modules (.asn files) that name the fields of a file and their types: TAP and RAP (GSMA TD.57, TD.32), NRTRDE (TD.35), 3GPP TS 32.298 CDRs
-          or a vendor's own. Upload all the modules it imports in one grammar; a type the grammar lacks just leaves its fields unnamed. A file of type assignments only, without a
-          module header, is read as one module with IMPLICIT TAGS. A <b>tag map</b> of a Pentaho ASN.1 decoder (its <span class="text-mono">props.put("82.4.1","nodeAddress,ia5,4");</span>
-          lines, or <span class="text-mono">82.4.1=nodeAddress,ia5</span>) names fields by tag path instead and decodes their values as the decoder does.
+      <q-card-section class="col column no-wrap q-gutter-y-sm grammar-list">
+        <div class="text-caption text-grey-7">
+          A grammar names the fields of a binary file and their types for the viewer's ASN.1 view: ASN.1 modules (TAP, RAP, NRTRDE, 3GPP TS 32.298 CDRs or a vendor's own;
+          upload or paste all the modules it imports together), or the tag map of a Pentaho ASN.1 decoder (<span class="text-mono">props.put("82.4.1","nodeAddress,ia5,4");</span>
+          lines or <span class="text-mono">82.4.1=nodeAddress,ia5</span>), which names fields by tag path and decodes values as the decoder does. A type a grammar lacks just
+          leaves its fields unnamed.
+        </div>
+        <div class="row items-center q-gutter-sm">
+          <q-input v-model="search" dense outlined clearable class="search-input" placeholder="Search name, file or module">
+            <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
+          </q-input>
+          <q-space />
+          <q-btn unelevated no-caps color="primary" icon="fas fa-plus" label="Add grammar" @click="$refs.editor.openAdd()" />
         </div>
 
-        <div class="row items-start q-gutter-sm q-mb-md upload-row">
-          <q-input v-model="newName" dense outlined label="Grammar name" class="col-3" :error="Boolean(nameError)" :error-message="nameError" hide-bottom-space />
-          <q-btn outline no-caps color="primary" icon="fas fa-folder-open" label="Choose .asn files" class="pick-btn" @click="$refs.input.click()" />
-          <input ref="input" type="file" multiple accept=".asn,.asn1,.txt,.ASN,.ASN1,.properties,.java" class="hidden" @change="picked" />
-          <div class="col text-caption text-grey-8 picked">
-            <template v-if="files.length">{{ files.map((file) => `${file.name} (${formatBytes(file.size)})`).join(", ") }}</template>
-            <template v-else>No files chosen</template>
-          </div>
-          <q-btn unelevated no-caps color="primary" icon="fas fa-upload" label="Upload" class="pick-btn" :loading="saving" :disable="!files.length || !newName.trim()" @click="upload(false)" />
-        </div>
-        <q-banner v-if="uploadError" dense rounded class="bg-red-1 text-red-10 q-mb-md upload-error">
-          <template #avatar><q-icon name="fas fa-exclamation-circle" color="red-7" /></template>
-          <span class="text-mono">{{ uploadError }}</span>
-        </q-banner>
-
-        <div v-if="loading && !grammars.length" class="text-grey-7">Reading…</div>
-        <div v-else-if="!grammars.length" class="text-grey-7">No grammar uploaded yet.</div>
-        <q-markup-table v-else dense flat bordered separator="horizontal">
-          <thead>
-            <tr>
-              <th class="text-left" title="The grammar's name, picked in the viewer">Name</th>
-              <th class="text-left" title="The .asn files of the grammar">Files</th>
-              <th class="text-left" title="The ASN.1 modules they define, or the entries of a tag map">Modules</th>
-              <th class="text-left" title="The datasources whose files the viewer decodes with it">Used by</th>
-              <th class="text-left" title="When the grammar was last uploaded">Updated</th>
-              <th style="width: 180px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="grammar in grammars" :key="grammar.name">
-              <td class="text-weight-medium">{{ grammar.name }}</td>
-              <td class="text-grey-8 text-mono cell-wrap">{{ grammar.files.map((file) => file.name).join(", ") }}</td>
-              <td class="text-grey-8 cell-wrap">
-                <template v-if="grammar.kind === 'tagmap'">Tag map, {{ grammar.entries }} entries</template>
-                <template v-else>{{ grammar.modules.join(", ") }}</template>
-                <q-icon v-if="grammar.wrapped.length" name="fas fa-info-circle" color="blue-grey-5" size="12px">
-                  <q-tooltip>Without a module header (read as IMPLICIT TAGS): {{ grammar.wrapped.join(", ") }}</q-tooltip>
-                </q-icon>
+        <q-virtual-scroll
+          type="table"
+          class="col list-table grammar-table"
+          :items="shownGrammars"
+          :virtual-scroll-item-size="48"
+          :virtual-scroll-sticky-size-start="28"
+          :table-colspan="7">
+          <template #before>
+            <thead>
+              <tr class="bg-blue-grey-2">
+                <th class="text-left" title="The grammar's name, picked in the viewer; click a row to edit the grammar">Name</th>
+                <th class="text-left" title="ASN.1 modules, or the tag map of a Pentaho ASN.1 decoder">Kind</th>
+                <th class="text-left" title="The files of the grammar">Files</th>
+                <th class="text-left" title="The ASN.1 modules the files define, or the entries of a tag map">Modules</th>
+                <th class="text-left" title="The datasources whose files the viewer opens with this grammar (Save for datasource)">Used by</th>
+                <th class="text-left" title="When the grammar was last saved (database clock)">Updated</th>
+                <th class="text-left"></th>
+              </tr>
+            </thead>
+          </template>
+          <template #default="{ item: grammar }">
+            <tr :key="grammar.name" class="clickable-row" @click="$refs.editor.openEdit(grammar.name)">
+              <td class="text-left text-weight-bold">{{ grammar.name }}</td>
+              <td class="text-left">
+                <q-chip :title="grammar.kind === 'tagmap' ? 'Tag map of a Pentaho ASN.1 decoder' : 'ASN.1 modules'">
+                  <q-avatar :icon="grammar.kind === 'tagmap' ? 'fas fa-tags' : 'fas fa-sitemap'" color="blue-grey-6" text-color="white" />
+                  {{ grammar.kind === "tagmap" ? "Tag map" : "ASN.1" }}
+                </q-chip>
               </td>
-              <td class="text-grey-8">{{ grammar.used_by.length ? grammar.used_by.join(", ") : "–" }}</td>
-              <td class="text-grey-8">{{ toDateTimeString(grammar.updated_date) }}</td>
-              <td class="text-right">
-                <q-btn flat dense no-caps size="sm" color="primary" label="Replace files" :disable="saving" @click="startReplace(grammar)">
-                  <q-tooltip>Choose new files for this grammar, then Upload</q-tooltip>
-                </q-btn>
-                <q-btn flat dense no-caps size="sm" color="negative" label="Delete" :disable="saving || grammar.used_by.length > 0" @click="remove(grammar)">
-                  <q-tooltip v-if="grammar.used_by.length">Used by datasource {{ grammar.used_by.join(", ") }}</q-tooltip>
-                </q-btn>
+              <td class="text-left text-mono cell-wrap" :title="filesTitle(grammar)">{{ shortList(grammar.files.map((file) => file.name)) }}</td>
+              <td class="text-left text-grey-8 cell-wrap">
+                <template v-if="grammar.kind === 'tagmap'">{{ formatNumber(grammar.entries) }} entries</template>
+                <template v-else>
+                  <span :title="grammar.modules.join(', ')">{{ shortList(grammar.modules) }}</span>
+                  <q-icon v-if="grammar.wrapped.length" name="fas fa-info-circle" color="blue-grey-5" size="12px">
+                    <q-tooltip>Without a module header (read as IMPLICIT TAGS): {{ grammar.wrapped.join(", ") }}</q-tooltip>
+                  </q-icon>
+                </template>
+              </td>
+              <td class="text-left">
+                <span v-if="grammar.used_by.length">{{ grammar.used_by.join(", ") }}</span>
+                <span v-else class="text-grey-7">&ndash;</span>
+              </td>
+              <td class="text-left text-grey-8">{{ toDateTimeString(grammar.updated_date) }}</td>
+              <td @click.stop>
+                <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, grammar)" />
               </td>
             </tr>
-          </tbody>
-        </q-markup-table>
+          </template>
+          <template #after>
+            <tbody v-if="loading && !grammars.length">
+              <skeleton-rows :rows="5" :columns="['text', 'QChip', 'text', 'text', 'text', 'text', null]" />
+            </tbody>
+            <tbody v-else-if="!shownGrammars.length">
+              <tr>
+                <td colspan="7" class="text-center text-grey-7 q-pa-lg">
+                  {{ grammars.length ? "No grammar matches the search" : "No grammar yet: Add grammar to paste or upload one." }}
+                </td>
+              </tr>
+            </tbody>
+          </template>
+        </q-virtual-scroll>
       </q-card-section>
     </q-card>
+
+    <q-menu v-if="menuTarget" ref="rowMenu" :target="menuTarget" no-parent-event>
+      <q-list v-if="menuGrammar" dense class="text-no-wrap">
+        <q-item clickable v-close-popup @click="$refs.editor.openEdit(menuGrammar.name)">
+          <q-item-section> Edit grammar </q-item-section>
+        </q-item>
+        <q-item clickable v-close-popup @click="$refs.editor.openDuplicate(menuGrammar.name)">
+          <q-item-section> Duplicate </q-item-section>
+        </q-item>
+        <q-item clickable v-close-popup @click="download(menuGrammar)">
+          <q-item-section> Download </q-item-section>
+        </q-item>
+        <q-separator />
+        <q-item v-if="menuGrammar.used_by.length" dense disable>
+          <q-item-section> Delete grammar </q-item-section>
+          <q-tooltip anchor="top middle" self="bottom middle">Used by datasource {{ menuGrammar.used_by.join(", ") }}</q-tooltip>
+        </q-item>
+        <q-item v-else clickable v-close-popup @click="remove(menuGrammar)">
+          <q-item-section class="text-negative"> Delete grammar </q-item-section>
+        </q-item>
+      </q-list>
+    </q-menu>
+    <grammar-edit-dialog ref="editor" @saved="saved" />
   </q-dialog>
 </template>
 
 <script>
 import { api, notifyError } from "../../api";
-import { escapeHtml, formatBytes, toDateTimeString } from "../../utils/format";
+import { downloadBlob, escapeHtml, formatBytes, formatNumber, toDateTimeString } from "../../utils/format";
+import SkeletonRows from "../SkeletonRows.vue";
+import GrammarEditDialog from "./GrammarEditDialog.vue";
 
-// Reads a file as text: UTF-8, else Windows-1252 (any byte is a character), as .asn files of other tools are.
-async function readText(file) {
-  const buffer = await file.arrayBuffer();
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-  } catch {
-    return new TextDecoder("windows-1252").decode(buffer);
-  }
-}
-
-// The uploaded ASN.1 grammars (get-asn1-grammars): upload one (save-asn1-grammar, parsed on the server first, which
-// names the file and line of an error), replace its files, delete one no datasource uses. Emits `changed` with the
-// name saved or deleted.
+// The uploaded ASN.1 grammars (get-asn1-grammars), listed like the app's other lists: a row opens the grammar in
+// GrammarEditDialog, which also adds one (pasted or uploaded); the row menu duplicates, downloads (the files one after
+// another in one file) or deletes one no datasource uses. Emits `changed` with the name saved or deleted, and
+// `{renamedFrom}` when a grammar was renamed.
 export default {
   name: "GrammarDialog",
+  components: { GrammarEditDialog, SkeletonRows },
   emits: ["changed"],
   data() {
     return {
       visible: false,
+      maximized: false,
       loading: false,
-      saving: false,
       grammars: [],
-      newName: "",
-      files: [],
-      uploadError: null,
+      search: "",
+      menuTarget: null,
+      menuGrammar: null,
     };
   },
   computed: {
-    nameError() {
-      const name = this.newName.trim();
-      if (name && !/^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,63}$/.test(name)) {
-        return "1 to 64 letters, digits, spaces and ._()+-";
+    shownGrammars() {
+      const needle = (this.search || "").trim().toLowerCase();
+      if (!needle) {
+        return this.grammars;
       }
-      return null;
+      return this.grammars.filter((grammar) =>
+        [grammar.name, ...grammar.files.map((file) => file.name), ...grammar.modules].some((text) => text.toLowerCase().includes(needle))
+      );
+    },
+    countText() {
+      const total = this.grammars.length;
+      const shown = this.shownGrammars.length;
+      const noun = `grammar${total === 1 ? "" : "s"}`;
+      return shown === total ? `${formatNumber(total)} ${noun}` : `${formatNumber(shown)} of ${formatNumber(total)} ${noun}`;
     },
   },
   methods: {
-    formatBytes,
+    formatNumber,
     toDateTimeString,
     open() {
       this.visible = true;
-      this.files = [];
-      this.newName = "";
-      this.uploadError = null;
+      this.search = "";
       this.load();
     },
     async load() {
@@ -134,60 +178,31 @@ export default {
         this.loading = false;
       }
     },
-    picked(event) {
-      this.files = Array.from(event.target.files || []);
-      this.uploadError = null;
-      if (!this.newName.trim() && this.files.length) {
-        this.newName = this.files[0].name.replace(/\.[^.]*$/, "").slice(0, 64);
-      }
-      event.target.value = "";
+    // At most three names, then how many more (all of them in the cell's tooltip).
+    shortList(names) {
+      return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3} more` : names.join(", ");
     },
-    startReplace(grammar) {
-      this.newName = grammar.name;
-      this.uploadError = null;
-      this.$refs.input.click();
+    filesTitle(grammar) {
+      return grammar.files.map((file) => `${file.name} (${formatBytes(file.size)})`).join(", ");
     },
-    async upload(replace) {
-      const name = this.newName.trim();
-      if (!name || this.nameError || !this.files.length) {
-        return;
-      }
-      this.saving = true;
-      this.uploadError = null;
+    openRowMenu(event, grammar) {
+      this.menuTarget = event.currentTarget;
+      this.menuGrammar = grammar;
+      this.$nextTick(() => this.$refs.rowMenu.show());
+    },
+    async saved({ name, renamedFrom }) {
+      await this.load();
+      this.$emit("changed", name, { renamedFrom });
+    },
+    async download(grammar) {
       try {
-        const files = [];
-        for (const file of this.files) {
-          files.push({ name: file.name, text: await readText(file) });
-        }
-        const result = await api("save-asn1-grammar", { method: "POST", body: { name, files, replace } });
-        this.$q.notify({ type: "positive", message: `Grammar ${name} saved: ${result.kind === "tagmap" ? `tag map of ${result.entries} entries` : result.modules.join(", ")}` });
-        this.files = [];
-        this.newName = "";
-        await this.load();
-        this.$emit("changed", name);
+        const loaded = await api("get-asn1-grammar", { params: { name: grammar.name } });
+        const text = loaded.files.map((file) => (loaded.files.length > 1 ? `-- ${file.name}\n${file.text}` : file.text)).join("\n\n");
+        const extension = loaded.kind === "tagmap" ? "properties" : "asn";
+        downloadBlob(new Blob([text], { type: "text/plain" }), `${grammar.name}.${extension}`);
       } catch (error) {
-        if (error.status === 409 && !replace) {
-          this.confirmReplace(name);
-        } else if (error.status === 400 || error.status === 413) {
-          this.uploadError = error.message;
-        } else {
-          notifyError("The grammar was not saved.", error);
-        }
-      } finally {
-        this.saving = false;
+        notifyError(`The grammar ${grammar.name} was not downloaded.`, error);
       }
-    },
-    confirmReplace(name) {
-      this.$q
-        .dialog({
-          title: "Replace the grammar?",
-          message: `<div>${escapeHtml(`A grammar ${name} exists already. Replace its files with the chosen ones?`)}</div>`,
-          html: true,
-          ok: { label: "Replace", color: "primary" },
-          cancel: { label: "Cancel", flat: true },
-          persistent: true,
-        })
-        .onOk(() => this.upload(true));
     },
     remove(grammar) {
       this.$q
@@ -200,16 +215,13 @@ export default {
           persistent: true,
         })
         .onOk(async () => {
-          this.saving = true;
           try {
             await api("delete-asn1-grammar", { method: "POST", params: { name: grammar.name } });
             this.$q.notify({ type: "positive", message: `Grammar ${grammar.name} deleted.` });
             await this.load();
-            this.$emit("changed", null);
+            this.$emit("changed", null, {});
           } catch (error) {
             notifyError(`Deleting the grammar ${grammar.name} failed.`, error);
-          } finally {
-            this.saving = false;
           }
         });
     },
@@ -218,21 +230,18 @@ export default {
 </script>
 
 <style scoped>
-.upload-row {
-  flex-wrap: wrap;
+.grammar-list {
+  min-height: 0;
 }
-.pick-btn {
-  height: 40px;
+.search-input {
+  width: 320px;
 }
-.picked {
-  min-width: 160px;
-  padding-top: 10px;
+.grammar-table {
+  min-height: 0;
 }
 .cell-wrap {
   white-space: normal;
   word-break: break-word;
-}
-.upload-error {
-  white-space: pre-wrap;
+  max-width: 320px;
 }
 </style>

@@ -1370,15 +1370,25 @@ def get_asn1_grammar_types(name: str):
         return ds_viewer_config.grammar_types(name)
 
 
+@api.get('/get-asn1-grammar')
+def get_asn1_grammar(name: str):
+    """Get an ASN.1 grammar with the texts of its files, for the editor."""
+    with datasource_errors():
+        return ds_viewer_config.grammar(name)
+
+
 @api.post('/save-asn1-grammar')
 def save_asn1_grammar(data: dict = fastapi.Body(...)):
     """Save an ASN.1 grammar: the body is {name, files: [{name, text}],
-    replace}. It is parsed first (400 naming the file and line); an
-    existing name is replaced only with `replace` (else 409)."""
+    replace, old_name}. It is parsed first (400 naming the file and line);
+    an existing name is replaced only with `replace` (else 409). With
+    `old_name` it edits that grammar, renaming it to `name` (the datasources
+    decoding with it follow)."""
     with datasource_errors():
         result = ds_viewer_config.save_grammar(
             data.get('name'), data.get('files'),
-            replace=bool(data.get('replace')))
+            replace=bool(data.get('replace')),
+            old_name=data.get('old_name') or None)
     return {'status': 200, **result}
 
 

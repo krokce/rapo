@@ -174,10 +174,29 @@ _loaded = {}
 _loaded_lock = threading.Lock()
 
 
-def save_grammar(name, files, replace=False):
+def grammar(name):
+    """Get a grammar with the texts of its files, for the editor."""
+    rows = _rows(GRAMMAR, name)
+    if not rows:
+        raise DatasourceError(f'There is no grammar {name}.', 404)
+    row, content = rows[0], rows[0]['content']
+    return {'name': name, 'kind': content.get('kind') or 'asn1',
+            'files': content.get('files') or [],
+            'modules': content.get('modules') or [],
+            'entries': content.get('entries'),
+            'wrapped': content.get('wrapped') or [],
+            'updated_date': row['updated_date'],
+            'used_by': _grammar_usage().get(name, [])}
+
+
+def save_grammar(name, files, replace=False, old_name=None):
     """Save a grammar of files `[{name, text}]`: ASN.1 modules, or a tag map
     (tagmap.py) when every file is one. Parsed first (400 naming the file
     and line); an existing name only with `replace` (else 409).
+
+    With `old_name` it is an edit of that grammar (404 when it is gone); a
+    different `name` renames it (409 when that name exists), and the
+    datasources decoding with it follow the new name, in one transaction.
 
     Returns
     -------
@@ -224,21 +243,67 @@ def save_grammar(name, files, replace=False):
                        'wrapped': parsed['wrapped']}
     except asn1_grammar.GrammarError as error:
         raise DatasourceError(f'The grammar can not be read: {error}')
-    old = _rows(GRAMMAR, name)
-    if old and not replace:
-        raise DatasourceError(f'A grammar {name} exists already.', 409)
+    renamed = None
+    if old_name:
+        old = _rows(GRAMMAR, old_name)
+        if not old:
+            raise DatasourceError(f'There is no grammar {old_name}.', 404)
+        if old_name != name:
+            if _rows(GRAMMAR, name):
+                raise DatasourceError(f'A grammar {name} exists already.',
+                                      409)
+            renamed = _rename_grammar(old_name, name)
+    else:
+        old = _rows(GRAMMAR, name)
+        if old and not replace:
+            raise DatasourceError(f'A grammar {name} exists already.', 409)
     _write(GRAMMAR, name, content, old[0] if old else None)
     tops, preferred = _load(kind, pairs).tops()
     what = f'{content["entries"]} tag map entries' if kind == 'tagmap' \
         else f'modules {", ".join(content["modules"])}'
-    logger.info(f'ASN.1 grammar {"replaced" if old else "added"}: {name} '
+    action = f'renamed from {old_name}' if renamed is not None else \
+        'changed' if old else 'added'
+    logger.info(f'ASN.1 grammar {action}: {name} '
                 f'({", ".join(file_name for file_name, _ in pairs)}; {what})'
                 + (f'; it had files '
                    f'{", ".join(f["name"] for f in old[0]["content"].get("files") or [])}'
-                   if old else ''))
+                   if old else '')
+                + (f'; datasources following it: '
+                   f'{", ".join(map(str, renamed))}' if renamed else ''))
     return {'name': name, 'kind': kind, 'modules': content['modules'],
             'entries': content.get('entries'), 'tops': tops,
             'preferred': preferred, 'wrapped': content['wrapped']}
+
+
+def _rename_grammar(old_name, name):
+    """Rename a grammar's row and point the datasource settings decoding with
+    it to the new name, in one transaction; get the datasources moved."""
+    moved = [row for row in _rows(DATASOURCE)
+             if (row['content'].get('asn1') or {}).get('grammar') == old_name]
+    result, connection, transaction = db.execute(
+        sa.text(f'update {TABLE} set config_name = :name, '
+                f'updated_date = sysdate where config_type = :kind '
+                f'and config_name = :old').bindparams(
+                    kind=GRAMMAR, name=name, old=old_name),
+        return_connection=True)
+    try:
+        for row in moved:
+            content = dict(row['content'])
+            content['asn1'] = {**content['asn1'], 'grammar': name}
+            connection.execute(sa.text(
+                f'update {TABLE} set content = :content, '
+                f'updated_date = sysdate where config_type = :kind '
+                f'and config_name = :sourceid').bindparams(
+                    sa.bindparam('content', type_=sa.Text),
+                    content=json.dumps(content, separators=(',', ':')),
+                    kind=DATASOURCE, sourceid=row['config_name']))
+        transaction.commit()
+    except Exception:
+        transaction.rollback()
+        raise
+    finally:
+        connection.close()
+    return [_source_id(row['config_name']) for row in moved]
 
 
 def delete_grammar(name):

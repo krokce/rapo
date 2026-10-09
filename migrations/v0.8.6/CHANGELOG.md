@@ -96,9 +96,13 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
      details: offset, tag and form, length, field and type, and what its value reads as (by its type with a
      grammar; else every reading that fits: integer, text, TBCD digits as in an IMSI, an address with its TON/NPI, a
      3GPP time stamp, a PLMN, an IP address) with its bytes.
-   - **Grammars.** *Grammars…* uploads ASN.1 modules (one or more .asn files, as one named grammar, at most
-     `asn1_grammar_max_kb`): checked at once (an error names the file, line and column), listed with their modules
-     and the datasources using them, replaced or deleted. Picking a *Grammar* names the nodes (`servedIMSI [3]`) and
+   - **Grammars.** *Grammars…* lists the grammars (search, kind, files, modules or tag map entries, the datasources
+     using them, last saved); a row opens it in the grammar editor, its menu duplicates, downloads (the files in one)
+     or deletes one no datasource uses. *Add grammar* and editing share one editor: the name, and one tab per file
+     whose text is edited in place (ASN.1 highlighting, line numbers, search): **paste** the modules or a tag map into
+     a new file, upload files or drop them on the text, rename or remove files. *Save* (Ctrl+S) checks the text first
+     (at most `asn1_grammar_max_kb`): an error names the file, line and column and shows that file. Saving under
+     another name renames the grammar, and the datasources using it follow. Picking a *Grammar* names the nodes (`servedIMSI [3]`) and
      reads their values by type (`recordType [0] sGWRecord (84)`); the *Type* of the file's records (e.g.
      `GPRSRecord`, `DataInterChange`) is guessed from the first one and can be picked. A grammar needs not be
      complete: a type it lacks (e.g. one imported from a module not uploaded) leaves those fields unnamed, and a

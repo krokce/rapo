@@ -366,10 +366,15 @@ export default {
       this.meta = meta;
       this.rootError = error ? error.message : null;
     },
-    grammarsChanged(name) {
+    grammarsChanged(name, { renamedFrom } = {}) {
       this.loadGrammars();
-      if (name && name === this.grammar) {
-        // Its files were replaced: read the file with them.
+      if (name && renamedFrom && renamedFrom === this.grammar) {
+        // The grammar in use was renamed: follow it.
+        this.grammar = name;
+        this.loadTypes(name);
+        this.apply();
+      } else if (name && name === this.grammar) {
+        // Its files were changed: read the file with them.
         this.loadTypes(name);
         this.decoding = { ...this.decoding };
       }

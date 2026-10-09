@@ -109,3 +109,22 @@ export function byteChar(byte) {
 export function parentKey(offset) {
   return offset == null ? "root" : String(offset);
 }
+
+// Reads a file as text: UTF-8, else Windows-1252 (any byte is a character), as .asn files of other tools are.
+export async function readText(file) {
+  const buffer = await file.arrayBuffer();
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buffer);
+  }
+}
+
+// Whether a text is a tag map of a Pentaho ASN.1 decoder rather than ASN.1 modules (as tagmap.looks_like).
+export function looksLikeTagMap(text) {
+  const plain = (text || "").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|\s)\/\/.*$/gm, " ");
+  if (/\bDEFINITIONS\b/.test(plain)) {
+    return false;
+  }
+  return /props\s*\.\s*(put|setProperty)\s*\(/.test(plain) || /^\s*\d+(\.\d+)*\s*[=:]/m.test(plain);
+}

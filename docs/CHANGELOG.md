@@ -22,8 +22,9 @@ options (uploads are off until `file_upload=True`).
   of tags read node by node (500 children at a time, so files of any size; 00/FF padding skipped, undecodable bytes
   shown and passed), beside a hex dump of the whole file coloring the selected node's tag, length and value (a byte
   click selects its node), with *XML* / *Text* tabs of the node's subtree and its details (value readings: integer,
-  text, TBCD, address, 3GPP time, IP). Uploaded **grammars** (*Grammars…*: TAP, RAP, NRTRDE, 3GPP 32.298, a vendor's
-  own; none shipped) name fields and decode values by type; search by field path and value, or by hex bytes; *Save
+  text, TBCD, address, 3GPP time, IP). **Grammars** (*Grammars…*: TAP, RAP, NRTRDE, 3GPP 32.298, a vendor's own;
+  none shipped), added by pasting or uploading and edited in place (files as tabs, rename carries the datasources),
+  name fields and decode values by type; search by field path and value, or by hex bytes; *Save
   for datasource* keeps grammar, type and record layout (start offset, a record header before each record as in
   Huawei SBC files, filler 00/FF, FF or none). Pentaho decoders' **tag maps** (`props.put("82.4.1",...)`) upload as
   grammars and decode as the decoder does; details show the full tag (`SEQ.1.4.0`). Options `[DATASOURCES] asn1_*`; routes `*-ds-file-asn1`,
