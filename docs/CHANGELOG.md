@@ -15,9 +15,11 @@ needed); new `[DATASOURCES]` options (uploads are off until `file_upload=True`).
   (section kept in the link, old `?tab=` links still work), avatar chips and the app's buttons. Data analysis:
   Summary (records, columns, duplicates and missing only when present, the 3 strongest related columns, 30-day
   trend), Result types (split bar, fields that differ), compact column cards with one visual each (top values or a
-  histogram; constant/empty/unique columns named only), Records (any click on the page filters it). Discrepancy
+  histogram; date histograms in whole hours/days/months covering the run's window, a daily control's 24 hours;
+  constant/empty/unique columns named only), Records (any click on the page filters it). Discrepancy
   analysis: notes as chips, trend, the findings as cards (shares of discrepancies vs normal records, lift, Records),
-  Attributes one row per column opening in place to its binnings and a butterfly of its bins, Differences with sums.
+  Attributes one row per column opening in place to its binnings and a butterfly of its bins (the Time binning in
+  whole units of the run's window), Differences with sums.
   Removed: Missing values, Duplicates, correlation heatmap, **Compare** (routes `get-analysis-targets`,
   `get-control-done-runs`, `analysis-compare*`), column details, Random/First rows switch, *Profile these rows*,
   story sentences, Time bands, example records, φK. Faster: a spare analysis process kept connected, random samples

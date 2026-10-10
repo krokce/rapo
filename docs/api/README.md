@@ -837,8 +837,11 @@ section not computed yet answers `ready: false` and is computed; the state lists
 under `sections` once it is ready.
 - `columns`: one object per column: `count`, `missing`, `missing_pct`, `distinct`, `top` (the 8 most frequent
   values), `other_count`, `stats` (numbers: `min`, `max`, `median`, `zeros`, `zeros_pct`, `integral`; date-times:
-  `min`, `max`, `date_only`; text: `blank`, `blank_pct`), `histogram` `{counts, edges}` (24 bins, numbers and
-  date-times whose values do not fit a few bars), `metadata` (a `rapo_` column), `unusable` (`empty`, `constant`,
+  `min`, `max`, `date_only`; text: `blank`, `blank_pct`), `histogram` `{counts, edges}` (numbers: 24 equal bins,
+  for values that do not fit a few bars; date-times: whole calendar units `{counts, edges, unit, window, before,
+  after}`, `unit` `hour` up to 2 days, `day` up to 62, `month` up to 5 years, else `year`, over the run's window
+  (`window` true) when 90% of the values lie in it, else over the values' range; `before`/`after` count the records
+  outside the edges; a window column always has one), `metadata` (a `rapo_` column), `unusable` (`empty`, `constant`,
   `unique`: text 90% unique, or half unique with no value in 1% of the records, or whole numbers all different in 50
   records or more), `visual` (`top`, `histogram` or null: how the profile shows it) and `group` (`category`,
   `number`, `date` or `text`).
@@ -927,7 +930,9 @@ The **report**:
 - `attributes`: strongest first, one per binning of a column: `{id, column, source, kind, feature, feature_label,
   ordered, score, bins, special, under, bands}`. `feature` is `value`, `decile` (ranges by the fetched
   deciles), `prefix` (first 3/5/6/8 digits or 2/4/6 characters of an identifier-like column), `length`, `hour`,
-  `weekday` or `timeline` (20 equal periods). `score` is Theil's U of being a discrepancy given the bins (0..1,
+  `weekday` (not when the values are of one day) or `timeline` (whole hours, days, months or years as the Data
+  analysis histograms: on the run's window when 90% of the fetched values lie in it, else on their range; codes
+  `0000` before, `9999` after; not when it is one day of hours, which `hour` already is). `score` is Theil's U of being a discrepancy given the bins (0..1,
   the share of the uncertainty removed, less a small-sample bias). Each bin is `{code,
   label, disc, normal, disc_share, normal_share, lift, rate, z, flag, filter}`: `lift` = `disc_share /
   normal_share` (null with `only_disc` when no normal record has it), `rate` the share of the bin's records that are

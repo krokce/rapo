@@ -167,7 +167,12 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      - *Columns*: a compact card per column, the columns that split the records first (few values, then numbers,
        dates, other text), each with its number of values, missing (grey, orange from 5%), blank and zero shares as
        chips, and **one** visual: its most frequent values as bars, or a histogram of its numbers or dates, never a
-       chart of one bar. Constant, empty and (nearly) unique columns are only named in one line; the RAPO_ columns
+       chart of one bar. A date histogram counts **whole clock hours, days or months**: one bar per hour up to 2
+       days (a daily control's 24 hours, ticks 00 06 12 18 24), per day up to 62 days, per month beyond, and when
+       most of a column's values lie in the run's window (`date_from` – `date_to`) its bars cover exactly that
+       window (*Run window 2026-10-09 · by hour*), records outside it (e.g. a reconciliation's time shift) as faded
+       bars at the ends; other date columns are bucketed over their own range the same way. A bar shows its hour
+       (day, month) and opens its records. Constant, empty and (nearly) unique columns are only named in one line; the RAPO_ columns
        are left out (Result types shows them, Records has them).
      - *Records* is the last section, one window tall: a click on any value, bar, chip or bin of the page filters it
        and scrolls there. Its tools are the same (search, Columns, Group by, Export, the REC counterpart); *Filter in
@@ -190,7 +195,10 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
        their records (*Back* returns to the same place). A click on a card opens its attribute. The columns not
        related are named in one line.
      - *Attributes*: one row per column by its best binning, strongest first, with its *Explained* bar (Theil's U)
-       and its over-represented bins; a click opens it in place: chips for its other binnings and the shares of its
+       and its over-represented bins. The *Time* binning is whole hours, days or months of the run's window (or of
+       the column's range), with *Before* / *From* bins for records outside it, instead of 20 equal periods between
+       the first and last record; it is left out for a one-day window (the *Hour of day* binning is the same), as is
+       *Weekday* for values of one day; a click opens it in place: chips for its other binnings and the shares of its
        largest 12 bins as a butterfly (normal records left, discrepancies right), each bin opening its discrepancies
        or its fetched records. The columns not related are folded at the end.
      - *Differences*: one row per field with the range, median and sum of the differences and a histogram.

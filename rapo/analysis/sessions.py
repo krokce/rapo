@@ -233,7 +233,8 @@ class SessionManager:
             meta['sampling'] = mode
             meta['random'] = mode in ('sorted', 'bernoulli')
             settings = {**settings,
-                        'sampling': {'mode': mode, 'total': meta.get('total')}}
+                        'sampling': {'mode': mode, 'total': meta.get('total')},
+                        'window': _window(meta)}
         except datasets.DatasetError as error:
             raise SessionError(str(error), 404)
         except Exception as error:
@@ -293,6 +294,17 @@ class SessionManager:
                 self.close(session.id)
                 session.state = {**session.state, 'status': 'expired'}
                 self.notify(session)
+
+
+def _window(meta):
+    """Get the run's window of a run's dataset, {from, to} as ISO texts, for
+    the histograms of its date columns; None for a file's records."""
+    if meta.get('kind') not in ('result', 'fetched'):
+        return None
+    start, end = meta.get('date_from'), meta.get('date_to')
+    if not isinstance(start, dt.datetime) or not isinstance(end, dt.datetime):
+        return None
+    return {'from': start.isoformat(), 'to': end.isoformat()}
 
 
 def sampling(random, total, initial_rows):

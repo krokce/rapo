@@ -10,7 +10,8 @@ Quick look, on a sample of `quick_rows` records of each dataset (`_quick`):
 1. Profile the fetched records (`_profile`): non-null and distinct counts,
    min/max, deciles, digit-only share and prefix distinct counts per column.
 2. Plan the features (`_plan`): the bins of each column (values, deciles,
-   hour/weekday/timeline of a date, prefixes and length of an identifier).
+   hour/weekday/timeline of a date (whole hours, days or months of the
+   run's window: `timebins`), prefixes and length of an identifier).
 3. Count each feature's bins in both datasets (`_count`): one scan each, the
    features unpivoted into (feature, code, count) rows.
 4. Score (`_score`): per feature the uncertainty coefficient (mutual
@@ -44,6 +45,7 @@ from ..core import sqlcheck
 from ..core.control import Control
 
 from . import datasets
+from . import timebins
 from .frame import NUMERIC, DATETIME, column_kind
 
 
@@ -55,7 +57,9 @@ FEATURE_DISTINCT = 1000    # a feature with more values is not counted
 SHOWN_BINS = 30            # the rest of a value feature is Other
 UNIQUE_SHARE = 0.9         # a feature this unique has nothing to tell
 DIGIT_SHARE = 0.95
-TIMELINE_BUCKETS = 20
+# The timeline codes of the records before and after its buckets.
+BEFORE = '0000'
+AFTER = '9999'
 PROFILE_COLUMNS = 40       # columns profiled per statement (Oracle's 1000 items)
 COUNT_FEATURES = 200       # features counted per statement
 MIN_SUPPORT = 10
@@ -84,8 +88,6 @@ DRIFT = 0.01
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 ORDERED = ('decile', 'hour', 'weekday', 'timeline', 'length')
 NUMBER_TEXT = "'TM9', 'NLS_NUMERIC_CHARACTERS=''.,'''"
-DAY_ZERO = "date '2000-01-01'"
-EPOCH = dt.datetime(2000, 1, 1)
 # Types that can not be grouped (LOBs come back from a parse as LONG).
 UNGROUPED = ('LONG', 'LONG_RAW', 'RAW', 'BLOB', 'CLOB', 'NCLOB', 'BFILE',
              'OBJECT', 'ROWID', 'UROWID', 'INTERVAL_DS', 'INTERVAL_YM',
@@ -145,15 +147,16 @@ def _quick(source, quick_rows, step):
     step('Quick look: sampling', 1, STEPS)
     fetched = _quick_sample(source['fetched_sql'], source['fetched_from'],
                             meta['fetched_logged'], quick_rows)
-    profile = _profile(fetched['sql'], source['columns'])
+    window = _window(meta)
+    profile = _profile(fetched['sql'], source['columns'], window)
     if (fetched['method'] == 'block' and profile['rows']
             < MIN_BLOCK_SHARE * min(quick_rows, meta['fetched_logged'] or 0)):
         fetched = _first(source['fetched_sql'], quick_rows)
-        profile = _profile(fetched['sql'], source['columns'])
+        profile = _profile(fetched['sql'], source['columns'], window)
     found = _quick_sample(source['result_sql'], source['result_from'],
                           meta['disc_logged'], quick_rows)
     _widen_dates(profile, found['sql'], source['columns'])
-    features, excluded = _plan(source['columns'], profile)
+    features, excluded = _plan(source['columns'], profile, window)
     meta['excluded'] = source['excluded'] + excluded
 
     step('Quick look: counting', 2, STEPS)
@@ -558,8 +561,23 @@ def _widen_dates(profile, sql, columns):
             facts[key] = pick(values) if values else None
 
 
-def _profile(sql, columns):
-    """Get the facts the bins are chosen from, per fetched column."""
+def _window(meta):
+    """Get the run's window (date_from, date_to), or None."""
+    start, end = meta.get('date_from'), meta.get('date_to')
+    if isinstance(start, dt.datetime) and isinstance(end, dt.datetime) \
+            and end > start:
+        return start, end
+    return None
+
+
+def _date_literal(moment):
+    return (f"to_date('{moment:%Y-%m-%d %H:%M:%S}', "
+            "'YYYY-MM-DD HH24:MI:SS')")
+
+
+def _profile(sql, columns, window=None):
+    """Get the facts the bins are chosen from, per fetched column; a date
+    column also counts its records in the run's `window` (`iw`)."""
     result = {'rows': 0, 'columns': {}}
     for start in range(0, len(columns), PROFILE_COLUMNS):
         chunk = columns[start:start + PROFILE_COLUMNS]
@@ -580,6 +598,11 @@ def _profile(sql, columns):
             elif column['kind'] == DATETIME:
                 items += [f'min(cast({name} as date)) mn{i}',
                           f'max(cast({name} as date)) mx{i}']
+                if window:
+                    items.append(
+                        f'sum(case when {name} >= {_date_literal(window[0])} '
+                        f'and {name} <= {_date_literal(window[1])} then 1 '
+                        f'end) iw{i}')
             else:
                 items += [f"sum(case when ltrim({name}, '0123456789') is null "
                           f'then 1 end) dig{i}',
@@ -606,7 +629,7 @@ def _profile(sql, columns):
     return result
 
 
-def _plan(columns, profile):
+def _plan(columns, profile, window=None):
     """Choose the features of every column, and say why others are left out.
 
     A feature is an expression giving a bin code (text) of a column, the same
@@ -635,7 +658,7 @@ def _plan(columns, profile):
         if kind == NUMERIC:
             planned = _numeric_features(column, facts, present, distinct)
         elif kind == DATETIME:
-            planned = _date_features(column, facts)
+            planned = _date_features(column, facts, window)
         else:
             planned = _text_features(column, facts, present, distinct)
         planned = [feature for feature in planned if feature]
@@ -706,26 +729,57 @@ def _decile_expression(edges):
     return expression
 
 
-def _date_features(column, facts):
+def _date_features(column, facts, window=None):
+    """Get the features of a date column: hour of day, weekday (unless the
+    values are of one day) and the timeline, whole hours, days or months
+    (`timebins`) of the run's window when most values lie in it, else of the
+    values' range, the records before and after it as codes of their own;
+    none when it is one day of hours, which the hour of day already is.
+    """
+    low, high = facts.get('mn'), facts.get('mx')
+    present = int(facts.get('nn') or 0)
+    start, end, inside = low, high, False
+    if window and present \
+            and int(facts.get('iw') or 0) >= timebins.WINDOW_SHARE * present:
+        start, end, inside = window[0], window[1], True
     features = [
         _feature(column, 'hour', 'hour', 'Hour of day',
                  lambda name: f"to_char({name}, 'HH24')", ordered=True),
-        _feature(column, 'weekday', 'weekday', 'Weekday',
-                 lambda name: f"to_char(trunc({name}) - trunc({name}, 'IW'))",
-                 ordered=True),
     ]
-    low, high = facts.get('mn'), facts.get('mx')
-    if low and high and high > low:
-        start = (low - EPOCH).total_seconds() / 86400
-        end = (high - EPOCH).total_seconds() / 86400
-        end += (end - start) * 1e-6
+    one_day = bool(start and end) and timebins.same_day(start, end)
+    if not one_day:
         features.append(_feature(
-            column, 'timeline', 'timeline', 'Time',
-            lambda name: f'to_char(greatest(1, least({TIMELINE_BUCKETS}, '
-            f'width_bucket(cast({name} as date) - {DAY_ZERO}, {start!r}, '
-            f"{end!r}, {TIMELINE_BUCKETS}))), 'FM00')", ordered=True,
-            start=start, end=end))
+            column, 'weekday', 'weekday', 'Weekday',
+            lambda name: f"to_char(trunc({name}) - trunc({name}, 'IW'))",
+            ordered=True))
+    if start and end and end > start:
+        unit, edges = timebins.edges(start, end)
+        if not (unit == 'hour' and one_day):
+            features.append(_feature(
+                column, 'timeline', 'timeline', 'Time',
+                lambda name: _timeline_expression(name, unit, edges),
+                ordered=True, unit=unit, edges=edges, window=inside))
     return features
+
+
+def _timeline_expression(name, unit, edges):
+    """Get the timeline code of a date: its bucket's 1-based number in four
+    digits, `BEFORE` or `AFTER`. Counted in whole days, hours and months, so
+    no fraction of a day rounds a record into the next hour."""
+    moment = f'cast({name} as date)'
+    first, last = _date_literal(edges[0]), _date_literal(edges[-1])
+    if unit == 'hour':
+        index = (f'(trunc({moment}) - trunc({first})) * 24 + '
+                 f"to_number(to_char({moment}, 'HH24')) - {edges[0].hour}")
+    elif unit == 'day':
+        index = f'trunc({moment}) - {first}'
+    elif unit == 'month':
+        index = f"months_between(trunc({moment}, 'MM'), {first})"
+    else:
+        index = f'extract(year from {moment}) - {edges[0].year}'
+    return (f"case when {moment} < {first} then '{BEFORE}' "
+            f"when {moment} >= {last} then '{AFTER}' "
+            f"else to_char({index} + 1, 'FM0000') end")
 
 
 def _text_features(column, facts, present, distinct):
@@ -1020,14 +1074,15 @@ def _label(feature, item):
         return WEEKDAYS[int(code)] if code.isdigit() and int(code) < 7 \
             else code
     if kind == 'timeline':
-        index = int(code)
-        if index < 1 or index > TIMELINE_BUCKETS:
-            return 'Outside the fetched range'
-        width = (feature['end'] - feature['start']) / TIMELINE_BUCKETS
-        start = EPOCH + dt.timedelta(days=feature['start'] + width * (index - 1))
-        end = start + dt.timedelta(days=width)
-        seconds = width * 86400 < 120
-        return f'{_moment(start, seconds)} – {_moment(end, seconds)}'
+        edges = feature['edges']
+        if code == BEFORE:
+            return f'Before {timebins.moment_text(edges[0])}'
+        if code == AFTER:
+            return f'From {timebins.moment_text(edges[-1])}'
+        index = int(code) - 1
+        if not 0 <= index < len(edges) - 1:
+            return 'Outside the range'
+        return timebins.label(edges[index], feature['unit'])
     if kind == 'prefix':
         return f'{code}…'
     if kind == 'length':
@@ -1082,16 +1137,16 @@ def _condition(feature, column, code):
     if kind == 'length':
         return f'length({name}) = {int(code)}'
     if kind == 'timeline':
-        index = int(code)
-        if index < 1 or index > TIMELINE_BUCKETS:
+        edges = feature['edges']
+        if code == BEFORE:
+            return f'{name} < {_date_literal(edges[0])}'
+        if code == AFTER:
+            return f'{name} >= {_date_literal(edges[-1])}'
+        index = int(code) - 1
+        if not 0 <= index < len(edges) - 1:
             return None
-        width = (feature['end'] - feature['start']) / TIMELINE_BUCKETS
-        start = EPOCH + dt.timedelta(days=feature['start'] + width * (index - 1))
-        end = start + dt.timedelta(days=width)
-        return (f"{name} >= to_date('{start:%Y-%m-%d %H:%M:%S}', "
-                "'YYYY-MM-DD HH24:MI:SS') and "
-                f"{name} < to_date('{end:%Y-%m-%d %H:%M:%S}', "
-                "'YYYY-MM-DD HH24:MI:SS')")
+        return (f'{name} >= {_date_literal(edges[index])} and '
+                f'{name} < {_date_literal(edges[index + 1])}')
     return None
 
 
@@ -1125,16 +1180,6 @@ def _short(value):
     if isinstance(value, int):
         return f'{value:,}'
     return str(value)
-
-
-def _moment(value, seconds=False):
-    if seconds:
-        return f'{value:%Y-%m-%d %H:%M:%S}'
-    value = value.replace(microsecond=0)
-    if value.second >= 30:
-        value += dt.timedelta(seconds=60 - value.second)
-    value = value.replace(second=0)
-    return f'{value:%Y-%m-%d %H:%M}'
 
 
 def _pct(value):

@@ -513,7 +513,8 @@ class Worker:
                                                  'total': total})
 
         if section == 'columns':
-            result = profile.columns(data, kinds, step)
+            result = profile.columns(data, kinds, step,
+                                     self.options.get('window'))
         elif section == 'overview':
             self._compute('columns')
             with self.cache_lock:

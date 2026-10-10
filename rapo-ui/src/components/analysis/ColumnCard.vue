@@ -22,6 +22,13 @@
     </q-card-section>
     <q-card-section class="q-pt-none q-pb-sm">
       <mini-bars v-if="column.visual === 'top'" :items="topItems" :max="topMax" @select="(item) => $emit('show-rows', [item.filter])" />
+      <mini-histogram
+        v-else-if="column.visual === 'histogram' && timeUnit"
+        :bars="histogramBars"
+        :ticks="timeTicks(column.histogram.edges, timeUnit)"
+        :before="outside('before')"
+        :after="outside('after')"
+        @select="selectBucket" />
       <mini-histogram v-else-if="column.visual === 'histogram'" :bars="histogramBars" :start="edgeText(0)" :end="edgeText(column.histogram.edges.length - 1)" @select="selectBin" />
       <div v-else class="text-caption text-grey-7">No value repeats in the sample.</div>
       <div v-if="caption" class="text-caption text-grey-7 q-mt-xs">{{ caption }}</div>
@@ -33,7 +40,11 @@
 import MiniBars from "./MiniBars.vue";
 import MiniHistogram from "./MiniHistogram.vue";
 import { formatNumber, toDateTimeString } from "../../utils/format";
-import { binFilter, formatPct, formatStat, formatValue, kindInfo, valueFilter } from "../../utils/analysis";
+import { binFilter, bucketLabel, bucketRange, edgeText as timeEdgeText, formatPct, formatStat, formatValue, kindInfo, timeTicks, valueFilter } from "../../utils/analysis";
+
+function records(count) {
+  return `${formatNumber(count)} ${count === 1 ? "record" : "records"}`;
+}
 
 // The share from which missing values are worth a warning.
 const MISSING_WARN = 5;
@@ -105,14 +116,24 @@ export default {
     topMax() {
       return Math.max(1, ...this.column.top.map((item) => item.count));
     },
+    // The calendar unit of a date histogram's buckets (hour, day, month, year), or null.
+    timeUnit() {
+      const histogram = this.column.histogram;
+      return this.column.kind === "datetime" && histogram && histogram.unit ? histogram.unit : null;
+    },
     histogramBars() {
-      const { counts } = this.column.histogram;
-      return counts.map((count, index) => ({ count, title: `${this.binText(index)}: ${formatNumber(count)} ${count === 1 ? "record" : "records"}` }));
+      const { counts, edges } = this.column.histogram;
+      const text = (index) => (this.timeUnit ? bucketLabel(edges[index], this.timeUnit) : this.binText(index));
+      return counts.map((count, index) => ({ count, title: `${text(index)}: ${records(count)}` }));
     },
     caption() {
       const c = this.column;
       if (c.visual === "histogram" && c.kind === "numeric") {
         return `median ${formatStat(c.stats.median)}`;
+      }
+      if (c.visual === "histogram" && this.timeUnit) {
+        const range = bucketRange(c.histogram.edges, this.timeUnit);
+        return `${c.histogram.window ? "Run window " : ""}${range} · by ${this.timeUnit}`;
       }
       return "";
     },
@@ -131,6 +152,29 @@ export default {
     },
     selectBin(index) {
       this.$emit("show-rows", [binFilter(this.column.name, this.column.kind, this.column.histogram.edges, index)]);
+    },
+    timeTicks,
+    // The records of a date histogram before or after its buckets (outside the run's window), as a faded column.
+    outside(which) {
+      const { edges } = this.column.histogram;
+      const count = this.column.histogram[which];
+      if (!count) {
+        return null;
+      }
+      const edge = which === "before" ? edges[0] : edges[edges.length - 1];
+      return { count, title: `${records(count)} ${which === "before" ? "before" : "from"} ${timeEdgeText(edge)}${this.column.histogram.window ? ", outside the run window" : ""}` };
+    },
+    // A bucket holds [its edge, the next one); the records before and after are open-ended.
+    selectBucket(index) {
+      const { edges } = this.column.histogram;
+      const range = (min, max) => ({ column: this.column.name, kind: "datetime", op: "range", value: { min, max, max_inclusive: false } });
+      if (index === "before") {
+        this.$emit("show-rows", [range(null, edges[0])]);
+      } else if (index === "after") {
+        this.$emit("show-rows", [range(edges[edges.length - 1], null)]);
+      } else {
+        this.$emit("show-rows", [range(edges[index], edges[index + 1])]);
+      }
     },
   },
 };

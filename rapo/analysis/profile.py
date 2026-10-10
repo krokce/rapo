@@ -8,6 +8,7 @@ columns, so that the worker can report progress and stop a canceled step.
 import numpy as np
 import pandas as pd
 
+from . import timebins
 from .frame import DATETIME, NUMERIC, TEXT, floats, to_json
 
 
@@ -29,18 +30,19 @@ MISSING_PCT = 5
 METADATA_PREFIX = 'rapo_'
 
 
-def columns(frame, kinds, step=None):
-    """Get the profile of every column, in order."""
+def columns(frame, kinds, step=None, window=None):
+    """Get the profile of every column, in order; `window` is the run's
+    {from, to} (ISO date-times), for the date columns inside it."""
     result = []
     names = list(frame.columns)
     for number, name in enumerate(names):
         if step:
             step(number, len(names))
-        result.append(column(name, frame[name], kinds[name]))
+        result.append(column(name, frame[name], kinds[name], window))
     return result
 
 
-def column(name, series, kind):
+def column(name, series, kind, window=None):
     """Get the profile of one column.
 
     Besides the counts and the most frequent values, `unusable` says why a
@@ -74,7 +76,7 @@ def column(name, series, kind):
         if kind == NUMERIC:
             info.update(_numeric(present, spread))
         elif kind == DATETIME:
-            info.update(_datetime(present, spread))
+            info.update(_datetime(present, spread, window))
         else:
             info.update(_text(present))
     info['unusable'] = _unusable(info)
@@ -107,16 +109,36 @@ def _numeric(present, spread):
     return {'stats': stats, 'histogram': histogram}
 
 
-def _datetime(present, spread):
+def _datetime(present, spread, window=None):
+    """Get the facts of a date-time column, with a histogram of whole hours,
+    days or months (`timebins`): over the run's window when most values lie
+    in it (`window` true; `before`/`after` count the others), else over the
+    values' own range."""
     low, high = present.min(), present.max()
     midnight = bool((present == present.dt.normalize()).all())
+    start, end = low, high
+    inside = False
+    if window and window.get('from') and window.get('to'):
+        first, last = pd.Timestamp(window['from']), pd.Timestamp(window['to'])
+        share = float(((present >= first) & (present <= last)).mean())
+        if share >= timebins.WINDOW_SHARE and last > first:
+            start, end, inside = first, last, True
     histogram = None
-    if spread:
-        seconds = present.astype('int64').to_numpy() // 10**9
-        counts, edges = np.histogram(seconds, bins=HISTOGRAM_BINS)
-        moments = pd.to_datetime(edges, unit='s')
-        histogram = {'counts': counts.tolist(),
-                     'edges': [to_json(moment) for moment in moments]}
+    if (spread or inside) and end > start:
+        unit, edges = timebins.edges(start.to_pydatetime(), end.to_pydatetime())
+        marks = np.array(edges, dtype='datetime64[ns]').astype('int64')
+        values = present.to_numpy(dtype='datetime64[ns]').astype('int64')
+        positions = np.searchsorted(marks, values, side='right') - 1
+        bins = len(edges) - 1
+        kept = positions[(positions >= 0) & (positions < bins)]
+        histogram = {
+            'counts': np.bincount(kept, minlength=bins).tolist(),
+            'edges': [to_json(pd.Timestamp(edge)) for edge in edges],
+            'unit': unit,
+            'window': inside,
+            'before': int((positions < 0).sum()),
+            'after': int((positions >= bins).sum()),
+        }
     return {
         'stats': {
             'min': to_json(low),
@@ -162,11 +184,14 @@ def _visual(info):
     if info['unusable']:
         return None
     top = info['top']
+    histogram = info['histogram']
+    # The records of a run's window, in time order, whatever their values.
+    if histogram and histogram.get('window'):
+        return 'histogram'
     repeats = bool(top) and top[0]['count'] > 1
     if repeats and (info['distinct'] <= TOP_DISTINCT
                     or top[0]['pct'] >= DOMINANT_PCT):
         return 'top'
-    histogram = info['histogram']
     if histogram:
         return 'histogram' if sum(1 for count in histogram['counts']
                                   if count) >= 2 else None

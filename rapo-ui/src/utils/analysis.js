@@ -167,6 +167,90 @@ export function binFilter(column, kind, edges, index) {
   return { column, kind, op: "range", value: { min: edges[index], max: edges[index + 1], max_inclusive: last } };
 }
 
+const WEEKDAY_INITIALS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// The parts of a naive ISO date-time edge ("2026-10-09T14:00:00"), read from the text, so no time zone applies.
+function edgeParts(edge) {
+  const year = Number(edge.slice(0, 4));
+  const month = Number(edge.slice(5, 7));
+  const day = Number(edge.slice(8, 10));
+  return { year, month, day, hour: Number(edge.slice(11, 13) || 0), weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay() };
+}
+
+// The text of a bucket of a date histogram (profile `unit`): "2026-10-09 14:00 – 14:59", "Fri 2026-10-09",
+// "October 2026", "2026".
+export function bucketLabel(edge, unit) {
+  const parts = edgeParts(edge);
+  const hour = edge.slice(11, 13);
+  switch (unit) {
+    case "hour":
+      return `${edge.slice(0, 10)} ${hour}:00 – ${hour}:59`;
+    case "day":
+      return `${WEEKDAY_NAMES[parts.weekday]} ${edge.slice(0, 10)}`;
+    case "month":
+      return `${MONTH_LONG[parts.month - 1]} ${parts.year}`;
+    default:
+      return String(parts.year);
+  }
+}
+
+// A bucket edge as text: the day, with the time unless it is midnight.
+export function edgeText(edge) {
+  return edge.slice(11, 19) === "00:00:00" ? edge.slice(0, 10) : edge.slice(0, 16).replace("T", " ");
+}
+
+// The labels under a date histogram: hours every 6 (00 06 12 18 24, the day at a midnight inside), weekdays or every
+// 7th day, months every 1, 3 or 6, years every 1 or 5; [{index, label}] at an edge or a bucket's middle (+ 0.5).
+export function timeTicks(edges, unit) {
+  const bins = edges.length - 1;
+  const ticks = [];
+  if (unit === "hour") {
+    const step = bins <= 48 ? 6 : 12;
+    edges.forEach((edge, index) => {
+      const { hour } = edgeParts(edge);
+      if (hour % step === 0) {
+        const midnight = hour === 0 && index > 0;
+        ticks.push({ index, label: midnight ? (index === bins ? "24" : edge.slice(5, 10)) : edge.slice(11, 13) });
+      }
+    });
+  } else if (unit === "day") {
+    if (bins <= 14) {
+      edges.slice(0, -1).forEach((edge, index) => ticks.push({ index: index + 0.5, label: WEEKDAY_INITIALS[edgeParts(edge).weekday] }));
+    } else {
+      edges.forEach((edge, index) => index % 7 === 0 && index < bins && ticks.push({ index, label: edge.slice(5, 10) }));
+    }
+  } else {
+    const every = unit === "month" ? (bins <= 12 ? 1 : bins <= 36 ? 3 : 6) : bins <= 10 ? 1 : 5;
+    edges.slice(0, -1).forEach((edge, index) => {
+      const { year, month } = edgeParts(edge);
+      if (unit === "month" && (month - 1) % every === 0) {
+        ticks.push({ index: index + 0.5, label: month === 1 || !ticks.length ? `${MONTH_NAMES[month - 1]} ${String(year).slice(2)}` : MONTH_NAMES[month - 1] });
+      } else if (unit === "year" && year % every === 0) {
+        ticks.push({ index: index + 0.5, label: String(year) });
+      }
+    });
+  }
+  return ticks;
+}
+
+// The range a date histogram covers, from its first bucket to its last: "2026-10-09", "2026-10-03 – 2026-10-09",
+// "Oct 2025 – Sep 2026", "2021 – 2026".
+export function bucketRange(edges, unit) {
+  const first = edges[0];
+  const last = edges[edges.length - 2];
+  const parts = [first, last].map(edgeParts);
+  if (unit === "hour" || unit === "day") {
+    return first.slice(0, 10) === last.slice(0, 10) ? first.slice(0, 10) : `${first.slice(0, 10)} – ${last.slice(0, 10)}`;
+  }
+  if (unit === "month") {
+    return parts.map((item) => `${MONTH_NAMES[item.month - 1]} ${item.year}`).join(" – ");
+  }
+  return parts[0].year === parts[1].year ? String(parts[0].year) : `${parts[0].year} – ${parts[1].year}`;
+}
+
 // The colors ECharts cannot read from CSS variables: text, axis lines and grid lines of the light and dark themes. Explicit colors
 // in an option (series, visual maps) win over these.
 export function chartTheme(dark) {
