@@ -1182,13 +1182,18 @@ def get_files_day(date: str | None = None):
 
 
 @api.get('/search-files')
-def search_files(text: str | None = None, id: int | None = None):
-    """Find files of any day by a name prefix (text) or by their ID."""
+def search_files(text: str | None = None, id: int | None = None,
+                 source_id: int | None = None):
+    """Find files of any day by a name prefix (text) or by their ID.
+
+    With source_id, only the files of that datasource.
+    """
     if text is None and id is None:
         raise fastapi.HTTPException(status_code=400,
                                     detail='Give text or id.')
     with datasource_errors():
-        return pdi.search_files(text=text, file_id=id)
+        return pdi.search_files(text=text, file_id=id,
+                                source_id=source_id)
 
 
 @api.post('/set-file-status')

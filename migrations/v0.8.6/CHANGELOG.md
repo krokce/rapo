@@ -139,3 +139,13 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
    them with `held: "instance_limit"`. The limit also counts active runs started more than a day ago (they were
    ignored). Runs of the control on another server, or as another control's cascade or chain source, are still waited
    for inside the run's process, holding its slot, as before.
+6. **File log page laid out like Results and Files.** The file log of a datasource (`/files-log/<id>`, and the
+   datasource editor's *File log* tab) has the day navigator in its title (previous/next day, a date picker, today)
+   instead of the day buttons of its filter row, and no filter fields any more: the status and *Duplicate* chips of
+   the header toggle their filter (highlighted while on), and *Upload* sits beside them. The page searches with the
+   header search, as the Files page does: a file name (any case), `?<start of a file name>` (case-sensitive) or
+   `#<file ID>`; a datasource name or ID carried over from the Files page filters nothing. A file ID or name prefix not
+   on the day shown is looked up on the other days of the datasource: *Go to its day* (file ID) or a list of the
+   files found opens their day with the file picked. The editor's tab keeps a *File name* box (it has no header
+   search). The *Not duplicates* filter is gone (`dup=N` in a link is ignored). `search-files` takes an optional
+   `source_id`.

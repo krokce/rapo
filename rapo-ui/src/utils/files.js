@@ -153,6 +153,44 @@ function emptyHours() {
   return Array.from({ length: 24 }, () => ({ count: 0, errors: 0 }));
 }
 
+// The most files search-files answers.
+export const FILE_SEARCH_LIMIT = 200;
+
+// The header search of the Files pages: "?<start of a file name>" and "#<file ID>" find files, anything else is a name
+// (on Files a datasource's, on a file log a file's).
+export function parseSearch(search) {
+  const text = (search || "").trim();
+  if (text.startsWith("?")) {
+    return { kind: "file", value: text.slice(1).trim() };
+  }
+  if (text.startsWith("#")) {
+    return { kind: "id", value: text.slice(1).trim() };
+  }
+  return { kind: "name", value: text };
+}
+
+// Whether the Files page's datasource search finds a datasource: its name contains it, or digits start its ID.
+export function datasourceMatchesSearch(name, id, value) {
+  const search = (value || "").toUpperCase();
+  return !search || (name || `#${id}`).toUpperCase().includes(search) || (/^\d+$/.test(search) && String(id).startsWith(search));
+}
+
+// Whether a file log row passes a parsed search: "?" starts its name (case-sensitive, as search-files), "#" is its ID,
+// a name is contained in its name, whatever the case.
+export function fileMatchesSearch(file, { kind, value }) {
+  if (!value) {
+    return true;
+  }
+  const name = file.inputfilename || "";
+  if (kind === "file") {
+    return name.startsWith(value);
+  }
+  if (kind === "id") {
+    return String(file.id) === value;
+  }
+  return name.toLowerCase().includes(value.toLowerCase());
+}
+
 // The hour a file log row started loading (startloaddate, the database's clock), or null.
 export function loadHour(file) {
   const hour = Number(String(file.startloaddate || "").slice(11, 13));

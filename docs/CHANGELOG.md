@@ -40,6 +40,9 @@ options (uploads are off until `file_upload=True`).
   flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so
   PDI Core never loads a partial file. `[DATASOURCES] file_upload` (off), `max_upload_mb`; routes `check-ds-upload`,
   `upload-ds-file`.
+- **File log page** like Results/Files: day navigator in the title, status/*Duplicate* chips toggle the filters,
+  *Upload* beside them, no filter fields; the header search takes a file name, `?prefix` or `#file ID` and offers
+  matches of other days (*Not duplicates* filter dropped; `search-files` `source_id`).
 - **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.

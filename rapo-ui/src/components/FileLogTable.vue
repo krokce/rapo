@@ -1,11 +1,12 @@
 <template>
   <div class="column no-wrap relative-position" @dragenter="dragEnter" @dragover="dragOverPage" @dragleave="dragLeave" @drop="dropFiles">
-    <!-- Laid out like Results: the title with the day, the day's totals and status chips on the right,
-         the active filters under it (led by the Filter badge), then the filter row with the day buttons, and the table. -->
+    <!-- Laid out like Results and Files: the title with the day navigator, the day's status chips (filters, toggled) and
+         Upload on the right with the day's totals under them, then the active filters (led by the Filter badge). The page
+         searches with the header search; the datasource editor, which has none, with its own File name box. -->
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
       <component :is="embedded ? 'div' : 'h2'" class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none" :class="{ 'text-h6': embedded }">
         <slot name="title" />
-        <div class="text-grey-7" :class="{ 'page-subject': !embedded }">{{ dayTitle }}</div>
+        <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
         <slot name="after-day" />
         <div v-if="loading">
           <q-avatar :size="embedded ? 'md' : 'lg'" color="grey-5">
@@ -13,27 +14,36 @@
           </q-avatar>
         </div>
       </component>
+      <q-input v-if="embedded" v-model="search" dense clearable outlined debounce="200" label="File name" maxlength="200" class="q-ml-lg name-filter" />
       <q-space />
 
       <!-- The day's totals, whatever the filters; a status chip filters by it. -->
-      <div class="row items-center justify-end q-gutter-x-md text-blue-grey-8">
-        <div v-if="files.length">
+      <div class="column items-end text-blue-grey-8">
+        <div v-if="statusCounts.length || duplicateCount || canUpload" class="row items-center justify-end">
+          <q-chip
+            v-for="entry in statusCounts"
+            :key="entry.status"
+            clickable
+            :class="{ 'chip-selected': statuses.includes(entry.status) }"
+            @click="toggleStatus(entry.status)">
+            <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
+          </q-chip>
+          <q-chip v-if="duplicateCount" clickable :class="{ 'chip-selected': duplicate === 'Y' }" @click="duplicate = duplicate === 'Y' ? null : 'Y'">
+            <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(duplicateCount) }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Files PDI Core flagged as duplicates (DUPLICATE = 1): show only them</q-tooltip>
+          </q-chip>
+          <q-btn v-if="canUpload" class="q-ml-sm" outline dense no-caps color="primary" icon="fas fa-upload" label="Upload" padding="4px 10px" @click="openUpload([])">
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Upload files into the input directory of the datasource (or drop them here)</q-tooltip>
+          </q-btn>
+        </div>
+        <div v-if="files.length" class="q-mr-xs">
           {{ formatNumber(files.length) }} files &middot; {{ compactNumber(totals.read) }} read &middot; {{ compactNumber(totals.written) }} written
           <span :class="{ 'text-red-6': totals.rejected }">&middot; {{ compactNumber(totals.rejected) }} rejected</span>
           <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
             Records read {{ formatNumber(totals.read) }}, written {{ formatNumber(totals.written) }}, rejected {{ formatNumber(totals.rejected) }}
           </q-tooltip>
-        </div>
-        <div v-if="statusCounts.length || duplicateCount">
-          <q-chip v-for="entry in statusCounts" :key="entry.status" clickable @click="addStatus(entry.status)">
-            <q-avatar :icon="fileStatus(entry.status).icon" :color="fileStatus(entry.status).color" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">{{ fileStatus(entry.status).label }}</span>({{ formatNumber(entry.count) }})
-          </q-chip>
-          <q-chip v-if="duplicateCount" clickable @click="duplicate = 'Y'">
-            <q-avatar icon="fas fa-clone" color="purple-3" text-color="white" />
-            <span class="text-weight-bold q-mr-xs">Duplicate</span>({{ formatNumber(duplicateCount) }})
-            <q-tooltip>Files PDI Core flagged as duplicates (DUPLICATE = 1): show only them</q-tooltip>
-          </q-chip>
         </div>
       </div>
     </div>
@@ -49,52 +59,6 @@
       class="q-mt-sm q-mb-md"
       @select="(value) => (hour = value)" />
 
-    <div class="row items-center" :class="{ 'q-mb-sm': !embedded }">
-      <q-btn aria-label="Previous day" class="q-mb-md q-mr-xs day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-left" :disable="!day" @click="shiftDay(-1)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Previous day </q-tooltip>
-      </q-btn>
-
-      <q-input v-model="search" clearable class="col q-mb-md q-pa-sm name-filter" outlined debounce="200" label="File name" maxlength="200" />
-
-      <q-select
-        v-model="statuses"
-        class="col-3 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="statusOptions"
-        label="File status">
-      </q-select>
-
-      <q-select
-        v-model="duplicate"
-        class="col-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="[
-          { label: 'Duplicates', value: 'Y' },
-          { label: 'Not duplicates', value: 'N' },
-        ]"
-        label="Duplicate">
-      </q-select>
-
-      <q-space />
-      <q-btn v-if="canUpload" class="q-mb-md q-mr-sm upload-btn" outline no-caps color="primary" icon="fas fa-upload" label="Upload" @click="openUpload([])">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]">Upload files into the input directory of the datasource (or drop them here)</q-tooltip>
-      </q-btn>
-      <q-btn aria-label="Next day" v-if="day && day < today" class="q-mb-md day-btn" outline color="primary" padding="0 4px" icon="fas fa-chevron-right" @click="shiftDay(1)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Next day </q-tooltip>
-      </q-btn>
-      <q-btn aria-label="Today" v-if="day && day < today" class="q-mb-md q-ml-xs day-btn" flat color="primary" padding="0 4px" icon="fas fa-step-forward" @click="load(null)">
-        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 10]"> Today </q-tooltip>
-      </q-btn>
-    </div>
     <div v-if="truncated" class="text-orange-9 q-mb-sm">Only the latest {{ formatNumber(files.length) }} files of the day are listed.</div>
 
     <!-- The actions, while files are selected: each counts the selected files it would change. -->
@@ -229,7 +193,34 @@
         <tbody v-if="!shownFiles.length">
           <tr>
             <td :colspan="selectable ? 11 : 10" class="text-center text-grey-7 q-pa-lg">
-              {{ loading ? "Loading..." : files.length ? "No file matches the filters" : "No files loaded on this day" }}
+              <!-- A file ID or name prefix searched for that is not on this day: the datasource's other days are looked up. -->
+              <template v-if="!loading && otherDayKey">
+                <span v-if="!otherDayReady">Searching the other days of the file log...</span>
+                <span v-else-if="!otherDayFiles.length">{{ searchMode.kind === "id" ? `No file ${searchMode.value} of this datasource` : `No file of this datasource starts with '${searchMode.value}'` }}</span>
+                <template v-else-if="searchMode.kind === 'id'">
+                  File {{ searchMode.value }} is on {{ dayLabel(fileDay(otherDayFiles[0])) }} &middot;
+                  <a href="#" class="text-teal-8 text-weight-bold" @click.prevent="openOtherDay(otherDayFiles[0])">Go to its day</a>
+                </template>
+                <a v-else href="#" class="text-teal-8 text-weight-bold" @click.prevent>
+                  {{ otherDayFiles.length >= fileSearchLimit ? `The newest ${fileSearchLimit} files` : `${formatNumber(otherDayFiles.length)} file(s)` }} of other days
+                  starting with '{{ searchMode.value }}'
+                  <q-icon name="fas fa-caret-down" size="14px" class="q-ml-xs" />
+                  <q-menu fit :offset="[0, 4]" max-height="400px">
+                    <q-list dense style="min-width: 480px">
+                      <q-item v-for="file in otherDayFiles" :key="file.id" clickable v-close-popup @click="openOtherDay(file)">
+                        <q-item-section avatar>
+                          <q-icon :name="fileStatus(file.filestatus).icon" :color="fileStatus(file.filestatus).color" size="16px" />
+                        </q-item-section>
+                        <q-item-section class="text-left">
+                          <q-item-label class="ellipsis">{{ file.inputfilename }}</q-item-label>
+                          <q-item-label caption>#{{ file.id }} &middot; {{ toDateTimeString(file.startloaddate) }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-menu>
+                </a>
+              </template>
+              <template v-else>{{ loading ? "Loading..." : files.length ? "No file matches the filters" : "No files loaded on this day" }}</template>
             </td>
           </tr>
         </tbody>
@@ -276,6 +267,7 @@
 
 <script>
 import { mapGetters } from "vuex";
+import DayNavigator from "./DayNavigator.vue";
 import HourHeatmap from "./HourHeatmap.vue";
 import FilterChips from "./FilterChips.vue";
 import FileUploadDialog from "./FileUploadDialog.vue";
@@ -285,18 +277,21 @@ import { FILE_ACTIONS, FILE_DOWNLOAD, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { copyAndNotify } from "../runActions";
 import { downloadFiles } from "../utils/datasources";
-import { hourRange, loadHour, statusHeatmapRows } from "../utils/files";
-import { listFilter, valueFilter } from "../utils/filters";
-import { compactNumber, dayTitle, escapeHtml, formatBytes, formatNumber, shiftDay, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { FILE_SEARCH_LIMIT, datasourceMatchesSearch, fileMatchesSearch, hourRange, loadHour, parseSearch, statusHeatmapRows } from "../utils/files";
+import { listFilter, searchFilter, valueFilter } from "../utils/filters";
+import { compactNumber, dayLabel, escapeHtml, formatBytes, formatNumber, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import { clockLabel, clockOffset, dayPosition } from "../utils/clock";
 import persistFilters from "../mixins/persistFilters";
 
 // The files one datasource loaded on one day (get-ds-file-log, the database's day), newest first. A row opens the log
 // text PDI Core wrote for it. With `selectable` (the Files page), files can be picked and asked to be recycled, reloaded
-// or deleted (set-file-status), and PDI Core does the work, or downloaded (download-ds-files). The search and the status
-// and duplicate filters are kept for the browser session, like the filters of the list pages, and stay while the day
-// changes; `initialFilters` (a link from the Files page) replaces them, and every change is emitted as `filters`.
+// or deleted (set-file-status), and PDI Core does the work, or downloaded (download-ds-files). The status and duplicate
+// filters are kept for the browser session, like the filters of the list pages, and stay while the day changes;
+// `initialFilters` (a link from the Files page) replaces them, and every change is emitted as `filters`. The page reads
+// the header search as the Files page does (?<name prefix>, #<file ID>, else a name); a name of its datasource, as the
+// Files page searched it, filters nothing. A file ID or name prefix of another day is looked up and offered (`open-file`).
+// Embedded (the datasource editor, no header search) it has its own File name box, kept for the session.
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
   { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log" },
@@ -317,7 +312,7 @@ const DEFAULT_SORT = { key: null, dir: "asc" };
 export default {
   name: "FileLogTable",
   mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
-  components: { HourHeatmap, FilterChips, FileUploadDialog, FileViewerDialog },
+  components: { DayNavigator, HourHeatmap, FilterChips, FileUploadDialog, FileViewerDialog },
   props: {
     datasourceId: { type: Number, required: true },
     // YYYY-MM-DD to start with; null for the database's today.
@@ -330,10 +325,12 @@ export default {
     maxHeight: { type: String, default: "60vh" },
     // Inside another page (the datasource editor): a smaller title.
     embedded: { type: Boolean, default: false },
-    // Filters to start with instead of the kept ones, {statuses, hour, duplicate}; the file name search is cleared.
+    // Filters to start with instead of the kept ones, {statuses, hour, duplicate: 'Y'|null}; the File name box is cleared.
     initialFilters: { type: Object, default: null },
+    // The datasource's name, which a header search carried over from the Files page may be.
+    sourceName: { type: String, default: null },
   },
-  emits: ["day", "loaded", "filters"],
+  emits: ["day", "loaded", "filters", "open-file"],
   data() {
     return {
       loading: false,
@@ -346,6 +343,7 @@ export default {
       truncated: false,
       search: "",
       statuses: [],
+      // "Y" for only the duplicates, else null.
       duplicate: null,
       columns: COLUMNS,
       // No key: the order of the file log, newest load first.
@@ -361,6 +359,10 @@ export default {
       logText: null,
       logLoading: false,
       dragging: false,
+      // The files of other days found for the header search (search-files of this datasource), and the search they are for.
+      otherDayFiles: [],
+      otherDayFor: null,
+      fileSearchLimit: FILE_SEARCH_LIMIT,
     };
   },
   computed: {
@@ -371,17 +373,33 @@ export default {
     nowLabel() {
       return clockLabel(this.now + this.clockOffset);
     },
-    ...mapGetters(["getEnvInfo"]),
+    ...mapGetters(["getEnvInfo", "getSearch"]),
+    // The header search on the page, the File name box in the editor; a name of the datasource itself filters nothing.
+    searchMode() {
+      if (this.embedded) {
+        return { kind: "name", value: (this.search || "").trim() };
+      }
+      const mode = parseSearch(this.getSearch);
+      return mode.kind === "name" && mode.value && datasourceMatchesSearch(this.sourceName, this.datasourceId, mode.value) ? { kind: "name", value: "" } : mode;
+    },
+    // What search-files is asked for while no file of the day passes the filters, or null.
+    otherDayKey() {
+      const { kind, value } = this.searchMode;
+      if (this.embedded || this.shownFiles.length) {
+        return null;
+      }
+      if ((kind === "file" && value.length >= 3) || (kind === "id" && /^\d+$/.test(value))) {
+        return `${this.datasourceId}:${kind}:${value}`;
+      }
+      return null;
+    },
+    otherDayReady() {
+      return Boolean(this.otherDayKey) && this.otherDayFor === this.otherDayKey;
+    },
     statusCounts() {
       const counts = new Map();
       this.files.forEach((file) => counts.set(file.filestatus, (counts.get(file.filestatus) || 0) + 1));
       return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([status, count]) => ({ status, count }));
-    },
-    // The statuses of the day's files, and a kept one the day has none in, so it can be removed.
-    statusOptions() {
-      const statuses = this.statusCounts.map((entry) => entry.status);
-      (this.statuses || []).forEach((status) => statuses.includes(status) || statuses.push(status));
-      return statuses.map((value) => ({ label: fileStatus(value).label, value }));
     },
     duplicateCount() {
       return this.files.filter((file) => file.duplicate).length;
@@ -397,17 +415,14 @@ export default {
         { read: 0, written: 0, rejected: 0 }
       );
     },
-    dayTitle() {
-      return dayTitle(this.day);
-    },
     sortChip() {
       return sortChip(this.sort, DEFAULT_SORT, Object.fromEntries(this.columns.map((column) => [column.key, column.label])), "newest load first");
     },
     activeFilters() {
       return [
-        ...valueFilter("search", "File name", this.search, () => (this.search = null), { text: true }),
+        ...(this.embedded ? valueFilter("search", "File name", this.search, () => (this.search = null), { text: true }) : searchFilter(this.$store)),
         ...listFilter("status", "Status", this.statuses, (value) => (this.statuses = this.statuses.filter((item) => item !== value)), (value) => fileStatus(value).label),
-        ...valueFilter("duplicate", "Duplicate", this.duplicate, () => (this.duplicate = null), { label: this.duplicate === "Y" ? "Duplicates" : "Not duplicates" }),
+        ...valueFilter("duplicate", "Duplicate", this.duplicate, () => (this.duplicate = null), { label: "Duplicates" }),
         ...valueFilter("hour", "Hour", this.hour, () => (this.hour = null), {
           label: this.hour === null ? null : hourRange(this.hour),
         }),
@@ -415,13 +430,10 @@ export default {
     },
     // The files that pass every filter but the hour, which the heatmap picks.
     filesButHour() {
-      const needle = (this.search || "").toLowerCase();
       const statuses = this.statuses || [];
+      const search = this.searchMode;
       return this.files.filter(
-        (file) =>
-          (!statuses.length || statuses.includes(file.filestatus)) &&
-          (!this.duplicate || Boolean(file.duplicate) === (this.duplicate === "Y")) &&
-          (!needle || (file.inputfilename || "").toLowerCase().includes(needle))
+        (file) => (!statuses.length || statuses.includes(file.filestatus)) && (!this.duplicate || Boolean(file.duplicate)) && fileMatchesSearch(file, search)
       );
     },
     heatmap() {
@@ -495,6 +507,15 @@ export default {
         this.load(value);
       }
     },
+    highlightId() {
+      this.scrollToHighlight();
+    },
+    otherDayKey(key) {
+      clearTimeout(this.otherDayTimer);
+      if (key && key !== this.otherDayFor) {
+        this.otherDayTimer = setTimeout(this.searchOtherDays, 400);
+      }
+    },
   },
   methods: {
     compactNumber,
@@ -502,9 +523,39 @@ export default {
     sortIcon,
     ariaSort,
     toggleSort,
+    dayLabel,
     addStatus(status) {
       if (!this.statuses.includes(status)) {
         this.statuses = [...this.statuses, status];
+      }
+    },
+    toggleStatus(status) {
+      this.statuses = this.statuses.includes(status) ? this.statuses.filter((item) => item !== status) : [...this.statuses, status];
+    },
+    // The day of a file of the log (its load start, the database's clock).
+    fileDay(file) {
+      return String(file.startloaddate || "").slice(0, 10);
+    },
+    // A file of another day: the parent opens its day (null for today) with the file picked.
+    openOtherDay(file) {
+      const day = this.fileDay(file);
+      this.$emit("open-file", file, day && day < this.today ? day : null);
+    },
+    // Asks search-files for the header search's file ID or name prefix in this datasource, minus the files of the day.
+    async searchOtherDays() {
+      const key = this.otherDayKey;
+      if (!key || key === this.otherDayFor) {
+        return;
+      }
+      const { kind, value } = this.searchMode;
+      try {
+        const files = await api("search-files", { params: { ...(kind === "id" ? { id: value } : { text: value }), source_id: this.datasourceId }, loadingBar: false });
+        if (key === this.otherDayKey) {
+          this.otherDayFiles = Object.freeze(files.filter((file) => !this.filesById.has(file.id)));
+          this.otherDayFor = key;
+        }
+      } catch (error) {
+        notifyError("The file log could not be searched.", error);
       }
     },
     applyInitialFilters() {
@@ -514,12 +565,15 @@ export default {
       }
       this.search = null;
       this.statuses = [...(filters.statuses || [])];
-      this.duplicate = filters.duplicate || null;
+      this.duplicate = filters.duplicate === "Y" ? "Y" : null;
       this.hour = filters.hour ?? null;
       this.keepHour = this.hour !== null;
     },
     clearFilters() {
       this.search = null;
+      if (!this.embedded) {
+        this.$store.commit("updateSearch", "");
+      }
       this.statuses = [];
       this.duplicate = null;
       this.hour = null;
@@ -565,8 +619,8 @@ export default {
         this.$nextTick(() => this.$refs.scroll && this.$refs.scroll.scrollTo(index, "center"));
       }
     },
-    shiftDay(days) {
-      this.load(shiftDay(this.day, days));
+    goToDay(day) {
+      this.load(day && day < this.today ? day : null);
     },
     toggle(id) {
       const selected = new Set(this.selected);
@@ -738,6 +792,10 @@ export default {
   },
   // After persistFilters restored the kept filters, which a link's filters replace.
   created() {
+    // "Not duplicates" (N) is no filter any more.
+    if (this.duplicate !== "Y") {
+      this.duplicate = null;
+    }
     this.applyInitialFilters();
   },
   mounted() {
@@ -751,6 +809,7 @@ export default {
   },
   unmounted() {
     clearInterval(this.clock);
+    clearTimeout(this.otherDayTimer);
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }
@@ -799,8 +858,12 @@ export default {
 .file-name-cell .view-btn {
   margin: -4px 0;
 }
-.upload-btn {
-  height: 51px;
+/* A chip whose value filters the table, as on the Files page. */
+.chip-selected {
+  box-shadow: inset 0 0 0 2px var(--rapo-filter-border);
+}
+.name-filter {
+  min-width: 200px;
 }
 .log-text {
   font-size: 12px;

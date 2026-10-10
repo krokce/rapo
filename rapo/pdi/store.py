@@ -557,11 +557,12 @@ class Store:
                            for key, value in row.items()} for row in cells],
                 'perf': perf, 'week_before': week_before, 'names': names}
 
-    def search_files(self, text=None, file_id=None):
+    def search_files(self, text=None, file_id=None, source_id=None):
         """Find files of any day by a name prefix or by their ID.
 
         `text` matches the start of INPUTFILENAME, case-sensitively, so that
-        the index on it is used; `file_id` is one ID. Newest first.
+        the index on it is used; `file_id` is one ID; `source_id` keeps the
+        files of one datasource. Newest first.
         """
         self.check()
         if not self.log_available:
@@ -575,6 +576,9 @@ class Store:
             pattern = re.sub(r'([\\%_])', r'\\\1', text) + '%'
             condition = 'inputfilename like :pattern escape \'\\\''
             params = {'pattern': pattern}
+        if source_id is not None:
+            condition += ' and sourceid = :source_id'
+            params['source_id'] = int(source_id)
         statement = sa.text(
             'select id, sourceid, sourcename, inputfilename, filestatus, '
             f'startloaddate from {LOG_TABLE} where {condition} '

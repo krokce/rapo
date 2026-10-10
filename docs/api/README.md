@@ -690,7 +690,8 @@ weekday a week earlier, for today up to the same time of day), `names` (the SOUR
 
 #### `GET /api/search-files`
 Files of any day, newest first, at most 200: those whose `INPUTFILENAME` starts with `text` (3 characters or more,
-case-sensitive, so that its index is used), or the file `id`. One of the two is required (`400`). Each with `id`,
+case-sensitive, so that its index is used), or the file `id`. One of the two is required (`400`); `source_id` keeps
+the files of one datasource. Each with `id`,
 `sourceid`, `sourcename`, `inputfilename`, `filestatus`, `startloaddate`.
 
 #### `POST /api/set-file-status`

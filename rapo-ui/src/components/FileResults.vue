@@ -297,7 +297,7 @@ import { api, notifyError } from "../api";
 import { datasourceLane, fileStatus } from "../constants";
 import { liveRefetch } from "../socket";
 import { ISSUES as DATASOURCE_ISSUES, formatAge, issuesOf as datasourceIssuesOf } from "../utils/datasources";
-import { ALWAYS_STATUSES, FILE_ISSUES, datasourceRows, dayStatuses, heatmapRows, hourRange, statusRank, statusTotals } from "../utils/files";
+import { ALWAYS_STATUSES, FILE_ISSUES, FILE_SEARCH_LIMIT, datasourceMatchesSearch, datasourceRows, dayStatuses, heatmapRows, hourRange, parseSearch, statusRank, statusTotals } from "../utils/files";
 import FileListDialog from "./FileListDialog.vue";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { compactNumber, formatDuration, formatNumber, toDateTimeString, toTimeString } from "../utils/format";
@@ -308,22 +308,6 @@ import persistFilters from "../mixins/persistFilters";
 
 // The Datasources page's issues this page shows too (on today).
 const FILE_DATASOURCE_ISSUES = ["stalled"];
-
-// The most files search-files answers.
-const FILE_SEARCH_LIMIT = 200;
-
-// The header search: "?<start of a file name>" and "#<file ID>" find files of any day, anything else is a datasource
-// name or ID.
-function parseSearch(search) {
-  const text = (search || "").trim();
-  if (text.startsWith("?")) {
-    return { kind: "file", value: text.slice(1).trim() };
-  }
-  if (text.startsWith("#")) {
-    return { kind: "id", value: text.slice(1).trim() };
-  }
-  return { kind: "name", value: text };
-}
 
 // The columns around the status columns (one per status the day has files in); `title` is the header's tooltip.
 const LEADING_COLUMNS = [
@@ -638,12 +622,8 @@ export default {
       if (this.searchMode.kind !== "name") {
         return !this.fileSearchSources || this.fileSearchSources.has(id);
       }
-      const search = this.searchMode.value.toUpperCase();
-      if (!search) {
-        return true;
-      }
-      const name = (datasource ? datasource.sourcename : (this.fileDay && this.fileDay.names && this.fileDay.names[id]) || `#${id}`).toUpperCase();
-      return name.includes(search) || (/^\d+$/.test(search) && String(id).startsWith(search));
+      const name = datasource ? datasource.sourcename : this.fileDay && this.fileDay.names && this.fileDay.names[id];
+      return datasourceMatchesSearch(name, id, this.searchMode.value);
     },
     // The day's issues of a row, then (on today) those of its datasource.
     rowIssues(row) {

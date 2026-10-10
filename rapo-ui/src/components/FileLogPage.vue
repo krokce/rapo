@@ -6,9 +6,11 @@
       :highlight-id="$route.query.file ? Number($route.query.file) : null"
       :tables="datasource ? datasource.tables : []"
       :initial-filters="queryFilters"
+      :source-name="datasource ? datasource.sourcename : loggedName"
       selectable
-      max-height="calc(100vh - 330px)"
+      max-height="calc(100vh - 270px)"
       @day="dayChanged"
+      @open-file="openFile"
       @filters="filtersChanged"
       @loaded="(files) => (loggedName = files.length ? files[0].sourcename : loggedName)">
       <template #title>
@@ -57,8 +59,8 @@ import { DATASOURCE_ICON, datasourceLane } from "../constants";
 
 // The files of one datasource on one day (/files-log/<id>?date=YYYY-MM-DD&file=<id>), opened from the Files page: the
 // File log of the datasource editor, with files to pick and recycle, reload, delete or download. The filters are in the
-// URL too (status=A,B&hour=H&dup=Y|N), so that a count of the Files page opens exactly its files; they replace the
-// filters kept for the session, and a change of them is written back.
+// URL too (status=A,B&hour=H&dup=Y), so that a count of the Files page opens exactly its files; they replace the
+// filters kept for the session, and a change of them is written back. The header search filters the files.
 const FILTER_KEYS = ["status", "hour", "dup"];
 export default {
   name: "FileLogPage",
@@ -89,7 +91,7 @@ export default {
           .map((status) => status.trim().toUpperCase())
           .filter(Boolean),
         hour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : null,
-        duplicate: ["Y", "N"].includes(query.dup) ? query.dup : null,
+        duplicate: query.dup === "Y" ? "Y" : null,
       };
     },
   },
@@ -106,6 +108,14 @@ export default {
         query.date = day;
       }
       this.$router.replace({ name: "files-log", params: { id: this.id }, query });
+    },
+    // A file of another day the search found: its day (null for today), with it picked; the filters of the URL stay.
+    openFile(file, day) {
+      const query = { ...this.filterQuery(this.$route.query), file: String(file.id) };
+      if (day) {
+        query.date = day;
+      }
+      this.$router.push({ name: "files-log", params: { id: this.id }, query });
     },
     filterQuery(source) {
       return Object.fromEntries(FILTER_KEYS.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));

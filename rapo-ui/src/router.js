@@ -106,7 +106,7 @@ const router = createRouter({
     {
       name: "files-log",
       path: "/files-log/:id",
-      meta: { hideSearch: true },
+      meta: { searchPlaceholder: "Search file name, ?name prefix, #file ID" },
       component: () => import(/* webpackChunkName: "file-log" */ "./components/FileLogPage.vue"),
       props: true,
     },
