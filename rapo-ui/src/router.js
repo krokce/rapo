@@ -10,17 +10,17 @@ import store from "./store";
 
 // The editors and the file log are their own chunks (CodeMirror and the editor boxes leave the first load).
 const router = createRouter({
-  // Fixes issue with page router navigates to renders scrolled to the bottom
+  // Back and forward return to where the page was; another page opens at its top. A page that only changes its query or
+  // hash (a view kept in the URL) stays where it is, and one opened with a hash (the analysis pages' sections) scrolls
+  // there itself once its content is loaded.
   scrollBehavior: (to, from, savedPosition) => {
     if (savedPosition) {
       return savedPosition;
-    } else if (to.hash) {
-      return {
-        el: to.hash,
-      };
-    } else {
-      return { top: 0 };
     }
+    if (to.hash || to.path === from.path) {
+      return false;
+    }
+    return { top: 0 };
   },
   history: createWebHistory(),
   routes: [

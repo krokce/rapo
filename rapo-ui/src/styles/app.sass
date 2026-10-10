@@ -56,6 +56,16 @@
   --rapo-asn1-len: #c5e1a5
   --rapo-asn1-value: #90caf9
   --rapo-asn1-hit: #ffe082
+  // The analysis pages: value bars, histograms, discrepancies against normal records, and the result types.
+  --rapo-bar: #90a4ae
+  --rapo-bar-track: #eceff1
+  --rapo-hist: #7986cb
+  --rapo-disc: #e53935
+  --rapo-normal: #90a4ae
+  --rapo-type-loss: #e53935
+  --rapo-type-discrepancy: #fb8c00
+  --rapo-type-duplicate: #8e24aa
+  --rapo-type-match: #43a047
   // The one fixed-width font (bundled, see quasar-user-options.js) of paths, code, patterns and numbers in tables.
   --rapo-font-mono: "Roboto Mono", monospace
 
@@ -111,6 +121,15 @@ body.body--dark
   --rapo-asn1-len: rgba(139, 195, 74, 0.4)
   --rapo-asn1-value: rgba(66, 165, 245, 0.4)
   --rapo-asn1-hit: rgba(255, 193, 7, 0.4)
+  --rapo-bar: #607d8b
+  --rapo-bar-track: #2c3438
+  --rapo-hist: #9fa8da
+  --rapo-disc: #ef5350
+  --rapo-normal: #78909c
+  --rapo-type-loss: #ef5350
+  --rapo-type-discrepancy: #ffa726
+  --rapo-type-duplicate: #ba68c8
+  --rapo-type-match: #66bb6a
 
 .sortable
   cursor: pointer
@@ -143,6 +162,10 @@ code, pre, kbd, samp
 .cm-viewer-cut
   color: var(--rapo-muted)
   font-style: italic
+
+// A chip whose value filters a list or picks what a page shows (Files, a file log, the analysis pages).
+.chip-selected
+  box-shadow: inset 0 0 0 2px var(--rapo-filter-border)
 
 // Files dragged over a place that uploads them (the file log, the editor's Input files, the files dialog).
 .drop-overlay

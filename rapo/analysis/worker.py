@@ -1,8 +1,9 @@
-"""Contains the analysis worker, one spawned process per analysis session.
+"""Contains the analysis worker, the process of one analysis session.
 
 The worker holds the only copy of the sample. It keeps the cursor of the
 dataset's select open, so that Extend fetches the rows that follow instead
-of running the select again. Messages on the pipe are tuples:
+of running the select again; a Bernoulli sample is read whole instead, and
+Extend reads a bigger one (`SAMPLINGS`). Messages on the pipe are tuples:
 - from the server: `(request_id, command, arguments)`;
 - to the server: `('reply', request_id, ok, payload)` and
   `('state', state)` whenever the state changes (throttled while fetching).
@@ -15,7 +16,6 @@ step builds a new DataFrame and swaps it in with a new `version`.
 """
 
 import concurrent.futures as cf
-import hashlib
 import json
 import os
 import queue
@@ -31,17 +31,20 @@ from . import profile
 
 
 FETCH_BATCH = 5000
-# Ends the statement of a random sample (see SessionManager.create).
+# Ends the statement of a shuffled sample.
 RANDOM_ORDER = 'order by dbms_random.value'
+# How the sample is drawn (SessionManager.create picks one): `all` and
+# `first` read the dataset as the database returns it, `sorted` shuffles it
+# whole first, `bernoulli` keeps each record with the probability that gives
+# the wanted size, so the records stream at once; its Extend reads a bigger
+# sample anew.
+SAMPLINGS = ('all', 'first', 'sorted', 'bernoulli')
 STATE_INTERVAL = 0.5
 MB = 1024 * 1024
 EXCEL_MAX_ROWS = 1048575
 EXCEL_MAX_TEXT = 32767
 EXCEL_MAX_DIGITS = 15
-SECTIONS = ('overview', 'columns', 'missing', 'duplicates', 'correlations',
-            'breakdown')
-SCOPED_CACHE = 24
-COMPARE_VALUES = 40
+SECTIONS = ('overview', 'columns', 'relations', 'breakdown')
 GROUPS_LIMIT = 5000
 AGGREGATES = ('sum', 'mean', 'min', 'max', 'nunique')
 BUCKETS = {'hour': 'h', 'day': 'D', 'month': 'M', 'year': 'Y'}
@@ -51,13 +54,6 @@ class Canceled(Exception):
     """The current step was canceled."""
 
 
-def serve(conn, sql, options, parent_pid):
-    """Run the worker of one session until it is told to stop."""
-    from ..core.runner import watch
-    th.Thread(target=watch, args=(parent_pid,), daemon=True).start()
-    Worker(conn, sql, options).run()
-
-
 class Worker:
     """Represents the sample of one session and the steps working on it."""
 
@@ -65,6 +61,9 @@ class Worker:
         self.conn = conn
         self.sql = sql
         self.options = options
+        self.sampling = options.get('sampling') or {'mode': 'first'}
+        # The size a Bernoulli sample is drawn for (its rows vary around it).
+        self.target = 0
         self.send_lock = th.Lock()
         self.jobs = queue.Queue()
         self.pool = cf.ThreadPoolExecutor(max_workers=3)
@@ -88,7 +87,10 @@ class Worker:
             'progress': None,
             'rows': 0,
             'version': 0,
+            'sampling': self.sampling['mode'],
+            'target': 0,
             'exhausted': False,
+            'extendable': False,
             'cursor_open': False,
             'limited': None,
             'memory_mb': 0,
@@ -148,7 +150,7 @@ class Worker:
         return dict(self.state)
 
     def on_extend(self, rows=None):
-        if self.state['exhausted'] or not self.state['cursor_open']:
+        if not self.state['extendable']:
             raise ValueError('There are no more rows to fetch')
         self.jobs.put(('extend', rows or self.options['extend_rows']))
         return dict(self.state)
@@ -168,25 +170,21 @@ class Worker:
         return {'version': self.state['version'], 'total': len(positions),
                 'offset': offset, 'rows': rows}
 
-    def on_profile(self, section, filters=None, search=None):
-        """Get a profile section of the sample, or of the rows the filters
-        and the search leave; start computing it when it is not ready.
-
-        The answer's `key` is how the state's `sections` names the section
-        once it is ready: the section, and for filtered rows `@` and a hash
-        of the filters.
+    def on_profile(self, section):
+        """Get a profile section of the sample; start computing it when it
+        is not ready. The state lists the section under `sections` once it
+        is.
         """
         if section not in SECTIONS:
             raise ValueError(f'Unknown section {section}')
-        scope = _scope(filters, search)
-        key = section if scope is None else f'{section}@{scope}'
         version = self.state['version']
         with self.cache_lock:
-            if (key, version) in self.cache:
-                return {'ready': True, 'version': version, 'key': key,
-                        'data': self.cache[(key, version)]}
-        self.jobs.put(('section', (section, filters, search)))
-        return {'ready': False, 'version': version, 'key': key, 'data': None}
+            if (section, version) in self.cache:
+                return {'ready': True, 'version': version, 'key': section,
+                        'data': self.cache[(section, version)]}
+        self.jobs.put(('section', section))
+        return {'ready': False, 'version': version, 'key': section,
+                'data': None}
 
     def on_groups(self, by, aggregates=None, filters=None, search=None,
                   sort=None, limit=1000):
@@ -265,69 +263,6 @@ class Worker:
                 'aggregates': labels, 'rows': rows,
                 'total_groups': total_groups, 'total_rows': len(subset)}
 
-    def on_describe(self, names):
-        """Get the facts of columns a comparison bins them by.
-
-        Per column: kind, rows, count, missing, and min/max/mean/median of a
-        numeric or date-time column (a date-time in epoch seconds), and the
-        most frequent values as text.
-        """
-        data, kinds = self._sample()
-        result = {}
-        for name in names:
-            if name not in data.columns:
-                raise ValueError(f'Unknown column {name}')
-            series = data[name]
-            kind = kinds[name]
-            present = series.dropna()
-            info = {'kind': kind, 'rows': len(series), 'count': len(present),
-                    'missing': int(len(series) - len(present))}
-            if kind in (fr.NUMERIC, fr.DATETIME) and len(present):
-                values = _numbers(present, kind)
-                info.update({'min': float(values.min()),
-                             'max': float(values.max()),
-                             'mean': float(values.mean()),
-                             'median': float(np.median(values))})
-            texts = fr.text_values(present, kind).astype(str)
-            counts = texts.value_counts().iloc[:COMPARE_VALUES]
-            info['top'] = [[value, int(number)]
-                           for value, number in counts.items()]
-            info['distinct'] = int(texts.nunique())
-            result[name] = info
-        return {'version': self.state['version'], 'rows': len(data),
-                'columns': result}
-
-    def on_distribution(self, spec):
-        """Count the values of columns in given bins or given values.
-
-        `spec` is [{name, mode, edges | values}]: `bins` counts numbers (a
-        date-time in epoch seconds) between the edges, the last bin closed;
-        `values` counts the text of each value, the rest as `other`. Both
-        also count the missing values.
-        """
-        data, kinds = self._sample()
-        result = {}
-        for item in spec:
-            name = item['name']
-            series = data[name]
-            kind = kinds[name]
-            present = series.dropna()
-            missing = int(len(series) - len(present))
-            if item['mode'] == 'bins' and kind in (fr.NUMERIC, fr.DATETIME):
-                values = _numbers(present, kind)
-                counts, _ = np.histogram(values, bins=np.array(item['edges']))
-                result[name] = {'counts': counts.tolist(), 'missing': missing,
-                                'other': 0}
-            else:
-                texts = fr.text_values(present, kind).astype(str)
-                counts = texts.value_counts()
-                wanted = item.get('values') or []
-                found = [int(counts.get(value, 0)) for value in wanted]
-                result[name] = {'counts': found, 'missing': missing,
-                                'other': int(len(texts) - sum(found))}
-        return {'version': self.state['version'], 'rows': len(data),
-                'columns': result}
-
     def on_export(self, format='xlsx', sort=None, search=None, filters=None,
                   columns=None):
         data, kinds = self._sample()
@@ -384,7 +319,7 @@ class Worker:
                     self._compute('columns')
                     self._compute('overview')
                 elif name == 'section':
-                    self._compute(*argument)
+                    self._compute(argument)
                 self._publish(status='ready', step=None, progress=None)
             except Canceled:
                 self._drain()
@@ -407,27 +342,49 @@ class Worker:
         if self.cancel_flag.is_set() or self.stopping:
             raise Canceled('Canceled')
 
-    def _open(self):
+    def _open(self, target=None):
         import oracledb
         from ..database import db
 
         oracledb.defaults.fetch_lobs = False
-        random = self.sql.endswith(RANDOM_ORDER)
-        self._publish(status='fetching', step='Shuffling the dataset'
-                      if random else 'Opening the dataset')
+        mode = self.sampling['mode']
+        self._publish(status='fetching', step={
+            'sorted': 'Shuffling the dataset',
+            'bernoulli': 'Sampling the dataset'}.get(mode,
+                                                    'Opening the dataset'))
         self.connection = db.engine.raw_connection()
         self.cursor = self.connection.cursor()
         self.cursor.arraysize = FETCH_BATCH
         self.cursor.prefetchrows = FETCH_BATCH
-        self.cursor.execute(self.sql)
-        names = fr.unique_names(item[0] for item in self.cursor.description)
+        self.cursor.execute(self._statement(target))
+        description = self.cursor.description
+        if mode == 'bernoulli':
+            # The random value, last; fr.build leaves it out of the rows.
+            description = description[:-1]
+        names = fr.unique_names(item[0] for item in description)
         self.columns = [
             {'name': name, 'kind': fr.column_kind(item[1]),
              'db_type': getattr(item[1], 'name', str(item[1]))
              .replace('DB_TYPE_', '')}
-            for name, item in zip(names, self.cursor.description)]
+            for name, item in zip(names, description)]
         self.kinds = {item['name']: item['kind'] for item in self.columns}
         self._publish(cursor_open=True, columns=self.columns)
+
+    def _statement(self, target):
+        """Get the select of the sample: `target` records for a Bernoulli
+        one, out of the dataset's `total`."""
+        mode = self.sampling['mode']
+        if mode == 'sorted':
+            return f'select * from ({self.sql}) {RANDOM_ORDER}'
+        if mode == 'bernoulli':
+            # As explain._sampled: a merged dbms_random predicate is
+            # evaluated once (all or none of the records), so the value is a
+            # column of an unmerged view.
+            share = min(1.0, target / max(self.sampling['total'], 1))
+            return ('select * from (select /*+ no_merge */ s.*, '
+                    f'dbms_random.value rapo_sample from ({self.sql}) s) '
+                    f'where rapo_sample < {share:.12f}')
+        return self.sql
 
     def _close_cursor(self):
         for item in (self.cursor, self.connection):
@@ -441,20 +398,38 @@ class Worker:
         self.state['cursor_open'] = False
 
     def _extend(self, wanted):
-        if self.cursor is None:
-            if self.state['exhausted'] or self.frame is not None:
-                return
-            self._open()
+        """Fetch `wanted` more records into the sample: from the open cursor,
+        or for a Bernoulli sample a bigger sample read anew, which replaces
+        the sample (read whole, so it is not biased to the first records the
+        database returns).
+        """
+        resample = self.sampling['mode'] == 'bernoulli'
         loaded = len(self.frame) if self.frame is not None else 0
-        wanted = min(wanted, self.options['max_rows'] - loaded)
-        if wanted <= 0:
-            self._publish(limited='rows')
-            return
+        largest = self.options['max_rows']
+        if resample:
+            target = min((self.target or loaded) + wanted, largest)
+            if target <= self.target:
+                self._publish(limited='rows', extendable=False)
+                return
+            self._close_cursor()
+            self._open(target)
+            wanted, expected, base = largest, target, 0
+        else:
+            if self.cursor is None:
+                if self.state['exhausted'] or self.frame is not None:
+                    return
+                self._open()
+            wanted = min(wanted, largest - loaded)
+            if wanted <= 0:
+                self._publish(limited='rows', extendable=False)
+                return
+            expected, base = wanted, loaded
         memory_limit = self.options['max_memory_mb']
         rows = []
         limited = None
+        ended = False
         self._publish(status='fetching', step='Fetching rows',
-                      progress={'done': 0, 'total': wanted}, limited=None)
+                      progress={'done': 0, 'total': expected}, limited=None)
         try:
             while len(rows) < wanted:
                 self._check()
@@ -464,57 +439,71 @@ class Worker:
                 batch = self.cursor.fetchmany(
                     min(FETCH_BATCH, wanted - len(rows)))
                 if not batch:
-                    self.state['exhausted'] = True
-                    self._close_cursor()
+                    ended = True
                     break
                 rows.extend(batch)
-                self._publish(force=False, rows=loaded + len(rows),
-                              progress={'done': len(rows), 'total': wanted})
+                progress = {'done': min(len(rows), expected),
+                            'total': expected}
+                if resample:
+                    self._publish(force=False, progress=progress)
+                else:
+                    self._publish(force=False, rows=base + len(rows),
+                                  progress=progress)
         except Canceled:
+            # A bigger sample read in part would hold the first records only.
+            if resample:
+                self._close_cursor()
+                raise
             if not rows:
                 raise
         except Exception:
             # The cursor is lost (e.g. snapshot too old): the sample is kept,
             # but it can not be extended any more.
             self._close_cursor()
-            if not rows and self.frame is None:
+            if (resample and self.frame is not None) \
+                    or (not rows and self.frame is None):
                 raise
+        if ended or resample:
+            self._close_cursor()
         self._publish(status='fetching', step='Building the sample',
                       progress=None)
         chunk = fr.build(rows, self.columns)
-        if self.frame is None or not len(self.frame):
+        if resample or self.frame is None or not len(self.frame):
             data = chunk
         elif len(chunk):
             data = pd.concat([self.frame, chunk], ignore_index=True)
         else:
             data = self.frame
-        if loaded + len(rows) >= self.options['max_rows']:
+        if base + len(rows) >= largest:
             limited = limited or 'rows'
+        if resample:
+            self.target = target
+            complete = target >= self.sampling['total']
+            exhausted = complete and ended
+            extendable = not complete and not limited and len(data) < largest
+        else:
+            exhausted = ended or self.state['exhausted']
+            extendable = (self.cursor is not None and not exhausted
+                          and not limited)
         self.frame = data
         self.views = {}
         with self.cache_lock:
             self.cache = {}
         self.version += 1
         self._publish(rows=len(data), version=self.version, sections=[],
-                      limited=limited, error=None)
+                      limited=limited, error=None, exhausted=exhausted,
+                      extendable=extendable, target=self.target)
 
-    def _compute(self, section, filters=None, search=None):
+    def _compute(self, section):
         data, kinds = self._sample()
         version = self.version
-        scope = _scope(filters, search)
-        key = section if scope is None else f'{section}@{scope}'
         with self.cache_lock:
-            if (key, version) in self.cache:
+            if (section, version) in self.cache:
                 return
         labels = {'overview': 'Computing the overview',
                   'columns': 'Profiling the columns',
-                  'missing': 'Computing missing values',
-                  'duplicates': 'Finding duplicate rows',
-                  'correlations': 'Computing correlations',
+                  'relations': 'Measuring relations',
                   'breakdown': 'Counting the result types'}
-        if scope is not None:
-            positions = self._view(data, kinds, None, search, filters)
-            data = data.iloc[positions]
         self._publish(status='profiling', step=labels[section],
                       progress=None)
 
@@ -526,46 +515,22 @@ class Worker:
         if section == 'columns':
             result = profile.columns(data, kinds, step)
         elif section == 'overview':
-            self._compute('columns', filters, search)
-            column_key = 'columns' if scope is None else f'columns@{scope}'
+            self._compute('columns')
             with self.cache_lock:
-                profiles = self.cache[(column_key, version)]
+                profiles = self.cache[('columns', version)]
             self._publish(status='profiling', step=labels[section])
             result = profile.overview(data, kinds, profiles)
-        elif section == 'missing':
-            result = profile.missing(data, step)
-        elif section == 'duplicates':
-            result = profile.duplicates(data, step)
-        elif section == 'correlations':
-            result = profile.correlations(data, kinds, step)
+        elif section == 'relations':
+            result = profile.relations(data, kinds, step)
         else:
             result = profile.breakdown(data, kinds, step)
         with self.cache_lock:
             if version != self.version:
                 return
-            self.cache[(key, version)] = result
-            scoped = [item for item in self.cache if '@' in item[0]]
-            for item in scoped[:max(0, len(scoped) - SCOPED_CACHE)]:
-                self.cache.pop(item, None)
+            self.cache[(section, version)] = result
             sections = sorted({item[0] for item in self.cache
                                if item[1] == version})
         self._publish(sections=sections)
-
-
-def _scope(filters, search):
-    """Get the short name of a filtered scope, None for the whole sample."""
-    if not filters and not search:
-        return None
-    text = json.dumps([filters or [], search or ''], sort_keys=True,
-                      default=str)
-    return hashlib.sha1(text.encode()).hexdigest()[:12]
-
-
-def _numbers(present, kind):
-    """Get the values of a numeric or date-time column as floats (seconds)."""
-    if kind == fr.DATETIME:
-        return present.astype('int64').to_numpy() / 1e9
-    return fr.floats(present)
 
 
 def _memory_mb():

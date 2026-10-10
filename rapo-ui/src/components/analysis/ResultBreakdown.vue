@@ -1,92 +1,109 @@
 <template>
-  <div v-if="breakdown && breakdown.columns.length" class="row q-col-gutter-md">
-    <div v-for="column in breakdown.columns" :key="column.column" class="col-12 col-md">
-      <q-card flat bordered class="full-height">
-        <q-card-section class="q-py-sm">
-          <div class="text-subtitle2 text-blue-grey-9">
-            {{ column.label }}
-            <span class="text-caption text-grey-7 q-ml-xs">{{ column.column.toUpperCase() }} · {{ formatNumber(column.distinct) }} distinct</span>
-          </div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <div
-            v-for="(item, index) in column.values"
-            :key="index"
-            class="row no-wrap items-center breakdown-row cursor-pointer"
-            :title="`${item.value === null ? '(missing)' : item.value}: ${formatNumber(item.count)} (${formatPct(item.pct)})`"
-            v-keyboard:button
-            @click="$emit('show-rows', [valueFilter(column.column, item.value)])">
-            <div class="breakdown-label ellipsis" :class="{ 'text-italic text-grey-7': item.value === null }">
-              {{ item.value === null ? "(missing)" : item.value }}
-            </div>
-            <div class="col bar-cell">
-              <div class="bar" :style="{ width: Math.max(item.pct, 0.5) + '%', background: barColor(column.column, item.value) }" />
-            </div>
-            <div class="breakdown-count text-right">{{ formatNumber(item.count) }}</div>
-            <div class="breakdown-pct text-right text-grey-7">{{ formatPct(item.pct) }}</div>
-          </div>
-        </q-card-section>
-      </q-card>
+  <div v-if="breakdown">
+    <template v-if="types.length">
+      <div class="type-bar row no-wrap q-mb-sm">
+        <div
+          v-for="item in types"
+          :key="item.key"
+          class="type-segment cursor-pointer"
+          :style="{ width: item.pct + '%', background: item.bar }"
+          :title="`${item.label}: ${formatNumber(item.count)} (${formatPct(item.pct)})`"
+          @click="showType(item)" />
+      </div>
+      <div class="row items-center q-mb-sm">
+        <q-chip v-for="item in types" :key="item.key" clickable class="q-ml-none q-mr-sm" @click="showType(item)">
+          <q-avatar :icon="item.icon" :color="item.color" text-color="white" />
+          <span class="text-weight-bold q-mr-xs">{{ item.label }}</span>({{ formatNumber(item.count) }})
+          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">{{ formatPct(item.pct) }} of the records: show them</q-tooltip>
+        </q-chip>
+      </div>
+    </template>
+    <div v-if="breakdown.fields.length" class="row items-center q-mb-sm">
+      <span class="text-grey-7 q-mr-sm">Values differ in</span>
+      <q-chip v-for="item in breakdown.fields" :key="item.field" clickable class="q-ml-none q-mr-sm" @click="showField(item)">
+        <q-avatar icon="fas fa-not-equal" color="orange-8" text-color="white" />
+        <span class="text-weight-bold q-mr-xs">{{ item.field }}</span>({{ formatNumber(item.count) }} of {{ formatNumber(breakdown.described) }})
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">The records whose RAPO_DISCREPANCY_DESCRIPTION names {{ item.field }}: show them</q-tooltip>
+      </q-chip>
+    </div>
+    <div v-if="breakdown.values.length" class="values">
+      <div class="text-caption text-grey-7 q-mb-xs">Case values (RAPO_RESULT_VALUE)</div>
+      <mini-bars :items="caseValues" @select="(item) => $emit('show-rows', [item.filter])" />
     </div>
   </div>
 </template>
 
 <script>
+import MiniBars from "./MiniBars.vue";
 import { formatNumber } from "../../utils/format";
-import { formatPct, valueFilter } from "../../utils/analysis";
+import { formatPct, resultType, valueFilter } from "../../utils/analysis";
 
-// Result types of a reconciliation have fixed colors; everything else is blue-grey.
-const TYPE_COLORS = { Loss: "#e53935", Discrepancy: "#fb8c00", Duplicate: "#8e24aa", Match: "#43a047" };
+const TYPE_COLUMN = "rapo_result_type";
+const DESCRIPTION_COLUMN = "rapo_discrepancy_description";
+const VALUE_COLUMN = "rapo_result_value";
 
-// The split of a result dataset by the metadata columns the engine writes: result type, case value and
-// discrepancy description. Each bar opens the rows it counts.
+// The result metadata of a result dataset: the split by result type, the fields its value discrepancies differ in
+// (from the descriptions), and the case values when there are several. Each opens the records it counts.
 export default {
   name: "ResultBreakdown",
+  components: { MiniBars },
   props: {
     breakdown: { type: Object, default: null },
   },
   emits: ["show-rows"],
+  computed: {
+    types() {
+      return this.breakdown.types.map((item, index) => ({
+        ...resultType(item.value),
+        key: `t${index}`,
+        value: item.value,
+        label: item.value === null ? "(none)" : item.value,
+        count: item.count,
+        pct: item.pct,
+      }));
+    },
+    caseValues() {
+      return this.breakdown.values.map((item, index) => ({
+        key: `v${index}`,
+        label: item.value === null ? "(missing)" : String(item.value),
+        muted: item.value === null,
+        count: item.count,
+        pct: item.pct,
+        filter: valueFilter(VALUE_COLUMN, item.value),
+      }));
+    },
+  },
   methods: {
     formatNumber,
     formatPct,
-    valueFilter,
-    barColor(column, value) {
-      return (column === "rapo_result_type" && TYPE_COLORS[value]) || "#90a4ae";
+    showType(item) {
+      this.$emit("show-rows", [valueFilter(TYPE_COLUMN, item.value)]);
+    },
+    showField(item) {
+      this.$emit("show-rows", [{ column: DESCRIPTION_COLUMN, op: "contains", value: `${item.field}|` }]);
     },
   },
 };
 </script>
 
 <style scoped>
-.breakdown-row {
-  font-size: 13px;
-  height: 24px;
+.type-bar {
+  height: 14px;
   border-radius: 3px;
+  overflow: hidden;
+  gap: 2px;
 }
 
-.breakdown-row:hover {
-  background: var(--rapo-teal-soft);
-}
-
-.breakdown-label {
-  width: 45%;
-  padding-right: 8px;
-}
-
-.bar-cell {
-  height: 12px;
-}
-
-.bar {
+.type-segment {
+  min-width: 3px;
   height: 100%;
-  border-radius: 2px;
 }
 
-.breakdown-count {
-  width: 64px;
+.type-segment:hover {
+  opacity: 0.8;
 }
 
-.breakdown-pct {
-  width: 56px;
+.values {
+  max-width: 640px;
 }
 </style>

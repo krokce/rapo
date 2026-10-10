@@ -1,4 +1,5 @@
-// Shared helpers of the data analysis page: dataset names, value formatting, viewer filters and chart options.
+// Shared helpers of the analysis pages: dataset names and chips, value formatting, viewer filters, chart options and
+// the colors of lifts, strengths and result types.
 import store from "../store";
 import { formatNumber, toDateTimeString } from "./format";
 
@@ -27,22 +28,36 @@ export const KIND_ICONS = {
   text: { icon: "fas fa-font", color: "teal-7", label: "Text" },
 };
 
-export const ALERT_LABELS = {
-  duplicates: "Duplicates",
-  empty: "Empty",
-  constant: "Constant",
-  unique: "Unique",
-  missing: "Missing",
-  some_missing: "Missing",
-  high_cardinality: "High cardinality",
-  imbalanced: "Imbalanced",
-  zeros: "Zeros",
-  skewed: "Skewed",
-  blank: "Blank",
+// The order of the column cards by the profile's `group`: what partitions the records first.
+export const GROUP_ORDER = ["category", "number", "date", "text"];
+
+// The engine's own columns of a result table (RAPO_RESULT_TYPE, ...), lower case as the sample names them.
+export const METADATA_PREFIX = "rapo_";
+
+// The result types of a reconciliation, as the Results colors have them: avatar icon and color, and the bar color.
+export const RESULT_TYPES = {
+  Loss: { icon: "fas fa-unlink", color: "red-7", bar: "var(--rapo-type-loss)" },
+  Discrepancy: { icon: "fas fa-not-equal", color: "orange-8", bar: "var(--rapo-type-discrepancy)" },
+  Duplicate: { icon: "fas fa-clone", color: "purple-6", bar: "var(--rapo-type-duplicate)" },
+  Match: { icon: "fas fa-check", color: "green-7", bar: "var(--rapo-type-match)" },
 };
 
-export function alertLabel(code) {
-  return ALERT_LABELS[code] || code;
+export function resultType(type) {
+  return RESULT_TYPES[type] || { icon: "fas fa-tag", color: "blue-grey-5", bar: "var(--rapo-bar)" };
+}
+
+// The avatar of a dataset chip: what was fetched, the discrepancies, or a report's rows.
+export function datasetAvatar(meta) {
+  if (meta && meta.control_type === "REP") {
+    return { icon: "fas fa-table", color: "teal-7" };
+  }
+  return meta && meta.kind === "fetched" ? { icon: "fas fa-database", color: "blue-grey-6" } : { icon: "fas fa-exclamation-triangle", color: "red-7" };
+}
+
+// The avatar color of a relation's strength (|r| or Cramér's V).
+export function strengthColor(value) {
+  const strength = Math.abs(value);
+  return strength >= 0.9 ? "red-7" : strength >= 0.7 ? "orange-8" : "amber-8";
 }
 
 export function kindInfo(column) {
@@ -152,13 +167,6 @@ export function binFilter(column, kind, edges, index) {
   return { column, kind, op: "range", value: { min: edges[index], max: edges[index + 1], max_inclusive: last } };
 }
 
-function binLabel(low, high, kind) {
-  if (kind === "datetime") {
-    return toDateTimeString(low);
-  }
-  return `${formatStat(low)} – ${formatStat(high)}`;
-}
-
 // The colors ECharts cannot read from CSS variables: text, axis lines and grid lines of the light and dark themes. Explicit colors
 // in an option (series, visual maps) win over these.
 export function chartTheme(dark) {
@@ -183,45 +191,6 @@ export function baseOption({ grid, tooltip, ...rest }) {
 export function valueAxis({ axisLabel, ...rest } = {}) {
   return { type: "value", axisLabel: { fontSize: 10, ...axisLabel }, ...rest };
 }
-
-// ECharts option of a histogram from {counts, edges}.
-export function histogramOption(histogram, kind, color = "#5c6bc0") {
-  const { counts, edges } = histogram;
-  const labels = counts.map((count, index) => binLabel(edges[index], edges[index + 1], kind));
-  return baseOption({
-    grid: { left: 8, right: 16, top: 12, bottom: 4 },
-    tooltip: {
-      trigger: "axis",
-      formatter: (items) => {
-        const index = items[0].dataIndex;
-        const range = kind === "datetime" ? `${toDateTimeString(edges[index])} – ${toDateTimeString(edges[index + 1])}` : labels[index];
-        return `${range}<br/><b>${formatNumber(counts[index])}</b> rows`;
-      },
-    },
-    xAxis: {
-      type: "category",
-      data: labels,
-      axisLabel: { fontSize: 10, hideOverlap: true, formatter: (label) => (kind === "datetime" ? label.substring(0, 16) : label) },
-      axisTick: { alignWithLabel: true },
-    },
-    yAxis: valueAxis(),
-    series: [{ type: "bar", data: counts, barCategoryGap: "8%", itemStyle: { color }, cursor: "pointer" }],
-  });
-}
-
-// ECharts option of a small distribution over fixed labels (hours, weekdays).
-export function distributionOption(labels, counts, color = "#7e57c2") {
-  return baseOption({
-    grid: { left: 40, right: 8, top: 8, bottom: 24 },
-    tooltip: { trigger: "axis", formatter: (items) => `${items[0].name}<br/><b>${formatNumber(items[0].value)}</b> rows` },
-    xAxis: { type: "category", data: labels, axisLabel: { fontSize: 10 } },
-    yAxis: valueAxis(),
-    series: [{ type: "bar", data: counts, itemStyle: { color } }],
-  });
-}
-
-export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-export const HOURS = Array.from({ length: 24 }, (item, index) => String(index).padStart(2, "0"));
 
 const LIGHT_CHIP_COLORS = new Set(["orange-8", "amber-8", "blue-grey-4"]);
 

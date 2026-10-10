@@ -1,7 +1,7 @@
 """Contains the discrepancy analysis jobs of the web server.
 
-A job explains one side of a run (`explain.analyze`) in a spawned process,
-one at a time per server, the rest queued. The quick look's preliminary report
+A job explains one side of a run (`explain.analyze`) in a process of its
+own (taken from the spare: `spare.py`), one at a time per server, the rest queued. The quick look's preliminary report
 is kept while refine runs (still `running`); refine's report replaces it. A
 stop, a refine failure or a timeout after the quick look ends the job `done`
 with the preliminary report (`meta.stopped` / `meta.refine_error`). Progress
@@ -11,7 +11,6 @@ latest `CACHED` ones, until the server stops; a recompute replaces one.
 
 import collections
 import datetime as dt
-import multiprocessing as mp
 import os
 import threading as th
 import time
@@ -21,6 +20,7 @@ from .. import options
 from ..logger import logger
 
 from . import explain
+from .spare import spare
 
 
 DEFAULTS = {name: options.default('ANALYSIS', name) for name in (
@@ -222,15 +222,8 @@ class Explainer:
         job.progress = {'step': 'Starting', 'done': 0,
                         'total': explain.STEPS}
         self.notify(job)
-        context = mp.get_context('spawn')
-        conn, child = context.Pipe(duplex=False)
-        process = context.Process(
-            name=f'rapo-explain-{process_id}', target=work,
-            args=(child, process_id, side, result_type, settings,
-                  os.getpid()),
-            daemon=True)
-        process.start()
-        child.close()
+        process, conn = spare.take()
+        conn.send(('explain', (process_id, side, result_type, settings)))
         self.current = process
         logger.info(f'Discrepancy analysis of PID {process_id} side '
                     f'{side.upper()}{" " + result_type if result_type else ""}'

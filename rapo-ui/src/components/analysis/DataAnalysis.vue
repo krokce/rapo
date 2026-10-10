@@ -1,17 +1,31 @@
 <template>
-  <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
+  <q-page>
     <analysis-header
       title="Data analysis"
       :subject="datasetLabel(meta) || datasetTitle"
       :options="datasetOptions"
-      :model-value="$route.params.dataset"
+      :model-value="meta ? meta.dataset : null"
       :meta="meta"
       @update:model-value="switchDataset"
       @copy-link="copyLink">
-      <q-btn v-if="discrepancyLink" flat dense no-caps color="primary" icon="fas fa-search-plus" label="Discrepancy analysis" :to="discrepancyLink">
+      <q-btn v-if="discrepancyLink" outline dense no-caps color="primary" icon="fas fa-search-plus" padding="4px 10px" label="Discrepancy analysis" :to="discrepancyLink">
         <q-tooltip anchor="top middle" self="bottom middle">What sets these discrepancies apart from the normal records</q-tooltip>
       </q-btn>
+      <q-btn v-if="session && !isFile" aria-label="SQL filter, applied by the database" flat dense round size="sm" color="grey-7" icon="fas fa-code" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
+        <q-tooltip anchor="top middle" self="bottom middle">SQL filter, applied by the database</q-tooltip>
+      </q-btn>
+      <q-btn v-if="meta" aria-label="Copy SQL to clipboard" flat dense round size="sm" color="grey-7" icon="fas fa-copy" @click="copySql">
+        <q-tooltip anchor="top middle" self="bottom middle">Copy SQL to clipboard</q-tooltip>
+      </q-btn>
     </analysis-header>
+
+    <!-- A filter applied by the database: every section describes the matching records only. -->
+    <div v-if="pushdown" class="row items-center no-wrap q-mb-md">
+      <q-icon name="fas fa-database" color="blue-grey-6" size="14px" class="q-mr-sm">
+        <q-tooltip anchor="top middle" self="bottom middle">Filtered in the database: the page describes only the matching records</q-tooltip>
+      </q-icon>
+      <filter-chips :filters="pushdownFilters" @clear="startWith(null)" />
+    </div>
 
     <q-banner v-if="startError" class="bg-red-1 text-red-9 q-mb-md" rounded>
       <template #avatar><q-icon name="fas fa-exclamation-triangle" color="red-7" /></template>
@@ -32,177 +46,73 @@
       </template>
     </q-banner>
 
-    <q-banner v-if="meta && meta.stale" dense class="bg-orange-1 text-orange-10 q-mb-md" rounded>
-      <template #avatar><q-icon name="fas fa-history" color="orange-8" /></template>
-      The control was changed after this run. The data is selected with its current configuration for the run's window, so it
-      may differ from what the run fetched.
-    </q-banner>
-
-    <!-- The sample: how much of the dataset is loaded, the step in progress, and Extend. -->
-    <q-card v-if="session || starting" flat bordered class="q-mb-md sample-bar">
-      <q-card-section class="row items-center q-py-sm q-gutter-x-md">
-        <q-icon name="fas fa-database" color="blue-grey-6" size="18px" />
-        <div class="text-blue-grey-9">
-          <template v-if="state.rows || state.version">
-            Sample <strong>{{ formatNumber(state.rows) }}</strong> rows
-            <template v-if="totalRows !== null">
-              of <strong>{{ formatNumber(totalRows) }}</strong>
-              <span v-if="!meta.total_exact && !state.exhausted" class="text-grey-7"> (at run time)</span>
-            </template>
-          </template>
-          <template v-else>Loading the sample…</template>
-        </div>
-        <q-btn-toggle
-          :model-value="random"
-          dense
-          no-caps
-          unelevated
-          toggle-color="blue-grey-7"
-          color="grey-3"
-          text-color="grey-8"
-          :disable="starting"
-          title="Random: the database shuffles the whole dataset before the first rows arrive. First rows: as the database returns them, faster."
-          :options="[
-            { label: 'Random', value: true },
-            { label: 'First rows', value: false },
-          ]"
-          @update:model-value="setRandom" />
-        <q-chip
-          v-if="pushdown"
-          dense
-          removable
-          color="indigo-1"
-          text-color="indigo-10"
-          icon="fas fa-database"
-          class="pushdown-chip"
-          :title="pushdownText"
-          @remove="startWith(null)">
-          <span class="ellipsis">Filtered in the database: {{ pushdownText }}</span>
-        </q-chip>
-        <q-chip v-if="state.exhausted" dense color="green-1" text-color="green-9" icon="fas fa-check">All rows loaded</q-chip>
-        <q-chip v-else-if="state.limited === 'rows'" dense color="amber-1" text-color="brown-9" icon="fas fa-ban">
-          Row limit {{ formatNumber(options.max_rows) }} reached
-        </q-chip>
-        <q-chip v-else-if="state.limited === 'memory'" dense color="amber-1" text-color="brown-9" icon="fas fa-memory">
-          Memory limit {{ formatNumber(options.max_memory_mb) }} MB reached
-        </q-chip>
-        <q-chip v-else-if="state.version && !state.cursor_open" dense color="grey-3" text-color="grey-8" icon="fas fa-unlink">
-          The dataset can no longer be extended
-        </q-chip>
-        <div v-if="busy" class="col row items-center no-wrap q-gutter-x-sm busy-step">
-          <q-spinner-dots color="primary" size="20px" />
-          <div class="text-grey-8 text-no-wrap">{{ state.step || "Working" }}{{ progressText }}</div>
-          <q-linear-progress v-if="progressValue !== null" class="col" rounded size="6px" :value="progressValue" color="primary" />
-        </div>
+    <!-- The step in progress, or the last one's error. -->
+    <div v-if="busy || (state.error && !ended)" class="row items-center no-wrap q-gutter-x-sm q-mb-md">
+      <template v-if="busy">
+        <q-spinner-dots color="primary" size="20px" />
+        <div class="text-grey-8 text-no-wrap">{{ state.step || "Working" }}{{ progressText }}</div>
+        <q-linear-progress v-if="progressValue !== null" class="col progress" rounded size="6px" :value="progressValue" color="primary" />
         <q-space v-else />
-        <div v-if="state.error && !busy && !ended" class="text-red-8 ellipsis error-text" :title="state.error">
-          <q-icon name="fas fa-exclamation-circle" /> {{ state.error }}
-        </div>
-        <q-btn v-if="busy" flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Cancel" :disable="!session" @click="cancel" />
-        <q-btn
-          v-else-if="!state.exhausted"
-          outline
-          dense
-          no-caps
-          class="q-px-sm"
-          color="primary"
-          icon="fas fa-plus"
-          :label="`Extend by ${formatNumber(extendRows)}`"
-          :disable="!canExtend"
-          @click="extend">
-          <q-tooltip anchor="top middle" self="bottom middle">Fetch the next rows of the dataset into the sample</q-tooltip>
-        </q-btn>
-        <q-btn aria-label="SQL filter, applied by the database" v-if="session && !isFile" flat dense round size="sm" color="blue-grey-7" icon="fas fa-code" @click="$refs.sqlFilter.open(pushdown && pushdown.where)">
-          <q-tooltip anchor="top middle" self="bottom middle">SQL filter, applied by the database</q-tooltip>
-        </q-btn>
-        <q-btn aria-label="Copy SQL to clipboard" v-if="meta" flat dense round size="sm" color="blue-grey-7" icon="fas fa-copy" @click="copySql">
-          <q-tooltip anchor="top middle" self="bottom middle">Copy SQL to clipboard</q-tooltip>
-        </q-btn>
-      </q-card-section>
-    </q-card>
-    <counterpart-dialog v-if="session" ref="counterpart" :session-id="session.session_id" :columns="state.columns || []" :side="meta.side || 'A'" />
-    <sql-filter-dialog v-if="meta && !isFile" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
+        <q-btn flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Cancel" :disable="!session" @click="cancel" />
+      </template>
+      <div v-else class="text-red-8 ellipsis" :title="state.error"><q-icon name="fas fa-exclamation-circle" /> {{ state.error }}</div>
+    </div>
 
-    <template v-if="session">
-      <q-tabs v-model="tab" dense inline-label align="left" class="text-blue-grey-8" active-color="primary" indicator-color="primary" no-caps>
-        <q-tab name="overview" icon="fas fa-clipboard-list" label="Overview" />
-        <q-tab name="columns" icon="fas fa-columns" label="Columns" />
-        <q-tab name="correlations" icon="fas fa-project-diagram" label="Correlations" />
-        <q-tab name="missing" icon="fas fa-th" label="Missing values" />
-        <q-tab name="duplicates" icon="fas fa-clone" label="Duplicates" />
-        <q-tab v-if="!isFile" name="compare" icon="fas fa-balance-scale" label="Compare">
-          <q-badge v-if="compare.target" color="deep-orange-5" floating>B</q-badge>
-        </q-tab>
-        <q-tab name="data" icon="fas fa-table" label="Data">
-          <q-badge v-if="view.filters.length || view.search" color="primary" floating>{{ view.filters.length + (view.search ? 1 : 0) }}</q-badge>
-        </q-tab>
-      </q-tabs>
-      <q-separator />
-      <!-- A profile of filtered rows: says which rows, and goes back to the whole sample. -->
-      <div v-if="scope && tab !== 'data'" class="row items-center q-gutter-sm q-pt-sm scope-bar">
-        <q-icon name="fas fa-filter" color="teal-8" />
-        <span class="text-teal-10">Profile of the rows matching</span>
-        <q-chip v-for="(filter, index) in scope.filters" :key="index" dense color="teal-1" text-color="teal-10">{{ describeFilter(filter) }}</q-chip>
-        <q-chip v-if="scope.search" dense color="teal-1" text-color="teal-10">contains "{{ scope.search }}"</q-chip>
-        <q-btn flat dense no-caps color="primary" icon="fas fa-times" label="Whole sample" @click="scope = null" />
-      </div>
-      <div v-if="tabError" class="state-notice state-notice--error">
-        <q-icon name="fas fa-exclamation-triangle" />
-        <div>This tab could not be loaded: {{ tabError }}</div>
-        <q-btn flat dense no-caps color="primary" label="Retry" @click="retrySections" />
-      </div>
-      <q-tab-panels v-show="!tabError" v-model="tab" class="col analysis-panels" keep-alive>
-        <q-tab-panel name="overview" class="scroll-panel">
-          <run-trend v-if="!isFile" class="q-mb-lg" :process-id="meta.process_id" :dataset="meta.dataset" :report-only="meta.control_type === 'REP'" />
-          <result-breakdown v-if="hasBreakdown" class="q-mb-lg" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
-          <analysis-overview :overview="sectionData('overview')" @show-rows="showRows" @show-column="showColumn" />
-        </q-tab-panel>
-        <q-tab-panel name="columns" class="scroll-panel">
-          <analysis-columns ref="columns" :columns="sectionData('columns')" :types="state.columns || []" @show-rows="showRows" />
-        </q-tab-panel>
-        <q-tab-panel name="correlations" class="scroll-panel">
-          <analysis-correlations :correlations="sectionData('correlations')" />
-        </q-tab-panel>
-        <q-tab-panel name="missing" class="scroll-panel">
-          <analysis-missing :missing="sectionData('missing')" @show-rows="showRows" />
-        </q-tab-panel>
-        <q-tab-panel name="duplicates" class="scroll-panel">
-          <analysis-duplicates :duplicates="sectionData('duplicates')" :kinds="columnKinds" @show-rows="showRows" />
-        </q-tab-panel>
-        <q-tab-panel name="compare" class="scroll-panel">
-          <compare-tab
-            :session-id="session.session_id"
-            :meta="meta"
-            :state-a="state"
-            :label-a="datasetLabel(meta)"
-            :compare="compare"
-            @start-target="startCompare"
-            @close-target="closeCompare"
-            @extend-target="extendCompare"
-            @show-rows="showRows" />
-        </q-tab-panel>
-        <q-tab-panel name="data" class="column no-wrap q-pa-none q-pt-md data-panel">
+    <analysis-layout v-if="session" ref="layout" :sections="railSections">
+      <analysis-section id="summary" title="Summary" icon="fas fa-clipboard-list">
+        <analysis-summary
+          :meta="meta"
+          :state="state"
+          :options="options"
+          :overview="sectionData('overview')"
+          :relations="sectionData('relations')"
+          :total-rows="totalRows"
+          :can-extend="canExtend"
+          :extend-rows="extendRows"
+          @show-rows="showRows"
+          @group="groupBy"
+          @go="go"
+          @extend="extend" />
+        <section-error :error="sectionErrors.overview || sectionErrors.relations" @retry="retrySections" />
+      </analysis-section>
+
+      <analysis-section v-if="hasBreakdown" id="result-types" title="Result types" icon="fas fa-tags">
+        <result-breakdown v-if="sectionData('breakdown')" :breakdown="sectionData('breakdown')" @show-rows="showRows" />
+        <q-skeleton v-else-if="!sectionErrors.breakdown" type="rect" height="64px" />
+        <section-error :error="sectionErrors.breakdown" @retry="retrySections" />
+      </analysis-section>
+
+      <analysis-section id="columns" title="Columns" icon="fas fa-columns">
+        <analysis-columns :columns="sectionData('columns')" :types="state.columns || []" @show-rows="showRows" />
+        <section-error :error="sectionErrors.columns" @retry="retrySections" />
+      </analysis-section>
+
+      <analysis-section id="records" title="Records" icon="fas fa-table">
+        <div class="column no-wrap records-body">
           <data-viewer
+            class="col"
             :session-id="session.session_id"
             :columns="state.columns || []"
             :version="state.version"
             :sample-rows="state.rows"
             :view="view"
-            :profiles="sampleColumns"
+            :profiles="sectionData('columns')"
             :storage-key="storageKey"
             :key-fields="meta.key_fields || []"
             :export-name="exportName"
             :row-action="meta.control_type === 'REC' ? { icon: 'fas fa-exchange-alt', label: 'Find the counterpart on the other side' } : null"
-            @profile-rows="profileRows"
             @pushdown="pushFilters"
             @row="(row) => $refs.counterpart.open(row)" />
-        </q-tab-panel>
-      </q-tab-panels>
-    </template>
-    <div v-else-if="starting" class="col q-pa-md">
+        </div>
+      </analysis-section>
+    </analysis-layout>
+    <div v-else-if="starting" class="q-pa-md">
       <q-skeleton type="rect" height="40px" class="q-mb-md" />
       <q-skeleton type="rect" height="220px" />
     </div>
+
+    <counterpart-dialog v-if="session" ref="counterpart" :session-id="session.session_id" :columns="state.columns || []" :side="meta.side || 'A'" />
+    <sql-filter-dialog v-if="meta && !isFile" ref="sqlFilter" :process-id="meta.process_id" :dataset="meta.dataset" :columns="state.columns || []" @apply="applyWhere" />
   </q-page>
 </template>
 
@@ -211,25 +121,24 @@ import socket from "../../socket";
 import { api, notifyError } from "../../api";
 import { copyAndNotify } from "../../runActions";
 import { formatNumber } from "../../utils/format";
-import { fillViewportToBottom } from "../../utils/layout";
-import { DATASETS, closeAnalysisSession as closeSession, datasetLabel, describeFilter } from "../../utils/analysis";
+import { DATASETS, closeAnalysisSession as closeSession, datasetAvatar, datasetLabel, describeFilter } from "../../utils/analysis";
+import FilterChips from "../FilterChips.vue";
 import AnalysisColumns from "./AnalysisColumns.vue";
 import AnalysisHeader from "./AnalysisHeader.vue";
-import AnalysisCorrelations from "./AnalysisCorrelations.vue";
-import AnalysisDuplicates from "./AnalysisDuplicates.vue";
-import AnalysisMissing from "./AnalysisMissing.vue";
-import AnalysisOverview from "./AnalysisOverview.vue";
-import CompareTab from "./CompareTab.vue";
+import AnalysisLayout from "./AnalysisLayout.vue";
+import AnalysisSection from "./AnalysisSection.vue";
+import AnalysisSummary from "./AnalysisSummary.vue";
 import CounterpartDialog from "./CounterpartDialog.vue";
 import DataViewer from "./DataViewer.vue";
 import ResultBreakdown from "./ResultBreakdown.vue";
-import RunTrend from "./RunTrend.vue";
+import SectionError from "./SectionError.vue";
 import SqlFilterDialog from "./SqlFilterDialog.vue";
 
 // The routes of this page: a run's dataset, or the records a file loaded into a table.
 const ROUTES = ["data-analysis", "file-analysis"];
-const TABS = ["overview", "columns", "correlations", "missing", "duplicates", "compare", "data"];
 const BREAKDOWN_COLUMNS = ["rapo_result_type", "rapo_result_value", "rapo_discrepancy_description"];
+// The sections the tabs of earlier versions stand for, so their links still open the right place.
+const TAB_SECTIONS = { overview: "summary", columns: "columns", data: "records", missing: "columns", correlations: "summary", duplicates: "summary", compare: "summary" };
 
 function parseQuery(value, fallback) {
   if (!value) {
@@ -242,25 +151,26 @@ function parseQuery(value, fallback) {
   }
 }
 
-// One analysis session per page: the sample lives in a worker process on the server, and every tab asks it.
+// One analysis session per page: the sample lives in a worker process on the server, and every section asks it.
 // Kept alive (App.vue), so the sample survives a visit to another page; opening another dataset, closing the
 // browser tab, or [ANALYSIS] idle_minutes without a request ends the session.
-// The view (tab, viewer filters, search, sort, group-by, profile scope, database filter) is kept in the URL query,
-// so a copied link opens the same view on a new sample.
+// One scrolling page (AnalysisLayout): Summary, Result types (a result dataset), Columns and Records. A click on a
+// value anywhere filters Records and scrolls there. The view (viewer filters, search, sort, group-by, database filter,
+// first rows) is kept in the URL query and the section in its hash, so a copied link opens the same view on a new
+// sample.
 export default {
   name: "DataAnalysis",
   components: {
     AnalysisColumns,
     AnalysisHeader,
-    AnalysisCorrelations,
-    AnalysisDuplicates,
-    AnalysisMissing,
-    AnalysisOverview,
-    CompareTab,
+    AnalysisLayout,
+    AnalysisSection,
+    AnalysisSummary,
     CounterpartDialog,
     DataViewer,
+    FilterChips,
     ResultBreakdown,
-    RunTrend,
+    SectionError,
     SqlFilterDialog,
   },
   data() {
@@ -270,29 +180,23 @@ export default {
       state: {},
       starting: false,
       startError: null,
-      tab: "overview",
-      // Loaded sections by the key the worker names them with; sectionKeys maps a section to its key in the scope.
+      // Loaded sections by name: {version, data}.
       sections: {},
-      sectionKeys: {},
       requested: {},
       loading: {},
       sectionErrors: {},
-      scopeId: 0,
       view: { filters: [], search: "", sort: [], group: null },
-      // Filtered rows the profile tabs describe, or null for the whole sample.
-      scope: null,
       // {filters, search, where} applied by the database, or null.
       pushdown: null,
-      // A random sample, or the first rows as the database returns them.
+      // A random sample (or the whole dataset when it is small), or the first rows as the database returns them.
       random: true,
-      // The sample compared with (B): {target: {key, label, process_id, dataset}, session, state, error}.
-      compare: { target: null, session: null, state: {}, error: null },
-      compareRequest: 0,
+      // The section to scroll to once the sample is profiled (the link's hash).
+      pendingSection: null,
     };
   },
   computed: {
-    // The records of a file (file-analysis) rather than a run's dataset: no other datasets, trend, comparison or SQL
-    // filter, and the first rows by default.
+    // The records of a file (file-analysis) rather than a run's dataset: no other datasets, trend or SQL filter, and
+    // the first rows by default.
     isFile() {
       return this.$route.name === "file-analysis";
     },
@@ -304,16 +208,15 @@ export default {
     fullKey() {
       return `${this.routeKey}|${this.$route.query.pd || ""}|${this.$route.query.rnd || ""}`;
     },
-    // The datasets of the run the page can switch to, with the run's counts; an empty one is disabled. Each button
-    // is drawn by its slot, so the count can be in normal weight.
+    // The datasets of the run the page can switch to, with the run's counts; an empty one is left out.
     datasetOptions() {
       if (!this.meta || !this.meta.datasets) {
         return [];
       }
       return this.meta.datasets.map((item) => {
-        const label = datasetLabel({ control_type: this.meta.control_type, kind: item.kind, side: item.side });
+        const meta = { control_type: this.meta.control_type, kind: item.kind, side: item.side };
         const count = item.count === null || item.count === undefined ? "" : formatNumber(item.count);
-        return { text: label, count, slot: `dataset-${item.dataset}`, value: item.dataset, disable: !item.count && item.dataset !== this.meta.dataset };
+        return { ...datasetAvatar(meta), text: datasetLabel(meta), count, value: item.dataset, hidden: !item.count };
       });
     },
     meta() {
@@ -338,23 +241,27 @@ export default {
       const side = meta.control_type === "REC" ? meta.dataset.split("_")[1] : "a";
       return { name: "discrepancy-analysis", params: { processId: meta.process_id, side } };
     },
-    // Once the cursor is exhausted the sample is the whole dataset, whatever the run counted.
+    // Once the dataset is read whole, the sample is the whole dataset, whatever the run counted.
     totalRows() {
       if (this.state.exhausted) {
         return this.state.rows;
       }
       return this.meta && this.meta.total !== null && this.meta.total !== undefined ? this.meta.total : null;
     },
-    pushdownText() {
+    pushdownFilters() {
       const pushdown = this.pushdown || {};
-      const parts = (pushdown.filters || []).map(describeFilter);
+      const filters = (pushdown.filters || []).map((filter, index) => ({
+        key: `f${index}`,
+        label: describeFilter(filter),
+        clear: () => this.startWith({ ...pushdown, filters: pushdown.filters.filter((item, position) => position !== index) }),
+      }));
       if (pushdown.search) {
-        parts.push(`contains "${pushdown.search}"`);
+        filters.push({ key: "search", label: `Search: "${pushdown.search}"`, clear: () => this.startWith({ ...pushdown, search: "" }) });
       }
       if (pushdown.where) {
-        parts.push(pushdown.where.replace(/\s+/g, " "));
+        filters.push({ key: "where", label: pushdown.where.replace(/\s+/g, " "), clear: () => this.startWith({ ...pushdown, where: "" }) });
       }
-      return parts.join(" and ");
+      return filters;
     },
     busy() {
       return ["starting", "fetching", "profiling"].includes(this.state.status);
@@ -375,12 +282,14 @@ export default {
           return "The analysis worker stopped, e.g. because the server was restarted.";
       }
     },
+    // The records Extend adds; a Bernoulli sample grows from the size it was drawn for.
     extendRows() {
-      const left = (this.options.max_rows || 0) - (this.state.rows || 0);
+      const loaded = this.state.sampling === "bernoulli" ? this.state.target || this.state.rows || 0 : this.state.rows || 0;
+      const left = (this.options.max_rows || 0) - loaded;
       return Math.max(0, Math.min(this.options.extend_rows || 0, left));
     },
     canExtend() {
-      return Boolean(this.session) && !this.busy && !this.ended && this.state.cursor_open && !this.state.exhausted && this.extendRows > 0;
+      return Boolean(this.session) && !this.busy && !this.ended && Boolean(this.state.extendable) && this.extendRows > 0;
     },
     progressValue() {
       const progress = this.state.progress;
@@ -393,33 +302,20 @@ export default {
       }
       return this.state.status === "fetching" ? ` ${formatNumber(progress.done)} of ${formatNumber(progress.total)}` : ` ${progress.done} of ${progress.total}`;
     },
-    columnKinds() {
-      const kinds = {};
-      (this.state.columns || []).forEach((column) => (kinds[column.name] = column.kind));
-      return kinds;
-    },
     hasBreakdown() {
       return (this.state.columns || []).some((column) => BREAKDOWN_COLUMNS.includes(column.name));
     },
-    // The columns profile of the whole sample, for the viewer's filter menus.
-    sampleColumns() {
-      const section = this.sections.columns;
-      return section ? section.data : null;
+    wantedSections() {
+      return this.hasBreakdown ? ["columns", "overview", "relations", "breakdown"] : ["columns", "overview", "relations"];
     },
-    tabSections() {
-      const sections = {
-        overview: this.hasBreakdown ? ["overview", "breakdown"] : ["overview"],
-        columns: ["columns"],
-        correlations: ["correlations"],
-        missing: ["missing"],
-        duplicates: ["duplicates"],
-        data: [],
-      };
-      return sections[this.tab] || [];
-    },
-    tabError() {
-      const failed = this.tabSections.find((name) => this.sectionErrors[name]);
-      return failed ? this.sectionErrors[failed] : "";
+    railSections() {
+      const sections = [{ id: "summary", label: "Summary", icon: "fas fa-clipboard-list" }];
+      if (this.hasBreakdown) {
+        sections.push({ id: "result-types", label: "Result types", icon: "fas fa-tags" });
+      }
+      sections.push({ id: "columns", label: "Columns", icon: "fas fa-columns" });
+      sections.push({ id: "records", label: "Records", icon: "fas fa-table" });
+      return sections;
     },
     storageKey() {
       if (!this.meta) {
@@ -437,15 +333,12 @@ export default {
     // The view as URL query parameters, the defaults left out.
     viewQuery() {
       const query = {};
-      if (this.tab !== "overview") query.tab = this.tab;
       if (this.view.filters.length) query.f = JSON.stringify(this.view.filters);
       if (this.view.search) query.q = this.view.search;
       if (this.view.sort.length) query.s = JSON.stringify(this.view.sort);
       if (this.view.group) query.g = JSON.stringify(this.view.group);
-      if (this.scope) query.sc = JSON.stringify(this.scope);
       if (this.pushdown) query.pd = JSON.stringify(this.pushdown);
       if (this.random !== !this.isFile) query.rnd = this.random ? "1" : "0";
-      if (this.compare.target) query.cmp = JSON.stringify(this.compare.target);
       return query;
     },
   },
@@ -455,14 +348,6 @@ export default {
         this.start();
       }
     },
-    tab() {
-      this.syncSections();
-    },
-    scope() {
-      this.scopeId += 1;
-      this.sectionKeys = {};
-      this.syncSections();
-    },
     viewQuery(query) {
       if (!this.active || !ROUTES.includes(this.$route.name)) {
         return;
@@ -471,7 +356,7 @@ export default {
       this.queryTimer = setTimeout(() => {
         if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
           this.sessionKey = `${this.routeKey}|${query.pd || ""}|${query.rnd || ""}`;
-          this.$router.replace({ query });
+          this.$router.replace({ query, hash: this.$route.hash });
         }
       }, 300);
     },
@@ -480,8 +365,6 @@ export default {
     this.onProgress = (payload) => {
       if (this.session && payload.session_id === this.session.session_id) {
         this.applyState(payload.state);
-      } else if (this.compare.session && payload.session_id === this.compare.session.session_id) {
-        this.compare.state = payload.state || {};
       }
     };
     // pagehide, unlike beforeunload, also fires when a mobile browser discards the tab.
@@ -490,7 +373,6 @@ export default {
         closeSession(this.session.session_id);
         this.session = null;
       }
-      this.closeCompare();
     };
     // A reconnect may have missed state changes.
     this.onConnect = () => this.refreshState();
@@ -518,46 +400,36 @@ export default {
   methods: {
     formatNumber,
     datasetLabel,
-    describeFilter,
-    fillViewportToBottom,
     // Starts the session of the route, with the view of its query.
     async start() {
       const query = this.$route.query;
-      this.tab = TABS.includes(query.tab) ? query.tab : "overview";
       this.view = {
         filters: parseQuery(query.f, []),
         search: query.q || "",
         sort: parseQuery(query.s, []),
         group: parseQuery(query.g, null),
       };
-      this.scope = parseQuery(query.sc, null);
       this.pushdown = parseQuery(query.pd, null);
       this.random = query.rnd ? query.rnd !== "0" : !this.isFile;
-      const target = parseQuery(query.cmp, null);
+      const hash = (this.$route.hash || "").replace(/^#/, "");
+      this.pendingSection = hash || TAB_SECTIONS[query.tab] || null;
+      if (query.tab) {
+        const rest = { ...query };
+        delete rest.tab;
+        this.$router.replace({ query: rest, hash: this.pendingSection ? `#${this.pendingSection}` : "" });
+      }
       await this.open();
-      if (target && this.session) {
-        this.startCompare(target);
-      }
     },
-    // Starts a new sample drawn at random or from the first rows, keeping the rest of the view.
-    async setRandom(random) {
-      if (random !== this.random) {
-        this.random = random;
-        await this.open();
-      }
-    },
-    // Opens another dataset of the run. Back returns to this one. The tab, the sampling, the search and the viewer's
-    // filters, sort and group-by go along; those on a column the other dataset lacks are dropped once it is loaded.
-    // A database filter, a profile scope and a comparison belong to this dataset.
+    // Opens another dataset of the run. Back returns to this one. The sampling, the search and the viewer's filters,
+    // sort and group-by go along; those on a column the other dataset lacks are dropped once it is loaded. A database
+    // filter belongs to this dataset.
     switchDataset(dataset) {
       if (!this.meta || dataset === this.meta.dataset) {
         return;
       }
       const query = { ...this.viewQuery };
       delete query.pd;
-      delete query.sc;
-      delete query.cmp;
-      this.$router.push({ name: "data-analysis", params: { processId: this.meta.process_id, dataset }, query });
+      this.$router.push({ name: "data-analysis", params: { processId: this.meta.process_id, dataset }, query, hash: this.$route.hash });
     },
     // Starts a new sample with another database filter, keeping the rest of the view.
     async startWith(pushdown) {
@@ -565,7 +437,7 @@ export default {
       await this.open();
     },
     async open() {
-      // The tabs are unmounted with the old session before it is closed, so nothing asks it any more.
+      // The sections are unmounted with the old session before it is closed, so nothing asks it any more.
       const previous = this.session;
       const { processId, dataset, fileId, table } = this.$route.params;
       const rnd = this.random === !this.isFile ? "" : this.random ? "1" : "0";
@@ -574,11 +446,9 @@ export default {
       if (previous) {
         closeSession(previous.session_id);
       }
-      this.closeCompare();
       this.sessionKey = key;
       this.state = {};
       this.sections = {};
-      this.sectionKeys = {};
       this.requested = {};
       this.sectionErrors = {};
       this.loading = {};
@@ -606,45 +476,6 @@ export default {
         this.startError = `The analysis could not be started: ${error.message}`;
       } finally {
         this.starting = false;
-      }
-    },
-    // Starts B's session, replacing the one compared before. A counter, not the target object, tells whether the
-    // answer is still wanted: Vue hands the stored target back as a reactive proxy.
-    async startCompare(target) {
-      this.closeCompare();
-      const request = ++this.compareRequest;
-      this.compare = { target, session: null, state: { status: "starting" }, error: null };
-      try {
-        const session = await api("analysis-start", {
-          method: "POST",
-          params: { process_id: target.process_id, dataset: target.dataset, random: this.random },
-        });
-        if (request !== this.compareRequest) {
-          closeSession(session.session_id);
-          return;
-        }
-        this.compare.session = session;
-        this.compare.state = session.state;
-      } catch (error) {
-        if (request === this.compareRequest) {
-          this.compare.error = `${target.label} could not be loaded: ${error.message}`;
-          this.compare.state = {};
-        }
-      }
-    },
-    closeCompare() {
-      this.compareRequest = (this.compareRequest || 0) + 1;
-      if (this.compare.session) {
-        closeSession(this.compare.session.session_id);
-      }
-      this.compare = { target: null, session: null, state: {}, error: null };
-    },
-    async extendCompare() {
-      try {
-        const result = await api("analysis-extend", { method: "POST", params: { session_id: this.compare.session.session_id }, loadingBar: false });
-        this.compare.state = result.state;
-      } catch (error) {
-        notifyError("The sample B could not be extended.", error);
       }
     },
     applyState(state) {
@@ -693,50 +524,36 @@ export default {
     },
     // A section of the previous sample stays shown until the new one is ready.
     sectionData(name) {
-      const key = this.sectionKeys[name] || (this.scope ? null : name);
-      const section = key && this.sections[key];
+      const section = this.sections[name];
       return section ? section.data : null;
     },
-    // Loads the sections the open tab shows for the current sample and scope. A section not computed yet is started
-    // by the request, and fetched again once the state lists its key as ready.
     retrySections() {
-      const errors = { ...this.sectionErrors };
-      this.tabSections.forEach((name) => delete errors[name]);
-      this.sectionErrors = errors;
+      this.sectionErrors = {};
       this.syncSections();
     },
+    // Loads the sections of the current sample. One not computed yet is started by the request, and fetched again
+    // once the state lists it as ready.
     syncSections() {
       if (!this.session || !this.state.version) {
         return;
       }
-      this.tabSections.forEach((name) => this.ensureSection(name));
+      this.wantedSections.forEach((name) => this.ensureSection(name));
     },
     async ensureSection(name) {
       const version = this.state.version;
-      const scopeId = this.scopeId;
-      const key = this.sectionKeys[name];
-      const have = key && this.sections[key];
-      const ready = (this.state.sections || []).includes(key);
-      if ((have && have.version === version) || this.loading[name] || (key && this.requested[key] === version && !ready)) {
+      const have = this.sections[name];
+      const ready = (this.state.sections || []).includes(name);
+      if ((have && have.version === version) || this.loading[name] || this.sectionErrors[name] || (this.requested[name] === version && !ready)) {
         return;
       }
       this.loading[name] = true;
       try {
-        const result = await api("analysis-profile", {
-          params: {
-            session_id: this.session.session_id,
-            section: name,
-            filters: this.scope && this.scope.filters.length ? JSON.stringify(this.scope.filters) : null,
-            search: (this.scope && this.scope.search) || null,
-          },
-          loadingBar: false,
-        });
-        if (scopeId === this.scopeId) {
-          this.sectionErrors = { ...this.sectionErrors, [name]: "" };
-          this.sectionKeys = { ...this.sectionKeys, [name]: result.key };
-          this.requested[result.key] = result.version;
-          if (result.ready) {
-            this.sections = { ...this.sections, [result.key]: { version: result.version, data: Object.freeze(result.data) } };
+        const result = await api("analysis-profile", { params: { session_id: this.session.session_id, section: name }, loadingBar: false });
+        this.requested[name] = result.version;
+        if (result.ready) {
+          this.sections = { ...this.sections, [name]: { version: result.version, data: Object.freeze(result.data) } };
+          if (name === "columns") {
+            this.scrollToPending();
           }
         }
       } catch (error) {
@@ -745,15 +562,28 @@ export default {
       } finally {
         this.loading[name] = false;
       }
-      const current = this.sectionKeys[name];
-      const loaded = current && this.sections[current] && this.sections[current].version === this.state.version;
-      if (scopeId !== this.scopeId || (!loaded && (this.state.version !== version || (this.state.sections || []).includes(current)))) {
+      const loaded = this.sections[name] && this.sections[name].version === this.state.version;
+      if (!loaded && !this.sectionErrors[name] && (this.state.version !== version || (this.state.sections || []).includes(name))) {
         this.syncSections();
+      }
+    },
+    // The section of the link, once the columns (the tallest section above Records) are drawn.
+    scrollToPending() {
+      const section = this.pendingSection;
+      if (!section) {
+        return;
+      }
+      this.pendingSection = null;
+      setTimeout(() => this.$refs.layout && this.$refs.layout.scrollTo(section, false), 50);
+    },
+    go(section) {
+      if (this.$refs.layout) {
+        this.$refs.layout.go(section);
       }
     },
     async extend() {
       try {
-        const result = await api("analysis-extend", { method: "POST", params: { session_id: this.session.session_id }, loadingBar: false });
+        const result = await api("analysis-extend", { method: "POST", params: { session_id: this.session.session_id, rows: this.extendRows || null }, loadingBar: false });
         this.applyState(result.state);
       } catch (error) {
         notifyError("The sample could not be extended.", error);
@@ -772,21 +602,19 @@ export default {
     async copyLink() {
       await copyAndNotify(window.location.href, "Link to this view", "Failed to copy the link.");
     },
-    // A profile link: the viewer opens on the rows it stands for.
+    // A value, bar or chip of a section: Records shows the rows it stands for.
     showRows(filters) {
       this.view.filters = filters;
       this.view.search = "";
       this.view.group = null;
-      this.tab = "data";
+      this.$nextTick(() => this.go("records"));
     },
-    showColumn(name) {
-      this.tab = "columns";
-      this.$nextTick(() => this.$refs.columns && this.$refs.columns.focus(name));
-    },
-    // The profile tabs describe the rows the viewer shows.
-    profileRows() {
-      this.scope = { filters: this.view.filters.map((filter) => ({ ...filter })), search: this.view.search || "" };
-      this.tab = "overview";
+    // A relation of two columns: Records grouped by both.
+    groupBy(pair) {
+      this.view.filters = [];
+      this.view.search = "";
+      this.view.group = { by: [{ column: pair.a }, { column: pair.b }], aggregates: [], sort: null };
+      this.$nextTick(() => this.go("records"));
     },
     // The viewer's filters and search move into the database: a new sample of the matching records only.
     pushFilters() {
@@ -797,21 +625,19 @@ export default {
         where: previous.where || "",
       };
       this.$q.dialog({
-        title: "Load from the database",
+        title: "Filter in the database",
         message:
-          "Fetch a new sample from the records that match the filters, applied by the database. The current sample is " +
-          "replaced; the filters then apply to the whole dataset instead of the rows loaded so far.",
+          "Load a new sample from the records that match the filters, applied by the database. The current sample is " +
+          "replaced, and the whole page then describes the matching records of the dataset, not only the ones loaded so far.",
         cancel: true,
       }).onOk(() => {
         this.view.filters = [];
         this.view.search = "";
-        this.scope = null;
         this.startWith(pushdown);
       });
     },
     applyWhere(where) {
       const previous = this.pushdown || {};
-      this.scope = null;
       this.startWith({ filters: previous.filters || [], search: previous.search || "", where });
     },
   },
@@ -819,38 +645,13 @@ export default {
 </script>
 
 <style scoped>
-.sample-bar {
-  flex: 0 0 auto;
-}
-
-.busy-step {
-  min-width: 200px;
-}
-
-.error-text {
+.progress {
   max-width: 480px;
 }
 
-.pushdown-chip {
-  max-width: 520px;
-}
-
-.scope-bar {
-  flex: 0 0 auto;
-}
-
-.analysis-panels {
-  min-height: 0;
-  background: transparent;
-}
-
-.scroll-panel {
-  height: 100%;
-  overflow-y: auto;
-  padding: 16px 4px;
-}
-
-.data-panel {
-  height: 100%;
+/* One window tall, so Records fills the screen once a link scrolls it to the top. */
+.records-body {
+  height: calc(100vh - 136px);
+  min-height: 420px;
 }
 </style>

@@ -1,16 +1,15 @@
 """Contains the analysis session manager of the web server.
 
-A session is one analysis page open on one dataset: a spawned worker process
-(`worker.py`) and the pipe to it. Sessions are private to the page that
-started them, which closes its own on leave; one not asked anything for
-`idle_minutes` is closed by the manager, so a closed tab frees its memory too.
-They are local to the server that started them and end with it.
+A session is one analysis page open on one dataset: a worker process
+(`worker.py`, taken from the spare: `spare.py`) and the pipe to it. Sessions
+are private to the page that started them, which closes its own on leave; one
+not asked anything for `idle_minutes` is closed by the manager, so a closed
+tab frees its memory too. They are local to the server that started them and
+end with it.
 """
 
 import datetime as dt
 import itertools
-import multiprocessing as mp
-import os
 import threading as th
 import time
 import uuid
@@ -20,7 +19,7 @@ from .. import options
 from ..logger import logger
 
 from . import datasets
-from .worker import RANDOM_ORDER, serve
+from .spare import spare
 
 
 DEFAULTS = {name: options.default('ANALYSIS', name) for name in (
@@ -75,13 +74,8 @@ class Session:
         self.lock = th.Lock()
         self.closed = False
 
-        context = mp.get_context('spawn')
-        self.conn, child = context.Pipe()
-        self.process = context.Process(
-            name=f'rapo-analysis-{self.id[:8]}', target=serve,
-            args=(child, sql, settings, os.getpid()), daemon=True)
-        self.process.start()
-        child.close()
+        self.process, self.conn = spare.take()
+        self.conn.send(('analysis', (sql, settings)))
         self.reader = th.Thread(target=self._read, daemon=True,
                                 name=f'analysis-{self.id[:8]}')
         self.reader.start()
@@ -199,9 +193,11 @@ class SessionManager:
 
         `pushdown` ({filters, search, where}) is applied by the database, so
         the sample is drawn from the matching records only. A `random`
-        sample reads the records in random order, so it is uniform at any
-        size, Extend included; Oracle sorts the whole dataset first. Otherwise
-        the sample is the first records as the database returns them.
+        sample (`sampling`) is the whole dataset when its count fits in the
+        first sample, a Bernoulli sample of a larger counted one, and the
+        records in random order (Oracle sorts them all first) when the count
+        is not known. Otherwise the sample is the first records as the
+        database returns them.
 
         With `file_id` the dataset is the records a file of the PDI Core file
         log loaded into table `dataset` (datasets.resolve_file).
@@ -232,9 +228,12 @@ class SessionManager:
                 meta['total_exact'] = exact
             meta['pushdown'] = pushdown or None
             meta['sql'] = shown
-            meta['random'] = bool(random)
-            if random:
-                sql = f'select * from ({sql}) {RANDOM_ORDER}'
+            mode = sampling(random, meta.get('total'),
+                            settings['initial_rows'])
+            meta['sampling'] = mode
+            meta['random'] = mode in ('sorted', 'bernoulli')
+            settings = {**settings,
+                        'sampling': {'mode': mode, 'total': meta.get('total')}}
         except datasets.DatasetError as error:
             raise SessionError(str(error), 404)
         except Exception as error:
@@ -245,7 +244,7 @@ class SessionManager:
         logger.info(f"Analysis session {session.id[:8]} started on "
                     f"{meta['control_name']} "
                     f"{f'file {file_id}' if file_id is not None else f'PID {process_id}'} {dataset} "
-                    f"({'random' if random else 'first rows'}) "
+                    f"({mode}) "
                     f'(worker PID {session.process.pid})')
         return session
 
@@ -294,6 +293,16 @@ class SessionManager:
                 self.close(session.id)
                 session.state = {**session.state, 'status': 'expired'}
                 self.notify(session)
+
+
+def sampling(random, total, initial_rows):
+    """Get how the sample of a dataset of `total` records is drawn (see
+    worker.SAMPLINGS)."""
+    if not random:
+        return 'first'
+    if total is not None and total <= initial_rows:
+        return 'all'
+    return 'bernoulli' if total else 'sorted'
 
 
 sessions = SessionManager()

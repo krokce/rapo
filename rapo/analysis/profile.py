@@ -1,4 +1,4 @@
-"""Contains the exploratory profile of a sample, as pandas-profiling has it.
+"""Contains the exploratory profile of a sample.
 
 Every function takes the DataFrame and the kind of each column (`frame.py`)
 and returns JSON-safe dictionaries. `step(done, total)` is called between
@@ -11,17 +11,22 @@ import pandas as pd
 from .frame import DATETIME, NUMERIC, TEXT, floats, to_json
 
 
-TOP_VALUES = 10
-EXTREME_VALUES = 5
-HISTOGRAM_BINS = 30
+TOP_VALUES = 8
+HISTOGRAM_BINS = 24
 CATEGORICAL_DISTINCT = 50
-MISSING_ALERT = 20
-DOMINANT_ALERT = 90
-ZEROS_ALERT = 10
-SKEW_ALERT = 10
-MATRIX_BUCKETS = 100
-DUPLICATE_ROWS = 50
-MEMORY_SAMPLE = 10000
+# A column with this few values, or one value this dominant, is shown by its
+# values rather than by a histogram.
+TOP_DISTINCT = 20
+DOMINANT_PCT = 50
+# Text this unique is an identifier: nothing to profile, and so is text half
+# unique whose most frequent value is under RARE_PCT of the records; so are
+# whole numbers all different in at least UNIQUE_NUMBERS records.
+UNIQUE_PCT = 90
+SPREAD_PCT = 50
+RARE_PCT = 1
+UNIQUE_NUMBERS = 50
+MISSING_PCT = 5
+METADATA_PREFIX = 'rapo_'
 
 
 def columns(frame, kinds, step=None):
@@ -36,7 +41,13 @@ def columns(frame, kinds, step=None):
 
 
 def column(name, series, kind):
-    """Get the profile of one column."""
+    """Get the profile of one column.
+
+    Besides the counts and the most frequent values, `unusable` says why a
+    column tells nothing (`empty`, `constant`, `unique`), `group` where it
+    is listed (`category`, `number`, `date`, `text`) and `visual` how it is
+    best shown (`top` values or a `histogram`; None for nothing).
+    """
     rows = len(series)
     present = series.dropna()
     count = len(present)
@@ -45,23 +56,30 @@ def column(name, series, kind):
     info = {
         'name': name,
         'kind': kind,
+        'metadata': name.startswith(METADATA_PREFIX),
         'categorical': kind == TEXT and 0 < distinct <= CATEGORICAL_DISTINCT,
         'count': count,
         'missing': rows - count,
         'missing_pct': _pct(rows - count, rows),
         'distinct': distinct,
         'distinct_pct': _pct(distinct, count),
-        'unique': count > 1 and distinct == count,
         'top': _top(counts, count),
         'other_count': int(counts.iloc[TOP_VALUES:].sum()),
+        'stats': None,
+        'histogram': None,
     }
-    if kind == NUMERIC:
-        info.update(_numeric(present, counts))
-    elif kind == DATETIME:
-        info.update(_datetime(present))
-    else:
-        info.update(_text(present))
-    info['alerts'] = _alerts(info, rows)
+    # Values that never repeat are shown by their spread, however few.
+    spread = distinct > TOP_DISTINCT or distinct == count
+    if count:
+        if kind == NUMERIC:
+            info.update(_numeric(present, spread))
+        elif kind == DATETIME:
+            info.update(_datetime(present, spread))
+        else:
+            info.update(_text(present))
+    info['unusable'] = _unusable(info)
+    info['visual'] = _visual(info)
+    info['group'] = _group(info)
     return info
 
 
@@ -71,233 +89,111 @@ def _top(counts, count):
             for value, number in counts.iloc[:TOP_VALUES].items()]
 
 
-def _numeric(present, counts):
+def _numeric(present, spread):
     values = floats(present)
-    if not len(values):
-        return {'stats': None, 'histogram': None}
-    ordered = counts.sort_index()
-    quantiles = np.quantile(values, [0.05, 0.25, 0.5, 0.75, 0.95])
-    mean = float(values.mean())
-    std = float(values.std(ddof=1)) if len(values) > 1 else 0.0
-    series = pd.Series(values)
     zeros = int((values == 0).sum())
-    negatives = int((values < 0).sum())
     stats = {
         'min': float(values.min()),
         'max': float(values.max()),
-        'range': float(values.max() - values.min()),
-        'mean': mean,
-        'std': std,
-        'cv': std / mean if mean else None,
-        'sum': float(values.sum()),
-        'q05': float(quantiles[0]),
-        'q25': float(quantiles[1]),
-        'median': float(quantiles[2]),
-        'q75': float(quantiles[3]),
-        'q95': float(quantiles[4]),
-        'iqr': float(quantiles[3] - quantiles[1]),
-        'mad': float((series - series.median()).abs().median()),
-        'skew': _number(series.skew()) if len(values) > 2 else None,
-        'kurtosis': _number(series.kurt()) if len(values) > 3 else None,
+        'median': float(np.median(values)),
         'zeros': zeros,
         'zeros_pct': _pct(zeros, len(values)),
-        'negatives': negatives,
-        'negatives_pct': _pct(negatives, len(values)),
+        'integral': bool(np.all(np.mod(values, 1) == 0)),
     }
-    return {
-        'stats': stats,
-        'smallest': _extremes(ordered.iloc[:EXTREME_VALUES]),
-        'largest': _extremes(ordered.iloc[::-1].iloc[:EXTREME_VALUES]),
-        'histogram': _histogram(values, len(counts)),
-    }
+    histogram = None
+    if spread:
+        counts, edges = np.histogram(values, bins=HISTOGRAM_BINS)
+        histogram = {'counts': counts.tolist(), 'edges': edges.tolist()}
+    return {'stats': stats, 'histogram': histogram}
 
 
-def _histogram(values, distinct):
-    bins = max(1, min(HISTOGRAM_BINS, distinct))
-    counts, edges = np.histogram(values, bins=bins)
-    return {'counts': counts.tolist(), 'edges': edges.tolist()}
-
-
-def _datetime(present):
-    if not len(present):
-        return {'stats': None, 'histogram': None}
+def _datetime(present, spread):
     low, high = present.min(), present.max()
-    seconds = present.astype('int64').to_numpy() // 10**9
-    distinct = len(np.unique(seconds)) if len(seconds) < 10**6 \
-        else HISTOGRAM_BINS
-    counts, edges = np.histogram(seconds, bins=max(1, min(HISTOGRAM_BINS,
-                                                          distinct)))
-    moments = pd.to_datetime(edges, unit='s')
-    hours = present.dt.hour.value_counts().reindex(range(24), fill_value=0)
-    weekdays = present.dt.dayofweek.value_counts() \
-        .reindex(range(7), fill_value=0)
     midnight = bool((present == present.dt.normalize()).all())
+    histogram = None
+    if spread:
+        seconds = present.astype('int64').to_numpy() // 10**9
+        counts, edges = np.histogram(seconds, bins=HISTOGRAM_BINS)
+        moments = pd.to_datetime(edges, unit='s')
+        histogram = {'counts': counts.tolist(),
+                     'edges': [to_json(moment) for moment in moments]}
     return {
         'stats': {
             'min': to_json(low),
             'max': to_json(high),
-            'range_days': (high - low).total_seconds() / 86400,
             'date_only': midnight,
         },
-        'histogram': {'counts': counts.tolist(),
-                      'edges': [to_json(moment) for moment in moments]},
-        'hours': None if midnight else hours.tolist(),
-        'weekdays': weekdays.tolist(),
+        'histogram': histogram,
     }
 
 
 def _text(present):
-    if not len(present):
-        return {'stats': None, 'histogram': None}
     text = present.astype(str)
-    lengths = text.str.len().to_numpy()
-    empty = int((text.str.strip() == '').sum())
-    counts, edges = np.histogram(
-        lengths, bins=max(1, min(HISTOGRAM_BINS, len(np.unique(lengths)))))
-    return {
-        'stats': {
-            'min_length': int(lengths.min()),
-            'max_length': int(lengths.max()),
-            'mean_length': float(lengths.mean()),
-            'median_length': float(np.median(lengths)),
-            'blank': empty,
-            'blank_pct': _pct(empty, len(text)),
-        },
-        'histogram': {'counts': counts.tolist(), 'edges': edges.tolist()},
-    }
+    blank = int((text.str.strip() == '').sum())
+    return {'stats': {'blank': blank, 'blank_pct': _pct(blank, len(text))}}
 
 
-def _extremes(counts):
-    return [{'value': to_json(value), 'count': int(number)}
-            for value, number in counts.items()]
-
-
-def _alerts(info, rows):
-    alerts = []
-
-    def alert(code, level, message):
-        alerts.append({'column': info['name'], 'code': code,
-                       'level': level, 'message': message})
-
-    stats = info.get('stats') or {}
-    if rows and info['count'] == 0:
-        alert('empty', 'warning', 'All values are missing')
-        return alerts
+def _unusable(info):
+    if info['count'] == 0:
+        return 'empty'
     if info['distinct'] == 1:
-        alert('constant', 'warning',
-              f"Has a constant value {info['top'][0]['value']!r}")
-    elif info['unique'] and info['missing'] == 0:
-        alert('unique', 'info', 'All values are unique')
-    if info['missing_pct'] >= MISSING_ALERT:
-        alert('missing', 'warning',
-              f"{info['missing_pct']:.1f}% of the values are missing")
-    elif info['missing']:
-        alert('some_missing', 'info',
-              f"{info['missing']} missing values")
-    if info['kind'] == TEXT and info['distinct'] > CATEGORICAL_DISTINCT \
-            and not info['unique']:
-        alert('high_cardinality', 'info',
-              f"High cardinality: {info['distinct']} distinct values")
-    if info['distinct'] > 1 and info['top'] \
-            and info['top'][0]['pct'] >= DOMINANT_ALERT:
-        alert('imbalanced', 'warning',
-              f"Value {info['top'][0]['value']!r} is "
-              f"{info['top'][0]['pct']:.1f}% of the values")
-    if info['kind'] == NUMERIC and stats:
-        if stats['zeros_pct'] >= ZEROS_ALERT and info['distinct'] > 1:
-            alert('zeros', 'info', f"{stats['zeros_pct']:.1f}% zeros")
-        if stats['skew'] is not None and abs(stats['skew']) >= SKEW_ALERT:
-            alert('skewed', 'info',
-                  f"Highly skewed (skewness {stats['skew']:.1f})")
-    if info['kind'] == TEXT and stats and stats.get('blank'):
-        alert('blank', 'info', f"{stats['blank']} blank values")
-    return alerts
+        return 'constant'
+    if info['kind'] == TEXT and info['count'] > 1 and (
+            info['distinct_pct'] >= UNIQUE_PCT
+            or (info['distinct_pct'] >= SPREAD_PCT
+                and info['top'][0]['pct'] < RARE_PCT)):
+        return 'unique'
+    if info['kind'] == NUMERIC and info['count'] >= UNIQUE_NUMBERS \
+            and info['distinct'] == info['count'] and info['stats']['integral']:
+        return 'unique'
+    return None
+
+
+def _group(info):
+    if info['kind'] == DATETIME:
+        return 'date'
+    if info['kind'] == NUMERIC:
+        return 'category' if info['visual'] == 'top' \
+            and info['distinct'] <= TOP_DISTINCT else 'number'
+    return 'category' if info['categorical'] else 'text'
+
+
+def _visual(info):
+    if info['unusable']:
+        return None
+    top = info['top']
+    repeats = bool(top) and top[0]['count'] > 1
+    if repeats and (info['distinct'] <= TOP_DISTINCT
+                    or top[0]['pct'] >= DOMINANT_PCT):
+        return 'top'
+    histogram = info['histogram']
+    if histogram:
+        return 'histogram' if sum(1 for count in histogram['counts']
+                                  if count) >= 2 else None
+    # Text of many values: the most frequent, when they repeat at all.
+    return 'top' if repeats else None
 
 
 def overview(frame, kinds, column_profiles):
-    """Get the facts of the whole sample and every column's alerts."""
-    rows, width = frame.shape
-    missing = int(sum(item['missing'] for item in column_profiles))
-    duplicates = int(frame.duplicated().sum()) if rows and width else 0
-    types = {}
-    for item in column_profiles:
-        name = 'categorical' if item['categorical'] else item['kind']
-        types[name] = types.get(name, 0) + 1
-    alerts = [alert for item in column_profiles for alert in item['alerts']]
-    if duplicates:
-        alerts.insert(0, {'column': None, 'code': 'duplicates',
-                          'level': 'warning',
-                          'message': f'{duplicates} duplicate rows '
-                                     f'({_pct(duplicates, rows):.1f}%)'})
-    return {
-        'rows': rows,
-        'columns': width,
-        'missing_cells': missing,
-        'missing_pct': _pct(missing, rows * width),
-        'duplicate_rows': duplicates,
-        'duplicate_pct': _pct(duplicates, rows),
-        'memory_bytes': _memory(frame),
-        'types': types,
-        'alerts': alerts,
-    }
+    """Get the facts of the whole sample.
 
-
-def _memory(frame):
-    rows = len(frame)
-    if rows <= MEMORY_SAMPLE:
-        return int(frame.memory_usage(deep=True).sum())
-    sample = frame.iloc[:MEMORY_SAMPLE].memory_usage(deep=True).sum()
-    return int(sample * rows / MEMORY_SAMPLE)
-
-
-def missing(frame, step=None):
-    """Get the missing values per column and the nullity matrix.
-
-    The matrix splits the sample in order into up to 100 buckets and gives
-    the share of missing values of each column in each bucket.
+    The RAPO_ metadata columns of a result table are not counted.
     """
     rows = len(frame)
-    nulls = frame.isna()
-    counts = nulls.sum()
-    buckets = max(1, min(MATRIX_BUCKETS, rows))
-    matrix = []
-    if rows:
-        groups = np.arange(rows) * buckets // rows
-        shares = nulls.groupby(groups).mean()
-        matrix = [[round(float(value), 4) for value in row]
-                  for row in shares.to_numpy().T]
+    shown = [item for item in column_profiles if not item['metadata']]
+    duplicates = int(frame.duplicated().sum()) if rows and len(frame.columns) \
+        else 0
     return {
-        'columns': [{'name': name, 'missing': int(counts[name]),
-                     'missing_pct': _pct(counts[name], rows)}
-                    for name in frame.columns],
-        'buckets': buckets,
-        'matrix': matrix,
-    }
-
-
-def duplicates(frame, step=None):
-    """Get the most frequent duplicate rows of the sample."""
-    rows = len(frame)
-    repeated = frame[frame.duplicated(keep=False)]
-    top = []
-    if len(repeated):
-        hashes = pd.util.hash_pandas_object(repeated, index=False)
-        counts = hashes.value_counts().iloc[:DUPLICATE_ROWS]
-        first = ~hashes.duplicated()
-        representatives = repeated[first.to_numpy()]
-        by_hash = dict(zip(hashes[first].to_numpy(),
-                           range(len(representatives))))
-        for value, number in counts.items():
-            row = representatives.iloc[by_hash[value]]
-            top.append({'count': int(number),
-                        'values': [to_json(item) for item in row.tolist()]})
-    duplicate_rows = int(frame.duplicated().sum()) if rows else 0
-    return {
-        'columns': list(frame.columns),
-        'duplicate_rows': duplicate_rows,
-        'duplicate_pct': _pct(duplicate_rows, rows),
-        'distinct_duplicated': int(len(top)),
-        'rows': top,
+        'rows': rows,
+        'columns': len(shown),
+        'duplicate_rows': duplicates,
+        'duplicate_pct': _pct(duplicates, rows),
+        'missing_columns': [item['name'] for item in shown
+                            if item['missing_pct'] >= MISSING_PCT],
+        'unusable': [{'name': item['name'], 'reason': item['unusable'],
+                      'value': item['top'][0]['value']
+                      if item['unusable'] == 'constant' else None}
+                     for item in shown if item['unusable']],
     }
 
 
@@ -307,89 +203,61 @@ CORRELATION_COLUMNS = 40
 CRAMERS_COLUMNS = 30
 CRAMERS_DISTINCT = 50
 CRAMERS_MIN_ROWS = 20
-CORRELATION_ALERT = 0.9
-CORRELATION_PAIRS = 20
-BREAKDOWN_COLUMNS = (('rapo_result_type', 'Result type'),
-                     ('rapo_result_value', 'Result value'),
-                     ('rapo_discrepancy_description', 'Discrepancy'))
-BREAKDOWN_VALUES = 20
+RELATION_MIN = 0.4
+RELATIONS = 5
+RELATED_METADATA = ('rapo_result_type',)
+BREAKDOWN_TYPES = 'rapo_result_type'
+BREAKDOWN_VALUES = 'rapo_result_value'
+BREAKDOWN_DESCRIPTION = 'rapo_discrepancy_description'
+BREAKDOWN_TOP = 10
 
 
-def correlations(frame, kinds, step=None):
-    """Get the correlation matrices of the sample.
+def relations(frame, kinds, step=None):
+    """Get the strongest relations between pairs of columns.
 
     Pearson and Spearman over the numeric columns, Cramér's V over the
-    columns with few distinct values. Columns with a single value are left
-    out; a large sample is measured on its first rows (`sampled`).
+    columns with few distinct values, each pair once by its strongest
+    measure, from `RELATION_MIN` on. The RAPO_ metadata columns are left
+    out but the result type. A large sample is measured on its first rows.
     """
-    rows = len(frame)
-    numeric = [name for name in frame.columns if kinds[name] == NUMERIC
-               and frame[name].nunique(dropna=True) > 1]
-    numeric = sorted(numeric, key=lambda name: -frame[name].count())
+    names = [name for name in frame.columns
+             if not name.startswith(METADATA_PREFIX)
+             or name in RELATED_METADATA]
+    subset = frame.iloc[:CORRELATION_ROWS][names]
+    numeric = [name for name in names if kinds[name] == NUMERIC
+               and subset[name].nunique(dropna=True) > 1]
+    numeric = sorted(numeric, key=lambda name: -subset[name].count())
     numeric = numeric[:CORRELATION_COLUMNS]
-    subset = frame.iloc[:CORRELATION_ROWS]
     values = pd.DataFrame({name: floats(subset[name]) for name in numeric},
                           index=subset.index)
-    if step:
-        step(0, 3)
-    pearson = values.corr(method='pearson', min_periods=3) if numeric \
-        else pd.DataFrame()
-    if step:
-        step(1, 3)
-    spearman = values.corr(method='spearman', min_periods=3) if numeric \
-        else pd.DataFrame()
+    pairs = []
+    for number, method in enumerate(('pearson', 'spearman')):
+        if step:
+            step(number, 3)
+        if len(numeric) < 2:
+            continue
+        matrix = values.corr(method=method, min_periods=3)
+        for i, first in enumerate(numeric):
+            for j in range(i + 1, len(numeric)):
+                value = _number(matrix.iloc[i, j])
+                if value is not None:
+                    pairs.append((method, first, numeric[j], value))
     if step:
         step(2, 3)
-    cramers = _cramers(frame.iloc[:CRAMERS_ROWS], kinds, step)
-    result = {'rows': min(rows, CORRELATION_ROWS),
-              'sampled': rows > CORRELATION_ROWS,
-              'pearson': _matrix(pearson),
-              'spearman': _matrix(spearman),
-              'cramers': cramers}
-    pairs = []
-    for method in ('pearson', 'spearman', 'cramers'):
-        matrix = result[method]
-        names = matrix['columns']
-        for i, first in enumerate(names):
-            for j in range(i + 1, len(names)):
-                value = matrix['matrix'][i][j]
-                if value is not None:
-                    pairs.append({'method': method, 'a': first,
-                                  'b': names[j], 'value': value})
-    pairs.sort(key=lambda item: -abs(item['value']))
+    pairs.extend(_cramers(subset.iloc[:CRAMERS_ROWS], kinds))
     strongest = {}
-    for pair in pairs:
-        key = (pair['a'], pair['b'])
+    for method, first, second, value in sorted(pairs,
+                                               key=lambda item: -abs(item[3])):
+        if abs(value) < RELATION_MIN:
+            break
+        key = tuple(sorted((first, second)))
         if key not in strongest:
-            strongest[key] = pair
-    result['pairs'] = list(strongest.values())[:CORRELATION_PAIRS]
-    result['alerts'] = [
-        {'column': pair['a'], 'code': 'high_correlation', 'level': 'warning',
-         'message': f"Highly correlated with {pair['b'].upper()} "
-                    f"({_method_label(pair['method'])} {pair['value']:.2f})"}
-        for pair in result['pairs']
-        if abs(pair['value']) >= CORRELATION_ALERT]
-    return result
+            strongest[key] = {'a': first, 'b': second, 'method': method,
+                              'value': round(value, 4)}
+    return {'pairs': list(strongest.values())[:RELATIONS]}
 
 
-def _method_label(method):
-    return {'pearson': 'Pearson', 'spearman': 'Spearman',
-            'cramers': "Cramér's V"}[method]
-
-
-def _matrix(frame):
-    names = list(frame.columns)
-    matrix = [[_rounded(frame.iloc[i, j]) for j in range(len(names))]
-              for i in range(len(names))]
-    return {'columns': names, 'matrix': matrix}
-
-
-def _rounded(value):
-    value = _number(value)
-    return None if value is None else round(value, 4)
-
-
-def _cramers(frame, kinds, step):
+def _cramers(frame, kinds):
     """Get Cramér's V between the columns with 2..50 distinct values."""
     # A column nearly unique in the sample, like a key, is perfectly
     # associated with any other, which says nothing, and so is every pair
@@ -402,53 +270,74 @@ def _cramers(frame, kinds, step):
                 and count >= CRAMERS_MIN_ROWS and kinds[name] != DATETIME:
             names.append(name)
     names = names[:CRAMERS_COLUMNS]
-    codes = {name: pd.Series(pd.factorize(frame[name])[0], index=frame.index)
-             for name in names}
-    size = len(names)
-    matrix = [[None] * size for _ in range(size)]
-    for i in range(size):
-        matrix[i][i] = 1.0
-        for j in range(i + 1, size):
-            value = _cramers_v(codes[names[i]], codes[names[j]])
-            matrix[i][j] = matrix[j][i] = value
-    return {'columns': names, 'matrix': matrix}
+    codes = {name: pd.factorize(frame[name])[0] for name in names}
+    pairs = []
+    for i, first in enumerate(names):
+        for second in names[i + 1:]:
+            value = _cramers_v(codes[first], codes[second])
+            if value is not None:
+                pairs.append(('cramers', first, second, value))
+    return pairs
 
 
 def _cramers_v(first, second):
+    """Get Cramér's V of two factorized columns (-1 is missing)."""
     present = (first >= 0) & (second >= 0)
     first, second = first[present], second[present]
     total = len(first)
     if total < 2:
         return None
-    table = pd.crosstab(first, second).to_numpy(dtype='float64')
-    if min(table.shape) < 2:
+    _, first = np.unique(first, return_inverse=True)
+    _, second = np.unique(second, return_inverse=True)
+    rows, cols = int(first.max()) + 1, int(second.max()) + 1
+    if min(rows, cols) < 2:
         return None
+    table = np.bincount(first * cols + second, minlength=rows * cols) \
+        .reshape(rows, cols).astype('float64')
     expected = np.outer(table.sum(axis=1), table.sum(axis=0)) / total
     chi2 = float(((table - expected) ** 2 / expected).sum())
-    value = np.sqrt(chi2 / (total * (min(table.shape) - 1)))
+    value = np.sqrt(chi2 / (total * (min(rows, cols) - 1)))
     return round(float(min(value, 1.0)), 4)
 
 
 def breakdown(frame, kinds, step=None):
-    """Get the counts of the result metadata columns of a result table.
+    """Get the result metadata of a result table, where it has them.
 
-    The result type (Loss, Discrepancy, Duplicate, or a case's type), the
-    case value and the discrepancy description, where the table has them.
+    `types` counts the result types (Loss, Discrepancy, Duplicate, or a
+    case's type); `fields` the fields the discrepancy descriptions name
+    (`FIELD|difference;` per field that differs), out of the `described`
+    records; `values` the case values, only when there are several.
     """
     rows = len(frame)
-    result = []
-    for name, label in BREAKDOWN_COLUMNS:
-        if name not in frame.columns:
-            continue
-        counts = frame[name].value_counts(dropna=False)
-        if counts.index.isna().all():
-            continue
-        values = [{'value': to_json(value), 'count': int(number),
-                   'pct': _pct(number, rows)}
-                  for value, number in counts.iloc[:BREAKDOWN_VALUES].items()]
-        result.append({'column': name, 'label': label,
-                       'distinct': int(len(counts)), 'values': values})
-    return {'rows': rows, 'columns': result}
+    result = {'rows': rows, 'types': [], 'fields': [], 'described': 0,
+              'values': []}
+    if BREAKDOWN_TYPES in frame.columns:
+        counts = frame[BREAKDOWN_TYPES].value_counts(dropna=False)
+        result['types'] = [{'value': to_json(value), 'count': int(number),
+                            'pct': _pct(number, rows)}
+                           for value, number in counts.items()]
+    if BREAKDOWN_DESCRIPTION in frame.columns:
+        described = frame[BREAKDOWN_DESCRIPTION].dropna().astype(str)
+        described = described[described.str.contains('|', regex=False)]
+        fields = {}
+        for text, number in described.value_counts().items():
+            for name in {part.rsplit('|', 1)[0].strip().upper()
+                         for part in text.split(';') if '|' in part}:
+                fields[name] = fields.get(name, 0) + int(number)
+        result['described'] = len(described)
+        result['fields'] = [{'field': name, 'count': number,
+                             'pct': _pct(number, len(described))}
+                            for name, number in sorted(
+                                fields.items(), key=lambda item: -item[1])]
+    if BREAKDOWN_VALUES in frame.columns:
+        counts = frame[BREAKDOWN_VALUES].value_counts(dropna=False)
+        if len(counts) > 1:
+            result['values'] = [{'value': to_json(value),
+                                 'count': int(number),
+                                 'pct': _pct(number, rows)}
+                                for value, number
+                                in counts.iloc[:BREAKDOWN_TOP].items()]
+    return result
 
 
 def _pct(part, whole):

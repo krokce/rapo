@@ -11,5 +11,4 @@ websockets==17.1
 XlsxWriter==3.2.9
 numpy==2.2.6
 pandas==2.3.3
-phik==0.12.5
 asn1tools==0.169.0

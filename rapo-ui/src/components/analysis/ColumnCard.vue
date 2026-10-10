@@ -1,163 +1,55 @@
 <template>
-  <q-card flat bordered class="column-card" :class="{ 'column-card--focus': focused }">
-    <q-card-section class="row items-center no-wrap q-py-sm header">
-      <q-avatar size="26px" :icon="kind.icon" :color="kind.color" text-color="white" font-size="13px" class="q-mr-sm" :title="kind.label" />
-      <div class="text-weight-bold text-blue-grey-10 ellipsis column-name" :title="column.name.toUpperCase()">{{ column.name.toUpperCase() }}</div>
-      <div class="text-caption text-grey-7 q-ml-sm text-no-wrap">{{ dbType }} · {{ kind.label }}</div>
+  <q-card flat bordered class="column-card full-height">
+    <q-card-section class="row items-center no-wrap q-py-sm">
+      <q-avatar size="24px" :icon="kind.icon" :color="kind.color" text-color="white" font-size="12px" class="q-mr-sm" :title="kind.label" />
+      <div class="text-weight-bold text-blue-grey-10 ellipsis column-name" :title="`${column.name.toUpperCase()} (${dbType || kind.label})`">{{ column.name.toUpperCase() }}</div>
       <q-space />
-      <div class="row no-wrap q-gutter-xs alert-chips">
+      <div class="row no-wrap items-center facts">
         <q-chip
-          v-for="alert in column.alerts"
-          :key="alert.code"
+          v-for="fact in facts"
+          :key="fact.key"
           dense
           square
-          size="sm"
-          :color="alert.level === 'warning' ? 'orange-1' : 'grey-3'"
-          :text-color="alert.level === 'warning' ? 'orange-10' : 'grey-8'"
-          :title="alert.message">
-          {{ alertLabel(alert.code) }}
+          size="12px"
+          :color="fact.color"
+          :text-color="fact.textColor"
+          :clickable="Boolean(fact.filters)"
+          :title="fact.title"
+          @click="fact.filters && $emit('show-rows', fact.filters)">
+          {{ fact.label }}
         </q-chip>
       </div>
     </q-card-section>
-    <q-separator />
-    <q-card-section class="row q-col-gutter-md q-py-sm">
-      <div class="col-12 col-md-3">
-        <table class="stat-table">
-          <tbody>
-            <tr v-for="item in summaryStats" :key="item.label" :class="{ 'cursor-pointer link-row': item.filters }" v-keyboard="!!item.filters" @click="item.filters && $emit('show-rows', item.filters)">
-              <td class="text-grey-7">{{ item.label }}</td>
-              <td class="text-right text-weight-medium number-cell" :class="item.warn ? 'text-orange-9' : 'text-blue-grey-9'">{{ item.value }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="col-12 col-md-5">
-        <div class="text-caption text-grey-7">{{ chartTitle }}</div>
-        <e-chart v-if="chartOption" :option="chartOption" :height="170" @select="selectBin" />
-        <div v-else class="text-grey-7 q-pa-md text-center">No values to chart</div>
-      </div>
-      <div class="col-12 col-md-4">
-        <div class="text-caption text-grey-7">Most frequent values</div>
-        <div
-          v-for="item in topValues"
-          :key="item.key"
-          class="freq-row row no-wrap items-center cursor-pointer"
-          :title="`${item.label}: ${formatNumber(item.count)} (${formatPct(item.pct)})`"
-          v-keyboard:button
-          @click="$emit('show-rows', [item.filter])">
-          <div class="freq-label ellipsis" :class="{ 'text-italic text-grey-7': item.muted }">{{ item.label }}</div>
-          <div class="col freq-bar-cell">
-            <div class="freq-bar" :class="item.muted ? 'bg-grey-4' : 'bg-blue-grey-3'" :style="{ width: Math.max(item.share, 0.5) + '%' }" />
-          </div>
-          <div class="freq-count text-right text-grey-8">{{ formatNumber(item.count) }}</div>
-        </div>
-        <div v-if="column.other_count" class="freq-row row no-wrap items-center text-grey-7 text-italic">
-          <div class="freq-label">Other values ({{ formatNumber(column.distinct - column.top.length) }})</div>
-          <div class="col" />
-          <div class="freq-count text-right">{{ formatNumber(column.other_count) }}</div>
-        </div>
-      </div>
+    <q-card-section class="q-pt-none q-pb-sm">
+      <mini-bars v-if="column.visual === 'top'" :items="topItems" :max="topMax" @select="(item) => $emit('show-rows', [item.filter])" />
+      <mini-histogram v-else-if="column.visual === 'histogram'" :bars="histogramBars" :start="edgeText(0)" :end="edgeText(column.histogram.edges.length - 1)" @select="selectBin" />
+      <div v-else class="text-caption text-grey-7">No value repeats in the sample.</div>
+      <div v-if="caption" class="text-caption text-grey-7 q-mt-xs">{{ caption }}</div>
     </q-card-section>
-    <q-expansion-item v-if="hasDetails" v-model="expanded" dense dense-toggle switch-toggle-side label="Details" header-class="text-grey-8 details-header">
-      <q-card-section class="row q-col-gutter-lg q-pt-none">
-        <template v-if="column.kind === 'numeric' && column.stats">
-          <div class="col-12 col-md-3">
-            <div class="text-caption text-grey-7">Quantiles</div>
-            <table class="stat-table">
-              <tbody>
-                <tr v-for="item in quantiles" :key="item.label">
-                  <td class="text-grey-7">{{ item.label }}</td>
-                  <td class="text-right number-cell">{{ formatStat(item.value, 4) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="col-12 col-md-3">
-            <div class="text-caption text-grey-7">Descriptive statistics</div>
-            <table class="stat-table">
-              <tbody>
-                <tr v-for="item in descriptive" :key="item.label">
-                  <td class="text-grey-7">{{ item.label }}</td>
-                  <td class="text-right number-cell">{{ formatStat(item.value, 4) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="col-12 col-md-3">
-            <div class="text-caption text-grey-7">Smallest values</div>
-            <extreme-list :items="column.smallest" :column="column.name" @show-rows="$emit('show-rows', $event)" />
-          </div>
-          <div class="col-12 col-md-3">
-            <div class="text-caption text-grey-7">Largest values</div>
-            <extreme-list :items="column.largest" :column="column.name" @show-rows="$emit('show-rows', $event)" />
-          </div>
-        </template>
-        <template v-if="column.kind === 'datetime' && column.stats">
-          <div v-if="column.hours" class="col-12 col-md-6">
-            <div class="text-caption text-grey-7">Hour of day</div>
-            <e-chart :option="hoursOption" :height="150" />
-          </div>
-          <div class="col-12 col-md-6">
-            <div class="text-caption text-grey-7">Day of week</div>
-            <e-chart :option="weekdaysOption" :height="150" />
-          </div>
-        </template>
-      </q-card-section>
-    </q-expansion-item>
   </q-card>
 </template>
 
 <script>
-import { h } from "vue";
-import EChart from "./EChart.vue";
-import { formatNumber } from "../../utils/format";
-import {
-  HOURS,
-  WEEKDAYS,
-  alertLabel,
-  binFilter,
-  distributionOption,
-  formatPct,
-  formatStat,
-  formatValue,
-  histogramOption,
-  kindInfo,
-  valueFilter,
-} from "../../utils/analysis";
+import MiniBars from "./MiniBars.vue";
+import MiniHistogram from "./MiniHistogram.vue";
+import { formatNumber, toDateTimeString } from "../../utils/format";
+import { binFilter, formatPct, formatStat, formatValue, kindInfo, valueFilter } from "../../utils/analysis";
 
-// The smallest or largest values of a numeric column, each a link to its rows.
-const ExtremeList = {
-  props: { items: { type: Array, default: () => [] }, column: { type: String, required: true } },
-  emits: ["show-rows"],
-  render() {
-    return h(
-      "table",
-      { class: "stat-table" },
-      h(
-        "tbody",
-        this.items.map((item) =>
-          h("tr", { class: "cursor-pointer link-row", onClick: () => this.$emit("show-rows", [valueFilter(this.column, item.value)]) }, [
-            h("td", {}, formatStat(item.value, 4)),
-            h("td", { class: "text-right text-grey-7" }, `× ${formatNumber(item.count)}`),
-          ])
-        )
-      )
-    );
-  },
-};
+// The share from which missing values are worth a warning.
+const MISSING_WARN = 5;
+// The share of zeros a histogram is worth a note for.
+const ZEROS_NOTE = 10;
 
+// One column of the sample: its kind, a few facts as chips, and one visual the profile chose for it (`visual`): its
+// most frequent values, or a histogram of its numbers or dates. Every bar and chip that stands for records shows them.
 export default {
   name: "ColumnCard",
-  components: { EChart, ExtremeList },
+  components: { MiniBars, MiniHistogram },
   props: {
     column: { type: Object, required: true },
     dbType: { type: String, default: "" },
-    focused: { type: Boolean, default: false },
   },
   emits: ["show-rows"],
-  data() {
-    return { expanded: false };
-  },
   computed: {
     kind() {
       return kindInfo(this.column);
@@ -165,203 +57,97 @@ export default {
     dateOnly() {
       return Boolean(this.column.stats && this.column.stats.date_only);
     },
-    summaryStats() {
+    facts() {
       const c = this.column;
       const s = c.stats || {};
-      const items = [
-        { label: "Distinct", value: `${formatNumber(c.distinct)} (${formatPct(c.distinct_pct)})` },
-        {
-          label: "Missing",
-          value: `${formatNumber(c.missing)} (${formatPct(c.missing_pct)})`,
-          warn: c.missing_pct >= 20,
-          filters: c.missing ? [{ column: c.name, op: "null" }] : null,
-        },
-      ];
-      if (c.kind === "numeric" && c.stats) {
-        items.push(
-          { label: "Mean", value: formatStat(s.mean) },
-          { label: "Median", value: formatStat(s.median) },
-          { label: "Minimum", value: formatStat(s.min) },
-          { label: "Maximum", value: formatStat(s.max) },
-          { label: "Zeros", value: `${formatNumber(s.zeros)} (${formatPct(s.zeros_pct)})`, filters: s.zeros ? [valueFilter(c.name, 0)] : null },
-          {
-            label: "Negative",
-            value: `${formatNumber(s.negatives)} (${formatPct(s.negatives_pct)})`,
-            filters: s.negatives ? [{ column: c.name, kind: "numeric", op: "range", value: { min: null, max: 0, max_inclusive: false } }] : null,
-          }
-        );
-      } else if (c.kind === "datetime" && c.stats) {
-        items.push(
-          { label: "Minimum", value: formatValue(s.min, "datetime", this.dateOnly) },
-          { label: "Maximum", value: formatValue(s.max, "datetime", this.dateOnly) },
-          { label: "Range", value: `${formatStat(s.range_days, 2)} days` }
-        );
-      } else if (c.stats) {
-        items.push(
-          { label: "Length min / max", value: `${s.min_length} / ${s.max_length}` },
-          { label: "Length mean", value: formatStat(s.mean_length, 1) },
-          { label: "Blank", value: `${formatNumber(s.blank)} (${formatPct(s.blank_pct)})` }
-        );
+      const facts = [{ key: "distinct", label: `${formatNumber(c.distinct)} ${c.distinct === 1 ? "value" : "values"}`, color: "grey-3", textColor: "grey-8", title: "Distinct values in the sample" }];
+      if (c.missing) {
+        const warn = c.missing_pct >= MISSING_WARN;
+        facts.push({
+          key: "missing",
+          label: `missing ${formatPct(c.missing_pct)}`,
+          color: warn ? "orange-1" : "grey-3",
+          textColor: warn ? "orange-10" : "grey-8",
+          title: `${formatNumber(c.missing)} empty values: show these records`,
+          filters: [{ column: c.name, op: "null" }],
+        });
       }
-      return items;
-    },
-    chartTitle() {
-      if (this.column.kind === "text") {
-        return "Length of the values";
+      if (s.blank) {
+        facts.push({ key: "blank", label: `blank ${formatPct(s.blank_pct)}`, color: "grey-3", textColor: "grey-8", title: `${formatNumber(s.blank)} values of spaces only` });
       }
-      return this.column.kind === "datetime" ? "Distribution over time" : "Histogram";
-    },
-    chartOption() {
-      const histogram = this.column.histogram;
-      if (!histogram || !histogram.counts.length) {
-        return null;
+      if (c.visual === "histogram" && s.zeros_pct >= ZEROS_NOTE) {
+        facts.push({
+          key: "zeros",
+          label: `zeros ${formatPct(s.zeros_pct)}`,
+          color: "grey-3",
+          textColor: "grey-8",
+          title: `${formatNumber(s.zeros)} zeros: show these records`,
+          filters: [valueFilter(c.name, 0)],
+        });
       }
-      const colors = { numeric: "#5c6bc0", datetime: "#8e24aa", text: "#26a69a" };
-      return histogramOption(histogram, this.column.kind === "text" ? "numeric" : this.column.kind, colors[this.column.kind]);
+      return facts;
     },
-    topValues() {
+    topItems() {
       const c = this.column;
-      const max = Math.max(...c.top.map((item) => item.count), c.missing, 1);
       const items = c.top.map((item, index) => ({
         key: `v${index}`,
         label: item.value === "" ? "(blank)" : formatValue(item.value, c.kind, this.dateOnly),
         count: item.count,
         pct: item.pct,
-        share: (item.count * 100) / max,
         filter: valueFilter(c.name, item.value),
       }));
-      if (c.missing) {
-        items.push({
-          key: "missing",
-          label: "(missing)",
-          muted: true,
-          count: c.missing,
-          pct: c.missing_pct,
-          share: (c.missing * 100) / max,
-          filter: { column: c.name, op: "null" },
-        });
+      if (c.other_count) {
+        const values = c.distinct - c.top.length;
+        items.push({ key: "other", label: `${formatNumber(values)} other ${values === 1 ? "value" : "values"}`, count: c.other_count, pct: (c.other_count * 100) / c.count, muted: true, filter: false });
       }
       return items;
     },
-    hasDetails() {
-      return (this.column.kind === "numeric" || this.column.kind === "datetime") && Boolean(this.column.stats);
+    topMax() {
+      return Math.max(1, ...this.column.top.map((item) => item.count));
     },
-    quantiles() {
-      const s = this.column.stats;
-      return [
-        { label: "Minimum", value: s.min },
-        { label: "5th percentile", value: s.q05 },
-        { label: "Q1", value: s.q25 },
-        { label: "Median", value: s.median },
-        { label: "Q3", value: s.q75 },
-        { label: "95th percentile", value: s.q95 },
-        { label: "Maximum", value: s.max },
-        { label: "Range", value: s.range },
-        { label: "Interquartile range", value: s.iqr },
-      ];
+    histogramBars() {
+      const { counts } = this.column.histogram;
+      return counts.map((count, index) => ({ count, title: `${this.binText(index)}: ${formatNumber(count)} ${count === 1 ? "record" : "records"}` }));
     },
-    descriptive() {
-      const s = this.column.stats;
-      return [
-        { label: "Mean", value: s.mean },
-        { label: "Standard deviation", value: s.std },
-        { label: "Coefficient of variation", value: s.cv },
-        { label: "Median absolute deviation", value: s.mad },
-        { label: "Skewness", value: s.skew },
-        { label: "Kurtosis", value: s.kurtosis },
-        { label: "Sum", value: s.sum },
-      ];
-    },
-    hoursOption() {
-      return distributionOption(HOURS, this.column.hours || []);
-    },
-    weekdaysOption() {
-      return distributionOption(WEEKDAYS, this.column.weekdays || []);
+    caption() {
+      const c = this.column;
+      if (c.visual === "histogram" && c.kind === "numeric") {
+        return `median ${formatStat(c.stats.median)}`;
+      }
+      return "";
     },
   },
   methods: {
-    formatNumber,
-    formatPct,
-    formatStat,
-    alertLabel,
-    // A histogram bar selects its rows; text length bins have no filter.
-    selectBin(event) {
-      if (this.column.kind === "text" || !this.column.histogram) {
-        return;
+    edgeText(index) {
+      const edge = this.column.histogram.edges[index];
+      if (this.column.kind === "datetime") {
+        const text = toDateTimeString(edge);
+        return this.dateOnly ? text.substring(0, 10) : text.substring(0, 16);
       }
-      this.$emit("show-rows", [binFilter(this.column.name, this.column.kind, this.column.histogram.edges, event.dataIndex)]);
+      return formatStat(edge);
+    },
+    binText(index) {
+      return `${this.edgeText(index)} – ${this.edgeText(index + 1)}`;
+    },
+    selectBin(index) {
+      this.$emit("show-rows", [binFilter(this.column.name, this.column.kind, this.column.histogram.edges, index)]);
     },
   },
 };
 </script>
 
 <style scoped>
-.column-card {
-  transition: box-shadow 0.3s;
-}
-
-.column-card--focus {
-  box-shadow: 0 0 0 2px var(--rapo-teal);
-}
-
-.header {
-  background: var(--rapo-surface-alt);
-}
-
 .column-name {
-  font-size: 15px;
-  max-width: 45%;
+  font-size: 14px;
+  min-width: 0;
 }
 
-.alert-chips {
-  overflow: hidden;
+.facts {
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
-.stat-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.stat-table :deep(td) {
-  padding: 3px 4px;
-  border-bottom: 1px solid var(--rapo-grid);
-}
-
-.stat-table :deep(.link-row:hover) {
-  background: var(--rapo-teal-soft);
-}
-
-.freq-row {
-  font-size: 13px;
-  height: 22px;
-  border-radius: 3px;
-}
-
-.freq-row.cursor-pointer:hover {
-  background: var(--rapo-teal-soft);
-}
-
-.freq-label {
-  width: 42%;
-  padding: 0 6px 0 2px;
-}
-
-.freq-bar-cell {
-  height: 12px;
-}
-
-.freq-bar {
-  height: 100%;
-  border-radius: 2px;
-}
-
-.freq-count {
-  width: 64px;
-  padding-left: 6px;
-}
-
-.details-header {
-  font-size: 13px;
+.facts .q-chip {
+  margin: 0 0 0 4px;
 }
 </style>

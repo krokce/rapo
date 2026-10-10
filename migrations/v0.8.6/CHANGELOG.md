@@ -4,9 +4,10 @@
 A file of the file log can be viewed in the browser, however large, and searched as a whole on the server. Files can
 be uploaded into a datasource's input directory from the file log and the datasource editor, and the records a
 file loaded are shown below it or on the Data analysis page. A binary file is shown as ASN.1 (BER, DER, CER): its
-tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. The
-release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools`). The upgrade steps are in the
-[migration instructions](README.md).
+tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. Data
+analysis and Discrepancy analysis are redesigned as single pages that lead with what matters and open in under a
+second. The release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools`), and drops one
+(`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
    found on this server within the datasource's archive, error or duplicate directory) has an eye icon opening the
@@ -53,8 +54,8 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
      row of the file can be reached; nothing is sampled or analysed. *Search all columns* searches all of the file's
      rows in the database (case-insensitive, numbers and dates as text) and shows `N of M rows`. *Columns* chooses and
      orders the columns shown (the same choice as on the Data analysis page for that table). *Open in Data analysis*
-     opens the rows (the search included) on the full page (Overview, Columns, Correlations, Missing values,
-     Duplicates, Data), at `/analysis/file/<file ID>/<table>`, a link that can be shared.
+     opens the rows (the search included) on the full page (Summary, Columns, Records), at
+     `/analysis/file/<file ID>/<table>`, a link that can be shared.
    - The viewer is as large in every layout.
    - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
      read.
@@ -149,3 +150,61 @@ release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools
    files found opens their day with the file picked. The editor's tab keeps a *File name* box (it has no header
    search). The *Not duplicates* filter is gone (`dup=N` in a link is ignored). `search-files` takes an optional
    `source_id`.
+7. **Data analysis and Discrepancy analysis redesigned.** Both pages are one scrolling page instead of tabs, with an
+   *On this page* list on the right (in a row under the header on narrow screens) that marks the section being read
+   and jumps to a section; the section is kept in the link (`#records`, `#attributes`), and older links with `?tab=`
+   open the matching section. The run's datasets (and sides) are avatar chips with their counts, the one shown ringed;
+   the buttons are the app's outlined ones; filters show as the orange filter chips of the list pages.
+   - **Data analysis** shows *Summary*, *Result types* (discrepancies), *Columns* and *Records*.
+     - *Summary*: chips for the records loaded (all, a random sample, or the first ones; with *Load … more* or *Sample
+       …*), the columns, and only when there are any: duplicate records (a click shows them), columns 5% or more
+       missing, columns not profiled, *Config changed*. Below them the three strongest **related columns** (Pearson,
+       Spearman or Cramér's V, 0.4 or more); a click shows the records grouped by both. Then a compact trend of the
+       last 30 days.
+     - *Result types*: one bar in the result type colors, chips per type, and the fields the value discrepancies
+       differ in (from RAPO_DISCREPANCY_DESCRIPTION, *DURATION_SEC (239 of 239)*), each opening its records; case
+       values when there are several.
+     - *Columns*: a compact card per column, the columns that split the records first (few values, then numbers,
+       dates, other text), each with its number of values, missing (grey, orange from 5%), blank and zero shares as
+       chips, and **one** visual: its most frequent values as bars, or a histogram of its numbers or dates, never a
+       chart of one bar. Constant, empty and (nearly) unique columns are only named in one line; the RAPO_ columns
+       are left out (Result types shows them, Records has them).
+     - *Records* is the last section, one window tall: a click on any value, bar, chip or bin of the page filters it
+       and scrolls there. Its tools are the same (search, Columns, Group by, Export, the REC counterpart); *Filter in
+       the database* moves its filters into the database (the whole page then describes the matching records).
+     - **Removed:** the Missing values tab (bar chart and nullity matrix), the Duplicates tab (the top-50 table; the
+       duplicate records stay one click away), the correlation heatmap and its method switch, the **Compare** tab
+       (with another sample, the previous run, the other side or any run), the alerts list, the column types list,
+       the memory figure, each column's details (quantiles, moments, extremes, hour and weekday charts), the
+       *Random / First rows* switch, *Profile these rows*, the trend's 10/30/90 days switch and the column order in
+       the Columns menu (show and hide stay). Routes `get-analysis-targets`, `get-control-done-runs`,
+       `analysis-compare-mapping` and `analysis-compare` are gone; `analysis-profile` has the sections `overview`,
+       `columns`, `relations` and `breakdown` and no `filters`/`search`.
+   - **Discrepancy analysis** shows *Summary*, *Attributes* and *Differences* (REC value discrepancies).
+     - *Summary*: chips for the discrepancies and their share of the fetched records, the result types (a click
+       analyses one; *All* returns) and the notes (*Preliminary*, *Sampled N%*, *Config changed*, *Source changed*,
+       *Counts clamped*, explained on hover) in place of banners and sentences; a 30-day trend of the discrepancies
+       and their rate (a click opens that run's analysis); then the **findings as cards**, the strongest one wider:
+       up to three drivers and two combinations, each with the share of the discrepancies against the share of the
+       normal records on one scale, its lift, and *Records*, which opens Data analysis on those discrepancies at
+       their records (*Back* returns to the same place). A click on a card opens its attribute. The columns not
+       related are named in one line.
+     - *Attributes*: one row per column by its best binning, strongest first, with its *Explained* bar (Theil's U)
+       and its over-represented bins; a click opens it in place: chips for its other binnings and the shares of its
+       largest 12 bins as a butterfly (normal records left, discrepancies right), each bin opening its discrepancies
+       or its fetched records. The columns not related are folded at the end.
+     - *Differences*: one row per field with the range, median and sum of the differences and a histogram.
+     - **Removed:** the story sentences, the Time bands heatmap, the Records tab of example records (and the queries
+       that read them), the Combinations and Not analysed tabs (now cards and a footnote), and **φK**: the report has no
+       `story`, `excerpts`, `heatmaps` or `phik`; `findings` carry `kind`, `column`, `what`, `phrase`, counts, `lift`
+       and `rate`; `unrelated` lists the columns not related; `magnitude` fields have `sum`.
+   - **Faster.** A spare analysis process is kept spawned and connected to the database, so a session or a
+     discrepancy analysis starts without the 1–2 s a new process needs (it is replaced after `reload-config`). A
+     random sample of a dataset larger than `initial_rows` no longer has the database sort the whole dataset first:
+     each record is kept with the probability that gives the sample's size, so the records stream at once (*Sample
+     …* reads a bigger one); a dataset that fits is read as it is, without any sort. Only when its count is not
+     known (a fetched dataset filtered in the database) is it still shuffled. The column profile computes less, the
+     charts of the cards are drawn without a chart library, and the analysis bundle is 20% smaller. On Dev a
+     discrepancy analysis of 6,000 records takes 0.6 s instead of 3–4 s.
+   - The menu of a run's discrepancies number lists *Discrepancy analysis* first.
+   - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.

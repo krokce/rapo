@@ -3,17 +3,17 @@
 </template>
 
 <script>
-// ECharts with only the charts the analysis page draws, registered once. It is imported by the analysis page
-// alone, which is its own lazily loaded chunk, so the other pages never load ECharts.
+// ECharts with only the charts the analysis pages draw (the run trend's bars and line), registered once. It is
+// imported by the analysis pages alone, their own lazily loaded chunk, so the other pages never load ECharts.
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { BarChart, HeatmapChart, LineChart } from "echarts/charts";
-import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
+import { BarChart, LineChart } from "echarts/charts";
+import { GridComponent, TooltipComponent } from "echarts/components";
 import VChart from "vue-echarts";
 import { Dark } from "quasar";
 import { chartTheme } from "../../utils/analysis";
 
-use([CanvasRenderer, BarChart, HeatmapChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent]);
+use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent]);
 
 export default {
   name: "EChart",

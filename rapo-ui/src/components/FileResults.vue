@@ -876,10 +876,6 @@ export default {
   text-decoration: underline;
 }
 .files-table td.name-cell { white-space: normal; }
-/* A chip whose value filters the page. */
-.chip-selected {
-  box-shadow: inset 0 0 0 2px var(--rapo-filter-border);
-}
 .lane-avatar__hover {
   display: none;
 }

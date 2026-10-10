@@ -4,7 +4,8 @@ Upgrades Rapo from v0.8.5 to v0.8.6. Commands run in the application folder.
 What the release contains is in the [change log](CHANGELOG.md).
 
 The release adds one table, `rapo_viewer_config` (the file viewer's ASN.1 grammars and the settings it opens each
-datasource's files with), and one Python package, `asn1tools` (installed by `./install.sh`).
+datasource's files with), and one Python package, `asn1tools` (installed by `./install.sh`). The package `phik` is no
+longer required; an existing `.venv` keeps it, which does no harm (`./install.sh --force` recreates it without).
 
 1. Wait until all your Rapo controls are completed or cancel them. Stop the web server.
     ```bash

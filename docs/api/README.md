@@ -753,18 +753,22 @@ A **dataset** names the number it stands for:
 | `result_a`  | The run's rows of `RAPO_RESA_<name>` (REC, without the `Match` rows) or `RAPO_REST_<name>` (other types). |
 | `result_b`  | The run's rows of `RAPO_RESB_<name>` (REC, without `Match`) or `RAPO_REST_<name>`.                   |
 
-A sample is held by an **analysis session**: a worker process on the server that keeps the dataset's cursor open,
-so that `analysis-extend` fetches the rows that follow. Sessions are local to the server that started them. One
-that gets no request for `[ANALYSIS] idle_minutes` is closed; any request to it then answers 404.
+A sample is held by an **analysis session**: a worker process on the server (kept spawned and connected ahead, so a
+session starts at once) that keeps the dataset's cursor open, so that `analysis-extend` fetches the rows that follow.
+Sessions are local to the server that started them. One that gets no request for `[ANALYSIS] idle_minutes` is
+closed; any request to it then answers 404.
 
-The session **state** is `{status, step, progress, rows, version, exhausted, cursor_open, limited, memory_mb,
-columns, sections, error}`:
+The session **state** is `{status, step, progress, rows, version, sampling, target, exhausted, extendable,
+cursor_open, limited, memory_mb, columns, sections, error}`:
 - `status`: `starting`, `fetching`, `profiling`, `ready`, `canceled`, `error` (nothing loaded), `lost` (worker
   gone), `expired`.
 - `progress`: `{done, total}` of the step, or null. `rows`: rows in the sample. `version` changes whenever the
   sample does; rows and sections are always of the current version.
-- `exhausted`: every row of the dataset is loaded. `cursor_open`: the sample can be extended. `limited`: `rows`
-  (`max_rows` reached) or `memory` (`max_memory_mb` reached), else null.
+- `sampling`: how the sample is drawn (see `analysis-start`): `all`, `first`, `sorted` or `bernoulli`; `target` the
+  size a Bernoulli sample is drawn for (its rows vary around it).
+- `exhausted`: every row of the dataset is loaded. `extendable`: `analysis-extend` can add rows. `cursor_open`: the
+  dataset's cursor is still open. `limited`: `rows` (`max_rows` reached) or `memory` (`max_memory_mb` reached), else
+  null.
 - `columns`: `[{name, kind, db_type}]` in the dataset's order, `kind` being `numeric`, `datetime` or `text`.
 - `sections`: the profile sections ready for this version.
 
@@ -790,12 +794,15 @@ and the search become literal predicates over the dataset's select, and `where` 
 columns. The statement is parsed by Oracle first, so a wrong filter answers 404 with Oracle's message. Starts a
 session and answers `{session_id, meta, state, options}`, `options` being the `[ANALYSIS]` limits in effect. `meta`
 also holds `sql`, the statement the sample is drawn with (formatted), and `pushdown`; with a database filter, a
-fetched dataset's `total` is null, as counting it could scan the whole source. With `random` the records are read
-in random order (`order by dbms_random.value` around the statement, so Oracle sorts the whole dataset before the
-first row), and the sample is uniform at any size, extensions included; `random=false` reads the first records as
-the database returns them. `meta.random` says which; `meta.sql` never has the random order. The first
-`initial_rows` are fetched at once, then the columns and the overview are profiled. 409 when all sessions are in use, 404 for an unknown
-dataset or a filter that does not parse, 503 while the server starts or stops.
+fetched dataset's `total` is null, as counting it could scan the whole source. With `random` the sample is drawn by
+the dataset's count (`meta.sampling`): `all`, the plain select, when the count is at most `initial_rows`; `bernoulli`
+for a larger count, each record kept with the probability `initial_rows / total` (a random value of an unmerged
+view), so the records stream without a sort and the sample is read whole; `sorted`, the records in random order
+(`order by dbms_random.value`, Oracle sorts the whole dataset before the first row), when the count is not known.
+`random=false` reads the first records as the database returns them (`first`). `meta.random` is true for `sorted`
+and `bernoulli`; `meta.sql` never has the sampling. The first `initial_rows` are fetched at once, then the columns
+and the overview are profiled. 409 when all sessions are in use, 404 for an unknown dataset or a filter that does
+not parse, 503 while the server starts or stops.
 
 #### `POST /api/analysis-start-file`
 `file_id`, `table`, `random` (default **false**), and the optional pushdown body of `analysis-start`. Starts a session
@@ -810,8 +817,9 @@ a readable file log, 404 for a file not in the file log.
 `session_id`. Answers the same as `analysis-start`, with the current state.
 
 #### `POST /api/analysis-extend`
-`session_id`, optional `rows` (default `extend_rows`). Fetches the next rows into the sample, up to `max_rows`.
-Answers `{state}`. 400 when the dataset has no more rows or its cursor was lost.
+`session_id`, optional `rows` (default `extend_rows`). Fetches the next rows into the sample, up to `max_rows`; a
+Bernoulli sample is read anew for `target + rows` records instead, and replaces the sample. Answers `{state}`. 400
+when the sample can not grow (`state.extendable` false: every row loaded, or the cursor lost).
 
 #### `POST /api/analysis-cancel`
 `session_id`. Cancels the step in progress; rows fetched so far are kept. Answers `{state}`.
@@ -824,14 +832,24 @@ Answers `{state}`. 400 when the dataset has no more rows or its cursor was lost.
 total, offset, rows}`: `total` rows match, and `rows` are lists of values in the order of `state.columns`.
 
 #### `GET /api/analysis-profile`
-`session_id`, `section`: `overview`, `columns`, `missing`, `duplicates`, `correlations` or `breakdown`, and optional
-`filters` and `search`, which make the section describe only the rows they leave. Answers `{ready, version, key,
-data}`. A section not computed yet answers `ready: false` and is computed; the state lists its `key` under
-`sections` once it is ready (the section name, or `<section>@<hash>` for filtered rows). `correlations` holds
-`pearson`, `spearman` and `cramers` (`{columns, matrix}`), the strongest `pairs` and `alerts`; it is measured on the
-first 200,000 rows (`sampled`). `breakdown` counts the values of `rapo_result_type`, `rapo_result_value` and
-`rapo_discrepancy_description` where the dataset has them. `columns` is one object per column (`count`, `missing`, `distinct`, `top` values, `stats`, `histogram`
-`{counts, edges}`, and per kind `smallest`/`largest`, `hours`/`weekdays`, text lengths), each with its `alerts`.
+`session_id`, `section`: `overview`, `columns`, `relations` or `breakdown`. Answers `{ready, version, key, data}`. A
+section not computed yet answers `ready: false` and is computed; the state lists it (`key`, the section's name)
+under `sections` once it is ready.
+- `columns`: one object per column: `count`, `missing`, `missing_pct`, `distinct`, `top` (the 8 most frequent
+  values), `other_count`, `stats` (numbers: `min`, `max`, `median`, `zeros`, `zeros_pct`, `integral`; date-times:
+  `min`, `max`, `date_only`; text: `blank`, `blank_pct`), `histogram` `{counts, edges}` (24 bins, numbers and
+  date-times whose values do not fit a few bars), `metadata` (a `rapo_` column), `unusable` (`empty`, `constant`,
+  `unique`: text 90% unique, or half unique with no value in 1% of the records, or whole numbers all different in 50
+  records or more), `visual` (`top`, `histogram` or null: how the profile shows it) and `group` (`category`,
+  `number`, `date` or `text`).
+- `overview`: `{rows, columns, duplicate_rows, duplicate_pct, missing_columns, unusable}` without the `rapo_`
+  columns; `missing_columns` the names 5% or more missing, `unusable` `[{name, reason, value}]`.
+- `relations`: `{pairs}`, at most 5 pairs of columns `{a, b, method, value}` from 0.4 on, each pair once by its
+  strongest measure: `pearson` and `spearman` over the numeric columns, `cramers` (Cramér's V) over the columns of 2
+  to 50 values; the `rapo_` columns are left out but `rapo_result_type`; measured on the first 200,000 rows.
+- `breakdown`: `{rows, types, fields, described, values}`: the counts of `rapo_result_type` (`[{value, count,
+  pct}]`), the fields `rapo_discrepancy_description` names (`[{field, count, pct}]` out of the `described` records),
+  and the `rapo_result_value` counts when there are several (the top 10).
 
 #### `GET /api/analysis-groups`
 `session_id`, `by` (a JSON list of `{column, bucket}`, `bucket` being `hour`, `day`, `month` or `year` for a
@@ -844,30 +862,6 @@ position, the end of a date bucket (exclusive).
 #### `POST /api/validate-analysis-where`
 `process_id`, `dataset`, JSON body `{where}`. Parses the dataset's select with that condition without running it,
 and answers like `validate-sql`.
-
-#### `GET /api/get-analysis-targets`
-`process_id`, `dataset`. Answers the datasets it is usually compared with, `[{key, label, process_id, dataset}]`:
-`source` (the other kind of the same side of the run: fetched for discrepancies and back; none for a REP),
-`previous` (the same dataset of the previous done run) and `other_side` (REC, and CMP fetched datasets).
-
-#### `GET /api/get-control-done-runs`
-`control_name`, `limit` (50, at most 500). Answers the latest done runs of a control, newest first, with their
-window and counts but without their logs, for picking one to compare with.
-
-#### `GET /api/analysis-compare-mapping`
-`session_id`, `other_id` (two sessions of this server). Answers `{pairs, unmatched_a, unmatched_b}`: the columns
-paired by name (case-insensitive; `rapo_process_id` and `rapo_discrepancy_id` left out) and, for the two sides of
-one reconciliation, by its correlation and discrepancy fields (`source` is `criteria` or `name`).
-
-#### `POST /api/analysis-compare`
-`session_id` (A), `other_id` (B), JSON body `{pairs: [{a, b}]}`. Compares the two samples column by column; no
-rows leave the workers. A numeric or date-time pair is binned on 20 common ranges, anything else by the 30 values
-most frequent in either sample, plus the missing and the other values. Answers `{rows_a, rows_b, version_a,
-version_b, columns}`, most divergent first, each `{a, b, kind, mode (bins or values), psi, level (stable, moderate,
-major, or unique for a key-like column, which is not ranked), missing_pct, distinct, stats {mean, median, min, max:
-[a, b]}, labels, shares_a, shares_b, lifts}`. `shares_*` are percentages of the rows per label, then missing, then
-other; each lift is `{index, label, missing, other, count_a, count_b, share_a, share_b, lift}`, lift being
-`share_a / share_b` (null when B has none).
 
 #### `POST /api/analysis-counterpart`
 `session_id` of a REC dataset, JSON body `{row}` (the row's values in the order of `state.columns`). Evaluates the
@@ -911,7 +905,7 @@ analysing its `a_` (or side-A output) columns and side `b` the others. A result 
 fetched column (same name, or the output column configuration names it); coalesced columns and `RAPO_*` metadata are
 not.
 
-Runs as a job in a process of its own, one at a time per server (others queued, `[ANALYSIS]
+Runs as a job in a process of its own (taken from the spare one, already connected), one at a time per server (others queued, `[ANALYSIS]
 discrepancy_timeout_minutes` at most). Answers the job, `{process_id, side, result_type, state, progress, error,
 queued, started, finished, has_report, stage, report}`, `state` being `queued`, `running`, `done` or `error`,
 `progress` `{step, done, total}`. A `running` job holds the preliminary `report` once the quick look is done. A stop,
@@ -931,10 +925,10 @@ The **report**:
   `stopped` / `refine_error` (see above).
 - `type_split`: REC `[{type, count}]` of the side's discrepancies, else null.
 - `attributes`: strongest first, one per binning of a column: `{id, column, source, kind, feature, feature_label,
-  ordered, score, phik, bins, special, under, bands}`. `feature` is `value`, `decile` (ranges by the fetched
+  ordered, score, bins, special, under, bands}`. `feature` is `value`, `decile` (ranges by the fetched
   deciles), `prefix` (first 3/5/6/8 digits or 2/4/6 characters of an identifier-like column), `length`, `hour`,
   `weekday` or `timeline` (20 equal periods). `score` is Theil's U of being a discrepancy given the bins (0..1,
-  the share of the uncertainty removed, less a small-sample bias), `phik` the phik correlation. Each bin is `{code,
+  the share of the uncertainty removed, less a small-sample bias). Each bin is `{code,
   label, disc, normal, disc_share, normal_share, lift, rate, z, flag, filter}`: `lift` = `disc_share /
   normal_share` (null with `only_disc` when no normal record has it), `rate` the share of the bin's records that are
   discrepancies, `z` a two-proportion z, `flag` `over` (at least 10 discrepancies and 1% of them, lift ≥ 2, z ≥ 4),
@@ -942,25 +936,20 @@ The **report**:
   taken over the records read, a block sample's as if 25 times fewer), and `filter` `{result, fetched}`: a condition selecting the bin's records, usable as
   `analysis-start`'s `where` on the discrepancy and the fetched dataset. `bands` merges adjacent `over` bins of an
   ordered feature (`02:00 – 04:59`).
-- `heatmaps`: per date column `{column, cells}`, each cell `{weekday (0 = Monday), hour, disc, normal, rate,
-  lift}`; from the quick look.
 - `combinations`: up to 8 pairs of bins of two attributes stronger together than alone (over-represented, and a
   discrepancy rate 1.5 times the better of the two bins'): `{id, attributes, parts, disc, normal, disc_share,
   normal_share, lift, rate, z, wracc, filter}`, each part `{attribute, what, label, phrase, codes, lift}` (the bin's
   lift alone). The strongest attribute of up to 6 columns takes part, each reduced to at most 5 groups of its bins
   (bands, a common prefix, the bins with the most discrepancies). Ranked by `wracc`, coverage × (rate − base rate).
-- `findings`: what the examples follow, `[{id, kind (driver|combination), attribute, label, codes, filter,
-  disc_share, normal_share}]`.
+- `findings`: what the page leads with: the leading bin (or band, or common prefix) of up to 3 drivers (attributes
+  of other columns with a score of 0.02 or more), then up to 2 combinations, `[{id, kind (driver, time for a date
+  column, combination), attribute, column, what, label, phrase, codes, filter, disc, normal, disc_share,
+  normal_share, lift, rate}]`, a combination also with its `parts`.
+- `unrelated`: the columns no binning of which tells the discrepancies apart (a best score under 0.005).
 - `magnitude`: REC with all types or `Discrepancy` only, else null: `{total, fields, cut}` from
   `RAPO_DISCREPANCY_DESCRIPTION` of the value discrepancies, per field `{field, records, share, distinct, values
-  (top 10 {value, count, share}), numeric, min, median, max, histogram}`; `cut` when more than 2,000 different
-  descriptions exist (the most frequent are read).
-- `excerpts`: per finding (up to 4) `{finding, label, columns, result, fetched}`: up to 10 discrepancies and 10
-  fetched records (of the quick look's sample) of its bins; from the quick look, rows as lists in `columns` order (`result_error`/`fetched_error` when one could not
-  be read).
-- `story`: `[{kind, text, attribute?, codes?, finding?}]`, the findings in sentences: `headline`, `types`,
-  `driver`, `time`, `combination`, `magnitude`, `unrelated`, `none`, `note`; a driver names its attribute `id`
-  and bin codes, a combination sentence its finding.
+  (top 10 {value, count, share}), numeric, min, median, max, sum, histogram}`; `cut` when more than 2,000 different
+  descriptions exist (the most frequent are read; `sum` is then null).
 
 #### `POST /api/stop-discrepancy-analysis`
 `process_id`, `side`, optional `result_type`. Stops the job: a queued one ends `error`, a refining one ends `done`

@@ -38,11 +38,11 @@ from ...core import views
 from ...core.control import Control, output_table_names
 from ...core.runner import runner
 from ...core.scheduler import scheduler, upcoming, next_fires
-from ...analysis import compare
 from ...analysis import datasets
 from ...analysis import explain
 from ...analysis.explain_job import explainer
 from ...analysis.sessions import sessions, SessionError
+from ...analysis.spare import spare
 from ...analysis.worker import EXCEL_MAX_ROWS
 from ...pdi import pdi, scanner, DatasourceError
 from ...pdi import files as ds_files
@@ -94,9 +94,11 @@ async def lifespan(app):
     scheduler.start()
     sessions.start()
     explainer.start()
+    spare.start()
     scanner.start()
     health.start()
     yield
+    await asyncio.to_thread(spare.stop)
     await asyncio.to_thread(health.stop)
     await asyncio.to_thread(explainer.stop)
     await asyncio.to_thread(scanner.stop)
@@ -297,6 +299,8 @@ def apply_config():
     scanner.poke()
     # New [HEALTH] options and grants on the DB views apply at once.
     health.reset()
+    # The spare analysis process read the old rapo.ini.
+    spare.reset()
     # A higher control_parallelism lets queued runs start at once.
     with runner.condition:
         runner.condition.notify_all()
@@ -1955,7 +1959,8 @@ def analysis_start(process_id: int, dataset: str, random: bool = True,
 
     The optional JSON body {filters, search, where} is applied by the
     database, so the sample holds only the matching records. The sample is
-    drawn at random unless `random` is false (the first records then).
+    drawn at random (`sessions.sampling`) unless `random` is false (the
+    first records then).
     """
     try:
         session = sessions.create(process_id, dataset, pushdown, random)
@@ -2033,18 +2038,14 @@ def analysis_rows(session_id: str,
 
 
 @api.get('/analysis-profile')
-def analysis_profile(session_id: str, section: str,
-                     filters: str | None = None, search: str | None = None):
+def analysis_profile(session_id: str, section: str):
     """Get a profile section of the sample, or start computing it.
 
-    With `filters` or `search` the section describes the rows they leave.
     Answers `ready: false` while it is computed; the session's state then
-    lists the answer's `key` under `sections` once it is ready.
+    lists the section under `sections` once it is ready.
     """
     session = analysis_session(session_id)
-    return analysis_request(session, 'profile', section=section,
-                            filters=parse_json('filters', filters),
-                            search=search)
+    return analysis_request(session, 'profile', section=section)
 
 
 @api.get('/analysis-groups')
@@ -2074,51 +2075,6 @@ def validate_analysis_where(process_id: int, dataset: str,
     The body is {where}. Answers like validate-sql.
     """
     return datasets.check_where(process_id, dataset, body.get('where'))
-
-
-@api.get('/get-analysis-targets')
-def get_analysis_targets(process_id: int, dataset: str):
-    """Get the datasets a run's dataset is usually compared with."""
-    try:
-        return datasets.targets(process_id, dataset)
-    except datasets.DatasetError as error:
-        raise fastapi.HTTPException(status_code=404, detail=str(error))
-
-
-@api.get('/get-control-done-runs')
-def get_control_done_runs(control_name: str,
-                          limit: int = fastapi.Query(50, ge=1, le=500)):
-    """Get the latest done runs of a control, without their logs."""
-    return datasets.control_runs(control_name, limit)
-
-
-@api.get('/analysis-compare-mapping')
-def analysis_compare_mapping(session_id: str, other_id: str):
-    """Get the column pairs a comparison of two sessions starts with."""
-    first = analysis_session(session_id)
-    second = analysis_session(other_id)
-    return compare.default_mapping(first.meta, first.state.get('columns') or [],
-                                   second.meta,
-                                   second.state.get('columns') or [])
-
-
-@api.post('/analysis-compare')
-def analysis_compare(session_id: str, other_id: str,
-                     body: dict = fastapi.Body(...)):
-    """Compare the samples of two sessions over mapped columns.
-
-    The body is {pairs: [{a, b}]}, a naming a column of the first session's
-    sample and b one of the second's.
-    """
-    first = analysis_session(session_id)
-    second = analysis_session(other_id)
-    try:
-        return compare.compare(first, second, body.get('pairs'))
-    except SessionError as error:
-        raise fastapi.HTTPException(status_code=error.status,
-                                    detail=str(error))
-    except ValueError as error:
-        raise fastapi.HTTPException(status_code=400, detail=str(error))
 
 
 @api.post('/analysis-counterpart')

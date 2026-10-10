@@ -858,10 +858,6 @@ export default {
 .file-name-cell .view-btn {
   margin: -4px 0;
 }
-/* A chip whose value filters the table, as on the Files page. */
-.chip-selected {
-  box-shadow: inset 0 0 0 2px var(--rapo-filter-border);
-}
 .name-filter {
   min-width: 200px;
 }

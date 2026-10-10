@@ -1,10 +1,10 @@
 <template>
   <div class="column no-wrap viewer">
     <div class="row items-center q-gutter-sm q-mb-sm toolbar">
-      <q-input v-model="searchText" outlined clearable class="search-input" placeholder="Search all columns" debounce="400">
-        <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
+      <q-input v-model="searchText" dense outlined clearable class="search-input" placeholder="Search all columns" debounce="400">
+        <template #prepend><q-icon name="fas fa-search" size="13px" /></template>
       </q-input>
-      <q-btn outline dense color="blue-grey-7" icon="fas fa-columns" no-caps :label="columnsLabel" class="q-px-sm">
+      <q-btn outline dense no-caps color="primary" icon="fas fa-columns" padding="4px 10px" :label="columnsLabel">
         <q-menu anchor="bottom left" self="top left" class="columns-menu" @hide="columnFind = ''">
           <q-list dense style="min-width: 260px">
             <q-item>
@@ -15,7 +15,6 @@
                 <div class="row q-gutter-xs">
                   <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Show found' : 'Show all'" @click="setColumnsHidden(false)" />
                   <q-btn flat dense size="sm" color="primary" no-caps :label="columnFind ? 'Hide found' : 'Hide all'" @click="setColumnsHidden(true)" />
-                  <q-btn flat dense size="sm" color="primary" no-caps label="Reset order" @click="resetColumns" />
                   <q-btn v-if="keyColumnNames.length" flat dense size="sm" color="primary" no-caps label="Key fields" @click="showKeyColumns">
                     <q-tooltip max-width="320px">Show only the fields of the control's match and mismatch criteria, its date and key fields and the RAPO_ fields</q-tooltip>
                   </q-btn>
@@ -26,24 +25,11 @@
             <q-item v-if="!pickerColumns.length" dense>
               <q-item-section class="text-grey-7">No column matches</q-item-section>
             </q-item>
-            <q-item v-for="{ column, position } in pickerColumns" :key="column.name" dense>
+            <q-item v-for="column in pickerColumns" :key="column.name" dense tag="label">
               <q-item-section side>
                 <q-checkbox dense size="sm" :model-value="!hidden.includes(column.name)" @update:model-value="toggleColumn(column.name)" />
               </q-item-section>
               <q-item-section class="text-no-wrap">{{ column.name.toUpperCase() }}</q-item-section>
-              <q-item-section side>
-                <div class="row no-wrap">
-                  <q-btn aria-label="Move up" flat dense round size="xs" icon="fas fa-arrow-up" :disable="Boolean(columnFind) || position === 0" @click="moveColumn(position, -1)" />
-                  <q-btn aria-label="Move down"
-                    flat
-                    dense
-                    round
-                    size="xs"
-                    icon="fas fa-arrow-down"
-                    :disable="Boolean(columnFind) || position === orderedColumns.length - 1"
-                    @click="moveColumn(position, 1)" />
-                </div>
-              </q-item-section>
             </q-item>
           </q-list>
         </q-menu>
@@ -53,43 +39,25 @@
         :unelevated="Boolean(view.group)"
         dense
         no-caps
-        class="q-px-sm"
-        color="blue-grey-7"
+        color="primary"
         icon="fas fa-layer-group"
+        padding="4px 10px"
         label="Group by"
         :aria-pressed="Boolean(view.group)"
         @click="toggleGroup" />
-      <q-btn-dropdown v-if="!view.group" outline dense color="blue-grey-7" icon="fas fa-file-export" no-caps label="Export" class="q-px-sm" :loading="exporting" :disable="!total || !shownColumns.length">
-        <q-list dense>
-          <q-item v-close-popup clickable @click="exportRows('xlsx')">
-            <q-item-section avatar><q-icon name="fas fa-file-excel" color="green-8" /></q-item-section>
-            <q-item-section>Excel (.xlsx)</q-item-section>
-          </q-item>
-          <q-item v-close-popup clickable @click="exportRows('csv')">
-            <q-item-section avatar><q-icon name="fas fa-file-csv" color="blue-grey-7" /></q-item-section>
-            <q-item-section>CSV</q-item-section>
-          </q-item>
-        </q-list>
-      </q-btn-dropdown>
-      <q-chip
-        v-for="(filter, index) in view.filters"
-        :key="index"
-        dense
-        removable
-        color="teal-1"
-        text-color="teal-10"
-        icon="fas fa-filter"
-        class="filter-chip"
-        :title="describeFilter(filter)"
-        @remove="removeFilter(index)">
-        <span class="ellipsis">{{ describeFilter(filter) }}</span>
-      </q-chip>
-      <q-btn v-if="view.filters.length || view.search" flat dense no-caps color="grey-7" icon="fas fa-times-circle" label="Clear" @click="clearAll" />
-      <q-btn v-if="filtered" flat dense no-caps color="primary" icon="fas fa-chart-bar" label="Profile these rows" @click="$emit('profile-rows')">
-        <q-tooltip>Show the profile tabs for the rows the filters and the search leave</q-tooltip>
-      </q-btn>
-      <q-btn v-if="filtered" flat dense no-caps color="indigo-8" icon="fas fa-database" label="Load from database" :disable="!pushable" @click="$emit('pushdown')">
-        <q-tooltip>{{ pushable ? "Fetch a new sample of only the matching records, filtered by the database" : "The duplicate rows filter applies to the sample only" }}</q-tooltip>
+      <q-btn v-if="!view.group" outline dense no-caps color="primary" icon="fas fa-file-export" padding="4px 10px" label="Export" :loading="exporting" :disable="!total || !shownColumns.length">
+        <q-menu anchor="bottom left" self="top left">
+          <q-list dense>
+            <q-item v-close-popup clickable @click="exportRows('xlsx')">
+              <q-item-section avatar><q-icon name="fas fa-file-excel" color="green-8" /></q-item-section>
+              <q-item-section>Excel (.xlsx)</q-item-section>
+            </q-item>
+            <q-item v-close-popup clickable @click="exportRows('csv')">
+              <q-item-section avatar><q-icon name="fas fa-file-csv" color="blue-grey-7" /></q-item-section>
+              <q-item-section>CSV</q-item-section>
+            </q-item>
+          </q-list>
+        </q-menu>
       </q-btn>
       <q-space />
       <div class="text-blue-grey-8 text-no-wrap">
@@ -98,6 +66,14 @@
           <span v-if="filtered" class="text-grey-7">of {{ formatNumber(sampleRows) }} in the sample</span>
         </template>
       </div>
+    </div>
+    <div v-if="filtered" class="row items-center q-gutter-sm q-mb-sm filters-row">
+      <filter-chips :filters="activeFilters" @clear="clearAll" />
+      <q-btn outline dense no-caps color="primary" icon="fas fa-database" padding="2px 10px" label="Filter in the database" :disable="!pushable" @click="$emit('pushdown')">
+        <q-tooltip anchor="top middle" self="bottom middle">
+          {{ pushable ? "Load a new sample of only the matching records, filtered by the database" : "The duplicate rows filter applies to the sample only" }}
+        </q-tooltip>
+      </q-btn>
     </div>
 
     <div v-if="!view.group && columns.length && !shownColumns.length" class="text-grey-7 q-pa-sm">
@@ -226,6 +202,7 @@
 </template>
 
 <script>
+import FilterChips from "../FilterChips.vue";
 import SkeletonRows from "../SkeletonRows.vue";
 import GroupByPanel from "./GroupByPanel.vue";
 import { api, notifyError } from "../../api";
@@ -267,8 +244,8 @@ const OPERATORS = {
 // a million rows scrolls like one of a hundred. `view` is the page's {filters, search, sort}, edited in place.
 export default {
   name: "DataViewer",
-  components: { GroupByPanel, SkeletonRows },
-  emits: ["profile-rows", "pushdown", "row"],
+  components: { FilterChips, GroupByPanel, SkeletonRows },
+  emits: ["pushdown", "row"],
   props: {
     sessionId: { type: String, required: true },
     columns: { type: Array, required: true },
@@ -289,8 +266,9 @@ export default {
       pages: {},
       token: 0,
       widths: {},
-      order: [],
       hidden: [],
+      // The order a file viewer's records pane keeps under the same key; kept as it is when saving.
+      savedOrder: [],
       // The Columns menu's search: it narrows the list, and Show/Hide act on the found columns only.
       columnFind: "",
       filterTarget: false,
@@ -327,27 +305,30 @@ export default {
       (this.profiles || []).forEach((profile) => (map[profile.name] = profile));
       return map;
     },
-    // The columns in the chosen order, each with its position in the rows the server sends.
+    // The columns in the dataset's order, each with its position in the rows the server sends.
     orderedColumns() {
-      const positions = {};
-      this.columns.forEach((column, position) => (positions[column.name] = position));
-      const names = this.order.filter((name) => name in positions);
-      this.columns.forEach((column) => !names.includes(column.name) && names.push(column.name));
-      return names.map((name) => {
-        const column = this.columns[positions[name]];
-        const profile = this.profileByName[name];
+      return this.columns.map((column, position) => {
+        const profile = this.profileByName[column.name];
         return {
           ...column,
-          position: positions[name],
+          position,
           dateOnly: Boolean(profile && profile.stats && profile.stats.date_only),
-          width: this.widths[name] || this.defaultWidth(column),
+          width: this.widths[column.name] || this.defaultWidth(column),
         };
       });
     },
-    // The Columns menu's rows, each with its position in the full order (the move buttons act on that).
+    // The Columns menu's rows.
     pickerColumns() {
       const find = (this.columnFind || "").toLowerCase();
-      return this.orderedColumns.map((column, position) => ({ column, position })).filter(({ column }) => !find || column.name.toLowerCase().includes(find));
+      return this.orderedColumns.filter((column) => !find || column.name.toLowerCase().includes(find));
+    },
+    // The filters and the search, as the shared filter chips show them.
+    activeFilters() {
+      const filters = this.state.filters.map((filter, index) => ({ key: `f${index}`, label: describeFilter(filter), clear: () => this.removeFilter(index) }));
+      if (this.state.search) {
+        filters.push({ key: "search", label: `Search: "${this.state.search}"`, clear: () => (this.state.search = "") });
+      }
+      return filters;
     },
     // The key fields among the columns: the ones the criteria name, and Rapo's own RAPO_ columns.
     keyColumnNames() {
@@ -602,7 +583,7 @@ export default {
       this.state.search = "";
     },
     loadPreferences() {
-      this.order = [];
+      this.savedOrder = [];
       this.hidden = [];
       if (!this.storageKey) {
         return;
@@ -610,7 +591,7 @@ export default {
       try {
         const saved = JSON.parse(localStorage.getItem(this.storageKey) || "null");
         if (saved) {
-          this.order = Array.isArray(saved.order) ? saved.order : [];
+          this.savedOrder = Array.isArray(saved.order) ? saved.order : [];
           this.hidden = Array.isArray(saved.hidden) ? saved.hidden : [];
         }
       } catch (error) {
@@ -622,7 +603,7 @@ export default {
         return;
       }
       try {
-        localStorage.setItem(this.storageKey, JSON.stringify({ order: this.order, hidden: this.hidden }));
+        localStorage.setItem(this.storageKey, JSON.stringify({ order: this.savedOrder, hidden: this.hidden }));
       } catch (error) {
         // Not remembered, which is all a failure costs.
       }
@@ -631,29 +612,17 @@ export default {
       this.hidden = this.hidden.includes(name) ? this.hidden.filter((item) => item !== name) : this.hidden.concat([name]);
       this.savePreferences();
     },
-    moveColumn(position, step) {
-      const names = this.orderedColumns.map((column) => column.name);
-      const [name] = names.splice(position, 1);
-      names.splice(position + step, 0, name);
-      this.order = names;
-      this.savePreferences();
-    },
     // Shows or hides every column, or only the found ones while the menu's search is set.
     setColumnsHidden(hide) {
-      const names = this.pickerColumns.map(({ column }) => column.name);
+      const names = this.pickerColumns.map((column) => column.name);
       const others = this.hidden.filter((name) => !names.includes(name));
       this.hidden = hide ? others.concat(names) : others;
       this.savePreferences();
     },
-    // Shows the key fields only, in their current order.
+    // Shows the key fields only.
     showKeyColumns() {
       const keys = this.keyColumnNames;
       this.hidden = this.columns.map((column) => column.name).filter((name) => !keys.includes(name));
-      this.savePreferences();
-    },
-    resetColumns() {
-      this.order = [];
-      this.hidden = [];
       this.savePreferences();
     },
     // Downloads the rows as viewed: filters, search, sort, and the shown columns in their order.
@@ -696,18 +665,12 @@ export default {
   flex: 0 0 auto;
 }
 
-/* As tall as the search box beside them, like the buttons of the other pages' filter rows. */
-.toolbar > .q-btn,
-.toolbar > .q-btn-dropdown {
-  min-height: 56px;
-}
-
 .search-input {
   width: 260px;
 }
 
-.filter-chip {
-  max-width: 320px;
+.filters-row {
+  flex: 0 0 auto;
 }
 
 .viewer-table :deep(table) {

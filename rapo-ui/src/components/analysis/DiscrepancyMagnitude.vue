@@ -1,99 +1,78 @@
 <template>
   <div>
-    <div class="text-caption text-grey-7 q-mb-sm">
-      How the {{ formatNumber(magnitude.total) }} value discrepancies (result type Discrepancy: a counterpart found, with different values) differ, by
-      field, as the engine wrote them in RAPO_DISCREPANCY_DESCRIPTION: the difference, or the percentage for a percentage rule.
-      <span v-if="magnitude.cut">Only the most frequent 2,000 descriptions are read.</span>
-    </div>
-    <div class="row q-col-gutter-md">
-      <div v-for="field in magnitude.fields" :key="field.field" class="col-12 col-lg-6">
-        <q-card flat bordered class="full-height">
-          <q-card-section class="row items-center no-wrap q-py-sm header">
-            <div class="text-weight-bold text-blue-grey-10">{{ field.field }}</div>
-            <div class="text-caption text-grey-7 q-ml-sm">
-              differs in {{ formatNumber(field.records) }} ({{ formatPct(field.share * 100) }}) · {{ formatNumber(field.distinct) }} different values
-            </div>
-          </q-card-section>
-          <q-separator />
-          <q-card-section class="row q-col-gutter-md q-py-sm">
-            <div class="col-12 col-md-5">
-              <table class="stat-table">
-                <tbody>
-                  <tr v-if="field.numeric">
-                    <td class="text-grey-7">Smallest</td>
-                    <td class="text-right number-cell">{{ field.min }}</td>
-                  </tr>
-                  <tr v-if="field.numeric">
-                    <td class="text-grey-7">Median</td>
-                    <td class="text-right number-cell">{{ field.median }}</td>
-                  </tr>
-                  <tr v-if="field.numeric">
-                    <td class="text-grey-7">Largest</td>
-                    <td class="text-right number-cell">{{ field.max }}</td>
-                  </tr>
-                  <tr v-for="value in field.values.slice(0, field.numeric ? 5 : 8)" :key="value.value">
-                    <td class="ellipsis value-cell number-cell" :title="value.value">{{ value.value }}</td>
-                    <td class="text-right number-cell">{{ formatNumber(value.count) }} <span class="text-grey-7">{{ formatPct(value.share * 100) }}</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-if="field.numeric && field.histogram && field.histogram.length > 1" class="col-12 col-md-7">
-              <e-chart :option="histogram(field)" :height="170" />
-            </div>
-          </q-card-section>
-        </q-card>
+    <div v-for="field in magnitude.fields" :key="field.field" class="field-row row items-center q-col-gutter-lg">
+      <div class="col-12 col-md-5">
+        <div class="row items-center no-wrap">
+          <q-avatar icon="fas fa-not-equal" color="orange-8" text-color="white" size="22px" font-size="11px" class="q-mr-sm" />
+          <span class="text-weight-bold text-blue-grey-10">{{ field.field }}</span>
+          <span class="text-grey-7 q-ml-sm">differs in {{ formatNumber(field.records) }} ({{ formatPct(field.share * 100) }})</span>
+        </div>
+        <div v-if="field.numeric" class="text-caption text-grey-8 q-mt-xs facts">
+          <span title="The smallest and the largest difference">{{ formatStat(field.min) }} … {{ formatStat(field.max) }}</span>
+          <span title="Half of the differences are smaller">median {{ formatStat(field.median) }}</span>
+          <span v-if="field.sum !== null && field.sum !== undefined" title="The differences added up">sum {{ formatStat(field.sum) }}</span>
+        </div>
+        <div v-else class="text-caption text-grey-7 q-mt-xs">{{ formatNumber(field.distinct) }} different values</div>
+      </div>
+      <div class="col-12 col-md-7">
+        <mini-histogram
+          v-if="field.numeric && field.histogram && field.histogram.length > 1"
+          :bars="bars(field)"
+          :start="formatStat(field.min)"
+          :end="formatStat(field.max)"
+          :clickable="false"
+          :height="44"
+          color="var(--rapo-type-discrepancy)" />
+        <mini-bars v-else :items="values(field)" :clickable="false" />
       </div>
     </div>
+    <div v-if="magnitude.cut" class="text-caption text-grey-7 q-mt-sm">Only the 2,000 most frequent descriptions are read, so the sums are left out.</div>
   </div>
 </template>
 
 <script>
-import EChart from "./EChart.vue";
+import MiniBars from "./MiniBars.vue";
+import MiniHistogram from "./MiniHistogram.vue";
 import { formatNumber } from "../../utils/format";
-import { baseOption, formatPct, formatStat, valueAxis } from "../../utils/analysis";
+import { formatPct, formatStat } from "../../utils/analysis";
 
-// The differences of a reconciliation's value discrepancies by field: their spread and most common values.
+// How a reconciliation's value discrepancies differ, by field, as the engine wrote them in RAPO_DISCREPANCY_DESCRIPTION:
+// the spread of the differences (or the percentage of a percentage rule), or their most common values.
 export default {
   name: "DiscrepancyMagnitude",
-  components: { EChart },
+  components: { MiniBars, MiniHistogram },
   props: {
     magnitude: { type: Object, required: true },
   },
   methods: {
     formatNumber,
     formatPct,
-    histogram(field) {
-      const labels = field.histogram.map((item) => (item.low === item.high ? formatStat(item.low) : `${formatStat(item.low)} – ${formatStat(item.high)}`));
-      return baseOption({
-        grid: { left: 8, right: 8, top: 8, bottom: 4 },
-        tooltip: { trigger: "axis", formatter: (items) => `${items[0].name}<br/><b>${formatNumber(items[0].value)}</b> records` },
-        xAxis: { type: "category", data: labels, axisLabel: { fontSize: 10, hideOverlap: true } },
-        yAxis: valueAxis(),
-        series: [{ type: "bar", data: field.histogram.map((item) => item.count), itemStyle: { color: "#fb8c00" }, barCategoryGap: "8%" }],
+    formatStat,
+    bars(field) {
+      return field.histogram.map((item) => {
+        const range = item.low === item.high ? formatStat(item.low) : `${formatStat(item.low)} – ${formatStat(item.high)}`;
+        return { count: item.count, title: `${range}: ${formatNumber(item.count)} ${item.count === 1 ? "record" : "records"}` };
       });
+    },
+    values(field) {
+      return field.values.slice(0, 6).map((item, index) => ({ key: `v${index}`, label: item.value, count: item.count, pct: item.share * 100 }));
     },
   },
 };
 </script>
 
 <style scoped>
-.header {
-  background: var(--rapo-surface-alt);
+.field-row {
+  padding: 4px 0 12px;
 }
 
-.stat-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
+.field-row + .field-row {
+  border-top: 1px solid var(--rapo-grid);
+  padding-top: 12px;
 }
 
-.stat-table td {
-  padding: 3px 4px;
-  border-bottom: 1px solid var(--rapo-grid);
-}
-
-.value-cell {
-  max-width: 160px;
+.facts {
+  display: flex;
+  gap: 12px;
 }
 </style>

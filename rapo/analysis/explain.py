@@ -14,12 +14,12 @@ Quick look, on a sample of `quick_rows` records of each dataset (`_quick`):
 3. Count each feature's bins in both datasets (`_count`): one scan each, the
    features unpivoted into (feature, code, count) rows.
 4. Score (`_score`): per feature the uncertainty coefficient (mutual
-   information over the entropy of the discrepancy flag) and phik, per bin
-   the lift, coverage and a two-proportion z.
+   information over the entropy of the discrepancy flag), per bin the lift,
+   coverage and a two-proportion z.
 5. Combine the strongest attributes in pairs (`_pair_features`,
-   `_score_pairs`), read the differences of REC value discrepancies
-   (`_magnitude`), take example records (`_excerpts`), and tell the story
-   (`_story`). The report is published as preliminary.
+   `_score_pairs`), pick the findings the page leads with (`_findings`) and
+   read the differences of REC value discrepancies (`_magnitude`). The
+   report is published as preliminary.
 
 Refine: the same bins and pairs counted together in one scan of each dataset
 (`_refine`), whole up to `exact_rows` records, else on a sample of about that
@@ -78,9 +78,7 @@ COMBINED = 6               # attributes combined in pairs
 GROUPS = 5                 # groups of an attribute in a combination
 COMBINATIONS = 8
 INTERACTION = 1.5          # a pair's rate over the better of its parts
-FINDINGS = 5
-EXCERPT_ROWS = 10
-EXCERPT_FINDINGS = 4
+FINDING_COMBINATIONS = 2
 DESCRIPTIONS = 2000
 DRIFT = 0.01
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
@@ -189,9 +187,8 @@ def _quick(source, quick_rows, step):
     else:
         report['combinations'] = []
     report['findings'] = _findings(report)
+    report['unrelated'] = _unrelated(report)
     report['magnitude'] = _magnitude(source)
-    report['excerpts'] = _excerpts(source, report, fetched['sql'])
-    report['story'] = _story(report)
     report['_features'] = features
     report['_pairs'] = pairs
     return report
@@ -236,21 +233,18 @@ def _refine(source, quick, exact_rows, parallel, step):
                  'weights': [_weight(found), _weight(fetched)]})
     report = _score(meta, features, fetched_counts, found_counts)
     report['type_split'] = source['type_split']
-    report['heatmaps'] = quick['heatmaps']
     report['combinations'] = (_score_pairs(pairs, report, fetched_counts[0],
                                            found_counts[0]) if pairs else [])
     report['findings'] = _findings(report)
+    report['unrelated'] = _unrelated(report)
     report['magnitude'] = quick['magnitude']
-    report['excerpts'] = quick['excerpts']
-    report['story'] = _story(report)
     step('Done', STEPS, STEPS)
     return report
 
 
 def _refined_features(features, quick):
-    """Get the features refine counts: not the weekday × hour heatmaps (kept
-    from the quick look), and of a column's prefixes the best scored one and
-    the next shorter one.
+    """Get the features refine counts: of a column's prefixes the best
+    scored one and the next shorter one, and every other feature.
     """
     scores = {item['id']: item['score'] for item in quick['attributes']}
     kept = set()
@@ -265,8 +259,7 @@ def _refined_features(features, quick):
         kept.update(feature['id'] for feature in prefixes[max(index - 1, 0):
                                                           index + 1])
     return [feature for feature in features
-            if not feature.get('heatmap')
-            and (feature['kind'] != 'prefix' or feature['id'] in kept)]
+            if feature['kind'] != 'prefix' or feature['id'] in kept]
 
 
 def _source(process_id, side, result_type):
@@ -720,9 +713,6 @@ def _date_features(column, facts):
         _feature(column, 'weekday', 'weekday', 'Weekday',
                  lambda name: f"to_char(trunc({name}) - trunc({name}, 'IW'))",
                  ordered=True),
-        _feature(column, 'weekhour', 'weekhour', 'Weekday and hour',
-                 lambda name: f"to_char(trunc({name}) - trunc({name}, 'IW'))"
-                 f" || to_char({name}, 'HH24')", heatmap=True),
     ]
     low, high = facts.get('mn'), facts.get('mx')
     if low and high and high > low:
@@ -821,16 +811,13 @@ def _score(meta, features, fetched, found):
     meta['sampled'] = (meta.get('sample_method') != 'none'
                        or meta.get('result_sample_method') != 'none')
     meta['clamped'] = []
-    report = {'meta': meta, 'attributes': [], 'heatmaps': []}
+    report = {'meta': meta, 'attributes': []}
     if not features or found_total == 0:
         return report
     for feature in features:
         bins = _bins(feature, fetched_counts[feature['id']],
                      found_counts[feature['id']], found_total, normal_total,
                      meta)
-        if feature.get('heatmap'):
-            report['heatmaps'].append(_heatmap(feature, bins))
-            continue
         disc = np.array([item['disc'] for item in bins], dtype=float)
         norm = np.array([item['normal'] for item in bins], dtype=float)
         attribute = {
@@ -842,7 +829,6 @@ def _score(meta, features, fetched, found):
             'feature_label': feature['label'],
             'ordered': feature['ordered'],
             'score': _uncertainty(disc, norm),
-            'phik': _phik(disc, norm),
             'bins': bins,
         }
         attribute['special'] = [item['code'] for item in bins
@@ -966,21 +952,6 @@ def _uncertainty(disc, norm):
     return round(max(information / entropy, 0.0), 4)
 
 
-def _phik(disc, norm):
-    """Get phik of the flag and a feature from their 2×K counts."""
-    keep = (disc + norm) > 0
-    if keep.sum() < 2 or disc.sum() == 0 or norm.sum() == 0:
-        return None
-    try:
-        from phik.phik import phik_from_hist2d
-        value = phik_from_hist2d(np.vstack([disc[keep], norm[keep]]))
-    except Exception:
-        return None
-    if value is None or not math.isfinite(value):
-        return None
-    return round(float(value), 4)
-
-
 def _bands(attribute):
     """Get the runs of adjacent over-represented bins of an ordered feature."""
     if not attribute['ordered'] or not attribute['special']:
@@ -1017,19 +988,6 @@ def _band_label(first, last):
     start = first['label'].split(' – ')[0]
     end = last['label'].split(' – ')[-1]
     return f'{start} – {end}'
-
-
-def _heatmap(feature, bins):
-    """Get the weekday × hour discrepancy rates of a date column."""
-    cells = []
-    for item in bins:
-        code = item['code']
-        if code is None or len(code) != 3:
-            continue
-        cells.append({'weekday': int(code[0]), 'hour': int(code[1:]),
-                      'disc': item['disc'], 'normal': item['normal'],
-                      'rate': item['rate'], 'lift': item['lift']})
-    return {'column': feature['column'].upper(), 'cells': cells}
 
 
 def _order(feature, item):
@@ -1190,104 +1148,6 @@ def _pct(value):
     return f'{value:.2f}%'
 
 
-def _times(lift):
-    if lift is None:
-        return 'only among the discrepancies'
-    if lift >= 10:
-        return f'{lift:.0f}× as often'
-    return f'{lift:.1f}× as often'
-
-
-def _story(report):
-    """Tell the findings as sentences, each pointing at its attribute.
-
-    Returns
-    -------
-    story : list of dict
-        {kind, text, attribute?, codes?, finding?}: `headline`, `types`,
-        `driver`, `time`, `combination`, `magnitude`,
-        `unrelated`, `none`, `note`.
-    """
-    meta = report['meta']
-    story = []
-    found, normal = meta.get('discrepancies', 0), meta.get('normal', 0)
-    fetched = meta.get('fetched_total', 0)
-    side = f" on side {meta['side']}" if meta['control_type'] != 'ANL' else ''
-    kind = f" {meta['result_type']}" if meta.get('result_type') else ''
-    rate = found / fetched if fetched else None
-    story.append({'kind': 'headline', 'text': (
-        f'{found:,}{kind} discrepancies{side} among {fetched:,} fetched '
-        f'records ({_pct(rate)}); they are contrasted with the {normal:,} '
-        'normal records.')})
-    split = report.get('type_split') or []
-    if len(split) > 1 and not meta.get('result_type'):
-        total = sum(item['count'] for item in split)
-        parts = ', '.join(f"{_pct(item['count'] / total)} {item['type']}"
-                          for item in split)
-        story.append({'kind': 'types', 'text': f'By result type: {parts}.'})
-    if meta.get('stage') == 'quick':
-        how = ('the first records the datasource returned, not a random '
-               'sample' if meta.get('sample_method') == 'first'
-               else 'random blocks of the table' if meta.get(
-                   'sample_method') == 'block' else 'all records')
-        story.append({'kind': 'note', 'text': (
-            f"Preliminary: {meta.get('sample_rows', 0):,} fetched records "
-            f'were read ({how}) and scaled to the run\'s totals.')})
-    elif meta.get('sample'):
-        story.append({'kind': 'note', 'text': (
-            f"The fetched records were counted on a {_pct(meta['sample'])} "
-            'random sample and scaled up.')})
-    if found == 0:
-        story.append({'kind': 'none', 'text': 'There are no discrepancies '
-                      'to explain.'})
-        return story
-    if normal == 0:
-        story.append({'kind': 'none', 'text': (
-            'Every fetched record is a discrepancy, so there are no normal '
-            'records to contrast them with.')})
-        return story
-
-    drivers = _drivers(report)
-    for rank, attribute in enumerate(drivers):
-        story.append(_driver_sentence(attribute, rank))
-    if not drivers:
-        story.append({'kind': 'none', 'text': (
-            'No attribute sets the discrepancies apart: in every one of them '
-            'they are spread like the normal records. The cause is likely '
-            'outside these attributes, e.g. in the other side, the matching '
-            'rules or the timing of the data load.')})
-    for item in (report.get('combinations') or [])[:2]:
-        story.append(_combination_sentence(item))
-    if report.get('magnitude'):
-        story.extend(_magnitude_sentences(report['magnitude']))
-    best = {}
-    for attribute in report['attributes']:
-        best.setdefault(attribute['column'], attribute['score'])
-    unrelated = sorted(column for column, score in best.items()
-                       if score < UNRELATED)
-    if unrelated and drivers:
-        shown = ', '.join(unrelated[:8])
-        more = f' and {len(unrelated) - 8} more' if len(unrelated) > 8 else ''
-        story.append({'kind': 'unrelated', 'text': (
-            f'Not related to the discrepancies: {shown}{more}.')})
-    if meta.get('stale'):
-        story.append({'kind': 'note', 'text': (
-            'The control was changed after this run; the fetched records are '
-            'selected with its current configuration.')})
-    if meta.get('drift'):
-        story.append({'kind': 'note', 'text': (
-            f"The fetched records counted now ({meta['fetched_total']:,}) "
-            f"differ from what the run fetched ({meta['fetched_logged']:,}): "
-            'the source data changed since.')})
-    if meta.get('clamped'):
-        story.append({'kind': 'note', 'text': (
-            'Some bins hold more discrepancies than fetched records ('
-            + ', '.join(meta['clamped'][:5]) + '), e.g. a key shared by '
-            'several records, or source records changed since the run; '
-            'their normal count is taken as 0.')})
-    return story
-
-
 def _drivers(report):
     """Get the attributes the story names, a column at most once."""
     drivers = []
@@ -1348,25 +1208,6 @@ def _prefix_group(attribute):
         'disc_share': sum(item['disc_share'] for item in bins),
         'normal_share': sum(item['normal_share'] for item in bins),
     }]
-
-
-def _driver_sentence(attribute, rank):
-    what = _what(attribute)
-    groups = _leading(attribute)
-    parts = []
-    for group in groups:
-        lift = (group['disc_share'] / group['normal_share']
-                if group['normal_share'] else None)
-        parts.append(f"{group['label']} holds {_pct(group['disc_share'])} of "
-                     f"the discrepancies against {_pct(group['normal_share'])}"
-                     f' of the normal records ({_times(lift)})')
-    lead = ('The strongest driver is' if rank == 0
-            else 'Next comes' if rank == 1 else 'Also')
-    text = f'{lead} {what}: ' + '; '.join(parts) + '.'
-    codes = [code for group in groups
-             for code in (group.get('codes') or [group['code']])]
-    return {'kind': 'time' if attribute['kind'] == DATETIME else 'driver',
-            'text': text, 'attribute': attribute['id'], 'codes': codes}
 
 
 def _what(attribute):
@@ -1585,44 +1426,59 @@ def _lift(group, found_total, normal_total):
     return disc_share / normal_share if normal_share else None
 
 
-def _combination_sentence(item):
-    first, second = item['parts']
-    lifts = ', '.join('only there' if part['lift'] is None
-                      else f"{part['lift']:.1f}×" for part in item['parts'])
-    lift = item['lift']
-    return {'kind': 'combination', 'finding': item['id'], 'text': (
-        f"Together, {first['phrase']} and {second['phrase']} hold {_pct(item['disc_share'])} of the "
-        f"discrepancies against {_pct(item['normal_share'])} of the normal "
-        f'records ({_times(lift)}), more than either alone ({lifts}).')}
-
-
 def _findings(report):
-    """Get the findings the examples follow: the leading group of each
+    """Get the findings the page leads with: the leading group of each
     driver, then the strongest combinations.
+
+    Each is {id, kind (`driver`, `time` or `combination`), attribute, column,
+    what, label, phrase, codes, filter, disc, normal, disc_share,
+    normal_share, lift, rate}, a combination also with its two `parts`.
     """
+    meta = report['meta']
+    found_total, normal_total = meta['discrepancies'], meta['normal']
     findings = []
     for attribute in _drivers(report):
         group = _leading(attribute)[0]
         codes = group.get('codes') or [group['code']]
         findings.append({
-            'id': f'd{len(findings)}', 'kind': 'driver',
-            'attribute': attribute['id'],
-            'label': _phrase(attribute, group['label']),
+            'id': f'd{len(findings)}',
+            'kind': 'time' if attribute['kind'] == DATETIME else 'driver',
+            'attribute': attribute['id'], 'column': attribute['column'],
+            'what': _what(attribute), 'label': group['label'],
+            'phrase': _phrase(attribute, group['label']),
             'codes': codes, 'filter': _group_filter(attribute, codes),
-            'disc_share': group['disc_share'],
-            'normal_share': group['normal_share']})
-    for item in report.get('combinations') or []:
-        if len(findings) >= FINDINGS:
-            break
+            **_shares(group, found_total, normal_total)})
+    for item in (report.get('combinations') or [])[:FINDING_COMBINATIONS]:
         first, second = item['parts']
         findings.append({
             'id': item['id'], 'kind': 'combination',
-            'attribute': first['attribute'],
-            'label': f"{first['phrase']} and {second['phrase']}",
-            'codes': None, 'filter': item['filter'],
-            'disc_share': item['disc_share'],
-            'normal_share': item['normal_share']})
+            'attribute': first['attribute'], 'column': None,
+            'what': f"{first['what']} and {second['what']}",
+            'label': f"{first['label']} · {second['label']}",
+            'phrase': f"{first['phrase']} and {second['phrase']}",
+            'codes': None, 'filter': item['filter'], 'parts': item['parts'],
+            **_shares(item, found_total, normal_total)})
     return [item for item in findings if item['filter']]
+
+
+def _shares(group, found_total, normal_total):
+    """Get the counts, shares, lift and rate of a bin or a group of bins."""
+    disc, normal = group['disc'], group['normal']
+    disc_share = disc / found_total if found_total else 0
+    normal_share = normal / normal_total if normal_total else 0
+    return {'disc': disc, 'normal': normal, 'disc_share': disc_share,
+            'normal_share': normal_share,
+            'lift': disc_share / normal_share if normal_share else None,
+            'rate': disc / (disc + normal) if disc + normal else None}
+
+
+def _unrelated(report):
+    """Get the columns no binning of which tells the discrepancies apart."""
+    best = {}
+    for attribute in report['attributes']:
+        best.setdefault(attribute['column'], attribute['score'])
+    return sorted(column for column, score in best.items()
+                  if (score or 0) < UNRELATED)
 
 
 def _magnitude(source):
@@ -1664,13 +1520,16 @@ def _magnitude(source):
                 numbers = None
                 break
         item = {'field': field, 'records': records, 'share': records / total,
-                'distinct': len(values),
+                'distinct': len(values), 'sum': None,
                 'values': [{'value': value, 'count': count,
                             'share': count / records}
                            for value, count in ranked[:10]],
                 'numeric': bool(numbers)}
         if numbers:
             numbers.sort()
+            if len(rows) < DESCRIPTIONS:
+                item['sum'] = _plain(round(sum(number * count for number, count
+                                               in numbers), 6))
             item['min'] = _plain(numbers[0][0])
             item['max'] = _plain(numbers[-1][0])
             half, running = records / 2, 0
@@ -1698,65 +1557,6 @@ def _magnitude_histogram(numbers, buckets=20):
     return [{'low': _plain(round(low + i * width, 6)),
              'high': _plain(round(low + (i + 1) * width, 6)),
              'count': count} for i, count in enumerate(counts)]
-
-
-def _magnitude_sentences(magnitude):
-    total = magnitude['total']
-    sentences = []
-    for item in magnitude['fields'][:3]:
-        top = item['values'][0]
-        if item['distinct'] == 1:
-            how = f"always by {top['value']}"
-        elif top['share'] >= 0.5:
-            how = f"mostly by {top['value']} ({_pct(top['share'])})"
-        elif item['numeric']:
-            how = (f"by {_short(item['min'])} to {_short(item['max'])} "
-                   f"(median {_short(item['median'])})")
-        else:
-            how = f'in {item["distinct"]} different ways'
-        sentences.append({'kind': 'magnitude', 'text': (
-            f"{item['field']} differs in {_pct(item['share'])} of the "
-            f'{total:,} value discrepancies, {how}.')})
-    return sentences
-
-
-def _excerpts(source, report, fetched_sql):
-    """Get example records of the strongest findings: discrepancies, and
-    fetched records of the same bins (which hold the discrepancies too), from
-    the quick look's sample of the fetched records.
-    """
-    columns = source['columns']
-    result = []
-    for finding in report['findings'][:EXCERPT_FINDINGS]:
-        item = {'finding': finding['id'], 'label': finding['label'],
-                'columns': [column['name'].upper() for column in columns]}
-        for which, sql, names in (
-                ('result', source['result_sql'],
-                 [column['name'] for column in columns]),
-                ('fetched', fetched_sql,
-                 [column['source'] for column in columns])):
-            select = ', '.join(_quoted(name) for name in names)
-            statement = (f'select {select} from ({sql}) q '
-                         f"where {finding['filter'][which]} "
-                         f'and rownum <= {EXCERPT_ROWS}')
-            try:
-                rows = db.execute(sa.text(statement), as_records=True)
-                item[which] = [[_cell(value) for value in row]
-                               for row in rows]
-            except Exception as error:
-                item[which] = []
-                item[f'{which}_error'] = str(error).strip().splitlines()[0]
-        result.append(item)
-    return result
-
-
-def _cell(value):
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return None
-    if isinstance(value, (dt.datetime, dt.date, str, int, float)) \
-            or value is None:
-        return value
-    return _plain(value)
 
 
 def to_json(report):

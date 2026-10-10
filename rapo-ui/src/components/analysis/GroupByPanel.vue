@@ -4,7 +4,7 @@
       <q-select
         v-model="groupColumns"
         class="col-12 col-md-4"
-       
+        dense
         outlined
         multiple
         use-chips
@@ -21,7 +21,7 @@
         :key="item.column"
         :model-value="item.bucket || null"
         class="bucket-select"
-       
+        dense
         outlined
         emit-value
         map-options
@@ -32,7 +32,7 @@
       <q-select
         v-model="aggregateKeys"
         class="col"
-       
+        dense
         outlined
         multiple
         use-chips
