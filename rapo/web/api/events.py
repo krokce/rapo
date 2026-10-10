@@ -37,6 +37,10 @@ class Watcher:
         self.datasources = None
         # Called when a client connects, e.g. to refresh what it will ask for.
         self.connect_listeners = []
+        # Called with the kind of a change before it is emitted (runs,
+        # controls, scheduler or a kind of datasources:changed), so that what
+        # was computed from the old state is not handed out after the event.
+        self.change_listeners = []
 
     def start(self):
         """Start watching if not already started."""
@@ -78,14 +82,26 @@ class Watcher:
         changed, self.scheduler_changed = self.scheduler_changed, False
         runs, controls, events = await asyncio.to_thread(self.read)
         for kind in await asyncio.to_thread(self.read_datasources):
+            self.changed(kind)
             await sio.emit('datasources:changed', {'kind': kind})
         if runs:
+            self.changed('runs')
             await sio.emit('runs:changed', runs)
         if controls:
+            self.changed('controls')
             await sio.emit('controls:changed', controls)
         if events or changed:
+            self.changed('scheduler')
             await sio.emit('scheduler:changed',
                            {'event_ids': events['ids'] if events else []})
+
+    def changed(self, kind):
+        """Tell the change listeners about a kind of change."""
+        for listener in self.change_listeners:
+            try:
+                listener(kind)
+            except Exception:
+                logger.error()
 
     def read(self):
         log = db.tables.log
@@ -255,8 +271,9 @@ def emit_datasources(kind='status'):
     """Tell the clients that the datasources changed, from any thread.
 
     `kind` is `status` for the files waiting (the scanner), `config` for the
-    configuration.
+    configuration, `summary` for the Dashboard's file log summary.
     """
+    watcher.changed(kind)
     loop = main_loop
     if loop is None or watcher.clients <= 0:
         return

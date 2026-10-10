@@ -27,8 +27,14 @@ export function formatUptime(seconds) {
   return hours ? `${hours} h ${minutes % 60} min` : `${minutes} min`;
 }
 
-// The spans of the Health tab, in hours; the server answers which it keeps (get-instance-health `spans`).
-export const HEALTH_SPANS = [1, 3, 6, 12, 24];
+// The spans of the Health tab, in hours; the server answers which it keeps (get-instance-health `spans`): 168 (7 days)
+// is read from the stored minutes.
+export const HEALTH_SPANS = [1, 3, 6, 12, 24, 168];
+
+// "6h", "7d".
+export function spanLabel(hours) {
+  return hours % 24 === 0 && hours > 24 ? `${hours / 24}d` : `${hours}h`;
+}
 
 export const LEVEL_TEXT = { warn: "Warning", crit: "Critical" };
 

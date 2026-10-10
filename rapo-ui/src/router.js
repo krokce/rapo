@@ -24,7 +24,14 @@ const router = createRouter({
   },
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/results" },
+    { path: "/", redirect: "/dashboard" },
+    {
+      // Its own chunk, which loads ECharts (shared with the analysis pages) only once the page is open.
+      name: "dashboard",
+      path: "/dashboard",
+      meta: { hideSearch: true },
+      component: () => import(/* webpackChunkName: "dashboard" */ "./components/dashboard/DashboardPage.vue"),
+    },
     {
       name: "controls",
       path: "/controls",
@@ -136,7 +143,7 @@ const router = createRouter({
       meta: { hideSearch: true },
       component: TokenBox,
     },
-    { path: "/:notfound(.*)", redirect: "/results" },
+    { path: "/:notfound(.*)", redirect: "/dashboard" },
   ],
 });
 
@@ -145,6 +152,14 @@ router.beforeEach(function (to, from, next) {
     next({ path: "/token", query: { redirect: to.fullPath } });
   } else {
     next();
+  }
+});
+
+// A page of an older build asks for chunks the server no longer has (they are named by their content): the app is
+// loaded anew on the page it was going to.
+router.onError((error, to) => {
+  if (error && (error.name === "ChunkLoadError" || /Loading (CSS )?chunk/.test(error.message || ""))) {
+    window.location.assign(to && to.fullPath ? to.fullPath : window.location.href);
   }
 });
 

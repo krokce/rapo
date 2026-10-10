@@ -426,6 +426,15 @@ class Scheduler:
         logger.info('Starting maintenance')
         try:
             db.cleanup()
+        except Exception:
+            logger.error()
+        try:
+            # The Dashboard's summary of the PDI Core file log.
+            from ..dashboard import files as file_summary
+            file_summary.maintain()
+        except Exception:
+            logger.error()
+        try:
             config = db.tables.config
             select = config.select().order_by(config.c.control_id)
             for record in db.execute(select, as_records=True):

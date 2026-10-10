@@ -425,6 +425,41 @@ create table rapo_viewer_config (
   constraint rapo_viewer_config_pk primary key (config_type, config_name)
 );
 
+-- The PDI Core file log (pdi_core_file_log) summed by day, hour, datasource,
+-- status and duplicate flag, for the Dashboard. Written by the scheduler's
+-- maintenance and the Dashboard's Refresh, one whole day at a time; a row with
+-- load_hour -1 marks the day as summarized (files = the day's total), so that
+-- a day without files is not taken for a missing one.
+create table rapo_file_summary (
+  load_day        date not null,
+  load_hour       number(2) not null,
+  sourceid        number not null,
+  sourcename      varchar2(50 char),
+  filestatus      varchar2(50 char) not null,
+  duplicate       number(1) not null,
+  files           number not null,
+  records_read    number,
+  records_write   number,
+  records_reject  number,
+  error_count     number,
+  file_bytes      number,
+  runtime_seconds number,
+  summarized      date not null,
+  constraint rapo_file_summary_pk
+    primary key (load_day, load_hour, sourceid, filestatus, duplicate)
+);
+
+-- The instance health of every server by minute (the Health tab, the Dashboard):
+-- the minute's aggregate of a group (os, db, files: the files waiting in the
+-- input directories) as JSON, kept [HEALTH] history_days and read back at start.
+create table rapo_health_minute (
+  server       varchar2(200 char) not null,
+  sample_group varchar2(10 char) not null,
+  minute       date not null,
+  content      varchar2(4000 char) not null,
+  constraint rapo_health_minute_pk primary key (server, sample_group, minute)
+);
+
 create or replace function rapo_prerun_control_hook (in_process_id number) return varchar2
 as
   v_control_name varchar2(20);

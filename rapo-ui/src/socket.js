@@ -100,4 +100,28 @@ export function liveRefetch(event, fetchFn, { filter = null, interval = 5000 } =
   };
 }
 
+// The room "health" gets the instance health samples. Instance details and the Dashboard both show them, each joining
+// while shown: counted, so that the one closing first does not take the other out; joined again after a reconnect.
+let healthRoomUsers = 0;
+
+const joinHealth = () => socket.emit("health:join");
+
+export function joinHealthRoom() {
+  healthRoomUsers += 1;
+  if (healthRoomUsers === 1) {
+    socket.on("connect", joinHealth);
+    if (socket.connected) {
+      joinHealth();
+    }
+  }
+}
+
+export function leaveHealthRoom() {
+  healthRoomUsers = Math.max(healthRoomUsers - 1, 0);
+  if (!healthRoomUsers) {
+    socket.off("connect", joinHealth);
+    socket.emit("health:leave");
+  }
+}
+
 export default socket;

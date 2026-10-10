@@ -305,6 +305,9 @@ import { escapeHtml, formatNumber, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+import { dropRouteFilters, listParam, takeRouteFilters } from "../utils/routeFilters";
+
+const DATASOURCES_ROUTE_FILTERS = ["issue", "lane"];
 
 const COLUMNS = [
   { key: "isactive", label: "Lane", align: "center", sort: true, title: "The PDI Core lane that loads the datasource; click a lane to filter by it or switch it" },
@@ -516,6 +519,18 @@ export default {
         this.filter.grammars.push(name);
       }
     },
+    // Filters a link put in the query (the Dashboard: ?issue=dir_missing&lane=5) replace the page's own, then leave the
+    // URL.
+    applyRouteFilters() {
+      const query = takeRouteFilters(this.$route, DATASOURCES_ROUTE_FILTERS);
+      if (!query) {
+        return;
+      }
+      this.clearFilters();
+      if (query.issue) this.filter.issues = listParam(query.issue);
+      if (query.lane !== undefined && /^\d+$/.test(query.lane)) this.filter.lanes = [Number(query.lane)];
+      dropRouteFilters(this.$router, this.$route, DATASOURCES_ROUTE_FILTERS);
+    },
     clearFilters() {
       this.filter.text = null;
       this.filter.lanes = [];
@@ -616,7 +631,16 @@ export default {
     },
   },
   // Also runs after the first mount.
+  watch: {
+    // A link with filters to the page already shown (activated() takes them otherwise).
+    "$route.query"() {
+      if (this.$route.name === "datasources") {
+        this.$nextTick(this.applyRouteFilters);
+      }
+    },
+  },
   activated() {
+    this.applyRouteFilters();
     const stopCatalogue = liveRefetch("datasources:changed", this.refreshCatalogue, { filter: (payload) => payload.kind === "config" });
     const stopStatus = liveRefetch("datasources:changed", this.refreshStatus, { filter: (payload) => payload.kind === "status" });
     this.stopLiveUpdates = () => {

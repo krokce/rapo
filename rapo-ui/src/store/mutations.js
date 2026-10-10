@@ -44,6 +44,12 @@ export default {
   updateSchedulerStatus(state, payload) {
     state.schedulerStatus = payload;
   },
+  updateInstanceHealth(state, payload) {
+    state.instanceHealth = payload;
+  },
+  openInstanceDialog(state, tab) {
+    state.instanceDialogRequest = { tab: tab || "configuration" };
+  },
   updateKpiTypes(state, payload) {
     state.kpiTypes = freezeRows(payload);
   },

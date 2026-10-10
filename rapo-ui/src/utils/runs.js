@@ -4,7 +4,7 @@ import { toDateString, toDateTimeString } from "./format";
 
 // What started the run (rapo_scheduler_event), a question mark when the run manager did not start it.
 export function triggerOf(run) {
-  return TRIGGER_TYPES[run.trigger_type] || { label: run.trigger_type || "Trigger not recorded", icon: "fas fa-question" };
+  return TRIGGER_TYPES[run.trigger_type] || { label: run.trigger_type || "Trigger not recorded", icon: "fas fa-question", color: "grey-5" };
 }
 
 // The trigger a run is filtered by: its trigger_type, or NO_TRIGGER when none was recorded (null means no filter).

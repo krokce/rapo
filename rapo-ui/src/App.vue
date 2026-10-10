@@ -4,7 +4,7 @@
       <q-toolbar>
         <q-btn flat dense round @click="toggleLeftDrawer" aria-label="Menu" icon="fas fa-bars" />
 
-        <q-btn flat no-caps no-wrap class="q-ml-xs" v-if="$q.screen.gt.xs" :to="{ name: 'results' }">
+        <q-btn flat no-caps no-wrap class="q-ml-xs" v-if="$q.screen.gt.xs" :to="{ name: 'dashboard' }">
           <q-icon name="fas fa-poll" color="teal" size="40px" />
           <q-toolbar-title shrink class="column text-left">
             <span class="text-weight-bold">Rapo</span>
@@ -98,7 +98,7 @@
         <div class="q-ma-lg">
           <!-- The list pages are kept alive, so going back to them shows their rows, filters and scroll at once. -->
           <router-view v-slot="{ Component }">
-            <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DataAnalysis', 'DatasourceCatalogue', 'DiscrepancyAnalysis', 'FileResults']">
+            <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DashboardPage', 'DataAnalysis', 'DatasourceCatalogue', 'DiscrepancyAnalysis', 'FileResults']">
               <component :is="Component" />
             </keep-alive>
           </router-view>
@@ -186,8 +186,6 @@ export default {
       instanceDialog: false,
       instanceTab: "configuration",
       reloadingConfig: false,
-      // get-instance-health without history: the worst level and the level of each rule, for the header dot.
-      health: null,
     };
   },
   methods: {
@@ -252,9 +250,9 @@ export default {
     startHealthUpdates() {
       const refresh = async () => {
         try {
-          this.health = await api("get-instance-health", { params: { history: false }, loadingBar: false });
+          this.$store.commit("updateInstanceHealth", await api("get-instance-health", { params: { history: false }, loadingBar: false }));
         } catch (error) {
-          this.health = null;
+          this.$store.commit("updateInstanceHealth", null);
         }
       };
       this.stopHealthUpdates();
@@ -266,7 +264,7 @@ export default {
         this.stopHealthLive();
         this.stopHealthLive = null;
       }
-      this.health = null;
+      this.$store.commit("updateInstanceHealth", null);
     },
     disconnect() {
       signOut();
@@ -287,12 +285,15 @@ export default {
       "getEnvInfo",
       "getEnvConfigChanges",
     ]),
-    ...mapState(["schedulerStatus"]),
+    // get-instance-health without history: the worst level and the level of each rule, for the header dot.
+    ...mapState(["schedulerStatus", "instanceDialogRequest"]),
+    ...mapState({ health: "instanceHealth" }),
     // KPI types are only manageable where the RACS KPI tables are deployed, the same condition that gives the
     // control editor its KPIs tab. routes are the route names in which a link shows as active.
     menuLinks() {
       const links = [
-        { icon: "fas fa-tasks", text: "Results", route: "/results", routes: ["results", "data-analysis", "discrepancy-analysis"] },
+        { icon: "fas fa-tachometer-alt", text: "Dashboard", route: "/dashboard", routes: ["dashboard"] },
+        { icon: "fas fa-tasks", text: "Results", route: "/results", routes: ["results", "data-analysis", "discrepancy-analysis"], gap: true },
         { icon: "fas fa-chart-line", text: "Controls", route: "/controls", routes: ["controls", "edit-control"] },
       ];
       if (this.getEnvInfo && this.getEnvInfo.kpi_available) {
@@ -363,6 +364,13 @@ export default {
     },
   },
   watch: {
+    // A page asks for Instance details on a tab (the Dashboard's health tiles).
+    instanceDialogRequest(request) {
+      if (request) {
+        this.instanceTab = request.tab;
+        this.showInstanceDialog();
+      }
+    },
     documentTitle: {
       immediate: true,
       handler(title) {

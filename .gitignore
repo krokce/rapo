@@ -111,6 +111,7 @@ venv.bak/
 # mypy
 .mypy_cache/
 CLAUDE.md
+.claude/skills/
 
 # Node / rapo-ui (its build output goes to rapo/web/ui/, which IS tracked)
 node_modules/

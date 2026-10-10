@@ -51,7 +51,7 @@ section and answer 404 otherwise. Redoc is disabled.
   | 400  | The request was understood but could not be performed (bad control, failed save).   |
   | 404  | No such run, control, record or log file.                                           |
   | 413  | An uploaded file over `[DATASOURCES] max_upload_mb`.                                |
-  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use, or an `upload-ds-file` of a file already in the input directory. |
+  | 409  | Scheduler start refused because the scheduler is disabled for this server in `rapo.ini`, a `save-control` refused because the control changed since `expected_updated_date`, an `analysis-start` refused because all `[ANALYSIS] max_sessions` are in use, an `upload-ds-file` of a file already in the input directory, or a `refresh-file-summary` while one runs. |
   | 422  | A parameter is missing or of the wrong type (FastAPI validation).                   |
   | 500  | An unexpected error in the route. `detail` is `<ErrorType>: <message>`, and the traceback is written to the server log (`rapo-server_YYYYMMDD.log`). |
   | 503  | The run manager is not running, so no run can be accepted (likewise analysis sessions and jobs while the server starts or stops). |
@@ -59,6 +59,8 @@ section and answer 404 otherwise. Redoc is disabled.
 * **Datetimes are naive ISO wall-clock strings** in the server's local time, e.g. `2026-09-19T10:05:07`. There is
   no timezone suffix and none is accepted. Dates are `YYYY-MM-DD`.
 * **Numbers are numbers**: Oracle `NUMBER` columns arrive as JSON numbers, not strings.
+* **JSON answers of 1 KB or more are gzipped** for a client sending `Accept-Encoding: gzip`; downloads, file views and
+  streams are sent as they are.
 * A run is identified by its **`process_id`**, a control by its **`control_name`** or **`control_id`**.
 
 ## Reference
@@ -1154,6 +1156,62 @@ curl -T TAF_20261008.csv.gz -H "Authorization: Bearer $RAPO_TOKEN" \
   "http://rapo-host:7005/api/upload-ds-file?id=152&name=TAF_20261008.csv.gz"
 ```
 
+### Dashboard
+
+#### `GET /api/get-dashboard`
+Aggregates of the instance for the Dashboard page, in parts, each computed in its own thread.
+
+| Parameter | Type | Default                       | Meaning                                                        |
+|-----------|------|-------------------------------|-----------------------------------------------------------------|
+| `parts`   | str  | `tiles,timeline`              | Comma list of `tiles`, `timeline`, `runs`, `scheduler`, `files`, `kpis`. |
+| `span`    | str  | `7d`                          | `24h` (the last 24 whole hours, by hour), `7d` or `30d` (days to today, by day). |
+
+Answers `{span, server_time, parts: {part: payload}}`; a part that failed answers `{error: "<Type>: <message>"}` alone
+(the traceback is in the server log), an unknown part or span is `422`. Every series lines up with the part's
+`buckets` (ISO hours or days) and `unit` (`hour`, `day`). The queries behind the parts are kept for 3 seconds, shared by
+all clients, and dropped by the live events that change them.
+
+* `tiles` (today, not the span): `runs`, `failing_controls` (controls whose latest run of the day is `E`),
+  `run_warnings`, `files`, `records_loaded`, `reject_pct` (records rejected of read), `files_error`, `kpi_alarms`
+  (KPI values at alarm level 2 or 3), each `{today, last_week, days}`: `last_week` the same weekday a week before up
+  to the same time of day, `days` the 7 days to today, `null` where unknown. The file tiles are on the database clock,
+  the others on the app server's; `files` tiles are absent without the file log, `kpi_alarms` is null without KPIs.
+  `files_waiting` (with the datasources) is the files waiting in the input directories now (the last scan, `null`
+  when none is recent), `last_week` the stored minute nearest the same time a week ago, `days` each day's highest
+  (the instance health's stored `files` minutes), plus `stalled`, `datasources_waiting` and `oldest_age` (seconds).
+  `files_processing` (with the file log; now only, no `last_week`/`days`) is the files of any day in `WAITING`,
+  `STARTED` or `PROCESSING`: `today` all of them, `loading` (started, processing), `waiting` and `oldest_age`
+  (seconds since the oldest's `STARTLOADDATE`, database clock).
+* `timeline`: the runs per bucket by status, `{unit, buckets, clock, server_time, status: [{code, counts}], total}`
+  (`code` null for voided runs). Runs count when they started, or were added if they never started.
+* `runs`: `by_type` `{type: {runs, errors}}`, `by_trigger` `{trigger|NONE: runs}`, `slowest` (top 8 by the average
+  of the `D` runs: `control_id`, `control_name`, `control_type`, `runs`, `avg_minutes`, `max_minutes`), `volume`
+  `{fetched, discrepancies}` per bucket (both sides summed) and `hour_weekday` `{count, errors}`, 7 x 24, Monday
+  first.
+* `scheduler` (the last and next 24 hours, whatever the span): `past` `{hours, events: [{code, counts}]}` (events per
+  hour by type, the current hour last), `upcoming` `{hours, counts, by_type, by_trigger}` (the fires per hour, as
+  `scheduler-upcoming`, the current hour first), `missed_total` (missed fires never caught up) and `missed_capped`
+  (500 or more).
+* `files` (database clock; `{available: false}` without the file log): `status: [{code, counts}]` (files per
+  bucket), `duplicates`, `records` `{read, write, reject}`, `reject_rate` (%), `top_loaded` and `top_errors` (top 8
+  datasources `{sourceid, sourcename, files, records, rejects, errors}` by records written, and those with files in
+  `ERROR` by them, then records rejected), `throughput` `{all, sources: [{sourceid, sourcename, records, rates}]}`
+  (records written per minute of load time, `SUCCESS` files), `datasources` `{states, totals, scanned}` (`states`
+  counts each datasource once: `disabled` (lane 0), else `stalled` (the last scan), else `delivering` (files in the
+  span) or `silent`; `totals` `{datasources, waiting, unknown}`, `waiting` the files in the input directories as last
+  scanned) and `summary` `{newest_day, live_days, missing_days, refreshing,
+  maintenance}`. Past days come from `rapo_file_summary`, today and an unsummarized yesterday from the file log; a
+  day neither summarized nor read live is in `missing_days` and its values are `null`.
+* `kpis` (`{available: false}` without the KPI tables or their history): `heatmap` `{controls: [{control_name,
+  control_id, level}], cells: [[control, bucket, level]], more}` (the highest alarm level per control and bucket, the
+  worst 25 controls) and `alarms` (values at level 2 or 3 in the span).
+
+#### `POST /api/refresh-file-summary`
+Sums the closed days of a `span`'s window (default `7d`) of the PDI Core file log into `rapo_file_summary` again, in
+the background; done is `datasources:changed {kind: "summary"}`. `409` while a refresh of this server runs, `404`
+without the file log, `422` for an unknown span. The scheduler's maintenance does the same for the last 7 days (and the
+days missing of `[DASHBOARD] file_summary_days`) on every pass.
+
 ### Scheduler
 
 #### `GET /api/scheduler-status`
@@ -1296,12 +1354,15 @@ need a restart keep their loaded value and stay listed by `get-config-changes`. 
 not be parsed, and then nothing is applied. It only affects the server that answers; runs read the file anew anyway.
 
 #### `GET /api/get-instance-health`
-The OS and DB metrics this server sampled in the last `hours` (1 by default), kept in its memory only (a restart
-starts them anew): `{enabled, server_time, level, levels, labels, intervals: {os, db}, history_minutes, hours, spans,
-step: {os, db}, history_since, thresholds, os: [...], db: [...], footprint, access}`.
+The OS and DB metrics this server sampled in the last `hours` (1 by default): `{enabled, server_time, level, levels,
+labels, intervals: {os, db}, history_minutes, hours, spans, step: {os, db}, history_since, thresholds, os: [...], db:
+[...], footprint, access}`. The one-minute aggregates are also stored in `rapo_health_minute` (per server, for
+`[HEALTH] history_days`, default 7) and read back when the server starts, so a restart loses only the minute in
+progress.
 - `hours=1` answers the samples (the last `[HEALTH] history_minutes`, default 60); longer spans (up to
-  `history_hours`, default 24) the one-minute aggregates, merged into at most 480 points per group. `step` is the
-  seconds per point, `spans` the spans this server keeps (of 1, 3, 6, 12, 24), `history_since` its first point. An
+  `history_hours`, default 24, from memory; `168` from the stored minutes while `history_days` is 7 or more) the
+  one-minute aggregates, merged into at most 480 points per group. `step` is the seconds per point, `spans` the spans
+  this server offers (of 1, 3, 6, 12, 24, 168), `history_since` its first point. An
   aggregate averages numbers, takes the highest of `locks`, `locks_wait`, `tcp_close_wait`, `processes_rapo`,
   `net_errors` and `net_drops`, and the last value of uptimes, sizes and lists; the last point of a longer span is
   the minute in progress.
@@ -1382,7 +1443,7 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `discrepancy:progress` | A discrepancy analysis job without its `report` - see `start-discrepancy-analysis` |
 | `health:level`     | `{level}`: the worst level of the instance health changed (`null`, `warn`, `crit`) |
 | `health:sample`    | `{group, point, minute, levels, level}`: a new `os` or `db` sample of `get-instance-health`, and `minute` the aggregate of the minute it closed (else `null`), sent only to clients that joined the room with `health:join` (and left with `health:leave`) |
-| `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads |
+| `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads; `summary` when days of `rapo_file_summary` were summed (maintenance, `refresh-file-summary`) |
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*

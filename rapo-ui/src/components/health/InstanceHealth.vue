@@ -21,7 +21,7 @@
           text-color="grey-8"
           class="health-spans q-mr-sm" />
         <span>
-          Sampled every {{ state.intervals[group] }} s<template v-if="state.hours > 1">, a point per {{ stepText }}</template><template v-if="since">; since {{ since }}, when the server started</template>
+          Sampled every {{ state.intervals[group] }} s<template v-if="state.hours > 1">, a point per {{ stepText }}</template><template v-if="since">; history since {{ since }}</template>
         </span>
         <q-space />
         <span class="health-legend"><i class="health-legend-line" />Main</span>
@@ -47,8 +47,8 @@
 
 <script>
 import { api } from "../../api";
-import socket from "../../socket";
-import { HEALTH_SPANS, diskTiles, formatUptime, healthTiles } from "../../utils/health";
+import socket, { joinHealthRoom, leaveHealthRoom } from "../../socket";
+import { HEALTH_SPANS, diskTiles, formatUptime, healthTiles, spanLabel } from "../../utils/health";
 import HealthSessions from "./HealthSessions.vue";
 import HealthTile from "./HealthTile.vue";
 import TempTablesDialog from "../TempTablesDialog.vue";
@@ -90,7 +90,7 @@ export default {
     },
     spanOptions() {
       const spans = (this.state && this.state.spans) || HEALTH_SPANS;
-      return spans.map((hours) => ({ label: `${hours}h`, value: hours }));
+      return spans.map((hours) => ({ label: spanLabel(hours), value: hours }));
     },
     windowMs() {
       return this.state.hours * 3600000;
@@ -107,7 +107,7 @@ export default {
       const minutes = Math.round(this.state.step[this.group] / 60);
       return minutes > 1 ? `${minutes} minutes` : "minute";
     },
-    // When the history starts inside the span: the server started since.
+    // When the history starts inside the span (the server started since, or the stored minutes start there).
     since() {
       const since = this.state.history_since;
       if (!since || new Date(since).getTime() <= this.end - this.windowMs + 60000) {
@@ -142,13 +142,14 @@ export default {
   mounted() {
     socket.on("health:sample", this.onSample);
     socket.on("connect", this.onConnect);
-    this.onConnect();
+    joinHealthRoom();
+    this.load();
     this.loadTempTables();
   },
   unmounted() {
     socket.off("health:sample", this.onSample);
     socket.off("connect", this.onConnect);
-    socket.emit("health:leave");
+    leaveHealthRoom();
   },
   methods: {
     tileProps(tile) {
@@ -171,11 +172,9 @@ export default {
       const points = this.state[group];
       return points.length ? points[points.length - 1] : {};
     },
-    // Joined again after a reconnect, and the history read anew since samples may have been missed.
+    // The room is joined again after a reconnect (joinHealthRoom); the history is read anew, since samples may have been
+    // missed.
     onConnect() {
-      if (socket.connected) {
-        socket.emit("health:join");
-      }
       this.load();
     },
     async load() {

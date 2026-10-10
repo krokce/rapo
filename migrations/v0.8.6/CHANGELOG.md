@@ -1,20 +1,97 @@
 # Rapo v0.8.6 Change Log
 
 ## Annotation
-A file of the file log can be viewed in the browser, however large, and searched as a whole on the server. Files can
+Rapo opens on a new **Dashboard**: what goes on in the instance at a glance and live (today's numbers against last
+week, runs, scheduler, files, KPIs and health as donuts, strips and small trends over 24 hours, 7 or 30 days), the instance health keeps a week of history across restarts, and the UI loads faster. A file of the file log can be viewed in the browser, however large, and searched as a whole on the server. Files can
 be uploaded into a datasource's input directory from the file log and the datasource editor, and the records a
 file loaded are shown below it or on the Data analysis page. A binary file is shown as ASN.1 (BER, DER, CER): its
 tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. Data
 analysis and Discrepancy analysis are redesigned as single pages that lead with what matters and open in under a
-second. The release adds one table (`rapo_viewer_config`) and one Python package (`asn1tools`), and drops one
-(`phik`). The upgrade steps are in the [migration instructions](README.md).
+second. The release adds three tables (`rapo_viewer_config`, `rapo_file_summary`, `rapo_health_minute`) and one Python
+package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
-1. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
+1. **Dashboard.** A new page, first in the side menu, is where Rapo opens (`/`, unknown paths, the sign-in and the
+   logo lead to `/dashboard`; Results stays one click away). One scrolling page with its sections as a row of links
+   under the title, in sections of panels that fill the whole width (the panels of a row grow to fill it, also beside
+   a hidden one, and wrap as the window narrows), all charts in the app's colors (the chips' colors, light and dark),
+   live: each change refreshes only the panels it touches. Header chips pick the span of the charts: **24h** (by hour), **7d** (default)
+   or **30d** (by day), remembered by the browser.
+   - **Overview.** Twelve tiles of today in two rows of six (four, three or two per row as the width shrinks), by
+     topic, the edge and the week of a tile in the topic's color (red or orange when it needs attention): the runs,
+     failing controls (latest run of the day in error), run warnings, KPI alarms (level 2–3), then the instance, the
+     scheduler's state and health; and the files along their way: **files in input** (waiting in
+     the input directories now, with the oldest one's age; red, and linking to the stalled datasources, when any is
+     stalled), **files in processing** (files of any day in the file log loading or waiting to be loaded, now:
+     how many load and how many wait, the oldest's age on hover), files, records loaded, rejected % of read and files
+     in error. The counts compare with the same weekday a week
+     earlier up to the same time of day (▲/▼, red when worse) and draw the last 7 days as an area across the tile. A click
+     opens the page that shows it. The panel is 300 px high, exactly as high as *Instance health*, and its tiles
+     stretch to fill it.
+   - **Runs.** The runs over time by status (a strip per status, a click opens that status of that day or hour), donuts
+     of the runs by status, by type and by trigger, the slowest controls (bars in the control type's color, names in
+     full), the records fetched with the discrepancies found as a small trend (a point per day or hour), and the runs by
+     weekday and hour (errors outlined). Every panel of a row is the same height.
+   - **Scheduler.** One line with its state, server, heartbeat, slots and the missed fires never caught up (a chip
+     opening them on the Scheduler page), then one strip of 48 hours whatever the span: what it did in the last 24
+     (started, missed, failed per hour) and what it will start in the next 24, on each side of *Now*.
+   - **Files** (with the PDI Core file log). The files over time by status (a strip per status), donuts of the files by status, of the top datasources by records loaded
+     and by files in error (seven each, the rest as *Others*) and of the datasources by state (stalled, delivering
+     files in the span, silent, disabled; the files waiting beside the title), and *Loading* (records loaded with the
+     reject rate, and the load throughput in records per minute of load time of all datasources or one picked, as
+     two small trends side by side). Days are those of the database clock, as on the Files page.
+   - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as a strip, beside a donut
+     of the control-days (or hours) by alarm level.
+   - **Health.** The instance health as two rows of six tiles, tall like *Today* (the rapo server's, the database's; the file
+     systems as one Disk tile, the fullest, all listed on hover), each with its value, level and a line over the last
+     24 hours (24h) or 7 days (7d, 30d); a click opens Instance details on Health.
+   - **One type.** Counters, metric labels, row texts and notes have the same size and weight in every panel (tiles,
+     donuts, trends, strips, bars, health), larger and darker than before.
+   - **Compact.** Shares are donuts, counts over time strips like the hour heatmaps of Results and Files, volumes and
+     rates small trends; there are no bar charts over time.
+   - **Panels.** Each panel's menu moves it up or down or hides it, and its handle drags it within its section; the
+     header's *Panels* menu adds hidden panels back and resets the layout (kept by the browser). A hidden panel's
+     data is not read at all.
+   - **Clicks** open the page behind a value, filtered: a status slice opens Results with that status, a type or
+     trigger slice Results with that filter, a control its editor's run log or KPIs, a file status slice the Files
+     page with that status, a datasource its file log, the stalled or disabled datasources the Datasources page so
+     filtered, a row of the scheduler strip the Scheduler page's history or upcoming fires. Results
+     (`status`, `type`, `name`, `trigger`, `warnings`, `hour`), Files (`status`, `lane`, `issue`, `hour`, `dup`),
+     Scheduler (`tab`, `event`, `type`, `trigger`, `status`, `missed=1` opening the older missed fires), Controls
+     (`type`, `status`, `name`, `attr`, `open=temp|orphan-tables|orphan-kpis` opening that list) and Datasources
+     (`issue`, `lane`) take these filters from a link in place of their own, then drop them from the address.
+   - **Fast.** One route answers every part, each in its own thread (`get-dashboard`); the present (tiles, runs by
+     status) is asked for first; nothing reads a log text over the span, every query uses an index or one partition. What the panels ask for is kept for 3 seconds
+     on the server for every open Dashboard, and dropped when a live event changes it. On Dev every part of 30 days
+     takes under 0.2 s.
+   - **File log summary.** The PDI Core file log takes too many files a day to sum a month of it on every look, so
+     its past days are summed once into the new table `rapo_file_summary` (day, hour, datasource, status, duplicate
+     flag) by the **scheduler's maintenance**, which sums the last 7 days again on every pass (recycles, reloads and
+     deletes change older files) and fills the days missing of `[DASHBOARD] file_summary_days` (90); today, and
+     yesterday until it is summed, are read from the file log. Days neither summed nor read live show as gaps, with a
+     note; the Files section's refresh button sums the span's days at once (`refresh-file-summary`). Without
+     `[SCHEDULER] maintenance_interval` only that button fills the summary.
+   - **Files waiting history.** With no browser connected, the server running the scheduler still counts the files
+     waiting every `[DATASOURCES] scan_idle_interval` seconds (300; 0: only while someone looks, as before), so the
+     tile's history has no gaps.
+   - New options `[DASHBOARD] file_summary_days`, `[DATASOURCES] scan_idle_interval`; new routes
+     `get-dashboard`, `refresh-file-summary`; `datasources:changed` has the kind `summary`.
+2. **Instance health kept across restarts.** The one-minute aggregates of the Health tabs are stored in the new
+   table `rapo_health_minute` (per server, `[HEALTH] history_days`, default 7, purged hourly) and read back when the
+   server starts, so a restart no longer empties the charts; the Health tabs offer a **7d** span (from 7 days kept).
+   The minutes also hold the files waiting in the input directories (the Dashboard's *Files in input*). A database
+   that cannot store them (the table missing) is noted once in the server log and the history stays in memory.
+3. **Faster loading.** The UI's files are sent compressed (gzip, about a quarter of their size: the main bundle 118
+   KB instead of 442 KB) and, being named by their content, kept by the browser for good, so a reload asks only for
+   the page itself; JSON answers of 1 KB or more are compressed too (downloads and file views are not). Charts are a
+   bundle of their own, loaded with the first page that draws one and shared by the Dashboard and the analysis pages
+   (the analysis bundle drops from 628 KB to 134 KB). A tab still showing an older build reloads itself when it asks
+   for a bundle that is gone.
+4. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
    found on this server within the datasource's archive, error or duplicate directory) has an eye icon opening the
    file in a viewer, on the Files page's file log and in the editor's *File log* tab.
    - **Header.** The file's name, its datasource (a link to the datasource editor), its file ID and status, and the
      size, compression and encoding of what is shown; *Copy* copies the archived file's full path, beside *Download*.
-     Below, the chips *Text*, *ASN.1* (how the file is read) and *Records* (the rows it loaded, see 2): the ringed
+     Below, the chips *Text*, *ASN.1* (how the file is read) and *Records* (the rows it loaded, see 5): the ringed
      ones are shown. The viewer opens a datasource's files as last picked in this browser (Text or ASN.1, with or
      without the records), except a binary file that looks like ASN.1, which opens as ASN.1.
    - **Reading.** The first 100 lines are shown at once; scrolling to the bottom loads the next ones, *Load 1,000
@@ -46,7 +123,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
    - New options `[DATASOURCES] view_lines`, `view_max_lines`, `view_line_chars`, `view_grep_seconds`,
      `view_grep_matches`. The viewer is offered wherever downloads are (`file_download`). Each opening and search is
      written to the server log. New routes `view-ds-file` and `grep-ds-file`.
-2. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
+5. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
    (when the datasource has tables and the file wrote or rejected records) opens the viewer on them alone, and the
    viewer's *Records* chip (with the file log's written count) shows or hides them: with *Text* or *ASN.1* also on,
    the records are below the file, half each, resizable by dragging the bar (the share is kept); clicking the ringed
@@ -65,7 +142,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
    - The viewer is as large in every layout.
    - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
      read.
-3. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
+6. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
    editor's *Input files* box and the input files dialog (*Matching files* / *All files*, Incoming counts on the Files
    page) open a dialog to choose files, or files are dropped on any of these places. They go into the **first**
    directory of the saved *Input directory* (in the editor, save changes first); the input files dialog lists the
@@ -81,7 +158,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      canceled or failed upload leaves nothing behind. Each upload is written to the server log.
    - New options `[DATASOURCES] file_upload` (**off by default**) and `max_upload_mb` (2048 MB per file). New routes
      `check-ds-upload` and `upload-ds-file`.
-4. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
+7. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
    its first bytes read as BER; the header's *Text* / *ASN.1* switch changes the view of any file, and a binary file
    that does not start as ASN.1 offers *Decode as ASN.1*.
    - **Record layout.** *Start offset* skips a file header that is no ASN.1; *Record header* skips that many bytes
@@ -141,7 +218,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      `locate-ds-file-asn1`, `render-ds-file-asn1`, `search-ds-file-asn1`, `get-ds-file-bytes`, `get-asn1-grammars`,
      `get-asn1-grammar-types`, `save-asn1-grammar`, `delete-asn1-grammar`, `get-viewer-settings`,
      `save-viewer-settings`. Grammar and settings changes are written to the server log.
-5. **Instance limit no longer blocks the queue.** A queued run whose control already runs as many jobs as its
+8. **Instance limit no longer blocks the queue.** A queued run whose control already runs as many jobs as its
    `instance_limit` on this server is held in the queue and passed over, so other controls take the free slots.
    Before, ten runs of one control with `instance_limit = 1` filled every `control_parallelism` slot while only one of
    them worked. Held runs start in the order they were queued (before, in no particular order) and, like any queued
@@ -150,7 +227,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
    them with `held: "instance_limit"`. The limit also counts active runs started more than a day ago (they were
    ignored). Runs of the control on another server, or as another control's cascade or chain source, are still waited
    for inside the run's process, holding its slot, as before.
-6. **File log page laid out like Results and Files.** The file log of a datasource (`/files-log/<id>`, and the
+9. **File log page laid out like Results and Files.** The file log of a datasource (`/files-log/<id>`, and the
    datasource editor's *File log* tab) has the day navigator in its title (previous/next day, a date picker, today)
    instead of the day buttons of its filter row, and no filter fields any more: the status and *Duplicate* chips of
    the header toggle their filter (highlighted while on), and *Upload* sits beside them. The page searches with the
@@ -160,7 +237,7 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
    files found opens their day with the file picked. The editor's tab keeps a *File name* box (it has no header
    search). The *Not duplicates* filter is gone (`dup=N` in a link is ignored). `search-files` takes an optional
    `source_id`.
-7. **Data analysis and Discrepancy analysis redesigned.** Both pages are one scrolling page instead of tabs, with an
+10. **Data analysis and Discrepancy analysis redesigned.** Both pages are one scrolling page instead of tabs, with an
    *On this page* list on the right (in a row under the header on narrow screens) that marks the section being read
    and jumps to a section; the section is kept in the link (`#records`, `#attributes`), and older links with `?tab=`
    open the matching section. The run's datasets (and sides) are avatar chips with their counts, the one shown ringed;

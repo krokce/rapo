@@ -8,8 +8,25 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ## v0.8.6 — unreleased
 
-New table `rapo_viewer_config` (`migrations/v0.8.6/upgrade.sql`) and Python package `asn1tools` (`phik` no longer
-needed); new `[DATASOURCES]` options (uploads are off until `file_upload=True`).
+New tables `rapo_viewer_config`, `rapo_file_summary` and `rapo_health_minute` (`migrations/v0.8.6/upgrade.sql`) and
+Python package `asn1tools` (`phik` no longer needed); new `[DATASOURCES]` options (uploads are off until
+`file_upload=True`), `[HEALTH] history_days` and section `[DASHBOARD]`; set `[SCHEDULER] maintenance_interval` for the
+Dashboard's file summary.
+
+- **Dashboard**, the new start page (`/`, sign-in, logo), compact, live and full width (panels fill each row): 12
+  tiles of today in two rows of six against the same weekday last week (incl. *Files in input* and *Files in
+  processing*); over 24h / 7d / 30d: runs over time by status, donuts of runs by status, type and trigger, slowest
+  controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, donuts of files by status, top
+  datasources (records loaded, files in error) and datasources by state, loading and throughput; KPI alarms per
+  control (strip) and by level (donut); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
+  Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
+  `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
+  scheduler's maintenance or *Refresh* (`refresh-file-summary`). Options `[DASHBOARD] file_summary_days`,
+  `[DATASOURCES] scan_idle_interval` (unattended scans by the scheduling server).
+- **Instance health kept across restarts:** minutes stored in `rapo_health_minute` (`[HEALTH] history_days`, 7) and
+  read back at start; Health tabs gain a 7d span.
+- **Faster loading:** UI bundles gzipped and cached for good (named by content), JSON answers gzipped; ECharts its
+  own shared bundle (analysis bundle 628 → 134 KB).
 
 - **Data analysis and Discrepancy analysis redesigned** as single scrolling pages with an *On this page* list
   (section kept in the link, old `?tab=` links still work), avatar chips and the app's buttons. Data analysis:

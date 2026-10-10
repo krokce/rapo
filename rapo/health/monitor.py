@@ -2,13 +2,17 @@
 
 Samples the OS and DB metrics in threads of the web server, keeping the last
 `history_minutes` of the samples and `history_hours` of their one-minute
-aggregates in memory for the Instance details dialog. Nothing is stored: the
-history starts anew with the server.
+aggregates in memory for the Instance details dialog. The aggregates are also
+stored (store.py, rapo_health_minute) for `history_days`, with a minute of the
+files waiting in the input directories (group `files`): read back at start,
+so the history outlives a restart, and read for spans longer than the
+memory's.
 """
 
 import collections
 import datetime as dt
 import math
+import queue
 import threading
 import time
 
@@ -17,16 +21,24 @@ from .. import options
 from ..logger import logger
 
 from . import sources
+from . import store
 
 
 OPTIONS = {name: options.default('HEALTH', name) for name in (
     'enabled', 'os_interval', 'db_interval', 'footprint_interval',
-    'history_minutes', 'history_hours')}
+    'history_minutes', 'history_hours', 'history_days')}
 
 # The spans the UI offers, in hours, up to history_hours; 1 shows the samples,
 # longer ones the minute aggregates merged into at most MAX_POINTS points.
+# LONG_SPANS are read from the stored minutes, offered up to history_days.
 SPANS = (1, 3, 6, 12, 24)
+LONG_SPANS = (168,)
 MAX_POINTS = 480
+GROUPS = ('os', 'db', 'files')
+# Seconds the stored minutes of a long span are kept for the next snapshot,
+# and between purges of the minutes older than history_days.
+STORED_SECONDS = 60
+PURGE_SECONDS = 3600
 # Fields aggregated by their highest value rather than the average, so that a
 # short lock or connection leak still shows on a long span.
 PEAK_FIELDS = {'locks', 'locks_wait', 'tcp_close_wait', 'processes_rapo',
@@ -146,8 +158,16 @@ class Sampler:
         self.threads = []
         self.points = {'os': collections.deque(), 'db': collections.deque()}
         # One-minute aggregates, and the samples of the minute in progress.
-        self.minutes = {'os': collections.deque(), 'db': collections.deque()}
+        self.minutes = {group: collections.deque() for group in GROUPS}
         self.buckets = {'os': [], 'db': []}
+        # The closed minutes waiting to be stored, and the writer storing them.
+        self.queue = queue.Queue(maxsize=1000)
+        self.writer = None
+        self.server = None
+        self.store_error = None
+        self.files_minute = None
+        # {hours: (expires, {group: minutes})} of the long spans.
+        self.stored = {}
         self.footprint = None
         self.footprint_time = 0
         # The file systems measured, resolved once in the background
@@ -161,7 +181,7 @@ class Sampler:
         self.listeners = []
 
     def start(self):
-        """Start sampling in threads of their own."""
+        """Start sampling in threads of their own, and the store's writer."""
         if self.threads:
             return
         self.stopping.clear()
@@ -172,6 +192,10 @@ class Sampler:
                                       daemon=True)
             thread.start()
             self.threads.append(thread)
+        self.writer = threading.Thread(target=self.write,
+                                       name='rapo-health-store', daemon=True)
+        self.writer.start()
+        self.threads.append(self.writer)
 
     def stop(self):
         """Stop sampling."""
@@ -207,6 +231,8 @@ class Sampler:
             self.points[group].clear()
             self.minutes[group].clear()
             self.buckets[group] = []
+            if group == 'os':
+                self.minutes['files'].clear()
             self.levels = {}
             changed, self.level = self.level is not None, None
         if changed:
@@ -220,6 +246,31 @@ class Sampler:
             self.resolver.start()
         point = {'t': now(), **sources.read_os(self.mounts)}
         self.add('os', point)
+        self.add_files(point['t'])
+
+    def add_files(self, moment):
+        """Note the files waiting in the input directories, once a minute, as
+        the last scan counted them (none when no scan is recent).
+        """
+        minute = moment[:16]
+        if minute == self.files_minute:
+            return
+        self.files_minute = minute
+        try:
+            point = files_point(minute + ':30')
+        except Exception:
+            logger.error()
+            point = None
+        if point is None:
+            return
+        size = option('history_hours') * 60
+        with self.lock:
+            history = self.minutes['files']
+            if history.maxlen != size:
+                history = self.minutes['files'] = collections.deque(
+                    history, maxlen=size)
+            history.append(point)
+        self.keep('files', point)
 
     def resolve(self):
         """Find the file systems of rapo and of the datasource directories,
@@ -310,8 +361,76 @@ class Sampler:
                     history, maxlen=size)
             history.append(minute)
             bucket = self.buckets[group] = []
+            self.keep(group, minute)
         bucket.append(point)
         return minute
+
+    def keep(self, group, minute):
+        """Hand a closed minute to the writer; dropped when it lags behind."""
+        try:
+            self.queue.put_nowait((group, minute))
+        except queue.Full:
+            pass
+
+    def write(self):
+        """Store the closed minutes, read the stored ones back first, and
+        purge those older than history_days every hour.
+        """
+        self.server = store.server_name()
+        self.load()
+        purged = 0
+        while not self.stopping.is_set():
+            rows = []
+            try:
+                rows.append(self.queue.get(timeout=5))
+                while len(rows) < 100:
+                    rows.append(self.queue.get_nowait())
+            except queue.Empty:
+                pass
+            if rows:
+                self.attempt('stored', store.write, self.server, rows)
+            if time.monotonic() - purged > PURGE_SECONDS:
+                purged = time.monotonic()
+                before = (dt.datetime.now()
+                          - dt.timedelta(days=option('history_days')))
+                self.attempt('purged', store.purge, before)
+
+    def load(self):
+        """Put the stored minutes of this server's last history_hours before
+        the ones of this run, so that a restart loses nothing.
+        """
+        since = dt.datetime.now() - dt.timedelta(hours=option('history_hours'))
+        for group in GROUPS:
+            rows = self.attempt('read', store.read, self.server, group, since)
+            if not rows:
+                continue
+            size = option('history_hours') * 60
+            with self.lock:
+                current = list(self.minutes[group])
+                first = current[0]['t'] if current else None
+                older = [row for row in rows if first is None or row['t'] < first]
+                self.minutes[group] = collections.deque(older + current,
+                                                        maxlen=size)
+            logger.debug(f'Instance health: {len(older)} {group} minutes '
+                         'read back')
+
+    def attempt(self, what, function, *args):
+        """Call a store function; its failure is logged once until it works
+        again (the table missing before the upgrade, a database outage).
+        """
+        try:
+            result = function(*args)
+        except Exception as error:
+            message = str(error).splitlines()[0]
+            if self.store_error is None:
+                logger.warning(f'Instance health: minutes not {what}, kept '
+                               f'in memory only: {message}')
+            self.store_error = message
+            return None
+        if self.store_error is not None:
+            logger.info('Instance health: minutes stored again')
+            self.store_error = None
+        return result
 
     def evaluate(self, group):
         """Get {rule: level} of the group's rules for its latest points."""
@@ -344,12 +463,35 @@ class Sampler:
                 logger.error()
 
     def spans(self):
-        return [hours for hours in SPANS if hours <= option('history_hours')]
+        return ([hours for hours in SPANS if hours <= option('history_hours')]
+                + [hours for hours in LONG_SPANS
+                   if hours <= option('history_days') * 24])
+
+    def stored_minutes(self, hours):
+        """Get the stored minutes of this server's os and db groups for a
+        span longer than the memory's, kept for STORED_SECONDS.
+        """
+        cached = self.stored.get(hours)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        since = dt.datetime.now() - dt.timedelta(hours=hours)
+        minutes = {group: self.attempt('read', store.read, self.server or
+                                       store.server_name(), group, since)
+                   or [] for group in ('os', 'db')}
+        self.stored[hours] = (time.monotonic() + STORED_SECONDS, minutes)
+        return minutes
 
     def snapshot(self, history=True, hours=1):
         """Get the state for the UI: the points of the last `hours`, levels
-        and DB access. Only the levels without `history`.
+        and DB access. Only the levels without `history`. Spans longer than
+        history_hours are read from the stored minutes.
         """
+        stored = None
+        if history:
+            spans = self.spans()
+            hours = min(max(int(hours), 1), max(spans, default=1))
+            if hours > option('history_hours'):
+                stored = self.stored_minutes(hours)
         with self.lock:
             output = {
                 'enabled': option('enabled'),
@@ -359,8 +501,6 @@ class Sampler:
             }
             if not history:
                 return output
-            spans = self.spans()
-            hours = min(max(int(hours), 1), max(spans, default=1))
             probe = self.probe_errors or {}
             intervals = {group: option(f'{group}_interval')
                          for group in ('os', 'db')}
@@ -393,6 +533,14 @@ class Sampler:
                 start = (dt.datetime.now() - dt.timedelta(hours=hours)
                          ).isoformat(timespec='seconds')
                 selected = [point for point in minutes if point['t'] >= start]
+                if stored is not None:
+                    # The stored minutes, then those of memory not stored yet.
+                    older = stored[group]
+                    last = older[-1]['t'] if older else ''
+                    selected = older + [point for point in selected
+                                        if point['t'] > last]
+                    if older:
+                        since.append(older[0]['t'][:16] + ':00')
                 bucket = self.buckets[group]
                 # The minute in progress, which its first aggregate replaces.
                 if bucket:
@@ -402,6 +550,33 @@ class Sampler:
                 output['step'][group] = size * 60
             output['history_since'] = min(since) if since else None
             return output
+
+
+def files_point(time_text):
+    """Get the files waiting in the input directories of the active
+    datasources as the last scan counted them, or None when no scan is
+    recent (nobody looks and no idle scans).
+    """
+    from ..pdi import files as pdi_files
+    from ..pdi import scanner
+    snapshot = scanner.status()
+    if not snapshot or 'scanned_epoch' not in snapshot:
+        return None
+    interval = max(pdi_files.number_option('scan_interval'),
+                   pdi_files.number_option('scan_idle_interval'))
+    if time.time() - snapshot['scanned_epoch'] > 2 * interval + 60:
+        return None
+    states = [state for state in snapshot.get('datasources', {}).values()
+              if isinstance(state, dict)]
+    oldest = [state['oldest'] for state in states if state.get('oldest')]
+    return {'t': time_text,
+            'waiting': sum(state.get('waiting') or 0 for state in states),
+            'datasources_waiting': len([state for state in states
+                                        if state.get('waiting')]),
+            'stalled': len([state for state in states
+                            if state.get('stalled')]),
+            'oldest_age': (round(time.time() - min(oldest)) if oldest
+                           else None)}
 
 
 sampler = Sampler()

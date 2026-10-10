@@ -35,7 +35,7 @@ export default {
       rememberToken: false,
       connectError: false,
       tokenValidationInProgress: false,
-      redirectPath: this.$route.query.redirect || "/results",
+      redirectPath: this.$route.query.redirect || "/dashboard",
     };
   },
   methods: {

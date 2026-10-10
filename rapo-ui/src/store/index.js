@@ -33,6 +33,10 @@ const store = createStore({
       // Differences between the loaded rapo.ini and the file (get-config-changes), or { error } when unreadable.
       envConfigChanges: null,
       schedulerStatus: null,
+      // The instance health's levels (get-instance-health without history), kept by App for the header dot.
+      instanceHealth: null,
+      // A request to open Instance details on a tab ({tab}), from a page; App opens it.
+      instanceDialogRequest: null,
       kpiTypes: [],
       // PDI Core datasources (get-ds-list), and the files waiting for them as last counted (get-ds-status).
       datasourceCatalogue: [],

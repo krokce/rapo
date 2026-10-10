@@ -483,6 +483,56 @@ class Store:
             stats[id] = {key: self._value(value) for key, value in row.items()}
         return stats
 
+    def file_summary_select(self):
+        """Get the select summing the file log of one day for the Dashboard.
+
+        One row per hour (0-23), datasource, status and duplicate flag, with
+        the names of rapo_file_summary's columns. Bound by :day_from and
+        :day_to, so only the day's partition is read.
+        """
+        hour = "to_number(to_char(startloaddate, 'HH24'))"
+        duplicate = 'case when duplicate = 1 then 1 else 0 end'
+        return (
+            f'select {hour} load_hour, nvl(sourceid, 0) sourceid, '
+            "max(sourcename) sourcename, nvl(filestatus, '-') filestatus, "
+            f'{duplicate} duplicate, count(*) files, '
+            'sum(recordsread) records_read, sum(recordswrite) records_write, '
+            'sum(recordsreject) records_reject, sum(errorcount) error_count, '
+            'sum(filesize) file_bytes, sum(runtime) runtime_seconds '
+            f'from {LOG_TABLE} '
+            'where startloaddate >= :day_from and startloaddate < :day_to '
+            f"group by {hour}, nvl(sourceid, 0), nvl(filestatus, '-'), "
+            f'{duplicate}')
+
+    def read_file_summary_live(self, day):
+        """Get one day of the file log as file_summary_select sums it."""
+        start = dt.datetime.combine(day, dt.time())
+        statement = sa.text(self.file_summary_select()).bindparams(
+            day_from=start, day_to=start + dt.timedelta(days=1))
+        return [{key: self._value(value) for key, value in row.items()}
+                for row in db.execute(statement, as_table=True)]
+
+    def read_files_in_progress(self):
+        """Get the files of any day waiting to be loaded or loading, by
+        status (WAITING, STARTED, PROCESSING): `files` and the `oldest`
+        STARTLOADDATE. Read through the index on FILESTATUS.
+        """
+        statement = sa.text(
+            'select filestatus, count(*) files, min(startloaddate) oldest '
+            f'from {LOG_TABLE} '
+            "where filestatus in ('WAITING', 'STARTED', 'PROCESSING') "
+            'group by filestatus')
+        return {row['filestatus']: {'files': self._value(row['files']),
+                                    'oldest': row['oldest']}
+                for row in db.execute(statement, as_table=True)}
+
+    def read_datasource_lanes(self):
+        """Get the ID, name and lane (ISACTIVE) of every datasource."""
+        statement = sa.text(f'select id, sourcename, isactive from '
+                            f'{CONFIG_TABLE}')
+        return [{key: self._value(value) for key, value in row.items()}
+                for row in db.execute(statement, as_table=True)]
+
     def read_files_day(self, day):
         """Get the loads of every datasource on one day, as aggregates.
 

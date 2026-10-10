@@ -153,6 +153,26 @@ def read_missed(before, limit=500):
     return db.execute(select, as_table=True)
 
 
+def count_events(since, unit='day'):
+    """Get the number of events of each type per day or hour since a moment.
+
+    Returns
+    -------
+    rows : list of dict
+        `bucket` (the day or hour), `event_type` and `events`.
+    """
+    # A whitelisted format, never a bind: trunc() takes it as a literal.
+    format = {'day': 'DD', 'hour': 'HH24'}[unit]
+    statement = sa.text(f"""
+        select trunc(event_time, '{format}') bucket, event_type,
+               count(*) events
+          from rapo_scheduler_event
+         where event_time >= :since
+         group by trunc(event_time, '{format}'), event_type
+    """).bindparams(since=since)
+    return db.execute(statement, as_table=True)
+
+
 def read_orphans(runner):
     """Get events of this runner whose runs are still marked as active."""
     event = db.tables.scheduler_event

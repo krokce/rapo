@@ -437,6 +437,9 @@ import { runMatchesSearch } from "../utils/runs";
 import { ORDERS, countBy, historyHeatmapRows, rollingSlots, upcomingHeatmapRows, windowStart } from "../utils/scheduler";
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import persistFilters from "../mixins/persistFilters";
+import { dropRouteFilters, takeRouteFilters } from "../utils/routeFilters";
+
+const SCHEDULER_ROUTE_FILTERS = ["tab", "event", "type", "trigger", "status", "missed"];
 
 export default {
   mixins: [persistFilters("scheduler", ["filter", "upcomingFilter"])],
@@ -463,6 +466,8 @@ export default {
       eventLimit: 5000,
       olderMissed: [],
       missedDialog: false,
+      // A link asked for the missed fires (?missed=1): the older ones' dialog opens once they are read.
+      showMissed: false,
       filter: {
         type: null,
         trigger_type: null,
@@ -669,6 +674,28 @@ export default {
         this.filter.event_type = eventType;
       }
     },
+    // Filters a link put in the query (the Dashboard: ?tab=history&event=MISSED, ?tab=upcoming&type=REC, ?missed=1)
+    // replace the page's own, then leave the URL.
+    applyRouteFilters() {
+      const query = takeRouteFilters(this.$route, SCHEDULER_ROUTE_FILTERS);
+      if (!query) {
+        return;
+      }
+      this.clearFilters();
+      this.clearUpcomingFilters();
+      if (["running", "upcoming", "history"].includes(query.tab)) this.tab = query.tab;
+      const filter = this.tab === "upcoming" ? this.upcomingFilter : this.filter;
+      if (query.type) filter.type = query.type;
+      if (query.trigger) filter.trigger_type = query.trigger;
+      if (query.event) this.filter.event_type = query.event;
+      if (query.status) this.filter.status = query.status;
+      if (query.missed) {
+        this.tab = "history";
+        this.filter.event_type = "MISSED";
+        this.showMissed = true;
+      }
+      dropRouteFilters(this.$router, this.$route, SCHEDULER_ROUTE_FILTERS);
+    },
     // Every filter of the tab and the header search.
     clearFilters() {
       Object.keys(this.filter).forEach((key) => (this.filter[key] = null));
@@ -699,6 +726,10 @@ export default {
       try {
         await Promise.all([this.refreshStatus(), this.refreshUpcoming(), this.refreshEvents()]);
         this.loaded = true;
+        if (this.showMissed) {
+          this.showMissed = false;
+          this.missedDialog = this.olderMissed.length > 0;
+        }
       } catch (error) {
         notifyError("Failed to load scheduler.", error);
       }
@@ -721,7 +752,19 @@ export default {
       });
     },
   },
+  watch: {
+    // A link with filters to the page already shown (mounted() takes them otherwise).
+    "$route.query"() {
+      if (this.$route.name === "scheduler") {
+        this.applyRouteFilters();
+        if (this.showMissed && this.loaded) {
+          this.refreshAll();
+        }
+      }
+    },
+  },
   mounted() {
+    this.applyRouteFilters();
     const onError = (error) => notifyError("Failed to load scheduler.", error);
     this.stopLiveUpdates = [
       liveRefetch("scheduler:changed", () => Promise.all([this.refreshStatus(), this.refreshEvents()]).catch(onError), { interval: 2000 }),

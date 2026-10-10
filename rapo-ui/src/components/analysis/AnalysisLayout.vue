@@ -49,18 +49,20 @@ const READING_LINE = 120;
 // this page" beside it (in a row under the header on narrow screens), the section being read marked as the page
 // scrolls. A link scrolls its section to the top and puts its id in the URL hash, so a copied link opens there; the
 // page scrolls to the hash itself once loaded (scrollTo). Kept alive with its page, so it listens only while active.
+// With `railRow` the sections are always the row, so the content takes the whole width (the Dashboard).
 export default {
   name: "AnalysisLayout",
   props: {
     // [{id, label, icon, count}], in page order.
     sections: { type: Array, required: true },
+    railRow: { type: Boolean, default: false },
   },
   data() {
     return { active: null };
   },
   computed: {
     narrow() {
-      return this.$q.screen.lt.md;
+      return this.railRow || this.$q.screen.lt.md;
     },
   },
   watch: {

@@ -31,6 +31,7 @@ SECTIONS = collections.OrderedDict([
     ('VIEWS', 'Editing the SQL of view datasources from the control editor'),
     ('DATASOURCES', 'PDI Core datasources and files pages'),
     ('HEALTH', 'Instance health: sampling, history and warning levels'),
+    ('DASHBOARD', 'The Dashboard page: file log summary'),
 ])
 
 CATALOGUE = []
@@ -207,6 +208,9 @@ _add('VIEWS', 'preview_timeout', 'int', 30,
 _add('DATASOURCES', 'scan_interval', 'int', 60,
      'Seconds between counts of the waiting files, while the UI is open',
      minimum=5)
+_add('DATASOURCES', 'scan_idle_interval', 'int', 300,
+     'Seconds between scans while no browser is connected, on the scheduling '
+     'server only; 0: none', minimum=0)
 _add('DATASOURCES', 'scan_max_entries', 'int', 200000,
      'Files read per directory and count at most', minimum=1)
 _add('DATASOURCES', 'scan_budget_seconds', 'int', 20,
@@ -269,7 +273,11 @@ _add('HEALTH', 'footprint_interval', 'int', 600,
 _add('HEALTH', 'history_minutes', 'int', 60,
      'Minutes of samples kept (the 1h span)', minimum=1)
 _add('HEALTH', 'history_hours', 'int', 24,
-     'Hours of one-minute aggregates kept (the longer spans)', minimum=1)
+     'Hours of one-minute aggregates kept in memory (the longer spans)',
+     minimum=1)
+_add('HEALTH', 'history_days', 'int', 7,
+     'Days of one-minute aggregates kept in rapo_health_minute (7: a 7d span)',
+     minimum=1)
 HEALTH_LEVELS = [
     ('cpu', 80, 95, 'host CPU %, average of the last 3 samples'),
     ('memory', 85, 95, 'host memory used %'),
@@ -285,6 +293,11 @@ for _rule, _warn, _crit, _text in HEALTH_LEVELS:
     _add('HEALTH', f'{_rule}_warn', 'float', _warn, f'Warning level: {_text}')
     _add('HEALTH', f'{_rule}_crit', 'float', _crit,
          f'Critical level: {_text}')
+
+# [DASHBOARD]
+_add('DASHBOARD', 'file_summary_days', 'int', 90,
+     'Days of the file log summary kept (filled by the maintenance)',
+     minimum=31)
 
 INDEX = {(option.section, option.name): option for option in CATALOGUE}
 

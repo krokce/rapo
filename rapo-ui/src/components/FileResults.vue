@@ -305,6 +305,9 @@ import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { clockLabel, dayPosition } from "../utils/clock";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+import { dropRouteFilters, listParam, takeRouteFilters } from "../utils/routeFilters";
+
+const FILES_ROUTE_FILTERS = ["status", "lane", "issue", "hour", "dup"];
 
 // The Datasources page's issues this page shows too (on today).
 const FILE_DATASOURCE_ISSUES = ["stalled"];
@@ -677,6 +680,21 @@ export default {
       }
       return this.stateWrite ? () => this.setLaneLock(lane) : null;
     },
+    // Filters a link put in the query (the Dashboard: ?status=ERROR&lane=5&issue=&hour=&dup=1) replace the page's own,
+    // then leave the URL; `date` stays.
+    applyRouteFilters() {
+      const query = takeRouteFilters(this.$route, FILES_ROUTE_FILTERS);
+      if (!query) {
+        return;
+      }
+      this.clearFilters();
+      if (query.status) this.filter.statuses = listParam(query.status);
+      if (query.lane !== undefined && /^\d+$/.test(query.lane)) this.filter.lanes = [Number(query.lane)];
+      if (query.issue) this.filter.issues = listParam(query.issue);
+      if (query.hour !== undefined && /^\d+$/.test(query.hour)) this.filter.hour = Number(query.hour);
+      if (query.dup) this.filter.duplicates = true;
+      dropRouteFilters(this.$router, this.$route, FILES_ROUTE_FILTERS);
+    },
     clearFilters() {
       this.filter.lanes = [];
       this.filter.statuses = [];
@@ -800,6 +818,12 @@ export default {
     },
   },
   watch: {
+    // A link with filters to the page already shown (activated() takes them otherwise).
+    "$route.query"() {
+      if (this.$route.name === "files") {
+        this.$nextTick(this.applyRouteFilters);
+      }
+    },
     // Debounced like the old Find file box; only while the page is shown.
     fileSearchKey(key) {
       clearTimeout(this.fileSearchTimer);
@@ -829,6 +853,7 @@ export default {
   },
   activated() {
     this.active = true;
+    this.applyRouteFilters();
     const stops = [
       liveRefetch("datasources:changed", () => this.updateFileDay(this.$route.query.date || null), { filter: (payload) => payload.kind === "files", interval: 15000 }),
       liveRefetch("datasources:changed", this.refreshState, { filter: (payload) => payload.kind === "state" }),

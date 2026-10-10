@@ -171,6 +171,10 @@ preview_timeout=30
 # (so a slow network file system never holds up the web API), each directory
 # read once however many datasources share it.
 scan_interval=60
+# Seconds between counts while no browser is connected, done only by the
+# server running the scheduler, so that the Dashboard's Files in input has a
+# history; 0: none.
+scan_idle_interval=300
 # Files read per directory at most, and seconds one count may take; what is
 # left out is counted first next time.
 scan_max_entries=200000
@@ -227,8 +231,10 @@ max_upload_mb=2048
 # The Health tab of Instance details: OS and database metrics of this server,
 # sampled in the background and kept in memory, the samples for
 # history_minutes and their one-minute aggregates for history_hours (the spans
-# offered: 1, 3, 6, 12 and 24 hours); a restart starts them anew. The database
-# metrics need SELECT on V_$CON_SYSMETRIC, V_$PARAMETER, V_$SESSION,
+# offered: 1, 3, 6, 12 and 24 hours). The aggregates are also stored in
+# rapo_health_minute for history_days (with the files waiting in the input
+# directories), read back at start and offering a 7d span from 7 days. The
+# database metrics need SELECT on V_$CON_SYSMETRIC, V_$PARAMETER, V_$SESSION,
 # V_$SGAINFO, V_$PGASTAT, DBA_TABLESPACE_USAGE_METRICS and V_$INSTANCE (its
 # uptime); a view that can not be read shows No access.
 enabled=True
@@ -239,6 +245,7 @@ db_interval=30
 footprint_interval=600
 history_minutes=60
 history_hours=24
+history_days=7
 # Warning and critical levels (a value at or above them), which color the
 # tiles and put a dot on the header button. Rules: cpu (average of the last 3
 # samples), memory, disk, db_cpu, db_memory (PGA of pga_aggregate_limit) and
@@ -262,3 +269,10 @@ history_hours=24
 #locks_wait_crit=60
 #close_wait_warn=50
 #close_wait_crit=
+
+[DASHBOARD]
+# The Dashboard page. Past days of the PDI Core file log come from
+# rapo_file_summary, which the scheduler's maintenance fills (set
+# [SCHEDULER] maintenance_interval) and the Files section's Refresh re-reads;
+# today is read live. Days of the summary kept (at least 31):
+file_summary_days=90

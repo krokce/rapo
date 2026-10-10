@@ -3,9 +3,10 @@
 Upgrades Rapo from v0.8.5 to v0.8.6. Commands run in the application folder.
 What the release contains is in the [change log](CHANGELOG.md).
 
-The release adds one table, `rapo_viewer_config` (the file viewer's ASN.1 grammars and the settings it opens each
-datasource's files with), and one Python package, `asn1tools` (installed by `./install.sh`). The package `phik` is no
-longer required; an existing `.venv` keeps it, which does no harm (`./install.sh --force` recreates it without).
+The release adds three tables, `rapo_viewer_config` (the file viewer's ASN.1 grammars and the settings it opens each
+datasource's files with), `rapo_file_summary` (the Dashboard's summary of the PDI Core file log) and
+`rapo_health_minute` (the instance health by minute, kept across restarts), and one Python package, `asn1tools` (installed by `./install.sh`). The package `phik` is no longer required; an existing `.venv` keeps
+it, which does no harm (`./install.sh --force` recreates it without).
 
 1. Wait until all your Rapo controls are completed or cancel them. Stop the web server.
     ```bash
@@ -17,7 +18,7 @@ longer required; an existing `.venv` keeps it, which does no harm (`./install.sh
     git checkout v0.8.6
     ./install.sh
     ```
-1. Create the new table in Rapo's schema (the script can be run again: it skips an existing table).
+1. Create the new tables in Rapo's schema (the script can be run again: it skips an existing table).
     ```bash
     sqlplus <user>/<password>@<database> @migrations/v0.8.6/upgrade.sql
     ```
@@ -29,11 +30,20 @@ longer required; an existing `.venv` keeps it, which does no harm (`./install.sh
      Rapo needs write access to the input directories; a file it creates gets its umask's mode, so the group (e.g.
      the Pentaho server's user) must be able to read and delete it, as with a `dir_mode` of `2775`.
    - the ASN.1 view: `asn1_page_nodes` (500), `asn1_render_nodes` (5000), `asn1_grammar_max_kb` (2048).
+   - `scan_idle_interval` (300): how often the server running the scheduler counts the files waiting while no browser
+     is connected (0: only while someone looks).
+1. Optionally set `[HEALTH] history_days` (7): the days of instance health kept in `rapo_health_minute` (about 2 MB a
+   day per server); 7 or more offers a 7d span.
+1. Optionally add the new section `[DASHBOARD]` (see `rapo.ini.example`): `file_summary_days` (90, the days of the
+   file log summary kept). With the PDI Core file log, make sure `[SCHEDULER] maintenance_interval` is set (e.g. 3600 or
+   86400): the maintenance fills the Dashboard's file summary; without it only the Files section's refresh button
+   does. The first maintenance sums the last `file_summary_days` days, one partition each.
 1. Start the web server.
     ```bash
     .venv/bin/rapo-server start
     ```
-   Reload open browser tabs, so they load the new UI.
+   Reload open browser tabs, so they load the new UI. Rapo now opens on the Dashboard; bookmarks of other pages keep
+   working.
 1. Upload the ASN.1 grammars your binary files use (TAP, RAP, NRTRDE, 3GPP TS 32.298 or a vendor's): open a binary
    file in the viewer, *Grammars…*. None is shipped with Rapo. A delimiter the viewer remembered per browser before is
    offered for saving (orange save icon in the *Delimiter* field) the next time a file of that datasource is viewed.

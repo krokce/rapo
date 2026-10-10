@@ -335,7 +335,9 @@ class Scanner:
     """Counts the files waiting for every active datasource, in the background.
 
     Runs while UI clients are connected, every [DATASOURCES] scan_interval
-    seconds; disabled datasources (ISACTIVE 0) are not read. The directories
+    seconds, and without them every scan_idle_interval seconds where `idle`
+    allows (the server running the scheduler), so that the Dashboard's files
+    waiting have a history; disabled datasources (ISACTIVE 0) are not read. The directories
     are read by a child process (scan_worker.py, standard library only), so
     that a slow or hung network file system never holds up the web API: the
     thread here only reads the datasources and the file log, sends the child
@@ -364,6 +366,8 @@ class Scanner:
         self.process = None
         self.listeners = []
         self.active = lambda: True
+        # Whether this server also scans while nobody is connected.
+        self.idle = lambda: False
 
     def start(self):
         """Start scanning in a thread of its own."""
@@ -388,12 +392,16 @@ class Scanner:
         self.wake.set()
 
     def run(self):
+        scanned = 0
         while not self.stopping.is_set():
-            if self.active():
+            idle = number_option('scan_idle_interval')
+            if self.active() or (idle and self.idle()
+                                 and time.monotonic() - scanned >= idle - 1):
                 try:
                     self.scan()
                 except Exception:
                     logger.error()
+                scanned = time.monotonic()
             self.wake.wait(max(number_option('scan_interval'), 5))
             self.wake.clear()
 

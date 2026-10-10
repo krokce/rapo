@@ -603,6 +603,28 @@ class Kpi:
                     .order_by(table.c.kpi_type))
         return db.execute(select, as_table=True)
 
+    def read_run_history_since(self, first_process_id, since):
+        """Get the KPI values stored for the runs since a moment, no logs.
+
+        The history has no index on a date, only the unique one on
+        (processname, kpi_type, processid). PROCESSID is the run's process ID
+        as text, all of the same length, so `processid >= first_process_id`
+        on a skip scan of that index finds the recent runs without a full
+        scan; STARTRUNDATE (the run's start, app clock) then trims them.
+        """
+        if not self.history_available or first_process_id is None:
+            return []
+        first = str(int(first_process_id))
+        statement = sa.text(f"""
+            select /*+ index_ss(h (processname, kpi_type, processid)) */
+                   processname, kpi_type, processid, startrundate,
+                   kpi_value, alarm_level
+              from {HISTORY_TABLE} h
+             where processid >= :first and length(processid) = :length
+               and startrundate >= :since
+        """).bindparams(first=first, length=len(first), since=since)
+        return db.execute(statement, as_table=True)
+
     def read_kpi_runs(self, control_name, limit=50):
         """Get the latest runs of one control, newest first."""
         if not control_name:

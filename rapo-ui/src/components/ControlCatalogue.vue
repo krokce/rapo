@@ -496,6 +496,9 @@ import { scheduleFrequency, scheduleText, scheduleUnits, windowLabel } from "../
 import { fillViewportToBottom, textWidth } from "../utils/layout";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
+import { dropRouteFilters, listParam, takeRouteFilters } from "../utils/routeFilters";
+
+const CONTROLS_ROUTE_FILTERS = ["type", "status", "name", "attr", "open"];
 
 // No column: the server's order, last modified first.
 const DEFAULT_SORT = { key: null, dir: "asc" };
@@ -742,6 +745,37 @@ export default {
       }
     },
     sendsEmail,
+    // Filters a link put in the query (the Dashboard: ?type=REC&status=Y&name=&attr=Schema drift) replace the page's
+    // own, then leave the URL; ?open=temp|orphan-tables|orphan-kpis opens that header dialog once its rows are read.
+    applyRouteFilters() {
+      const query = takeRouteFilters(this.$route, CONTROLS_ROUTE_FILTERS);
+      if (!query) {
+        return;
+      }
+      if (query.type || query.status || query.name || query.attr) {
+        this.clearFilters();
+        if (query.type) this.filter.type = query.type;
+        if (query.status === "Y" || query.status === "N") this.filter.status = query.status;
+        if (query.name) this.filter.control_name = query.name;
+        if (query.attr) this.filter.other_attributes = listParam(query.attr);
+      }
+      if (query.open) {
+        this.openHeaderDialog(query.open);
+      }
+      dropRouteFilters(this.$router, this.$route, CONTROLS_ROUTE_FILTERS);
+    },
+    async openHeaderDialog(kind) {
+      if (kind === "temp") {
+        await this.refreshTempTables();
+        this.$refs.tempDialog.open();
+      } else if (kind === "orphan-tables") {
+        await this.refreshSchemaDrift();
+        this.$refs.orphanDialog.open();
+      } else if (kind === "orphan-kpis") {
+        await this.refreshKpiControls();
+        this.$refs.orphanKpisDialog.open();
+      }
+    },
     // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.control_name = null;
@@ -964,6 +998,12 @@ export default {
     },
   },
   watch: {
+    // A link with filters to the page already shown (activated() takes them otherwise).
+    "$route.query"() {
+      if (this.$route.name === "controls") {
+        this.$nextTick(this.applyRouteFilters);
+      }
+    },
     // The instance details can arrive after the page was opened.
     "getEnvInfo.kpi_available"() {
       this.refreshKpiControls();
@@ -977,6 +1017,7 @@ export default {
   },
   // Also runs after the first mount.
   activated() {
+    this.applyRouteFilters();
     const stopCatalogue = liveRefetch("controls:changed", this.updateControlCatalogue);
     // A save or a schema update fixes drift, and so does a run (it updates its tables before saving).
     const stopDriftConfig = liveRefetch("controls:changed", this.refreshSchemaDrift);

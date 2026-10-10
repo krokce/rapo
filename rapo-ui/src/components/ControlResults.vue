@@ -84,6 +84,9 @@ import { fillViewportToBottom } from "../utils/layout";
 import { clockLabel, dayPosition } from "../utils/clock";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import persistFilters from "../mixins/persistFilters";
+import { dropRouteFilters, listParam, takeRouteFilters } from "../utils/routeFilters";
+
+const RESULTS_ROUTE_FILTERS = ["status", "type", "name", "trigger", "warnings", "hour"];
 
 const DEFAULT_SORT = { key: "start_date", dir: "desc" };
 
@@ -193,6 +196,22 @@ export default {
       // The magnifier of the name filtered by clears it.
       if (control_name) this.filter.control_name = this.filter.control_name === control_name ? null : control_name;
     },
+    // Filters a link put in the query (the Dashboard: ?status=E,C&type=&name=&trigger=&warnings=1&hour=) replace the
+    // page's own, then leave the URL; `date` stays.
+    applyRouteFilters() {
+      const query = takeRouteFilters(this.$route, RESULTS_ROUTE_FILTERS);
+      if (!query) {
+        return;
+      }
+      this.clearFilters();
+      if (query.status) this.filter.status = listParam(query.status);
+      if (query.type) this.filter.type = query.type;
+      if (query.name) this.filter.control_name = query.name;
+      if (query.trigger) this.filter.trigger_type = query.trigger;
+      if (query.warnings) this.filter.warnings = true;
+      if (query.hour !== undefined && /^\d+$/.test(query.hour)) this.filter.hour = Number(query.hour);
+      dropRouteFilters(this.$router, this.$route, RESULTS_ROUTE_FILTERS);
+    },
     // Every filter and the header search; the sort stays.
     clearFilters() {
       this.filter.control_name = null;
@@ -280,6 +299,12 @@ export default {
     },
   },
   watch: {
+    // A link with filters to the page already shown (activated() takes them otherwise).
+    "$route.query"() {
+      if (this.$route.name === "results") {
+        this.$nextTick(this.applyRouteFilters);
+      }
+    },
     // The instance details can arrive after the page was opened.
     "getEnvInfo.kpi_available"() {
       this.refreshKpiControls();
@@ -296,6 +321,7 @@ export default {
   // Also runs after the first mount. Rows already in the store are shown at once and refreshed behind them.
   activated() {
     this.active = true;
+    this.applyRouteFilters();
     this.stopLiveUpdates = liveRefetch("runs:changed", () => this.updateControlResults(this.$route.query.date || null));
     this.stopKpiUpdates = liveRefetch("controls:changed", () => this.refreshKpiControls());
     this.refreshControlResults();

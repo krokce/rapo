@@ -107,14 +107,15 @@ export function schedulerEventType(type) {
   return SCHEDULER_EVENT_TYPES[type] || { label: type || "Unknown", icon: "fas fa-question-circle", color: "grey" };
 }
 
-// What requested a run (rapo_scheduler_event.trigger_type).
+// What requested a run (rapo_scheduler_event.trigger_type); the colors are the Dashboard's (cascade and chain as in
+// SCHEDULE_FREQUENCIES).
 export const TRIGGER_TYPES = {
-  SCHEDULE: { label: "Schedule", icon: "fas fa-clock" },
-  MANUAL: { label: "Manual", icon: "fas fa-user" },
-  CATCHUP: { label: "Catch-up", icon: "fas fa-history" },
-  ITERATION: { label: "Iteration", icon: "fas fa-redo" },
-  CASCADE: { label: "Cascade", icon: "fas fa-sitemap" },
-  UPSTREAM: { label: "Chain", icon: "fas fa-link" },
+  SCHEDULE: { label: "Schedule", icon: "fas fa-clock", color: "teal-7" },
+  MANUAL: { label: "Manual", icon: "fas fa-user", color: "blue-grey-6" },
+  CATCHUP: { label: "Catch-up", icon: "fas fa-history", color: "amber-8" },
+  ITERATION: { label: "Iteration", icon: "fas fa-redo", color: "indigo-4" },
+  CASCADE: { label: "Cascade", icon: "fas fa-sitemap", color: "deep-purple-4" },
+  UPSTREAM: { label: "Chain", icon: "fas fa-link", color: "cyan-8" },
 };
 
 export const TRIGGER_TYPE_OPTIONS = Object.entries(TRIGGER_TYPES).map(([value, type]) => ({ label: type.label, value }));

@@ -17,6 +17,8 @@ import sqlalchemy as sa
 
 from . import events
 from .auth import verify_token
+from .compression import ASSET_DIRS, IMMUTABLE, JsonGzipMiddleware
+from .compression import ui_response
 
 from ...config import config, is_secret, needs_restart, path as CONFIG_PATH
 from ...config import ConfigConflict, PEPPERONI_OPTIONS
@@ -53,6 +55,7 @@ from ...pdi import viewer as ds_viewer
 from ...pdi import viewer_config as ds_viewer_config
 from ...pdi.asn1 import view as ds_asn1
 from ...health import sampler as health, read_sessions
+from ... import dashboard
 
 
 UI_DIR = os.path.realpath(
@@ -86,9 +89,13 @@ async def lifespan(app):
     explainer.listeners.append(events.emit_discrepancy)
     # The waiting files are counted only while someone looks at them.
     scanner.active = lambda: events.watcher.clients > 0
+    # Without clients, the scheduling server counts them now and then too.
+    scanner.idle = lambda: scheduler.leader
     scanner.listeners.append(events.emit_datasources)
     events.watcher.connect_listeners.append(scanner.poke)
     health.listeners.append(events.emit_health)
+    events.watcher.change_listeners.append(dashboard.invalidate)
+    dashboard.file_data.listeners.append(events.emit_datasources)
     logs.cleaner.start()
     await asyncio.to_thread(runner.start)
     scheduler.start()
@@ -114,6 +121,7 @@ fastapi_app = fastapi.FastAPI(
     openapi_url='/api/openapi.json' if DOCS_ENABLED else None,
     redoc_url=None,
     lifespan=lifespan)
+fastapi_app.add_middleware(JsonGzipMiddleware)
 api = fastapi.APIRouter(prefix='/api',
                         dependencies=[fastapi.Depends(verify_token)])
 logger.configure(console=False)
@@ -247,6 +255,38 @@ def get_instance_health(history: bool = True, hours: int = 1):
     Without `history` only the warning levels, for the header button.
     """
     return health.snapshot(history=history, hours=hours)
+
+
+@api.get('/get-dashboard')
+def get_dashboard(parts: str = 'tiles,timeline', span: str = '7d'):
+    """Get parts of the Dashboard for a span (24h, 7d or 30d).
+
+    `parts` is a comma list of tiles, timeline, runs, scheduler, files and
+    kpis; a part that fails answers {error} alone.
+    """
+    names = [name.strip() for name in parts.split(',') if name.strip()]
+    try:
+        dashboard.check(names, span)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=422, detail=str(error))
+    return {'span': span,
+            'server_time': dt.datetime.now().replace(microsecond=0),
+            'parts': dashboard.collect(names, span)}
+
+
+@api.post('/refresh-file-summary')
+def refresh_file_summary(span: str = '7d'):
+    """Sum the closed days of a span's file log again, in the background.
+
+    Done is datasources:changed {kind: summary}; 409 while running.
+    """
+    try:
+        dashboard.spans.check(span)
+    except ValueError as error:
+        raise fastapi.HTTPException(status_code=422, detail=str(error))
+    with datasource_errors():
+        dashboard.file_data.refresh(span)
+    return {'status': 200}
 
 
 @api.get('/get-instance-sessions')
@@ -1211,6 +1251,7 @@ def set_file_status(data: dict = fastapi.Body(...)):
     """
     with datasource_errors():
         result = pdi.set_file_status(data.get('ids'), data.get('status'))
+    dashboard.invalidate('files')
     events.poke()
     return {'status': 200, **result}
 
@@ -2206,14 +2247,28 @@ fastapi_app.include_router(api)
 
 
 @fastapi_app.get('/{path:path}', include_in_schema=False)
-def serve_ui(path: str):
-    """Serve UI files, falling back to index.html for SPA routes."""
+def serve_ui(path: str, request: fastapi.Request):
+    """Serve UI files, falling back to index.html for SPA routes.
+
+    Bundles are named by their content, so they are cached for good; a
+    missing one is 404, not index.html, so that a page of an older build
+    notices it (the router reloads). index.html is revalidated every time.
+    """
     if path == 'api' or path.startswith('api/'):
         raise fastapi.HTTPException(status_code=404, detail='Not Found')
     file = os.path.realpath(os.path.join(UI_DIR, path))
     if file.startswith(UI_DIR + os.sep) and os.path.isfile(file):
-        return fastapi.responses.FileResponse(file)
-    return fastapi.responses.FileResponse(os.path.join(UI_DIR, 'index.html'))
+        if path.startswith(ASSET_DIRS):
+            cache_control = IMMUTABLE
+        elif path == 'index.html':
+            cache_control = 'no-cache'
+        else:
+            cache_control = 'public, max-age=86400'
+        return ui_response(file, request, cache_control)
+    if path.startswith(ASSET_DIRS):
+        raise fastapi.HTTPException(status_code=404, detail='Not Found')
+    return ui_response(os.path.join(UI_DIR, 'index.html'), request,
+                       'no-cache')
 
 
 # Socket.io is served under /api so that anything proxying /api reaches it.
