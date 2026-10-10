@@ -327,6 +327,15 @@
                     </div>
                   </q-card-section>
                 </q-card>
+                <q-card class="q-pa-sm" flat bordered>
+                  <q-item-section class="q-ma-xs">
+                    <q-item-label>File viewer</q-item-label>
+                  </q-item-section>
+                  <q-card-section>
+                    <viewer-settings-box v-if="saved" :datasource="saved" />
+                    <div v-else class="text-grey-7">Save the datasource to see its file viewer settings.</div>
+                  </q-card-section>
+                </q-card>
               </div>
             </q-tab-panel>
 
@@ -478,6 +487,7 @@ import FileListDialog from "./FileListDialog.vue";
 import FileUploadDialog from "./FileUploadDialog.vue";
 import FileLogTable from "./FileLogTable.vue";
 import MaskCheckDialog from "./MaskCheckDialog.vue";
+import ViewerSettingsBox from "./ViewerSettingsBox.vue";
 import { api, notifyError } from "../api";
 import { DATASOURCE_LANES, DUP_HANDLING_OPTIONS, datasourceLane } from "../constants";
 import { diffControl } from "../utils/controlDiff";
@@ -505,7 +515,7 @@ const YES_NO_NUMBER_OPTIONS = [
 // saved datasource, which is also the lock of a save: a datasource changed meanwhile, by anyone, is not overwritten.
 export default {
   name: "EditDatasource",
-  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, FileLogTable, FileUploadDialog, MaskCheckDialog },
+  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
   props: ["id"],
   data() {
     return {

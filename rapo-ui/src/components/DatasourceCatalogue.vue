@@ -29,6 +29,14 @@
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Show the datasources flagged {{ entry.label }}</q-tooltip>
           </q-chip>
         </div>
+        <!-- The ASN.1 grammars of the file viewer, also from here: a click opens their list. -->
+        <div v-if="grammarsLoaded">
+          <q-chip clickable @click="$refs.grammarDialog.open()">
+            <q-avatar icon="fas fa-book" color="blue-grey-6" text-color="white" />
+            <span class="text-weight-bold q-mr-xs">ASN.1 grammars</span>({{ grammars.length }})
+            <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Upload, edit and delete the grammars the file viewer decodes binary files with</q-tooltip>
+          </q-chip>
+        </div>
       </div>
     </div>
     <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
@@ -131,6 +139,15 @@
                 :title="issue.title"
                 @click="addIssueFilter(issue.key)">
                 {{ issue.label }}
+              </q-chip>
+              <q-chip
+                v-if="grammarIndex.has(row.id)"
+                clickable
+                size="sm"
+                :title="`Its files open in the ASN.1 view with the grammar ${grammarIndex.get(row.id).name}; click to show the datasources using it`"
+                @click="addGrammarFilter(grammarIndex.get(row.id).name)">
+                <q-avatar :icon="grammarIcon(grammarIndex.get(row.id).kind)" color="blue-grey-6" text-color="white" />
+                {{ grammarIndex.get(row.id).name }}
               </q-chip>
             </div>
           </td>
@@ -268,6 +285,7 @@
     </q-menu>
 
     <file-list-dialog ref="fileDialog" />
+    <grammar-dialog ref="grammarDialog" @changed="refreshGrammars" />
   </q-page>
 </template>
 
@@ -276,9 +294,11 @@ import { mapActions, mapGetters, mapState } from "vuex";
 import FileListDialog from "./FileListDialog.vue";
 import FilterChips from "./FilterChips.vue";
 import SkeletonRows from "./SkeletonRows.vue";
+import GrammarDialog from "./asn1/GrammarDialog.vue";
 import { api, notifyError } from "../api";
 import { DATASOURCE_LANES, datasourceLane } from "../constants";
 import { liveRefetch } from "../socket";
+import { grammarIcon } from "../utils/asn1";
 import { ISSUES, issuesOf, splitDirectories } from "../utils/datasources";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
 import { escapeHtml, formatNumber, toDateTimeString } from "../utils/format";
@@ -290,7 +310,7 @@ const COLUMNS = [
   { key: "isactive", label: "Lane", align: "center", sort: true, title: "The PDI Core lane that loads the datasource; click a lane to filter by it or switch it" },
   { key: "id", label: "ID", align: "right", sort: true, title: "The ID of the datasource (PDI_CORE_DS_CONFIG)" },
   { key: "sourcename", label: "Name", align: "left", sort: true, title: "The datasource's name, its description and issues; click the name to edit it" },
-  { key: "input_directory", label: "Input files", align: "left", sort: true, title: "The input directories and, under them, the files mask; click a directory for its files" },
+  { key: "input_directory", label: "Input files", align: "left", sort: true, title: "The input directories and, under them, the files mask, the issues and the ASN.1 grammar its files are decoded with; click a directory for its files" },
   { key: "files_24h", label: "Files 24h", align: "right", sort: true, title: "Files loaded in the last 24 hours; hover for records, errors and duplicates" },
   { key: "files_retention_days", label: "Ret. days", align: "right", sort: true, title: "Days archived files are kept" },
   { key: "files_max_per_cycle", label: "Max/cycle", align: "right", sort: true, title: "The most files one load cycle picks up" },
@@ -303,11 +323,13 @@ const COLUMNS = [
 const DEFAULT_SORT = { key: null, dir: "asc" };
 
 // The PDI Core datasources (pdi_core_ds_config), flagged by the issues of their setup and of the server's last scan of
-// their directories (get-ds-status). Kept alive (App.vue): activated/deactivated start and stop its live refresh.
+// their directories (get-ds-status). Kept alive (App.vue): activated/deactivated start and stop its live refresh. The
+// ASN.1 grammars (get-asn1-grammars, read on activation and after a change: nothing watches them) give the header chip
+// opening their list, and by their used_by the grammar badge of a datasource, which filters like the issue chips.
 export default {
   name: "DatasourceCatalogue",
   mixins: [persistFilters("datasources", ["filter", "sort"])],
-  components: { FileListDialog, FilterChips, SkeletonRows },
+  components: { FileListDialog, FilterChips, GrammarDialog, SkeletonRows },
   data() {
     return {
       columns: COLUMNS,
@@ -318,10 +340,13 @@ export default {
       menuId: null,
       laneTarget: false,
       laneId: null,
+      grammars: [],
+      grammarsLoaded: false,
       filter: {
         text: "",
         lanes: [],
         issues: [],
+        grammars: [],
       },
       sort: { ...DEFAULT_SORT },
     };
@@ -386,8 +411,15 @@ export default {
         ...valueFilter("text", "Text", filter.text, () => (filter.text = null), { text: true }),
         ...listFilter("lane", "Lane", filter.lanes, (value) => (filter.lanes = filter.lanes.filter((item) => item !== value)), (value) => datasourceLane(value).label),
         ...listFilter("issue", "Issue", filter.issues, (value) => (filter.issues = filter.issues.filter((item) => item !== value)), issueLabel),
+        ...listFilter("grammar", "Grammar", filter.grammars, (value) => (filter.grammars = filter.grammars.filter((item) => item !== value))),
         ...searchFilter(this.$store),
       ];
+    },
+    // The grammar each datasource is decoded with ({name, kind}) by its id.
+    grammarIndex() {
+      const index = new Map();
+      this.grammars.forEach((grammar) => grammar.used_by.forEach((id) => index.set(id, { name: grammar.name, kind: grammar.kind })));
+      return index;
     },
     // Issues by datasource id, computed once per catalogue or scan.
     issueIndex() {
@@ -400,7 +432,8 @@ export default {
       const text = (this.filter.text || "").toUpperCase();
       const lanes = this.filter.lanes || [];
       const issues = this.filter.issues || [];
-      if (!search && !text && !lanes.length && !issues.length) {
+      const grammars = this.filter.grammars || [];
+      if (!search && !text && !lanes.length && !issues.length && !grammars.length) {
         return this.datasourceCatalogue;
       }
       return this.datasourceCatalogue.filter((row) => {
@@ -412,6 +445,7 @@ export default {
           const own = this.issueIndex.get(row.id) || [];
           if (!issues.some((key) => own.some((issue) => issue.key === key))) return false;
         }
+        if (grammars.length && !grammars.includes((this.grammarIndex.get(row.id) || {}).name)) return false;
         return true;
       });
     },
@@ -449,6 +483,7 @@ export default {
     toDateTimeString,
     ariaSort,
     toggleSort,
+    grammarIcon,
     lane: datasourceLane,
     statusOf(row) {
       const status = this.datasourceStatus;
@@ -476,10 +511,16 @@ export default {
         this.filter.issues.push(key);
       }
     },
+    addGrammarFilter(name) {
+      if (!this.filter.grammars.includes(name)) {
+        this.filter.grammars.push(name);
+      }
+    },
     clearFilters() {
       this.filter.text = null;
       this.filter.lanes = [];
       this.filter.issues = [];
+      this.filter.grammars = [];
       this.$store.commit("updateSearch", "");
     },
     async refreshCatalogue() {
@@ -493,6 +534,14 @@ export default {
         notifyError("Failed to load datasources.", error);
       } finally {
         this.refreshing = false;
+      }
+    },
+    async refreshGrammars() {
+      try {
+        this.grammars = (await api("get-asn1-grammars", { loadingBar: false })).grammars;
+        this.grammarsLoaded = true;
+      } catch (error) {
+        // No chip or badges: the grammars could not be read (e.g. rapo_viewer_config is missing).
       }
     },
     async refreshStatus() {
@@ -576,6 +625,7 @@ export default {
     };
     this.refreshCatalogue();
     this.refreshStatus();
+    this.refreshGrammars();
   },
   deactivated() {
     this.stopLiveUpdates();

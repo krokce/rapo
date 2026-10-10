@@ -128,3 +128,21 @@ export function looksLikeTagMap(text) {
   }
   return /props\s*\.\s*(put|setProperty)\s*\(/.test(plain) || /^\s*\d+(\.\d+)*\s*[=:]/m.test(plain);
 }
+
+// The avatar icon of a grammar by its kind: a tag map of a Pentaho decoder, or ASN.1 modules.
+export function grammarIcon(kind) {
+  return kind === "tagmap" ? "fas fa-tags" : "fas fa-sitemap";
+}
+
+// The datasources decoding with a grammar (its used_by: source ids), named as the datasource catalogue (the store's
+// rows) names them, else by id.
+export function usedByDatasources(ids, catalogue) {
+  const names = new Map((catalogue || []).map((row) => [row.id, row.sourcename]));
+  return (ids || []).map((id) => ({ id, name: names.get(id) || `ID ${id}` }));
+}
+
+export function usedByText(ids, catalogue) {
+  return usedByDatasources(ids, catalogue)
+    .map((datasource) => datasource.name)
+    .join(", ");
+}

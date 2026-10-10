@@ -30,14 +30,16 @@
             hide-bottom-space
             autofocus />
           <q-chip class="kind-chip" :title="kindTitle">
-            <q-avatar :icon="kind === 'tagmap' ? 'fas fa-tags' : 'fas fa-sitemap'" color="blue-grey-6" text-color="white" />
+            <q-avatar :icon="grammarIcon(kind)" color="blue-grey-6" text-color="white" />
             {{ kind === "tagmap" ? "Tag map" : "ASN.1 modules" }}
           </q-chip>
           <div v-if="loaded" class="text-caption text-grey-7 saved-facts" :title="savedFacts">{{ savedFacts }}</div>
         </div>
         <div v-if="loaded && loaded.used_by.length && renamed" class="row items-center q-gutter-xs text-caption">
           <q-icon name="fas fa-exclamation-triangle" color="orange-9" />
-          <span class="text-orange-10">Used by datasource{{ loaded.used_by.length > 1 ? "s" : "" }} {{ loaded.used_by.join(", ") }}: the rename carries them along.</span>
+          <span class="text-orange-10">
+            Used by datasource{{ loaded.used_by.length > 1 ? "s" : "" }} {{ usedByText(loaded.used_by, $store.state.datasourceCatalogue) }}: the rename carries them along.
+          </span>
         </div>
 
         <div class="row items-center no-wrap file-tabs">
@@ -116,7 +118,7 @@
 <script>
 import { api, notifyError } from "../../api";
 import { toDateTimeString } from "../../utils/format";
-import { looksLikeTagMap, readText } from "../../utils/asn1";
+import { grammarIcon, looksLikeTagMap, readText, usedByText } from "../../utils/asn1";
 import GrammarCodeBox from "./GrammarCodeBox.vue";
 
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,63}$/;
@@ -194,6 +196,8 @@ export default {
   methods: {
     toDateTimeString,
     looksLikeTagMap,
+    grammarIcon,
+    usedByText,
     reset() {
       this.loaded = null;
       this.error = null;

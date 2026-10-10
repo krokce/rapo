@@ -100,7 +100,9 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      grammar; else every reading that fits: integer, text, TBCD digits as in an IMSI, an address with its TON/NPI, a
      3GPP time stamp, a PLMN, an IP address) with its bytes.
    - **Grammars.** *Grammars…* lists the grammars (search, kind, files, modules or tag map entries, the datasources
-     using them, last saved); a row opens it in the grammar editor, its menu duplicates, downloads (the files in one)
+     using them, by name with a link to their editor, last saved); the Datasources page opens the same list from its
+     *ASN.1 grammars* chip (with their count) and the datasource editor from its *File viewer* box. A row opens it
+     in the grammar editor, its menu duplicates, downloads (the files in one)
      or deletes one no datasource uses. *Add grammar* and editing share one editor: the name, and one tab per file
      whose text is edited in place (ASN.1 highlighting, line numbers, search): **paste** the modules or a tag map into
      a new file, upload files or drop them on the text, rename or remove files. *Save* (Ctrl+S) checks the text first
@@ -124,7 +126,9 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      reading or the hex); *Hex* finds bytes (`80 04 0A F9`). Like the text search it reads the whole file on the
      server, 500 hits or 20 seconds at a time, and a hit opens the tree at its node.
    - **Save for datasource** keeps the grammar, type, start offset, record header and filler for the datasource: its
-     files open with them, for everyone.
+     files open with them, for everyone. The datasource editor's Main tab shows them in a *File viewer* box (read only,
+     with the saved delimiter), and the Datasources list marks such a datasource with a grammar badge; a click on it
+     shows the datasources using that grammar (a *Grammar* filter).
    - New table `rapo_viewer_config` (grammars and the viewer settings of each datasource), new Python package
      `asn1tools` (MIT; only its ASN.1 parser is used). New options `[DATASOURCES] asn1_page_nodes`,
      `asn1_render_nodes`, `asn1_grammar_max_kb`. New routes `get-ds-file-asn1`, `get-ds-file-asn1-node`,

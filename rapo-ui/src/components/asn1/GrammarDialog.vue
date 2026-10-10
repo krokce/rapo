@@ -42,7 +42,7 @@
                 <th class="text-left" title="ASN.1 modules, or the tag map of a Pentaho ASN.1 decoder">Kind</th>
                 <th class="text-left" title="The files of the grammar">Files</th>
                 <th class="text-left" title="The ASN.1 modules the files define, or the entries of a tag map">Modules</th>
-                <th class="text-left" title="The datasources whose files the viewer opens with this grammar (Save for datasource)">Used by</th>
+                <th class="text-left" title="The datasources whose files the viewer opens with this grammar (Save for datasource); click one to edit it">Used by</th>
                 <th class="text-left" title="When the grammar was last saved (database clock)">Updated</th>
                 <th class="text-left"></th>
               </tr>
@@ -53,7 +53,7 @@
               <td class="text-left text-weight-bold">{{ grammar.name }}</td>
               <td class="text-left">
                 <q-chip :title="grammar.kind === 'tagmap' ? 'Tag map of a Pentaho ASN.1 decoder' : 'ASN.1 modules'">
-                  <q-avatar :icon="grammar.kind === 'tagmap' ? 'fas fa-tags' : 'fas fa-sitemap'" color="blue-grey-6" text-color="white" />
+                  <q-avatar :icon="grammarIcon(grammar.kind)" color="blue-grey-6" text-color="white" />
                   {{ grammar.kind === "tagmap" ? "Tag map" : "ASN.1" }}
                 </q-chip>
               </td>
@@ -67,8 +67,12 @@
                   </q-icon>
                 </template>
               </td>
-              <td class="text-left">
-                <span v-if="grammar.used_by.length">{{ grammar.used_by.join(", ") }}</span>
+              <td class="text-left used-by-cell">
+                <template v-if="grammar.used_by.length">
+                  <span v-for="datasource in usedBy(grammar)" :key="datasource.id" class="used-by">
+                    <router-link :to="{ name: 'edit-datasource', params: { id: datasource.id } }" class="datasource-link" @click.stop>{{ datasource.name }}</router-link>
+                  </span>
+                </template>
                 <span v-else class="text-grey-7">&ndash;</span>
               </td>
               <td class="text-left text-grey-8">{{ toDateTimeString(grammar.updated_date) }}</td>
@@ -107,7 +111,7 @@
         <q-separator />
         <q-item v-if="menuGrammar.used_by.length" dense disable>
           <q-item-section> Delete grammar </q-item-section>
-          <q-tooltip anchor="top middle" self="bottom middle">Used by datasource {{ menuGrammar.used_by.join(", ") }}</q-tooltip>
+          <q-tooltip anchor="top middle" self="bottom middle">Used by datasource {{ usedByText(menuGrammar.used_by, datasourceCatalogue) }}</q-tooltip>
         </q-item>
         <q-item v-else clickable v-close-popup @click="remove(menuGrammar)">
           <q-item-section class="text-negative"> Delete grammar </q-item-section>
@@ -120,14 +124,17 @@
 
 <script>
 import { api, notifyError } from "../../api";
+import { mapState } from "vuex";
 import { downloadBlob, escapeHtml, formatBytes, formatNumber, toDateTimeString } from "../../utils/format";
+import { grammarIcon, usedByDatasources, usedByText } from "../../utils/asn1";
 import SkeletonRows from "../SkeletonRows.vue";
 import GrammarEditDialog from "./GrammarEditDialog.vue";
 
 // The uploaded ASN.1 grammars (get-asn1-grammars), listed like the app's other lists: a row opens the grammar in
 // GrammarEditDialog, which also adds one (pasted or uploaded); the row menu duplicates, downloads (the files one after
-// another in one file) or deletes one no datasource uses. Emits `changed` with the name saved or deleted, and
-// `{renamedFrom}` when a grammar was renamed.
+// another in one file) or deletes one no datasource uses. The datasources using a grammar link to their editor (a route
+// change closes the dialog). Emits `changed` with the name saved or deleted, and `{renamedFrom}` when a grammar was
+// renamed.
 export default {
   name: "GrammarDialog",
   components: { GrammarEditDialog, SkeletonRows },
@@ -144,6 +151,7 @@ export default {
     };
   },
   computed: {
+    ...mapState(["datasourceCatalogue"]),
     shownGrammars() {
       const needle = (this.search || "").trim().toLowerCase();
       if (!needle) {
@@ -163,10 +171,16 @@ export default {
   methods: {
     formatNumber,
     toDateTimeString,
+    grammarIcon,
+    usedByText,
     open() {
       this.visible = true;
       this.search = "";
       this.load();
+      // The names of the datasources using a grammar; the file viewer can be opened before they were read.
+      if (!this.datasourceCatalogue.length) {
+        this.$store.dispatch("updateDatasourceCatalogue").catch(() => {});
+      }
     },
     async load() {
       this.loading = true;
@@ -181,6 +195,9 @@ export default {
     // At most three names, then how many more (all of them in the cell's tooltip).
     shortList(names) {
       return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3} more` : names.join(", ");
+    },
+    usedBy(grammar) {
+      return usedByDatasources(grammar.used_by, this.datasourceCatalogue);
     },
     filesTitle(grammar) {
       return grammar.files.map((file) => `${file.name} (${formatBytes(file.size)})`).join(", ");
@@ -243,5 +260,25 @@ export default {
   white-space: normal;
   word-break: break-word;
   max-width: 320px;
+}
+/* Wraps between the datasources, never inside a name. */
+.used-by-cell {
+  white-space: normal;
+  min-width: 120px;
+  max-width: 320px;
+}
+.used-by {
+  white-space: nowrap;
+}
+.used-by:not(:last-child)::after {
+  content: ", ";
+}
+.datasource-link {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+}
+.datasource-link:hover {
+  text-decoration: underline;
 }
 </style>
