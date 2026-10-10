@@ -12,14 +12,19 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
 1. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
    found on this server within the datasource's archive, error or duplicate directory) has an eye icon opening the
    file in a viewer, on the Files page's file log and in the editor's *File log* tab.
+   - **Header.** The file's name, its datasource (a link to the datasource editor), its file ID and status, and the
+     size, compression and encoding of what is shown; *Copy* copies the archived file's full path, beside *Download*.
+     Below, the chips *Text*, *ASN.1* (how the file is read) and *Records* (the rows it loaded, see 2): the ringed
+     ones are shown. The viewer opens a datasource's files as last picked in this browser (Text or ASN.1, with or
+     without the records), except a binary file that looks like ASN.1, which opens as ASN.1.
    - **Reading.** The first 100 lines are shown at once; scrolling to the bottom loads the next ones, *Load 1,000
-     more* a thousand. A gzip (recognized by its content, not its name), the first file of a ZIP, or a plain file is
-     read decompressed, without unpacking it anywhere: the server keeps nothing between requests and reads each
-     page from where the previous one ended (a gzip is decompressed up to that point, which is fast: a jump to line
-     5 million of a 300 MB file takes about half a second; the server keeps a checkpoint every 8 MB of the 8 gzips
-     read last, so a jump back into one costs at most 8 MB). The viewer keeps at most 50,000 lines; further, search or
-     download the file. The header shows the file's size, compression and encoding (UTF-8, else Latin-1); a binary
-     file is not shown. A line longer than 10,000 characters is cut, with a note of the bytes left out.
+     more* (above the lines) a thousand. A gzip (recognized by its content, not its name), the first file of a ZIP, or
+     a plain file is read decompressed, without unpacking it anywhere: the server keeps nothing between requests and
+     reads each page from where the previous one ended (a gzip is decompressed up to that point, which is fast: a jump
+     to line 5 million of a 300 MB file takes about half a second; the server keeps a checkpoint every 8 MB of the 8
+     gzips read last, so a jump back into one costs at most 8 MB). The viewer keeps at most 50,000 lines; further,
+     search or download the file. The header shows the file's size, compression and encoding (UTF-8, else Latin-1); a
+     binary file is not shown. A line longer than 10,000 characters is cut, with a note of the bytes left out.
    - **Look.** Like the SQL boxes: monospace, read-only, the file's own line numbers, in light and dark mode.
    - **Columns.** In a delimited file each column has its own color (eight, repeating), so the values of one column
      are easy to follow; hovering a value names its column (number and the name from line 1). The delimiter (`;`,
@@ -42,9 +47,10 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      `view_grep_matches`. The viewer is offered wherever downloads are (`file_download`). Each opening and search is
      written to the server log. New routes `view-ds-file` and `grep-ds-file`.
 2. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
-   (when the datasource has tables and the file wrote or rejected records) opens the viewer on them, and the viewer's
-   *File* / *Split* / *Database* switch shows the file, both, or the records. *Split* puts the records below the file,
-   half each, resizable by dragging the bar; the viewer opens split again next time.
+   (when the datasource has tables and the file wrote or rejected records) opens the viewer on them alone, and the
+   viewer's *Records* chip (with the file log's written count) shows or hides them: with *Text* or *ASN.1* also on,
+   the records are below the file, half each, resizable by dragging the bar (the share is kept); clicking the ringed
+   *Text* or *ASN.1* again leaves the records alone.
    - **Tables.** The records are read from the datasource's tables (*Retention* tab) by `FILE_ID`, the file's ID in
      the file log. The *Table* select lists them with the rows of this file in each (read by the `FILE_ID` index);
      a table that does not exist or has no `FILE_ID` is listed but can not be chosen. The first table with rows is
@@ -82,18 +88,18 @@ second. The release adds one table (`rapo_viewer_config`) and one Python package
      before **each** record (Huawei SBC files: 50 and 4); *Filler* picks the padding skipped between records: 00 and
      FF (the default), FF only (needed when a record header may start with 00, as Huawei's), or none. A record's
      header bytes are shown grey in the bytes and belong to it (a click on one selects the record).
-   - **Tree.** On the left, the file's TLVs as a tree, `Tag : [20]` as common ASN.1 viewers show them (a folder for a
-     constructed node, a page for a primitive one, its value after it). A node's children are read from the file
-     when it is opened, 500 at a time (scrolling to the end of a level reads the next ones), so a TAP file of
-     100,000 calls or a CDR file of millions of records opens at once. The arrow keys move the selection and open
-     or close a node. Bytes between records that are 00 or FF (the padding of block-written files) are skipped;
-     bytes that are no TLV show as an orange *Undecodable* node and the reading goes on at the next record, so a
-     damaged file is shown as far as it can be. Lengths may be definite or indefinite (CER).
+   - **Tree.** On the left, the file's TLVs as a tree, by their tag (`[20]`, `[APPLICATION 4]`) as common ASN.1
+     viewers show them (a folder for a constructed node, a page for a primitive one, its value after it). A node's
+     children are read from the file when it is opened, 500 at a time (scrolling to the end of a level reads the next
+     ones), so a TAP file of 100,000 calls or a CDR file of millions of records opens at once. The arrow keys move the
+     selection and open or close a node. Bytes between records that are 00 or FF (the padding of block-written files)
+     are skipped; bytes that are no TLV show as an orange *Undecodable* node and the reading goes on at the next
+     record, so a damaged file is shown as far as it can be. Lengths may be definite or indefinite (CER).
    - **Bytes.** On the right, the **whole file** in hex, 16 bytes a row with the address and the bytes as text, read
      64 KB at a time as you scroll, however large the file. The selected node's bytes are colored: the tag orange,
      the length green, the value blue. A click on a byte selects the deepest node holding it and opens the tree down
      to it.
-   - **Tabs** under the bytes: *Hex*, *XML* (the selected node and its children as XML, with tags, offsets, lengths,
+   - **Tabs** above the bytes: *Hex*, *XML* (the selected node and its children as XML, with tags, offsets, lengths,
      types, values and hex) and *Text* (an indented listing: offset, header and value length, name, tag, type,
      value), each with Copy and Download; at most 5,000 nodes (`asn1_render_nodes`). Below, the selected node's
      details: offset, tag and form, length, field and type, and what its value reads as (by its type with a

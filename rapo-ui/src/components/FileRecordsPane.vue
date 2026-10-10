@@ -25,7 +25,7 @@
       <q-input v-model="search" class="records-search" dense outlined clearable debounce="400" placeholder="Search all columns" :disable="!table">
         <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
       </q-input>
-      <q-btn outline no-caps color="blue-grey-7" icon="fas fa-columns" :label="columnsLabel" class="records-columns" :disable="!columns.length">
+      <q-btn outline dense no-caps color="primary" icon="fas fa-columns" padding="4px 10px" :label="columnsLabel" :disable="!columns.length">
         <q-menu anchor="bottom left" self="top left" @hide="columnFind = ''">
           <q-list dense style="min-width: 260px">
             <q-item>
@@ -86,7 +86,7 @@
           <strong>{{ formatNumber(total) }}</strong> rows
         </template>
       </div>
-      <q-btn v-if="table && current && current.count" flat dense no-caps color="primary" icon="fas fa-chart-bar" label="Open in Data analysis" :to="analysisLink">
+      <q-btn v-if="table && current && current.count" outline dense no-caps color="primary" icon="fas fa-chart-bar" padding="4px 10px" label="Open in Data analysis" :to="analysisLink">
         <q-tooltip>These rows on the Data analysis page: overview, columns, missing values, duplicates, correlations</q-tooltip>
       </q-btn>
     </div>
@@ -449,10 +449,6 @@ export default {
 }
 .records-search {
   width: 260px;
-}
-/* As tall as the dense fields beside it. */
-.records-columns {
-  height: 40px;
 }
 .records-grid :deep(table) {
   table-layout: fixed;

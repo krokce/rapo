@@ -1,6 +1,22 @@
 <template>
   <div class="asn1-search">
-    <div class="row no-wrap items-start q-gutter-x-xs">
+    <div class="row no-wrap items-center q-gutter-x-xs">
+      <!-- What to find: nodes by field and value, or a sequence of bytes. -->
+      <div class="row no-wrap items-center">
+        <q-chip
+          v-for="option in MODES"
+          :key="option.value"
+          dense
+          clickable
+          class="q-ml-none q-mr-xs"
+          :class="{ 'chip-selected': mode === option.value }"
+          :aria-pressed="mode === option.value"
+          @click="mode = option.value">
+          <q-avatar :icon="option.icon" color="blue-grey-6" text-color="white" />
+          <span class="text-weight-bold">{{ option.label }}</span>
+          <q-tooltip anchor="top middle" self="bottom middle">{{ option.title }}</q-tooltip>
+        </q-chip>
+      </div>
       <template v-if="mode === 'field'">
         <q-input v-model="field" class="col search-field" dense outlined clearable label="Field" input-class="text-mono" hide-bottom-space @keyup.enter="start">
           <q-tooltip anchor="top middle" self="bottom middle" :delay="600" max-width="360px">
@@ -9,27 +25,14 @@
         </q-input>
         <q-input v-model="value" class="col search-value" dense outlined clearable :label="matchExact ? 'Value equals' : 'Value contains'" input-class="text-mono" hide-bottom-space @keyup.enter="start">
           <template #append>
-            <q-btn aria-label="Whole value" flat dense no-caps class="search-toggle" :color="matchExact ? 'primary' : 'grey-8'" label="=" @click="matchExact = !matchExact">
+            <q-btn aria-label="Whole value" flat dense no-caps class="viewer-toggle" :class="{ 'viewer-toggle--on': matchExact }" :color="matchExact ? 'primary' : 'grey-8'" label="=" @click="matchExact = !matchExact">
               <q-tooltip>The whole value (else a part of it); any case, any reading or the hex</q-tooltip>
             </q-btn>
           </template>
         </q-input>
       </template>
       <q-input v-else v-model="hex" class="col" dense outlined clearable label="Hex bytes, e.g. 80 04 0A F9" input-class="text-mono" hide-bottom-space @keyup.enter="start" />
-      <q-btn-toggle
-        v-model="mode"
-        dense
-        no-caps
-        unelevated
-        toggle-color="blue-grey-7"
-        color="grey-3"
-        text-color="grey-8"
-        class="search-mode"
-        :options="[
-          { value: 'field', label: 'Field', attrs: { title: 'Find nodes by field and value' } },
-          { value: 'hex', label: 'Hex', attrs: { title: 'Find a sequence of bytes' } },
-        ]" />
-      <q-btn unelevated no-caps color="primary" icon="fas fa-search" class="search-go" :loading="loading" :disable="!canStart" aria-label="Find" @click="start">
+      <q-btn outline dense no-caps color="primary" icon="fas fa-search" padding="4px 10px" label="Find" :loading="loading" :disable="!canStart" @click="start">
         <q-tooltip>Find from the start of the file</q-tooltip>
       </q-btn>
     </div>
@@ -37,7 +40,7 @@
       <div class="row items-center no-wrap text-caption text-grey-8 q-gutter-x-sm">
         <span class="ellipsis">{{ statusText }}</span>
         <q-space />
-        <q-btn v-if="!eof" flat dense no-caps size="sm" color="primary" icon="fas fa-search-plus" label="Find more" :loading="loading" @click="more" />
+        <q-btn v-if="!eof" outline dense no-caps size="sm" color="primary" icon="fas fa-search-plus" padding="2px 8px" label="Find more" :loading="loading" @click="more" />
         <q-btn flat dense round size="sm" icon="fas fa-times" aria-label="Close the results" @click="clear">
           <q-tooltip>Close the results</q-tooltip>
         </q-btn>
@@ -60,6 +63,11 @@ import { api, notifyError } from "../../api";
 import { formatBytes, formatNumber } from "../../utils/format";
 import { decodingParams } from "../../utils/asn1";
 
+const MODES = [
+  { value: "field", label: "Field", icon: "fas fa-tag", title: "Find nodes by field and value" },
+  { value: "hex", label: "Hex", icon: "fas fa-hashtag", title: "Find a sequence of bytes" },
+];
+
 // Finds ASN.1 nodes of the file on the server (search-ds-file-asn1): by field (names or tags) and value, or by bytes. A
 // request reads on from where the last one stopped (`next_offset`), at most the search budgets; a hit opens the tree at
 // its node.
@@ -72,6 +80,7 @@ export default {
   emits: ["reveal"],
   data() {
     return {
+      MODES,
       mode: "field",
       field: "",
       value: "",
@@ -188,17 +197,6 @@ export default {
 }
 .search-value {
   min-width: 140px;
-}
-.search-toggle {
-  min-width: 28px;
-  font-family: var(--rapo-font-mono);
-  font-weight: 600;
-}
-.search-mode {
-  height: 40px;
-}
-.search-go {
-  height: 40px;
 }
 .search-hits {
   max-height: 160px;

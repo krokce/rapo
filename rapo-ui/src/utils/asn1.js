@@ -43,7 +43,7 @@ export function nodeName(node) {
   return null;
 }
 
-// The tag shown after "Tag :" as in common ASN.1 viewers, e.g. [20], [APPLICATION 1], SEQUENCE.
+// The tag of a node as common ASN.1 viewers show it, e.g. [20], [APPLICATION 1], SEQUENCE.
 export function nodeTag(node) {
   return node.undecodable ? "" : node.tag;
 }

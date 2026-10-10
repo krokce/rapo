@@ -17,8 +17,7 @@
               <q-icon :name="nodeIcon(item.node)" :color="item.node.undecodable ? 'orange-9' : item.node.constructed ? 'blue-grey-6' : 'grey-6'" size="13px" class="q-mr-xs" />
               <span v-if="item.name" class="asn1-name ellipsis" :title="item.title">{{ item.name }}</span>
               <span v-else-if="item.node.type" class="asn1-type ellipsis" :title="item.title">{{ item.node.type }}</span>
-              <span v-else class="asn1-plain" :title="item.title">Tag :</span>
-              <span class="asn1-tag text-mono q-ml-xs" :class="{ 'text-orange-9': item.node.unknown }">{{ item.tag }}</span>
+              <span class="asn1-tag text-mono" :class="{ 'text-orange-9': item.node.unknown, 'q-ml-xs': item.name || item.node.type }" :title="item.name || item.node.type ? null : item.title">{{ item.tag }}</span>
               <span v-if="item.preview" class="asn1-preview text-mono ellipsis q-ml-sm" :title="item.preview">{{ item.preview }}</span>
             </template>
             <template v-else-if="item.kind === 'loading'">
@@ -353,9 +352,6 @@ export default {
 }
 .asn1-name {
   font-weight: 500;
-}
-.asn1-plain {
-  color: var(--rapo-strong);
 }
 .asn1-type {
   color: var(--rapo-strong);

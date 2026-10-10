@@ -167,6 +167,33 @@ code, pre, kbd, samp
 .chip-selected
   box-shadow: inset 0 0 0 2px var(--rapo-filter-border)
 
+// A search option inside a field of the file viewer (Aa, .*, =): ringed like a selected chip when on.
+.viewer-toggle
+  min-width: 30px
+  font-family: var(--rapo-font-mono)
+  font-size: 13px
+  font-weight: 600
+
+.viewer-toggle--on
+  box-shadow: inset 0 0 0 2px var(--rapo-filter-border)
+
+// The bars dragged between the panes of the file viewer: the file and its records, the ASN.1 tree and its bytes.
+.viewer-split-handle
+  flex: 0 0 8px
+  cursor: row-resize
+  border-top: 1px solid var(--rapo-panel-border)
+  border-bottom: 1px solid var(--rapo-panel-border)
+  background: var(--rapo-surface-alt)
+
+  &:hover
+    background: var(--rapo-teal-soft)
+
+.viewer-split-handle--v
+  cursor: col-resize
+  border: none
+  border-left: 1px solid var(--rapo-panel-border)
+  border-right: 1px solid var(--rapo-panel-border)
+
 // Files dragged over a place that uploads them (the file log, the editor's Input files, the files dialog).
 .drop-overlay
   z-index: 10

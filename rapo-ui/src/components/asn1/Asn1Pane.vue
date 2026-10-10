@@ -1,6 +1,6 @@
 <template>
   <div class="column no-wrap asn1-pane">
-    <div class="row items-start q-gutter-sm q-px-md q-py-sm toolbar">
+    <div class="row items-center q-gutter-sm q-px-md q-py-sm toolbar">
       <q-select
         :model-value="grammar"
         :options="grammarNames"
@@ -80,21 +80,12 @@
           Padding bytes skipped between records. FF only when a record header may start with 00 (Huawei SBC)
         </q-tooltip>
       </q-select>
-      <q-btn outline no-caps color="primary" icon="fas fa-book" label="Grammars…" class="toolbar-btn" @click="$refs.grammars.open()" />
-      <q-btn
-        v-if="canSave && changed"
-        unelevated
-        no-caps
-        color="primary"
-        icon="fas fa-save"
-        label="Save for datasource"
-        class="toolbar-btn"
-        :loading="saving"
-        @click="saveSettings">
+      <q-btn outline dense no-caps color="primary" icon="fas fa-book" padding="4px 10px" label="Grammars" @click="$refs.grammars.open()">
+        <q-tooltip>Upload, edit and delete the grammars</q-tooltip>
+      </q-btn>
+      <q-btn v-if="canSave && changed" outline dense no-caps color="primary" icon="fas fa-save" padding="4px 10px" label="Save for datasource" :loading="saving" @click="saveSettings">
         <q-tooltip max-width="320px">Open the files of this datasource with this grammar, type and start offset (for everyone)</q-tooltip>
       </q-btn>
-      <q-space />
-      <div v-if="meta" class="text-caption text-grey-7 facts">{{ factsText }}</div>
     </div>
 
     <div ref="panes" class="col row no-wrap panes">
@@ -103,8 +94,26 @@
         <div v-if="rootError" class="q-pa-md text-red-7">{{ rootError }}</div>
         <asn1-tree ref="tree" class="col" :file-id="fileId" :decoding="decoding" :selected-offset="selected ? selected.offset : null" @select="select" @meta="gotMeta" />
       </div>
-      <div class="split-handle-v" title="Drag to resize" @mousedown.prevent="startDrag" />
+      <div class="viewer-split-handle viewer-split-handle--v" title="Drag to resize" @mousedown.prevent="startDrag" />
       <div class="col column no-wrap data-side">
+        <!-- What the right side shows of the selected node, above it: its bytes, or its subtree as XML or text. -->
+        <div class="row items-center no-wrap tab-bar">
+          <q-tabs v-model="tab" dense no-caps inline-label align="left" active-color="primary" indicator-color="primary" class="text-grey-8">
+            <q-tab name="hex" label="Hex" />
+            <q-tab name="xml" label="XML" />
+            <q-tab name="text" label="Text" />
+          </q-tabs>
+          <q-space />
+          <template v-if="tab !== 'hex'">
+            <span v-if="renderNote" class="text-caption text-orange-9 q-mr-sm">{{ renderNote }}</span>
+            <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-copy" aria-label="Copy" :disable="!currentRendered" @click="copyRendered">
+              <q-tooltip>Copy</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-download" aria-label="Download" :disable="!currentRendered" class="q-mr-sm" @click="downloadRendered">
+              <q-tooltip>Download</q-tooltip>
+            </q-btn>
+          </template>
+        </div>
         <q-tab-panels v-model="tab" class="col tab-body" keep-alive>
           <q-tab-panel name="hex" class="q-pa-none">
             <hex-pane ref="hex" :file-id="fileId" :data-size="meta ? meta.data_size : null" :ranges="ranges" @byte="byteClicked" />
@@ -118,23 +127,6 @@
             <q-inner-loading :showing="rendering" />
           </q-tab-panel>
         </q-tab-panels>
-        <div class="row items-center no-wrap tab-bar">
-          <q-tabs v-model="tab" dense no-caps inline-label align="left" active-color="primary" indicator-color="primary" class="text-grey-8">
-            <q-tab name="hex" label="Hex" />
-            <q-tab name="xml" label="XML" />
-            <q-tab name="text" label="Text" />
-          </q-tabs>
-          <q-space />
-          <template v-if="tab !== 'hex'">
-            <span v-if="renderNote" class="text-caption text-orange-9 q-mr-sm">{{ renderNote }}</span>
-            <q-btn flat dense round size="sm" icon="fas fa-copy" aria-label="Copy" :disable="!currentRendered" @click="copyRendered">
-              <q-tooltip>Copy</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round size="sm" icon="fas fa-download" aria-label="Download" :disable="!currentRendered" class="q-mr-sm" @click="downloadRendered">
-              <q-tooltip>Download</q-tooltip>
-            </q-btn>
-          </template>
-        </div>
         <q-separator />
         <div class="details-box q-px-md q-py-sm scroll">
           <asn1-details :node="selected" :detail="detail" />
@@ -189,7 +181,7 @@ export default {
     // The datasource's saved decoding ({grammar, top, start_offset, record_header, filler}) or null.
     saved: { type: Object, default: null },
   },
-  emits: ["saved"],
+  emits: ["saved", "facts"],
   data() {
     const saved = this.saved || {};
     return {
@@ -362,9 +354,11 @@ export default {
       this.rendered = { xml: "", text: "" };
       this.renderedKey = { xml: null, text: null };
     },
+    // The file's facts go to the viewer's header.
     gotMeta(meta, error) {
       this.meta = meta;
       this.rootError = error ? error.message : null;
+      this.$emit("facts", meta ? this.factsText : "");
     },
     grammarsChanged(name, { renamedFrom } = {}) {
       this.loadGrammars();
@@ -509,12 +503,6 @@ export default {
 .filler-select {
   width: 130px;
 }
-.toolbar-btn {
-  height: 40px;
-}
-.facts {
-  padding-top: 12px;
-}
 .panes {
   min-height: 0;
   border-top: 1px solid var(--rapo-panel-border);
@@ -528,16 +516,6 @@ export default {
   min-width: 0;
   min-height: 0;
 }
-.split-handle-v {
-  flex: 0 0 8px;
-  cursor: col-resize;
-  border-left: 1px solid var(--rapo-panel-border);
-  border-right: 1px solid var(--rapo-panel-border);
-  background: var(--rapo-surface-alt);
-}
-.split-handle-v:hover {
-  background: var(--rapo-teal-soft);
-}
 .tab-body {
   min-height: 0;
 }
@@ -545,8 +523,7 @@ export default {
   height: 100%;
 }
 .tab-bar {
-  border-top: 1px solid var(--rapo-panel-border);
-  background: var(--rapo-surface-alt);
+  border-bottom: 1px solid var(--rapo-panel-border);
 }
 .details-box {
   flex: 0 0 160px;

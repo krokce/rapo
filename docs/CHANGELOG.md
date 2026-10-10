@@ -31,7 +31,8 @@ needed); new `[DATASOURCES]` options (uploads are off until `file_upload=True`).
   hover). A search reads the whole file on the server (text or regular expression, match case), lists the matching
   lines with their numbers and goes on with *Find more*; a click shows the file from that line. The *Delimiter* field
   takes any delimiter (several characters too) or fixed column widths (`10,5,8`), saved per datasource for everyone.
-  Options `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
+  Header: datasource link, file ID, status, *Copy* path; chips *Text* / *ASN.1* / *Records*, reopened as last picked
+  per datasource. Options `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
 - **ASN.1 view** of binary files (BER, DER, CER; opened so when the file looks like it, or *Text* / *ASN.1*): a tree
   of tags read node by node (500 children at a time, so files of any size; 00/FF padding skipped, undecodable bytes
   shown and passed), beside a hex dump of the whole file coloring the selected node's tag, length and value (a byte
@@ -45,7 +46,7 @@ needed); new `[DATASOURCES]` options (uploads are off until `file_upload=True`).
   the Datasources list (filters by grammar). Pentaho decoders' **tag maps** (`props.put("82.4.1",...)`) upload as
   grammars and decode as the decoder does; details show the full tag (`SEQ.1.4.0`). Options `[DATASOURCES] asn1_*`; routes `*-ds-file-asn1`,
   `get-ds-file-bytes`, `*-asn1-grammar*`, `*-viewer-settings`.
-- **Loaded records** (database icon on a file log row, or *Database* / *Split* in the viewer): the rows PDI Core
+- **Loaded records** (database icon on a file log row, or the viewer's *Records* chip): the rows PDI Core
   loaded from the file (`FILE_ID`) in each table of the datasource (a select with each table's count), as a plain
   table read page by page from the database and searched there in all columns (no sampling), with the columns to
   show; alone or below the file in a draggable split; counts checked against the file log; *Open in Data analysis*
