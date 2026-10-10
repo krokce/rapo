@@ -33,7 +33,7 @@
             <q-avatar :icon="kind === 'tagmap' ? 'fas fa-tags' : 'fas fa-sitemap'" color="blue-grey-6" text-color="white" />
             {{ kind === "tagmap" ? "Tag map" : "ASN.1 modules" }}
           </q-chip>
-          <div v-if="loaded" class="text-caption text-grey-7 saved-facts">{{ savedFacts }}</div>
+          <div v-if="loaded" class="text-caption text-grey-7 saved-facts" :title="savedFacts">{{ savedFacts }}</div>
         </div>
         <div v-if="loaded && loaded.used_by.length && renamed" class="row items-center q-gutter-xs text-caption">
           <q-icon name="fas fa-exclamation-triangle" color="orange-9" />
@@ -106,8 +106,8 @@
       <q-card-actions class="q-px-md q-py-sm">
         <div class="text-caption text-grey-7">The text is checked when saved; Ctrl+S saves.</div>
         <q-space />
-        <q-btn flat no-caps color="primary" label="Cancel" @click="close" />
-        <q-btn unelevated no-caps color="primary" icon="fas fa-save" label="Save" :loading="saving" :disable="loading || !canSave" @click="save" />
+        <q-btn flat color="primary" label="Cancel" @click="close" />
+        <q-btn color="primary" label="Save" :loading="saving" :disable="loading || !canSave" @click="save" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -133,6 +133,10 @@ function fileEntry(name, text, loaded = true) {
 export default {
   name: "GrammarEditDialog",
   components: { GrammarCodeBox },
+  props: {
+    // The list is maximized: the editor opens maximized too.
+    listMaximized: { type: Boolean, default: false },
+  },
   emits: ["saved"],
   data() {
     return {
@@ -196,6 +200,7 @@ export default {
       this.renaming = null;
       this.dragging = false;
       this.saving = false;
+      this.maximized = this.maximized || this.listMaximized;
     },
     openAdd() {
       this.reset();
@@ -388,9 +393,14 @@ export default {
 .kind-chip {
   margin-top: 4px;
 }
+/* A long module list takes two lines at most (all of it in the tooltip), so the editor keeps its height. */
 .saved-facts {
   padding-top: 12px;
   max-width: 50%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .file-tabs {
   border-bottom: 1px solid var(--rapo-panel-border);
@@ -417,7 +427,7 @@ export default {
 .rename-input {
   font-size: 13px;
   width: 180px;
-  border: 1px solid var(--rapo-teal);
+  border: 1px solid var(--q-primary);
   border-radius: 3px;
   padding: 1px 4px;
   background: var(--rapo-surface);

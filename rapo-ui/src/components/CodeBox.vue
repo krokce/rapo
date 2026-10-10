@@ -309,11 +309,16 @@ export default {
 
 <style>
 .cm-editor {
-  min-height: 56px;
-  max-height: 20em;
   border: 1px solid var(--rapo-code-border);
   border-radius: 0.25em;
   outline: none;
+}
+
+/* The sizes are this box's own: unscoped, they also capped the editors that fill a pane (the grammar editor, the
+   ASN.1 view) once this chunk was loaded. */
+.cm-wrapper .cm-editor {
+  min-height: 56px;
+  max-height: 20em;
 }
 
 .cm-gutters {
@@ -322,9 +327,9 @@ export default {
 
 /* The min-height of .cm-editor less its borders. CodeMirror sizes .cm-gutters to the content's height itself (an
    inline min-height); overriding that cut the line numbers off after the first screenful. Its own theme sets
-   min-height: 100% on these with two classes, hence three here. */
-.cm-editor .cm-scroller .cm-content,
-.cm-editor .cm-scroller .cm-gutter {
+   min-height: 100% on these with two classes, hence more here. */
+.cm-wrapper .cm-editor .cm-scroller .cm-content,
+.cm-wrapper .cm-editor .cm-scroller .cm-gutter {
   min-height: 54px;
 }
 

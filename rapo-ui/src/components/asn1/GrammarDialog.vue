@@ -25,7 +25,7 @@
             <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
           </q-input>
           <q-space />
-          <q-btn unelevated no-caps color="primary" icon="fas fa-plus" label="Add grammar" @click="$refs.editor.openAdd()" />
+          <q-btn color="primary" icon="fas fa-plus" label="Add grammar" @click="$refs.editor.openAdd()" />
         </div>
 
         <q-virtual-scroll
@@ -114,7 +114,7 @@
         </q-item>
       </q-list>
     </q-menu>
-    <grammar-edit-dialog ref="editor" @saved="saved" />
+    <grammar-edit-dialog ref="editor" :list-maximized="maximized" @saved="saved" />
   </q-dialog>
 </template>
 

@@ -97,14 +97,30 @@ export default {
 .grammar-code {
   height: 100%;
 }
+/* CodeBox's look, here too since its sheet is loaded only with the pages using it. */
 .grammar-code :deep(.cm-editor) {
   height: 100%;
   border: 1px solid var(--rapo-code-border);
   border-radius: 0.25em;
+  outline: none;
+}
+.grammar-code :deep(.cm-editor:hover) {
+  border-color: var(--rapo-muted);
 }
 .grammar-code :deep(.cm-editor.cm-focused) {
-  outline: none;
-  border-color: var(--rapo-teal);
+  border-color: var(--q-primary);
+  outline: 1px solid var(--q-primary);
+}
+.grammar-code :deep(.cm-gutters) {
+  border-right: 1px solid var(--rapo-code-border);
+}
+.grammar-code :deep(.cm-activeLine),
+.grammar-code :deep(.cm-activeLineGutter) {
+  background: transparent;
+}
+.grammar-code :deep(.cm-focused .cm-activeLine),
+.grammar-code :deep(.cm-focused .cm-activeLineGutter) {
+  background: rgba(100, 100, 100, 0.1);
 }
 .grammar-code :deep(.cm-content),
 .grammar-code :deep(.cm-gutters) {
