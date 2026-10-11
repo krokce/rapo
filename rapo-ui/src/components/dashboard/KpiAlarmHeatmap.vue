@@ -1,6 +1,6 @@
 <template>
   <div>
-    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="12" class="kpi-heatmap" @pick="pick" />
+    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="18" class="kpi-heatmap" @pick="pick" />
     <q-btn v-if="rows.length > LIMIT" flat dense no-caps size="sm" color="primary" class="q-mt-xs" :icon="all ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" :label="all ? 'Show fewer' : `Show ${rows.length - LIMIT} more control${rows.length - LIMIT > 1 ? 's' : ''}`" @click="toggle" />
   </div>
 </template>
@@ -22,7 +22,7 @@ function readAll() {
   }
 }
 
-// The highest KPI alarm level of each control per bucket: a dense row per control (the worst first) in the level
+// The highest KPI alarm level of each control per bucket: a compact row per control (the worst first) in the level
 // colors (no alarm a pale grey), empty where it stored nothing; the first LIMIT, the others behind a button. A click
 // opens the control's KPIs.
 export default {
@@ -37,10 +37,10 @@ export default {
     return { LIMIT, all: readAll() };
   },
   computed: {
-    // The longest control name, up to 220 px.
+    // The longest control name (13px text), up to 260 px.
     labelWidth() {
       const longest = Math.max(0, ...this.data.heatmap.controls.map((control) => control.control_name.length));
-      return Math.min(220, Math.max(110, longest * 7 + 20));
+      return Math.min(260, Math.max(110, longest * 8 + 28));
     },
     columns() {
       return bucketColumns(this.data.buckets, this.data.unit);
@@ -82,9 +82,8 @@ export default {
 </script>
 
 <style scoped>
-/* Dense rows: 12px names beside 12px cells. */
-.kpi-heatmap :deep(.heat-strip__label) {
-  font-size: 12px;
-  line-height: 12px;
+/* Compact but readable rows: 18px cells, 4px apart. */
+.kpi-heatmap.heat-strip {
+  gap: 4px;
 }
 </style>

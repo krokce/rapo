@@ -64,6 +64,29 @@ def scheduler():
     return memo.get(('scheduler',), read)
 
 
+def next_fire():
+    """Get the next fire of the scheduler's own schedules within 24 hours:
+    its `time`, the first control by name (`control_id`, `control_name`,
+    `control_type`) and how many `others` fire at the same time; None when
+    nothing is scheduled.
+    """
+    def read():
+        from ..core.scheduler import upcoming
+        fires = [fire for fire in upcoming(UPCOMING_HOURS)
+                 if fire['trigger_type'] == journal.SCHEDULE]
+        if not fires:
+            return None
+        first = fires[0]
+        same = [fire for fire in fires
+                if fire['scheduled_time'] == first['scheduled_time']]
+        return {'time': first['scheduled_time'],
+                'control_id': first['control_id'],
+                'control_name': first['control_name'],
+                'control_type': first['control_type'],
+                'others': len(same) - 1}
+    return memo.get(('scheduler', 'next'), read)
+
+
 def missed():
     """Get the missed fires never caught up, newest first."""
     return memo.get(('scheduler', 'missed'), lambda: journal.read_missed(

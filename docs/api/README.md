@@ -1173,7 +1173,8 @@ all clients, and dropped by the live events that change them.
 
 * `tiles` (today, not the span): `runs`, `run_errors` (runs in `E`), `failing_controls` (controls whose latest run of
   the day is `E`), `run_warnings`, `files_success` (files in `SUCCESS`), `records_loaded`, `records_rejected` (with
-  `rate`, today's % of the records read), `files_error`, `kpi_alarms` (KPI values at alarm level 2 or 3), each `{today, last_week, days}`: `last_week` the same weekday a week before up
+  `rate`, today's % of the records read), `files_error`, `kpi_alarms` (KPI values at alarm level 2 or 3), `next_fire` (the next fire of the schedules in 24 hours,
+  `{time, control_id, control_name, control_type, others}` with `others` firing at the same time, or `null`), each `{today, last_week, days}`: `last_week` the same weekday a week before up
   to the same time of day, `days` the 7 days to today, `null` where unknown. The file tiles are on the database clock,
   the others on the app server's; `files` tiles are absent without the file log, `kpi_alarms` is null without KPIs.
   `files_waiting` (with the datasources) is the files waiting in the input directories now (the last scan, `null`

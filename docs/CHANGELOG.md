@@ -14,12 +14,12 @@ Python package `asn1tools` (`phik` no longer needed); new `[DATASOURCES]` option
 Dashboard's file summary.
 
 - **Dashboard**, the new start page (`/`, sign-in, logo), compact, live and full width (panels fill each row): 12
-  tiles of today in two rows of six (run errors with controls still failing, a scheduler slot ring, files success,
+  tiles of today in two rows of six (run errors with controls still failing, a scheduler slot ring with the next fire, files success,
   records rejected) against the same weekday last week (incl. *Files in input* and *Files in
   processing*); over 24h / 7d / 30d: runs over time by status, donuts of runs by status, type and trigger, slowest
   controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, donuts of files by status, top
   datasources (records loaded, files in error) and datasources by state, loading and throughput; KPI alarms per
-  control (dense strips, all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
+  control (compact strips, all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
   Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
   `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
   scheduler's maintenance or *Refresh* (`refresh-file-summary`). Options `[DASHBOARD] file_summary_days`,

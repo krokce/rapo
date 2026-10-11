@@ -12,7 +12,7 @@
       <div class="row no-wrap">
         <div class="col column no-wrap stat-tile__text">
           <div class="stat-tile__title dash-label ellipsis">{{ tile.title }}</div>
-          <div class="stat-tile__value dash-value ellipsis" :title="tile.exact">
+          <div class="stat-tile__value dash-value ellipsis" :class="{ 'stat-tile__value--text': tile.textValue }" :title="tile.exact">
             <q-icon v-if="tile.icon" :name="tile.icon" size="14px" class="q-mr-xs stat-tile__dot" :style="{ color: tile.dotColor }" />{{ tile.value }}
           </div>
           <div class="stat-tile__sub dash-note ellipsis" :class="tile.deltaClass" :title="tile.sub">{{ tile.sub }}</div>
@@ -21,6 +21,9 @@
           <circle v-for="(segment, index) in tile.ring.segments" :key="index" cx="20" cy="20" r="16" :class="segment.on ? 'stat-tile__ring--on' : 'stat-tile__ring--off'" :stroke-dasharray="segment.dash" :stroke-dashoffset="segment.offset" />
           <text x="20" y="20" class="stat-tile__ring-text">{{ tile.ring.text }}</text>
         </svg>
+      </div>
+      <div v-if="tile.next" class="stat-tile__sub dash-note ellipsis" :title="tile.nextTitle">
+        <q-icon v-if="tile.nextIcon" name="fas fa-forward" size="10px" class="q-mr-xs" />{{ tile.next }}
       </div>
       <svg v-if="tile.spark" class="stat-tile__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
         <polygon :points="tile.spark.area" />
@@ -33,7 +36,7 @@
 
 <script>
 import { schedulerState } from "../../constants";
-import { compactNumber, formatNumber } from "../../utils/format";
+import { compactNumber, formatNumber, toDateTimeString } from "../../utils/format";
 import { LEVEL_TEXT } from "../../utils/health";
 import { gridColumns, tileDelta } from "../../utils/dashboard";
 import { paletteColor } from "../../utils/palette";
@@ -111,6 +114,8 @@ export default {
         icon: "fas fa-circle",
         dotColor: paletteColor(state.color),
         sub: status ? `${queued} queued` : "",
+        textValue: true,
+        ...this.nextFire(status),
         hint: `${state.description}\n${running} of ${runner.capacity || 0} slots of this server running, ${queued} queued`,
         ring: status ? this.ring(running, runner.capacity || 0) : null,
         state: status && (status.disabled || status.state === "off") ? "alert" : null,
@@ -209,6 +214,26 @@ export default {
         spark: this.spark(tile.days),
       };
     },
+    // The next fire of the schedules: "⏩ 13:00 · NAME +2" ("tomorrow 09:00" past midnight), none while the
+    // scheduler does not fire on any server.
+    nextFire(status) {
+      const fire = this.tiles && this.tiles.next_fire;
+      if (!status || ["stopped", "off"].includes(status.state)) {
+        return status ? { next: "Not firing" } : {};
+      }
+      if (!fire) {
+        return { next: "No fire in 24 h" };
+      }
+      const time = String(fire.time);
+      const today = status.server_time ? String(status.server_time).slice(0, 10) : null;
+      const when = `${today && time.slice(0, 10) !== today ? "tomorrow " : ""}${time.slice(11, 16)}`;
+      const others = fire.others ? ` +${fire.others}` : "";
+      return {
+        next: `${when} · ${fire.control_name}${others}`,
+        nextIcon: true,
+        nextTitle: `Next fire at ${toDateTimeString(time)}: ${fire.control_name}${fire.others ? ` and ${fire.others} other control${fire.others > 1 ? "s" : ""}` : ""}`,
+      };
+    },
     // A ring of the slots, one segment each (a gap between them), the running ones first: stroke dashes on a circle of
     // radius 16 starting at the top.
     ring(running, capacity) {
@@ -300,6 +325,12 @@ export default {
 
 .stat-tile__value {
   margin-top: 2px;
+}
+
+/* A state as the value (the scheduler's): smaller than a count. */
+.stat-tile__value--text {
+  font-size: 18px;
+  line-height: 1.6;
 }
 
 .stat-tile__text {

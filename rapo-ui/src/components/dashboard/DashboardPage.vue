@@ -1,15 +1,15 @@
 <template>
   <div class="dashboard">
-    <div class="row items-center q-mb-sm">
-      <div class="dashboard__asof" :title="serverTime ? `Server time ${toDateTimeString(serverTime)}` : ''">
-        <template v-if="serverTime">As of {{ toDateTimeString(serverTime).slice(11, 16) }}</template>
-      </div>
-      <q-space />
-      <div class="row items-center no-wrap">
+    <analysis-layout ref="layout" :sections="railSections" rail-row>
+      <template #end>
+        <span class="dashboard__asof q-mr-sm" :title="serverTime ? `Server time ${toDateTimeString(serverTime)}` : ''">
+          <template v-if="serverTime">As of {{ toDateTimeString(serverTime).slice(11, 16) }}</template>
+        </span>
         <q-chip
           v-for="item in spans"
           :key="item.value"
           clickable
+          dense
           :class="{ 'chip-selected': span === item.value }"
           :title="item.title"
           class="dashboard__span"
@@ -37,10 +37,7 @@
             </q-list>
           </q-menu>
         </q-btn>
-      </div>
-    </div>
-
-    <analysis-layout ref="layout" :sections="railSections" rail-row>
+      </template>
       <analysis-section v-for="section in shownSections" :id="section.id" :key="section.id" :title="section.label" :icon="section.icon">
         <template #facts>
           <span v-for="fact in sectionFacts(section.id)" :key="fact.text" class="q-mr-md" :class="fact.class" :title="fact.title">{{ fact.text }}</span>
@@ -114,7 +111,15 @@
               :caption="`fetched · ${compactNumber(volumeTotals.discrepancies)} discrepancies`"
               :height="128"
               @pick="pickRuns" />
-            <hour-heatmap v-else-if="panel.id === 'run-heatmap'" :rows="weekdayRows" unit="run(s)" corner="errors" class="dashboard__weekdays" @select="() => null" />
+            <heat-strip
+              v-else-if="panel.id === 'run-heatmap'"
+              :rows="weekdayRows"
+              :columns="hourColumns"
+              :label-width="56"
+              :cell-height="20"
+              scale="all"
+              :clickable="false"
+              numbers />
 
             <scheduler-strip v-else-if="panel.id === 'scheduler'" :data="parts.scheduler" :status="schedulerStatus" :now="now" @open="go" />
 
@@ -180,7 +185,6 @@ import { compactNumber, formatDuration, formatNumber, toDateTimeString } from ".
 import { triggerOfKey } from "../../utils/runs";
 import AnalysisLayout from "../analysis/AnalysisLayout.vue";
 import AnalysisSection from "../analysis/AnalysisSection.vue";
-import HourHeatmap from "../HourHeatmap.vue";
 import BarList from "./BarList.vue";
 import DashboardPanel from "./DashboardPanel.vue";
 import DonutChart from "./DonutChart.vue";
@@ -225,7 +229,6 @@ export default {
     FilesLoading,
     HealthMiniTiles,
     HeatStrip,
-    HourHeatmap,
     KpiAlarmHeatmap,
     MiniTrend,
     SchedulerStrip,
@@ -340,13 +343,26 @@ export default {
       const sum = (values) => values.reduce((total, value) => total + (value || 0), 0);
       return { fetched: sum(this.parts.runs.volume.fetched), discrepancies: sum(this.parts.runs.volume.discrepancies) };
     },
+    // The runs by weekday and hour on one scale, the count in each cell; the errors only in its tooltip.
     weekdayRows() {
       const grid = this.parts.runs.hour_weekday;
       return WEEKDAYS.map((label, day) => ({
         key: label,
         label,
-        cells: grid.count[day].map((count, hour) => ({ count, errors: grid.errors[day][hour] })),
+        color: "blue-6",
+        cells: grid.count[day].map((count, hour) => {
+          const errors = grid.errors[day][hour];
+          const title = `${label} ${this.hourColumns[hour].title}: ${formatNumber(count)} run(s)${errors ? `, ${formatNumber(errors)} in error` : ""}`;
+          return { count, title };
+        }),
       }));
+    },
+    // The 24 hours, labeled every 3rd.
+    hourColumns() {
+      return Array.from({ length: 24 }, (_, hour) => {
+        const text = String(hour).padStart(2, "0");
+        return { label: hour % 3 === 0 ? text : "", title: `${text}:00–${String((hour + 1) % 24).padStart(2, "0")}:00` };
+      });
     },
     // The files of the span by status, the statuses of a request done told apart.
     fileStatusItems() {
@@ -396,8 +412,9 @@ export default {
         clearTimeout(this.kpiTimer);
         this.kpiTimer = setTimeout(() => this.fetch(["kpis", "tiles"], true), 15000);
       }),
-      liveRefetch("controls:changed", () => this.fetch(["runs", "kpis", "scheduler"], true)),
-      liveRefetch("scheduler:changed", () => this.fetch(["scheduler"], true)),
+      // The tiles carry the scheduler's next fire.
+      liveRefetch("controls:changed", () => this.fetch(["tiles", "runs", "kpis", "scheduler"], true)),
+      liveRefetch("scheduler:changed", () => this.fetch(["tiles", "scheduler"], true)),
       // The file log, its summary, the datasources' lanes and the last scan (files waiting, stalled).
       liveRefetch("datasources:changed", () => this.fetch(["files", "tiles"], true), {
         filter: (payload) => ["files", "summary", "config", "status"].includes(payload.kind),
@@ -702,8 +719,9 @@ export default {
 
 <style scoped>
 .dashboard__asof {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--rapo-label);
+  white-space: nowrap;
 }
 
 .dashboard__span {
@@ -716,15 +734,6 @@ export default {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-/* The weekday names need little room, and a third of a row only every 3rd hour label. */
-.dashboard__weekdays :deep(.hour-heatmap__row) {
-  grid-template-columns: 30px repeat(24, minmax(0, 1fr));
-}
-
-.dashboard__weekdays :deep(.hour-heatmap__hours .hour-heatmap__hour:not(:nth-child(3n + 2))) {
-  visibility: hidden;
 }
 
 .dashboard__pair {

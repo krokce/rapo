@@ -22,7 +22,8 @@ def _tiles(span):
             **(file_data.tiles() or {}),
             'files_waiting': file_data.waiting_tile(),
             'files_processing': file_data.processing_tile(),
-            'kpi_alarms': kpi_data.tiles() if kpi_data.available() else None}
+            'kpi_alarms': kpi_data.tiles() if kpi_data.available() else None,
+            'next_fire': schedule.next_fire()}
 
 
 PARTS = {

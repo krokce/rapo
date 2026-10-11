@@ -1,9 +1,10 @@
 <template>
   <div class="analysis-layout">
     <!-- Narrow screens: the sections in one row under the header. -->
-    <nav v-if="narrow && sections.length > 1" class="rail-row row no-wrap items-center q-gutter-x-xs q-mb-md" aria-label="On this page">
-      <q-btn
-        v-for="section in sections"
+    <nav v-if="narrow && (sections.length > 1 || $slots.end)" class="rail-row row no-wrap items-center q-mb-md" aria-label="On this page">
+      <div class="rail-row__links col row no-wrap items-center q-gutter-x-xs">
+        <q-btn
+          v-for="section in sections.length > 1 ? sections : []"
         :key="section.id"
         flat
         dense
@@ -13,8 +14,12 @@
         :color="section.id === active ? 'teal' : 'blue-grey-8'"
         :icon="section.icon"
         :label="section.label"
-        :aria-current="section.id === active ? 'true' : undefined"
-        @click="go(section.id)" />
+          :aria-current="section.id === active ? 'true' : undefined"
+          @click="go(section.id)" />
+      </div>
+      <div v-if="$slots.end" class="rail-row__end row no-wrap items-center">
+        <slot name="end" />
+      </div>
     </nav>
     <div class="row no-wrap items-start">
       <div class="col analysis-main">
@@ -49,7 +54,8 @@ const READING_LINE = 120;
 // this page" beside it (in a row under the header on narrow screens), the section being read marked as the page
 // scrolls. A link scrolls its section to the top and puts its id in the URL hash, so a copied link opens there; the
 // page scrolls to the hash itself once loaded (scrollTo). Kept alive with its page, so it listens only while active.
-// With `railRow` the sections are always the row, so the content takes the whole width (the Dashboard).
+// With `railRow` the sections are always the row, so the content takes the whole width (the Dashboard); the slot `end`
+// puts the page's own controls at the row's right end, sticky with it.
 export default {
   name: "AnalysisLayout",
   props: {
@@ -196,8 +202,22 @@ export default {
   position: sticky;
   top: 62px;
   z-index: 2;
-  overflow-x: auto;
   background: var(--rapo-page);
   border-bottom: 1px solid var(--rapo-grid);
+}
+
+/* The links scroll when the row is too narrow; the page's controls at the end stay. */
+.rail-row__links {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.rail-row__links > * {
+  flex: none;
+}
+
+.rail-row__end {
+  flex: none;
+  margin-left: 8px;
 }
 </style>
