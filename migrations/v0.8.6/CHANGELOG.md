@@ -18,35 +18,39 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    or **30d** (by day), remembered by the browser.
    - **Overview.** Twelve tiles of today in two rows of six (four, three or two per row as the width shrinks), by
      topic, the edge and the week of a tile in the topic's color (red or orange when it needs attention): the runs,
-     failing controls (latest run of the day in error), run warnings, KPI alarms (level 2–3), then the instance, the
-     scheduler's state and health; and the files along their way: **files in input** (waiting in
+     **run errors** (runs in error today; red with "N controls still failing" while a control's latest run is in
+     error, orange with "all recovered" when every one was fixed by a later run), run warnings, KPI alarms (level
+     2–3), then the instance: the scheduler's state with a ring of this server's slots (running of all, queued below)
+     and health; and the files along their way: **files in input** (waiting in
      the input directories now, with the oldest one's age; red, and linking to the stalled datasources, when any is
      stalled), **files in processing** (files of any day in the file log loading or waiting to be loaded, now:
-     how many load and how many wait, the oldest's age on hover), files, records loaded, rejected % of read and files
-     in error. The counts compare with the same weekday a week
+     how many load and how many wait, the oldest's age on hover), then in pairs **files success** (`SUCCESS` only) and
+     files in error, records loaded and **rejected** (the records rejected, with their % of the records read). The counts compare with the same weekday a week
      earlier up to the same time of day (▲/▼, red when worse) and draw the last 7 days as an area across the tile. A click
      opens the page that shows it. The panel is 300 px high, exactly as high as *Instance health*, and its tiles
      stretch to fill it.
    - **Runs.** The runs over time by status (a strip per status, a click opens that status of that day or hour), donuts
      of the runs by status, by type and by trigger, the slowest controls (bars in the control type's color, names in
-     full), the records fetched with the discrepancies found as a small trend (a point per day or hour), and the runs by
+     full), the records fetched with the discrepancies found as two areas on one scale (a point per day or hour, the
+     discrepancy rate on hover), and the runs by
      weekday and hour (errors outlined). Every panel of a row is the same height.
    - **Scheduler.** One line with its state, server, heartbeat, slots and the missed fires never caught up (a chip
      opening them on the Scheduler page), then one strip of 48 hours whatever the span: what it did in the last 24
-     (started, missed, failed per hour) and what it will start in the next 24, on each side of *Now*.
+     (started, missed, failed per hour) and what it will start in the next 24, on each side of *Now*, the count written
+     in each hour (as in the runs and files over time, when the cells are wide enough).
    - **Files** (with the PDI Core file log). The files over time by status (a strip per status), donuts of the files by status, of the top datasources by records loaded
      and by files in error (seven each, the rest as *Others*) and of the datasources by state (stalled, delivering
      files in the span, silent, disabled; the files waiting beside the title), and *Loading* (records loaded with the
-     reject rate, and the load throughput in records per minute of load time of all datasources or one picked, as
-     two small trends side by side). Days are those of the database clock, as on the Files page.
-   - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as a strip, beside a donut
-     of the control-days (or hours) by alarm level.
+     records rejected in the span as a chip, and the load throughput in records per minute of load time, as two small
+     trends side by side, both of all datasources or the one picked in the panel's head). Days are those of the database clock, as on the Files page.
+   - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as dense strips over
+     the full width: the worst 25 controls, *Show N more controls* for the rest (remembered by the browser).
    - **Health.** The instance health as two rows of six tiles, tall like *Today* (the rapo server's, the database's; the file
      systems as one Disk tile, the fullest, all listed on hover), each with its value, level and a line over the last
      24 hours (24h) or 7 days (7d, 30d); a click opens Instance details on Health.
    - **One type.** Counters, metric labels, row texts and notes have the same size and weight in every panel (tiles,
      donuts, trends, strips, bars, health), larger and darker than before.
-   - **Compact.** Shares are donuts, counts over time strips like the hour heatmaps of Results and Files, volumes and
+   - **Compact.** Shares are donuts of rounded slices, counts over time strips like the hour heatmaps of Results and Files, volumes and
      rates small trends; there are no bar charts over time.
    - **Panels.** Each panel's menu moves it up or down or hides it, and its handle drags it within its section; the
      header's *Panels* menu adds hidden panels back and resets the layout (kept by the browser). A hidden panel's

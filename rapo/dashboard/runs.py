@@ -189,7 +189,8 @@ def _slowest(per_control, configs):
 
 
 def tiles():
-    """Get today's runs, failing controls and runs with a warning.
+    """Get today's runs, runs in error, failing controls and runs with a
+    warning.
 
     Each is {today, last_week, days}: last_week the same weekday a week
     before up to the same time of day, days the 7 days to today (whole).
@@ -217,6 +218,9 @@ def tiles():
                 join rapo_config c on c.control_id = r.control_id)
             select day, count(*) runs, sum(early) runs_early,
                    sum(warned) warnings, sum(warned * early) warnings_early,
+                   sum(case when status = 'E' then 1 else 0 end) errors,
+                   sum(case when status = 'E' then early else 0 end)
+                       errors_early,
                    sum(case when latest = 1 and status = 'E'
                             then 1 else 0 end) failing,
                    sum(case when early = 1 and latest_early = 1
@@ -229,6 +233,7 @@ def tiles():
                 for row in db.execute(statement, as_table=True)}
         return {name: _tile(days, today.date(), field)
                 for name, field in (('runs', 'runs'),
+                                    ('run_errors', 'errors'),
                                     ('failing_controls', 'failing'),
                                     ('run_warnings', 'warnings'))}
     return memo.get(('run_tiles',), read)

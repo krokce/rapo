@@ -68,6 +68,23 @@
             @move="(delta) => move(panel.id, delta)"
             @hide="hide(panel.id)"
             @drop="(id) => drop(id, panel.id)">
+            <template v-if="panel.id === 'files-loading' && parts.files && parts.files.throughput" #actions>
+              <q-select
+                v-model="loadingSource"
+                :options="loadingOptions"
+                emit-value
+                map-options
+                dense
+                borderless
+                options-dense
+                use-input
+                hide-selected
+                fill-input
+                input-debounce="0"
+                class="dashboard__source dash-text"
+                aria-label="Datasource of the Loading charts"
+                @filter="filterSources" />
+            </template>
             <template v-if="panel.id === 'files-datasources' && parts.files && parts.files.datasources && parts.files.datasources.scanned" #facts>
               <span title="Files in the input directories of the datasources, as last scanned">{{ formatNumber(parts.files.datasources.totals.waiting || 0) }} files waiting</span>
             </template>
@@ -80,6 +97,7 @@
               :columns="timelineColumns(parts.timeline)"
               :label-width="96"
               :cell-height="22"
+              numbers
               unit="run(s)"
               @pick="pickRunCell" />
             <donut-chart v-else-if="panel.id === 'run-status'" :items="runStatusItems" center-label="runs" :height="150" @pick="pickStatus" />
@@ -91,6 +109,7 @@
               :buckets="parts.runs.buckets"
               :unit="parts.runs.unit"
               :series="volumeSeries"
+              :note="volumeNote"
               :headline="compactNumber(volumeTotals.fetched)"
               :caption="`fetched · ${compactNumber(volumeTotals.discrepancies)} discrepancies`"
               :height="128"
@@ -105,6 +124,7 @@
               :columns="timelineColumns(parts.files)"
               :label-width="96"
               :cell-height="22"
+              numbers
               unit="file(s)"
               @pick="pickFileCell" />
             <donut-chart v-else-if="panel.id === 'files-status'" :items="fileStatusItems" center-label="files" :height="150" @pick="pickFileStatus" />
@@ -120,9 +140,8 @@
               </div>
             </div>
             <donut-chart v-else-if="panel.id === 'files-datasources'" :items="datasourceItems" center-label="datasources" :height="150" @pick="pickDatasourceState" />
-            <files-loading v-else-if="panel.id === 'files-loading'" :data="parts.files" @pick="({ bucket }) => go(filesLink(bucket, parts.files.unit, databaseToday))" />
+            <files-loading v-else-if="panel.id === 'files-loading'" :data="parts.files" :source="loadingSource" @pick="({ bucket }) => go(filesLink(bucket, parts.files.unit, databaseToday))" />
 
-            <donut-chart v-else-if="panel.id === 'kpi-levels'" :items="kpiLevelItems" :center-label="parts.kpis.unit === 'hour' ? 'control hours' : 'control days'" :height="150" :clickable="false" />
             <kpi-alarm-heatmap v-else-if="panel.id === 'kpi-heatmap'" :data="parts.kpis" @pick="openKpis" />
 
             <health-mini-tiles v-else-if="panel.id === 'health-tiles'" :span="span" :active="active" @open="(group) => openHealth(group)" />
@@ -158,7 +177,6 @@ import {
   showPanel,
 } from "../../utils/dashboard";
 import { compactNumber, formatDuration, formatNumber, toDateTimeString } from "../../utils/format";
-import { alarmLevel } from "../../utils/kpi";
 import { triggerOfKey } from "../../utils/runs";
 import AnalysisLayout from "../analysis/AnalysisLayout.vue";
 import AnalysisSection from "../analysis/AnalysisSection.vue";
@@ -166,7 +184,7 @@ import HourHeatmap from "../HourHeatmap.vue";
 import BarList from "./BarList.vue";
 import DashboardPanel from "./DashboardPanel.vue";
 import DonutChart from "./DonutChart.vue";
-import FilesLoading from "./FilesLoading.vue";
+import FilesLoading, { ALL_SOURCES } from "./FilesLoading.vue";
 import HealthMiniTiles from "./HealthMiniTiles.vue";
 import HeatStrip from "./HeatStrip.vue";
 import KpiAlarmHeatmap from "./KpiAlarmHeatmap.vue";
@@ -224,6 +242,9 @@ export default {
       errors: {},
       serverTime: null,
       refreshingSummary: false,
+      // The datasource of the Loading panel, and what is typed in its select.
+      loadingSource: ALL_SOURCES,
+      loadingSearch: "",
       now: Date.now(),
     };
   },
@@ -274,15 +295,6 @@ export default {
         return { key: item.code, label: info.label, color: info.color, total: item.counts.reduce((sum, value) => sum + (value || 0), 0), cells: item.counts.map((count) => ({ count })) };
       });
     },
-    // The control-buckets of the span by their highest alarm level, the levels of the KPI cells.
-    kpiLevelItems() {
-      const counts = {};
-      this.parts.kpis.heatmap.cells.forEach(([, , level]) => (counts[Number(level) || 0] = (counts[Number(level) || 0] || 0) + 1));
-      return [3, 2, 1, 0].map((level) => {
-        const info = alarmLevel(level);
-        return { key: String(level), label: info.label, color: info.color, icon: info.icon, value: counts[level] || 0 };
-      });
-    },
     runTypeItems() {
       return Object.entries(this.parts.runs.by_type).map(([type, values]) => {
         const info = controlType(type);
@@ -314,8 +326,15 @@ export default {
       const volume = this.parts.runs.volume;
       return [
         { key: "fetched", label: "Fetched", color: "blue-grey-5", values: volume.fetched, type: "area", format: compactNumber },
-        { key: "discrepancies", label: "Discrepancies", color: "red-6", values: volume.discrepancies, type: "line", axis: 1, format: compactNumber },
+        { key: "discrepancies", label: "Discrepancies", color: "red-6", values: volume.discrepancies, type: "area", opacity: 0.4, format: compactNumber },
       ];
+    },
+    // The datasources of the Loading panel's select, filtered by what is typed.
+    loadingOptions() {
+      const sources = (this.parts.files && this.parts.files.throughput && this.parts.files.throughput.sources) || [];
+      const all = [{ label: "All datasources", value: ALL_SOURCES }, ...sources.map((source) => ({ label: source.sourcename || String(source.sourceid), value: source.sourceid }))];
+      const text = this.loadingSearch.toLowerCase();
+      return text ? all.filter((option) => option.label.toLowerCase().includes(text)) : all;
     },
     volumeTotals() {
       const sum = (values) => values.reduce((total, value) => total + (value || 0), 0);
@@ -353,6 +372,13 @@ export default {
     },
   },
   watch: {
+    // A datasource no longer in the span falls back to all.
+    "parts.files"(files) {
+      const sources = (files && files.throughput && files.throughput.sources) || [];
+      if (this.loadingSource !== ALL_SOURCES && !sources.some((source) => source.sourceid === this.loadingSource)) {
+        this.loadingSource = ALL_SOURCES;
+      }
+    },
     // A panel shown again needs its part.
     needed(parts, previous) {
       const added = parts.filter((part) => !(previous || []).includes(part) && !this.parts[part]);
@@ -503,7 +529,6 @@ export default {
         case "files-datasources":
           if (part.available === false) return "The file log is not available.";
           return part.datasources.totals.datasources ? null : "No datasource configured.";
-        case "kpi-levels":
         case "kpi-heatmap":
           if (part.available === false) return "The KPI tables or their history are not available.";
           return part.heatmap.controls.length ? null : "No KPI value stored in this span.";
@@ -611,6 +636,15 @@ export default {
       const filters = FILE_STATUSES[row] ? { status: row } : {};
       this.go(filesLink(this.parts.files.buckets[column], this.parts.files.unit, this.databaseToday, filters));
     },
+    // The discrepancies of a bucket, % of the records fetched.
+    volumeNote(index) {
+      const fetched = this.parts.runs.volume.fetched[index];
+      const found = this.parts.runs.volume.discrepancies[index];
+      return fetched ? `${formatNumber((found * 100) / fetched, 2)}% discrepancies` : "";
+    },
+    filterSources(text, update) {
+      update(() => (this.loadingSearch = text));
+    },
     pickRuns({ bucket }) {
       this.go(resultsLink(bucket, this.parts.runs.unit, this.serverToday));
     },
@@ -702,6 +736,22 @@ export default {
 .dashboard__pair > div {
   flex: 1 1 260px;
   min-width: 0;
+}
+
+/* The datasource select in the Loading panel's head, as small as the head's text. */
+.dashboard__source {
+  width: 180px;
+}
+
+.dashboard__source :deep(.q-field__control),
+.dashboard__source :deep(.q-field__native) {
+  min-height: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.dashboard__source :deep(.q-field__marginal) {
+  height: 22px;
 }
 
 .dashboard__warn {

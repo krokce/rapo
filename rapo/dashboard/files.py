@@ -300,12 +300,17 @@ def files(span):
         source['rejects'] += row['records_reject'] or 0
         if row['filestatus'] == 'ERROR':
             source['errors'] += files_count
+        # Per datasource: records loaded, loaded with a runtime, runtime,
+        # rejected, read.
+        per = source_series.setdefault(id, [[0] * size for _ in range(5)])
+        per[0][position] += row['records_write'] or 0
+        per[3][position] += row['records_reject'] or 0
+        per[4][position] += row['records_read'] or 0
         if row['filestatus'] == 'SUCCESS' and row['runtime_seconds']:
             loaded[position] += row['records_write'] or 0
             runtime[position] += row['runtime_seconds']
-            per = source_series.setdefault(id, ([0] * size, [0] * size))
-            per[0][position] += row['records_write'] or 0
-            per[1][position] += row['runtime_seconds']
+            per[1][position] += row['records_write'] or 0
+            per[2][position] += row['runtime_seconds']
     # The days neither summarized nor read live are gaps, not zeros.
     missing = set(state['missing'])
     gaps = [position for position, bucket in enumerate(buckets)
@@ -345,10 +350,16 @@ def files(span):
             'sources': sorted(
                 [{'sourceid': id, 'sourcename': names.get(id),
                   'records': sum(series[0]),
+                  'write': [None if position in gaps else value
+                            for position, value in enumerate(series[0])],
+                  'reject': [None if position in gaps else value
+                             for position, value in enumerate(series[3])],
+                  'read': [None if position in gaps else value
+                           for position, value in enumerate(series[4])],
                   'rates': [None if position in gaps
                             else _per_minute(records, seconds)
                             for position, (records, seconds)
-                            in enumerate(zip(*series))]}
+                            in enumerate(zip(series[1], series[2]))]}
                  for id, series in source_series.items()],
                 key=lambda row: -row['records'])},
         'datasources': _lanes(lanes, set(sources)),
@@ -402,11 +413,13 @@ def _lanes(lanes, delivering):
 
 
 def tiles():
-    """Get today's files, records loaded, reject % and files in error.
+    """Get today's files loaded (SUCCESS), records loaded, records rejected
+    and files in error.
 
     Each is {today, last_week, days}: last_week the same weekday a week
     before up to the same time of day (its last hour pro rata, as the
     summary has hours), days the 7 days to today; None where unknown.
+    `records_rejected` also has `rate`, today's % of the records read.
     """
     if not available():
         return None
@@ -433,16 +446,20 @@ def tiles():
                                'load_hour'):
                 hour = row['bucket']
                 share = 1 if hour + 1 <= cut else max(cut - hour, 0)
-                for key in ('files', 'read', 'write', 'reject', 'errors'):
+                for key in ('success', 'read', 'write', 'reject', 'errors'):
                     week[key] += (row[key] or 0) * share
         result = {}
-        for name in ('files', 'records_loaded', 'reject_pct', 'files_error'):
+        for name in ('files_success', 'records_loaded', 'records_rejected',
+                     'files_error'):
             result[name] = {
                 'today': _tile_value(days.get(today), name, True),
                 'last_week': _tile_value(week, name, first in present),
                 'days': [_tile_value(days.get(day), name, day in known)
                          for day in (today - dt.timedelta(days=back)
                                      for back in range(6, -1, -1))]}
+        values = days.get(today) or {}
+        result['records_rejected']['rate'] = _rate(
+            values.get('reject') or 0, values.get('read') or 0)
         return result
     return memo.get(('file_tiles',), read)
 
@@ -512,7 +529,10 @@ def processing_tile():
 def _totals(day_from, day_to, bucket):
     """Get the summary's totals of [day_from, day_to) by day or hour."""
     statement = sa.text(f"""
-        select {bucket} bucket, sum(files) files, sum(records_read) read,
+        select {bucket} bucket,
+               sum(case when filestatus = 'SUCCESS' then files else 0 end)
+                   success,
+               sum(records_read) read,
                sum(records_write) write, sum(records_reject) reject,
                sum(case when filestatus = 'ERROR' then files else 0 end)
                    errors
@@ -526,7 +546,8 @@ def _totals(day_from, day_to, bucket):
 
 
 def _add(values, row):
-    values['files'] += row['files'] or 0
+    if row['filestatus'] == 'SUCCESS':
+        values['success'] += row['files'] or 0
     values['read'] += row['records_read'] or 0
     values['write'] += row['records_write'] or 0
     values['reject'] += row['records_reject'] or 0
@@ -538,13 +559,9 @@ def _tile_value(values, name, known):
     if not known:
         return None
     values = values or {}
-    if name == 'files':
-        return round(values.get('files') or 0)
-    if name == 'records_loaded':
-        return round(values.get('write') or 0)
-    if name == 'files_error':
-        return round(values.get('errors') or 0)
-    return _rate(values.get('reject') or 0, values.get('read') or 0)
+    field = {'files_success': 'success', 'records_loaded': 'write',
+             'records_rejected': 'reject', 'files_error': 'errors'}[name]
+    return round(values.get(field) or 0)
 
 
 def _rate(part, whole):

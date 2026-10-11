@@ -31,7 +31,7 @@ import DashboardChart from "./DashboardChart.vue";
 import { compactNumber, escapeHtml, formatNumber } from "../../utils/format";
 import { paletteColor } from "../../utils/palette";
 
-// A share of a whole as a donut, its total in the middle, and the parts listed beside it with their share; a click on a
+// A share of a whole as a donut of rounded slices, its total in the middle, and the parts listed beside it with their share; a click on a
 // slice or a row picks it.
 export default {
   name: "DonutChart",
@@ -71,7 +71,10 @@ export default {
             avoidLabelOverlap: false,
             label: { show: false },
             labelLine: { show: false },
-            itemStyle: { borderWidth: 1, borderColor: "rgba(0, 0, 0, 0)" },
+            // Rounded slices with a gap between them (a whole ring when there is one); a tiny share still shows.
+            padAngle: this.rows.length > 1 ? 2 : 0,
+            minAngle: this.rows.length > 1 ? 4 : 0,
+            itemStyle: { borderRadius: 5, borderWidth: 0 },
             data: this.rows.map((item) => ({ name: item.label, value: item.value, cursor: this.pickable(item) ? "pointer" : "default", itemStyle: { color: paletteColor(item.color) } })),
           },
         ],

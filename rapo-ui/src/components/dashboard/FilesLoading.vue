@@ -1,25 +1,13 @@
 <template>
   <div class="files-loading">
-    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="recordSeries" :headline="compactNumber(loaded)" :caption="recordCaption" @pick="$emit('pick', $event)" />
-    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="rateSeries" :headline="rateHeadline" caption="records/min of load time" :legend="false">
+    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="recordSeries" :headline="compactNumber(loaded)" caption="records loaded" :legend="false" @pick="$emit('pick', $event)">
       <template #actions>
-        <q-select
-          v-model="source"
-          :options="options"
-          emit-value
-          map-options
-          dense
-          borderless
-          options-dense
-          use-input
-          hide-selected
-          fill-input
-          input-debounce="0"
-          class="loading-select"
-          aria-label="Datasource of the throughput"
-          @filter="filter" />
+        <q-chip dense :color="rejected ? 'red-1' : null" :text-color="rejected ? 'red-9' : null" class="files-loading__rejected" :title="rejectedTitle">
+          {{ compactNumber(rejected) }} rejected · {{ rejectedShare }}
+        </q-chip>
       </template>
     </mini-trend>
+    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="rateSeries" :headline="rateHeadline" caption="records/min of load time" :legend="false" />
   </div>
 </template>
 
@@ -27,42 +15,46 @@
 import MiniTrend from "./MiniTrend.vue";
 import { compactNumber, formatNumber } from "../../utils/format";
 
-const ALL = "all";
+// The value of `source` for every datasource.
+export const ALL_SOURCES = "all";
 
-// How the files loaded: the records written with the share rejected, and the throughput (records written per minute of
-// the SUCCESS files' load time) of every datasource or one picked, as two small trends side by side (one under the other
-// when narrow).
+const sum = (values) => (values || []).reduce((total, value) => total + (value || 0), 0);
+
+// How the files loaded, for every datasource or the one picked in the panel's head (`source`): the records loaded with
+// the records rejected over the span as a chip, and the throughput (records written per minute of the SUCCESS files'
+// load time), as two small trends side by side (one under the other when narrow).
 export default {
   name: "FilesLoading",
   components: { MiniTrend },
   props: {
     // The files part of get-dashboard.
     data: { type: Object, required: true },
+    // A sourceid of `data.throughput.sources`, or ALL_SOURCES.
+    source: { type: [String, Number], default: ALL_SOURCES },
   },
   emits: ["pick"],
-  data() {
-    return { source: ALL, search: "" };
-  },
   computed: {
-    loaded() {
-      return this.data.records.write.reduce((sum, value) => sum + (value || 0), 0);
+    picked() {
+      return this.data.throughput.sources.find((item) => item.sourceid === this.source) || null;
     },
-    recordCaption() {
-      const read = this.data.records.read.reduce((sum, value) => sum + (value || 0), 0);
-      const rejected = this.data.records.reject.reduce((sum, value) => sum + (value || 0), 0);
-      return `records loaded · ${read ? formatNumber((rejected * 100) / read, 2) : 0}% rejected`;
+    write() {
+      return this.picked ? this.picked.write : this.data.records.write;
+    },
+    loaded() {
+      return sum(this.write);
+    },
+    rejected() {
+      return sum(this.picked ? this.picked.reject : this.data.records.reject);
+    },
+    rejectedShare() {
+      const read = sum(this.picked ? this.picked.read : this.data.records.read);
+      return read ? `${formatNumber((this.rejected * 100) / read, 2)}%` : "0%";
+    },
+    rejectedTitle() {
+      return `${formatNumber(this.rejected)} records rejected in this span, ${this.rejectedShare} of the records read`;
     },
     recordSeries() {
-      return [
-        { key: "write", label: "Loaded", color: "teal-6", values: this.data.records.write, type: "area" },
-        { key: "rate", label: "Rejected %", color: "red-6", values: this.data.reject_rate, type: "line", axis: 1, format: (value) => `${formatNumber(value, 2)}%` },
-      ];
-    },
-    sources() {
-      return this.data.throughput.sources;
-    },
-    picked() {
-      return this.sources.find((source) => source.sourceid === this.source) || null;
+      return [{ key: "write", label: "Loaded", color: "teal-6", values: this.write, type: "area", format: compactNumber }];
     },
     rateSeries() {
       const values = this.picked ? this.picked.rates : this.data.throughput.all;
@@ -70,26 +62,11 @@ export default {
     },
     rateHeadline() {
       const values = this.rateSeries[0].values.filter((value) => value !== null && value !== undefined);
-      return values.length ? compactNumber(values.reduce((sum, value) => sum + value, 0) / values.length) : "–";
-    },
-    options() {
-      const all = [{ label: "All datasources", value: ALL }, ...this.sources.map((source) => ({ label: source.sourcename || String(source.sourceid), value: source.sourceid }))];
-      const text = this.search.toLowerCase();
-      return text ? all.filter((option) => option.label.toLowerCase().includes(text)) : all;
-    },
-  },
-  watch: {
-    sources(sources) {
-      if (this.source !== ALL && !sources.some((source) => source.sourceid === this.source)) {
-        this.source = ALL;
-      }
+      return values.length ? compactNumber(values.reduce((total, value) => total + value, 0) / values.length) : "–";
     },
   },
   methods: {
     compactNumber,
-    filter(text, update) {
-      update(() => (this.search = text));
-    },
   },
 };
 </script>
@@ -106,19 +83,8 @@ export default {
   min-width: 0;
 }
 
-.loading-select {
-  width: 170px;
+.files-loading__rejected {
+  margin: 0;
   font-size: 12px;
-}
-
-.loading-select :deep(.q-field__control),
-.loading-select :deep(.q-field__native) {
-  min-height: 22px;
-  height: 22px;
-  padding: 0;
-}
-
-.loading-select :deep(.q-field__marginal) {
-  height: 22px;
 }
 </style>

@@ -35,8 +35,7 @@ export const DASHBOARD_PANELS = [
   { id: "files-top", section: "files", title: "Top datasources", part: "files", width: 4, minWidth: 560 },
   { id: "files-datasources", section: "files", title: "Datasources", part: "files", width: 2, minWidth: 300 },
   { id: "files-loading", section: "files", title: "Loading", part: "files", width: 4, minWidth: 560 },
-  { id: "kpi-levels", section: "kpis", title: "KPI alarm levels", part: "kpis", width: 2, minWidth: 300 },
-  { id: "kpi-heatmap", section: "kpis", title: "KPI alarms by control", part: "kpis", width: 4, minWidth: 560 },
+  { id: "kpi-heatmap", section: "kpis", title: "KPI alarms by control", part: "kpis", width: 6 },
   { id: "health-tiles", section: "health", title: "Instance health", part: null, width: 6, height: TALL_HEIGHT },
 ];
 

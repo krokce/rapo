@@ -15,7 +15,6 @@ from .memo import memo
 
 
 LOOKBACK_DAYS = 31
-HEATMAP_CONTROLS = 25
 ALARM = 2
 
 
@@ -62,7 +61,6 @@ def kpis(span):
         if level >= ALARM:
             alarms += 1
     names = sorted(worst, key=lambda name: (-worst[name], name))
-    names = names[:HEATMAP_CONTROLS]
     order = {name: index for index, name in enumerate(names)}
     ids = {row['control_name']: id
            for id, row in run_data.controls().items()}
@@ -74,9 +72,7 @@ def kpis(span):
             'controls': [{'control_name': name, 'control_id': ids.get(name),
                           'level': worst[name]} for name in names],
             'cells': [[order[name], position, level]
-                      for (name, position), level in cells.items()
-                      if name in order],
-            'more': max(len(worst) - len(names), 0)},
+                      for (name, position), level in cells.items()]},
         'alarms': alarms,
     }
 

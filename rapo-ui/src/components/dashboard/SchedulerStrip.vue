@@ -22,7 +22,7 @@
         {{ data.missed_total }}{{ data.missed_capped ? "+" : "" }} missed
       </q-chip>
     </div>
-    <heat-strip :rows="rows" :columns="columns" :label-width="112" unit="" @pick="pick" />
+    <heat-strip :rows="rows" :columns="columns" :label-width="112" :cell-height="20" unit="" numbers @pick="pick" />
   </div>
 </template>
 

@@ -35,6 +35,8 @@ export default {
     height: { type: Number, default: 72 },
     // The series' keys in the head; off when something else names them (a select).
     legend: { type: Boolean, default: true },
+    // A last line of the tooltip of a bucket (its index), e.g. a rate of two series.
+    note: { type: Function, default: null },
   },
   emits: ["pick"],
   computed: {
@@ -68,7 +70,7 @@ export default {
             showSymbol: this.buckets.length <= 31,
             symbolSize: 5,
             lineStyle: { width: item.type === "area" ? 1.5 : 2 },
-            areaStyle: item.type === "area" ? { opacity: 0.18 } : undefined,
+            areaStyle: item.type === "area" ? { opacity: item.opacity || 0.18 } : undefined,
           };
         }),
       };
@@ -84,6 +86,10 @@ export default {
         const text = value === null || value === undefined ? "no data" : (item.format || formatNumber)(value);
         lines.push(`${escapeHtml(item.label)} <b>${escapeHtml(text)}</b>`);
       });
+      const note = this.note && this.note(index);
+      if (note) {
+        lines.push(escapeHtml(note));
+      }
       return lines.join("<br/>");
     },
     select(event) {

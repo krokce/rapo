@@ -1,5 +1,6 @@
 <template>
   <div class="heat-strip" :style="{ '--label': `${labelWidth}px`, '--columns': columns.length, '--cell': `${cellHeight}px` }">
+    <q-resize-observer v-if="numbers" @resize="onResize" />
     <div class="heat-strip__row heat-strip__head">
       <div class="heat-strip__label"></div>
       <div v-for="(column, index) in columns" :key="index" class="heat-strip__column" :class="{ 'heat-strip__column--divider': column.divider }">
@@ -21,10 +22,13 @@
           'heat-strip__cell--errors': cell && cell.errors,
           'heat-strip__cell--divider': columns[index] && columns[index].divider,
           'heat-strip__cell--link': clickable && cell && cell.count,
+          'heat-strip__cell--strong': showNumbers && strong(row, cell),
         }"
         :style="{ background: background(row, cell) }"
         :title="cellTitle(row, cell, index)"
-        @click="clickable && cell && cell.count && $emit('pick', { row: row.key, column: index })" />
+        @click="clickable && cell && cell.count && $emit('pick', { row: row.key, column: index })">
+        <template v-if="showNumbers && cell && cell.count && !cell.color">{{ compactNumber(cell.count) }}</template>
+      </div>
     </div>
   </div>
 </template>
@@ -51,9 +55,19 @@ export default {
     // What a cell counts, for its tooltip.
     unit: { type: String, default: "" },
     clickable: { type: Boolean, default: true },
+    // The count written in each cell (not 0, nor a cell with a color of its own), when the cells are wide enough.
+    numbers: { type: Boolean, default: false },
+  },
+  data() {
+    return { width: 0 };
   },
   emits: ["pick"],
   computed: {
+    // A cell's width: the strip's less the label and the 2px gaps, by column.
+    showNumbers() {
+      const cell = (this.width - this.labelWidth - 2 * this.columns.length) / Math.max(this.columns.length, 1);
+      return this.numbers && cell >= 18;
+    },
     maxima() {
       const all = Math.max(1, ...this.rows.flatMap((row) => row.cells.map((cell) => (cell && cell.count) || 0)));
       return Object.fromEntries(this.rows.map((row) => [row.key, this.scale === "all" ? all : Math.max(1, ...row.cells.map((cell) => (cell && cell.count) || 0))]));
@@ -61,6 +75,17 @@ export default {
   },
   methods: {
     compactNumber,
+    onResize({ width }) {
+      this.width = width;
+    },
+    // The strength of a cell's color (0.18 to 1), as `background` paints it.
+    alpha(row, cell) {
+      return 0.18 + 0.82 * Math.min(Math.sqrt(cell.count / this.maxima[row.key]), 1);
+    },
+    // Whether a cell is strong enough for white text.
+    strong(row, cell) {
+      return Boolean(cell && cell.count) && this.alpha(row, cell) >= 0.55;
+    },
     rowColor(row) {
       return paletteColor(row.color);
     },
@@ -75,9 +100,8 @@ export default {
       if (!cell.count) {
         return "var(--rapo-grid)";
       }
-      const share = Math.sqrt(cell.count / this.maxima[row.key]);
       const color = paletteColor(row.color || "blue-6");
-      const alpha = (0.18 + 0.82 * Math.min(share, 1)).toFixed(2);
+      const alpha = this.alpha(row, cell).toFixed(2);
       return color.startsWith("rgb(") ? color.replace("rgb(", "rgba(").replace(")", `, ${alpha})`) : color;
     },
     cellTitle(row, cell, index) {
@@ -96,6 +120,7 @@ export default {
 
 <style scoped>
 .heat-strip {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -148,6 +173,18 @@ export default {
   height: var(--cell);
   border-radius: 2px;
   box-sizing: border-box;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: var(--cell);
+  text-align: center;
+  white-space: nowrap;
+  color: var(--rapo-header-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-strip__cell--strong {
+  color: var(--rapo-on-strong);
 }
 
 .heat-strip__cell--none {

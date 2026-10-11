@@ -1171,9 +1171,9 @@ Answers `{span, server_time, parts: {part: payload}}`; a part that failed answer
 `buckets` (ISO hours or days) and `unit` (`hour`, `day`). The queries behind the parts are kept for 3 seconds, shared by
 all clients, and dropped by the live events that change them.
 
-* `tiles` (today, not the span): `runs`, `failing_controls` (controls whose latest run of the day is `E`),
-  `run_warnings`, `files`, `records_loaded`, `reject_pct` (records rejected of read), `files_error`, `kpi_alarms`
-  (KPI values at alarm level 2 or 3), each `{today, last_week, days}`: `last_week` the same weekday a week before up
+* `tiles` (today, not the span): `runs`, `run_errors` (runs in `E`), `failing_controls` (controls whose latest run of
+  the day is `E`), `run_warnings`, `files_success` (files in `SUCCESS`), `records_loaded`, `records_rejected` (with
+  `rate`, today's % of the records read), `files_error`, `kpi_alarms` (KPI values at alarm level 2 or 3), each `{today, last_week, days}`: `last_week` the same weekday a week before up
   to the same time of day, `days` the 7 days to today, `null` where unknown. The file tiles are on the database clock,
   the others on the app server's; `files` tiles are absent without the file log, `kpi_alarms` is null without KPIs.
   `files_waiting` (with the datasources) is the files waiting in the input directories now (the last scan, `null`
@@ -1195,16 +1195,17 @@ all clients, and dropped by the live events that change them.
 * `files` (database clock; `{available: false}` without the file log): `status: [{code, counts}]` (files per
   bucket), `duplicates`, `records` `{read, write, reject}`, `reject_rate` (%), `top_loaded` and `top_errors` (top 8
   datasources `{sourceid, sourcename, files, records, rejects, errors}` by records written, and those with files in
-  `ERROR` by them, then records rejected), `throughput` `{all, sources: [{sourceid, sourcename, records, rates}]}`
-  (records written per minute of load time, `SUCCESS` files), `datasources` `{states, totals, scanned}` (`states`
+  `ERROR` by them, then records rejected), `throughput` `{all, sources: [{sourceid, sourcename, records, write, reject, read,
+  rates}]}` (per datasource with files in the span: its records per bucket, and `rates` the records written per
+  minute of load time of its `SUCCESS` files), `datasources` `{states, totals, scanned}` (`states`
   counts each datasource once: `disabled` (lane 0), else `stalled` (the last scan), else `delivering` (files in the
   span) or `silent`; `totals` `{datasources, waiting, unknown}`, `waiting` the files in the input directories as last
   scanned) and `summary` `{newest_day, live_days, missing_days, refreshing,
   maintenance}`. Past days come from `rapo_file_summary`, today and an unsummarized yesterday from the file log; a
   day neither summarized nor read live is in `missing_days` and its values are `null`.
 * `kpis` (`{available: false}` without the KPI tables or their history): `heatmap` `{controls: [{control_name,
-  control_id, level}], cells: [[control, bucket, level]], more}` (the highest alarm level per control and bucket, the
-  worst 25 controls) and `alarms` (values at level 2 or 3 in the span).
+  control_id, level}], cells: [[control, bucket, level]]}` (the highest alarm level per control and bucket, every
+  control with values, the worst first) and `alarms` (values at level 2 or 3 in the span).
 
 #### `POST /api/refresh-file-summary`
 Sums the closed days of a `span`'s window (default `7d`) of the PDI Core file log into `rapo_file_summary` again, in
