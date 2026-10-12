@@ -87,7 +87,8 @@
                   <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ job.process_id }}</td>
                   <!-- The run the job performs now: a chain source or a cascade child runs in the job of another control. -->
                   <td class="control-cell">
-                    <span class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</span>
+                    <router-link v-if="controlIds.has(job.control_name)" :to="editLink(job.control_name)" class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</router-link>
+                    <span v-else class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</span>
                     <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
                       for
                       <router-link v-if="controlIds.has(job.job_control_name)" :to="editLink(job.job_control_name)" class="control-ref">{{ job.job_control_name }}</router-link>

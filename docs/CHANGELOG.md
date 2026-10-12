@@ -82,6 +82,7 @@ Dashboard's file summary.
 - **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.
+- **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
 
 ## v0.8.5 — 2026-10-05
 

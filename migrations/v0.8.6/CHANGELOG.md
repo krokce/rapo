@@ -312,3 +312,5 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      discrepancy analysis of 6,000 records takes 0.6 s instead of 3–4 s.
    - The menu of a run's discrepancies number lists *Discrepancy analysis* first.
    - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.
+11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
+    *Scheduler* tab, as on the *Upcoming* and *History* tabs.
