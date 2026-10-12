@@ -323,3 +323,6 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.
 11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
     *Scheduler* tab, as on the *Upcoming* and *History* tabs.
+12. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
+    `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
+    `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).

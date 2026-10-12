@@ -6,7 +6,7 @@ What the release contains is in the [change log](CHANGELOG.md).
 The release adds three tables, `rapo_viewer_config` (the file viewer's ASN.1 grammars and the settings it opens each
 datasource's files with), `rapo_file_summary` (the Dashboard's summary of the PDI Core file log) and
 `rapo_health_minute` (the instance health by minute, kept across restarts), and one Python package, `asn1tools` (installed by `./install.sh`). The package `phik` is no longer required; an existing `.venv` keeps
-it, which does no harm (`./install.sh --force` recreates it without).
+it, which does no harm (`./install.sh --force` recreates it without). `websockets` is downgraded to 16.0, so Python 3.10 is supported again.
 
 1. Wait until all your Rapo controls are completed or cancel them. Stop the web server.
     ```bash

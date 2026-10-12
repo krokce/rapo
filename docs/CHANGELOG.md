@@ -85,6 +85,7 @@ Dashboard's file summary.
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
+- **Python 3.10 installs again:** `websockets` pinned to 16.0 (17.1 needs Python 3.11; broken since v0.8.3).
 
 ## v0.8.5 — 2026-10-05
 
