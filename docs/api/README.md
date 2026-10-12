@@ -988,26 +988,32 @@ curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: applicatio
 ```
 
 #### `GET /api/view-ds-file`
-Reads lines of a loaded file, for the file viewer of the file log. The file is one `download-ds-files` would send
-(same rules and `[DATASOURCES] file_download` switch). A gzip (by its magic bytes) or the first file of a ZIP is read
+Reads lines of a loaded file, for the file viewer of the file log, or of an **incoming file** waiting in a
+datasource's input directory. A loaded file (`id`) is one `download-ds-files` would send (same rules); an incoming
+file (`source_id` + `path`) must lie, by its real path, in one of the datasource's `INPUT_DIRECTORY` entries (a
+symbolic link leading out is refused) and is never downloadable. Exactly one of the two forms is given, here and in
+`grep-ds-file`, the ASN.1 routes and `get-ds-file-bytes`; both need the `[DATASOURCES] file_download` switch. A gzip (by its magic bytes) or the first file of a ZIP is read
 decompressed. Nothing is kept between requests: each one reads from an uncompressed byte offset, the `next_offset` of
 the previous answer (a gzip is decompressed up to it, from the nearest checkpoint the server keeps every 8 MB for the
 8 gzips read last).
 
 | Parameter | Type | Default | Meaning                                                                          |
 |-----------|------|---------|----------------------------------------------------------------------------------|
-| `id`      | int  | -       | File ID of `PDI_CORE_FILE_LOG`. Required.                                         |
+| `id`      | int  | -       | File ID of `PDI_CORE_FILE_LOG` (or `source_id` + `path`).                         |
+| `source_id` | int | -      | Datasource ID of an incoming file, with `path`.                                   |
+| `path`    | str  | -       | Full path of the incoming file (as `get-ds-files` lists it).                      |
 | `offset`  | int  | `0`     | Uncompressed byte offset of the first line to read (a line start).                |
 | `line`    | int  | `1`     | Number of the line at `offset`, only shown.                                      |
 | `lines`   | int  | `[DATASOURCES] view_lines` (100) | Lines to read, at most 5,000.                           |
 
-Answers the file's facts, `id`, `name`, `size` (bytes on disk), `compression` (`gzip`, `zip:<member>` or `plain`),
+Answers the file's facts, `id` (null for an incoming file), `name`, `incoming`, `size` (bytes on disk), `compression` (`gzip`, `zip:<member>` or `plain`),
 `encoding` (`utf-8`, or `latin-1` when the first 64 KB are no UTF-8), `binary` (a NUL byte in the first 64 KB: no
 lines), `asn1` (a binary file whose first bytes read as BER: the viewer opens it as ASN.1) and `header` (line 1), then `lines` `[{no, offset, text, cut}]`, `next_offset`, `next_line` and `eof`. A line is
 cut after `[DATASOURCES] view_line_chars` (10,000) characters; `cut` counts the bytes left out.
 
-`400` when the file can not be shown (the reason is named); `403` with `file_download=False`; `404` for a file ID not
-in the file log.
+`400` when the file can not be shown (the reason is named) or neither/both forms are given; `403` with
+`file_download=False`; `404` for a file ID not in the file log, an unknown datasource, or an incoming file no longer in
+the input directory (`The file is no longer in the input directory (PDI Core may have picked it up).`).
 
 #### `GET /api/grep-ds-file`
 Finds the lines of a loaded file containing a text or matching a regular expression (Python's `re`), from a cursor
@@ -1017,7 +1023,7 @@ shown (`view_line_chars`), on its own (a match across lines is no match).
 
 | Parameter | Type | Default | Meaning                                            |
 |-----------|------|---------|-----------------------------------------------------|
-| `id`      | int  | -       | File ID. Required.                                  |
+| `id`      | int  | -       | File ID (or `source_id` + `path`, as `view-ds-file`). |
 | `pattern` | str  | -       | The text or expression. Required.                   |
 | `regex`   | bool | `false` | `pattern` is a regular expression.                  |
 | `case`    | bool | `false` | Match case.                                         |
@@ -1029,8 +1035,8 @@ each match in `text`), `next_offset`, `next_line`, `eof`, `scanned_bytes`, `scan
 `time` or `null`). `400` for an invalid expression; otherwise the codes of `view-ds-file`.
 
 #### ASN.1 view
-A loaded file read as ASN.1 BER (DER and CER too), for the viewer's ASN.1 view. The file is one `download-ds-files`
-would send, decompressed as by `view-ds-file`. From `start_offset` it is a series of records (the *root*), each a TLV
+A loaded or incoming file read as ASN.1 BER (DER and CER too), for the viewer's ASN.1 view. The file is found as by
+`view-ds-file`, decompressed as by `view-ds-file`. From `start_offset` it is a series of records (the *root*), each a TLV
 after `record_header` bytes (e.g. 4 in Huawei SBC files); `filler` bytes between them are skipped (`00ff`, the default:
 00 and FF; `ff`: FF only, for headers that may start with 00; `none`), bytes that are no TLV become an `undecodable` node and the reading goes on at the next
 TLV. Nothing is decoded ahead: a request reads the headers of one page of one node's children; the server notes every
@@ -1038,7 +1044,7 @@ TLV. Nothing is decoded ahead: a request reads the headers of one page of one no
 `get-asn1-grammars`) and a `top` type (`Module.Type`, guessed from the first TLV when not given) the nodes get their
 field names and types; a tag the grammar does not expect leaves the node (and its children) unnamed (`unknown`).
 
-Common parameters: `id` (file ID, required), `start_offset` (`0`: bytes to skip, e.g. a file header), `record_header`
+Common parameters: `id` (file ID) or `source_id` + `path` (an incoming file, as `view-ds-file`), `start_offset` (`0`: bytes to skip, e.g. a file header), `record_header`
 (`0`, at most 1024), `filler`, `grammar` and `top`. A **node** is `{offset, end, record_offset, ordinal, undecodable, cls, number, tag, constructed, indefinite, tag_len,
 header_len, length, has_children}` (`length` of the content; `tag` as `[3]`, `[APPLICATION 1]` or `SEQUENCE`;
 `record_offset` where a root record starts, its record header, else `offset`), with a
@@ -1066,7 +1072,7 @@ grammar `name`, `alternatives` (the CHOICE alternatives it is), `type`, `state` 
   and `stopped`. 400 without a field, value or valid hex.
 
 #### `GET /api/get-ds-file-bytes`
-`id`, `offset` (`0`), `size` (65536, at most 64 KB): uncompressed bytes of a loaded file as `application/octet-stream`
+`id` (or `source_id` + `path`), `offset` (`0`), `size` (65536, at most 64 KB): uncompressed bytes of a loaded or incoming file as `application/octet-stream`
 (fewer at its end), for the viewer's hex pane. `X-Rapo-Data-Size` is the uncompressed size when known. Errors as
 `view-ds-file`.
 

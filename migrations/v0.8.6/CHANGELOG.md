@@ -129,9 +129,18 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      regular expression (Python syntax; an invalid one is named under the field). A click on a matching line shows
      the file from that line; *Back to results* returns to the list. Clearing the search shows the file's first
      lines again.
+   - **Incoming files.** The files still waiting in a datasource's input directory (not in the file log yet) open in
+     the same viewer, from an eye icon on each row of the input file lists (*Matching files*, *All files*, *Clean-up
+     files* in the datasource editor and the catalogue, and the Files page's *Incoming* column). The file is read
+     where it lies, as it is (plain, gzip or ZIP), as text or ASN.1 with the datasource's saved delimiter and decoding.
+     The header shows an *Incoming* chip and the file's modification time instead of a file ID and status; there is
+     no *Download* and no *Records*, and *Copy* copies the input path. Only a file whose real path lies in one of the
+     datasource's input directories is read (a symbolic link leading out is refused). When PDI Core picks the file up
+     while it is open, the lines read stay and a banner says the file is no longer in the input directory.
    - New options `[DATASOURCES] view_lines`, `view_max_lines`, `view_line_chars`, `view_grep_seconds`,
-     `view_grep_matches`. The viewer is offered wherever downloads are (`file_download`). Each opening and search is
-     written to the server log. New routes `view-ds-file` and `grep-ds-file`.
+     `view_grep_matches`. The viewer is offered wherever downloads are (`file_download`), for incoming files too.
+     Each opening and search is written to the server log. New routes `view-ds-file` and `grep-ds-file`; they and
+     the ASN.1 routes take a file ID (`id`) or an incoming file (`source_id` and `path`).
 5. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
    (when the datasource has tables and the file wrote or rejected records) opens the viewer on them alone, and the
    viewer's *Records* chip (with the file log's written count) shows or hides them: with *Text* or *ASN.1* also on,

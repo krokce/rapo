@@ -90,9 +90,9 @@
 
     <div ref="panes" class="col row no-wrap panes">
       <div class="column no-wrap tree-side" :style="{ flex: `0 0 ${ratio}%` }">
-        <asn1-search class="q-px-sm q-pb-xs" :file-id="fileId" :decoding="decoding" @reveal="revealHit" />
+        <asn1-search class="q-px-sm q-pb-xs" :file-ref="fileRef" :decoding="decoding" @reveal="revealHit" />
         <div v-if="rootError" class="q-pa-md text-red-7">{{ rootError }}</div>
-        <asn1-tree ref="tree" class="col" :file-id="fileId" :decoding="decoding" :selected-offset="selected ? selected.offset : null" @select="select" @meta="gotMeta" />
+        <asn1-tree ref="tree" class="col" :file-ref="fileRef" :decoding="decoding" :selected-offset="selected ? selected.offset : null" @select="select" @meta="gotMeta" />
       </div>
       <div class="viewer-split-handle viewer-split-handle--v" title="Drag to resize" @mousedown.prevent="startDrag" />
       <div class="col column no-wrap data-side">
@@ -116,7 +116,7 @@
         </div>
         <q-tab-panels v-model="tab" class="col tab-body" keep-alive>
           <q-tab-panel name="hex" class="q-pa-none">
-            <hex-pane ref="hex" :file-id="fileId" :data-size="meta ? meta.data_size : null" :ranges="ranges" @byte="byteClicked" />
+            <hex-pane ref="hex" :file-ref="fileRef" :data-size="meta ? meta.data_size : null" :ranges="ranges" @byte="byteClicked" />
           </q-tab-panel>
           <q-tab-panel name="xml" class="q-pa-none relative-position">
             <asn1-code-view :text="rendered.xml" language="xml" />
@@ -176,7 +176,8 @@ export default {
   name: "Asn1Pane",
   components: { Asn1CodeView, Asn1Details, Asn1Search, Asn1Tree, GrammarDialog, HexPane },
   props: {
-    fileId: { type: Number, required: true },
+    // The file read: {id} of the file log, or {source_id, path} of an incoming file.
+    fileRef: { type: Object, required: true },
     datasourceId: { type: Number, default: null },
     // The datasource's saved decoding ({grammar, top, start_offset, record_header, filler}) or null.
     saved: { type: Object, default: null },
@@ -381,7 +382,7 @@ export default {
       }
       const request = (this.detailRequest = (this.detailRequest || 0) + 1);
       try {
-        const result = await api("get-ds-file-asn1-node", { params: { id: this.fileId, offset: node.offset, state: node.state || null, ...this.decodingParams() }, loadingBar: false });
+        const result = await api("get-ds-file-asn1-node", { params: { ...this.fileRef, offset: node.offset, state: node.state || null, ...this.decodingParams() }, loadingBar: false });
         if (request === this.detailRequest) {
           this.detail = result.node;
         }
@@ -411,7 +412,7 @@ export default {
       this.rendering = true;
       this.renderNote = null;
       try {
-        const result = await api("render-ds-file-asn1", { params: { id: this.fileId, offset: node.offset, state: node.state || null, format, ...this.decodingParams() }, loadingBar: false });
+        const result = await api("render-ds-file-asn1", { params: { ...this.fileRef, offset: node.offset, state: node.state || null, format, ...this.decodingParams() }, loadingBar: false });
         if (this.selected !== node) {
           return;
         }

@@ -55,7 +55,8 @@ const BEFORE = 50;
 export default {
   name: "Asn1Tree",
   props: {
-    fileId: { type: Number, required: true },
+    // The file read: {id} of the file log, or {source_id, path} of an incoming file.
+    fileRef: { type: Object, required: true },
     // {start_offset, record_header, filler, grammar, top}: a change reads the tree anew.
     decoding: { type: Object, required: true },
     selectedOffset: { type: Number, default: null },
@@ -70,6 +71,10 @@ export default {
     };
   },
   computed: {
+    // The file as a value: a watcher on it fires only for another file.
+    fileKey() {
+      return JSON.stringify(this.fileRef);
+    },
     rows() {
       const rows = [];
       this.pushLevel(rows, parentKey(null), null, 0);
@@ -77,7 +82,7 @@ export default {
     },
   },
   watch: {
-    fileId() {
+    fileKey() {
       this.reload();
     },
     decoding: {
@@ -144,7 +149,7 @@ export default {
     },
     params(parent, ordinal, count) {
       return {
-        id: this.fileId,
+        ...this.fileRef,
         parent: parent ? parent.offset : null,
         state: parent ? parent.state : null,
         ordinal,
@@ -247,7 +252,7 @@ export default {
     async reveal(offset) {
       let result;
       try {
-        result = await api("locate-ds-file-asn1", { params: { id: this.fileId, offset, ...decodingParams(this.decoding) }, loadingBar: false });
+        result = await api("locate-ds-file-asn1", { params: { ...this.fileRef, offset, ...decodingParams(this.decoding) }, loadingBar: false });
       } catch (error) {
         notifyError("The node was not found.", error);
         return null;

@@ -74,7 +74,8 @@ const MODES = [
 export default {
   name: "Asn1Search",
   props: {
-    fileId: { type: Number, required: true },
+    // The file read: {id} of the file log, or {source_id, path} of an incoming file.
+    fileRef: { type: Object, required: true },
     decoding: { type: Object, required: true },
   },
   emits: ["reveal"],
@@ -97,6 +98,10 @@ export default {
     };
   },
   computed: {
+    // The file as a value: a watcher on it fires only for another file.
+    fileKey() {
+      return JSON.stringify(this.fileRef);
+    },
     canStart() {
       return this.mode === "hex" ? Boolean(this.hex && this.hex.trim()) : Boolean((this.field && this.field.trim()) || (this.value && this.value.trim()));
     },
@@ -110,7 +115,7 @@ export default {
     },
   },
   watch: {
-    fileId() {
+    fileKey() {
       this.clear();
     },
     decoding: {
@@ -149,7 +154,7 @@ export default {
       const request = this.request;
       this.loading = true;
       const params = {
-        id: this.fileId,
+        ...this.fileRef,
         offset: this.nextOffset,
         ...decodingParams(this.decoding),
       };

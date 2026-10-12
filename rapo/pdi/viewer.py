@@ -1,7 +1,8 @@
 """Contains the viewer of the files PDI Core loaded.
 
 A file is read from where PDI Core kept it, under the same rules as a
-download (download.locate), and sent a few lines at a time. Archived files
+download (download.locate), or from the input directories of its datasource
+while it waits there, and sent a few lines at a time. Archived files
 are mostly gzipped and may have gigabytes, so nothing is kept between
 requests but a few checkpoints of the gzips read last: each request opens the
 file and seeks to the uncompressed byte offset the previous one ended at (a
@@ -43,13 +44,15 @@ GZIP_OUTPUT = 1024 * 1024
 GZIP_WBITS = zlib.MAX_WBITS | 16
 
 
-def read(id, offset=0, line=1, lines=None):
-    """Get lines of a loaded file, from an uncompressed byte offset.
+def read(ref, offset=0, line=1, lines=None):
+    """Get lines of a loaded or incoming file, from an uncompressed byte
+    offset.
 
     Parameters
     ----------
-    id : int
-        File ID of the file log.
+    ref : int or dict
+        File ID of the file log, or `{source_id, path}` of an incoming file
+        (see download.locate).
     offset : int
         Uncompressed byte offset of the first line, the `next_offset` of
         the previous request (0: the start).
@@ -65,7 +68,7 @@ def read(id, offset=0, line=1, lines=None):
         cut}]` (`cut`: the bytes left out of a long line), `next_offset`,
         `next_line` and `eof`.
     """
-    file = download.locate(id)
+    file = download.locate(ref)
     offset, line = _cursor(offset, line)
     count = min(max(int(lines or number_option('view_lines')), 1), MAX_LINES)
     with _open(file['path']) as stream:
@@ -94,12 +97,13 @@ def read(id, offset=0, line=1, lines=None):
                 stream, 'peek') else False
         result['next_offset'], result['next_line'] = offset, line
     if result['lines'] and result['lines'][0]['offset'] == 0:
-        logger.info(f'File viewed: {file["name"]} (file ID {id})')
+        logger.info(f'File viewed: {download.describe(file)}')
     return result
 
 
-def grep(id, pattern, regex=False, case=False, offset=0, line=1):
-    """Find the lines of a loaded file that contain a text or expression.
+def grep(ref, pattern, regex=False, case=False, offset=0, line=1):
+    """Find the lines of a loaded or incoming file that contain a text or
+    expression (`ref` as for `read`).
 
     It reads from the cursor until [DATASOURCES] view_grep_matches lines
     matched, the file ended or view_grep_seconds passed; the next request
@@ -121,7 +125,7 @@ def grep(id, pattern, regex=False, case=False, offset=0, line=1):
                                 0 if case else re.IGNORECASE)
     except re.error as error:
         raise DatasourceError(f'Invalid regular expression: {error}.')
-    file = download.locate(id)
+    file = download.locate(ref)
     offset, line = _cursor(offset, line)
     limit = max(number_option('view_grep_matches'), 1)
     deadline = time.monotonic() + max(number_option('view_grep_seconds'), 1)
@@ -181,7 +185,7 @@ def grep(id, pattern, regex=False, case=False, offset=0, line=1):
         result.update(next_offset=offset, next_line=line,
                       scanned_bytes=offset - start_offset,
                       scanned_lines=scanned)
-    logger.info(f'File searched: {file["name"]} (file ID {id}) for '
+    logger.info(f'File searched: {download.describe(file)} for '
                 f'{pattern!r}, {len(result["matches"])} line(s) matched in '
                 f'{scanned} read in {time.monotonic() - started:.1f} s')
     return result
@@ -441,7 +445,7 @@ def _meta(file, stream):
         header = first.decode(encoding, 'replace').lstrip('﻿')
         header = header[:_line_chars()]
     return {'id': file['id'], 'name': file['name'], 'size': file['size'],
-            'compression': stream.kind, 'encoding': encoding,
+            'incoming': file['incoming'], 'compression': stream.kind, 'encoding': encoding,
             'binary': binary, 'asn1': binary and ber.sniff(sniff),
             'header': header}
 

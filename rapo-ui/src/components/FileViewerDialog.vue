@@ -12,20 +12,26 @@
               {{ file.sourcename }}
               <q-tooltip anchor="top middle" self="bottom middle">Edit the datasource</q-tooltip>
             </router-link>
-            <div class="text-no-wrap">
+            <div v-if="!incoming" class="text-no-wrap">
               File ID <strong>{{ file.id }}</strong>
             </div>
+            <q-chip v-else class="q-my-none q-mr-none">
+              <q-avatar icon="fas fa-inbox" color="blue-grey-5" text-color="white" />
+              Incoming
+              <q-tooltip anchor="top middle" self="bottom middle">Waiting in the input directory, not in the file log yet</q-tooltip>
+            </q-chip>
             <q-chip v-if="file.filestatus" class="q-my-none q-mr-none">
               <q-avatar :icon="fileStatus(file.filestatus).icon" :color="fileStatus(file.filestatus).color" text-color="white" />
               {{ fileStatus(file.filestatus).label }}
             </q-chip>
             <div v-if="headerFacts" class="text-no-wrap">{{ headerFacts }}</div>
+            <div v-if="incoming && file.modified" class="text-no-wrap">Modified {{ toDateTimeString(file.modified) }}</div>
           </div>
           <q-space />
-          <q-btn v-if="file && file.outputfullfilename" aria-label="Copy the path of the file" flat round dense color="grey-7" icon="fas fa-copy" @click="copyPath">
-            <q-tooltip anchor="top middle" self="bottom middle" max-width="600px">Copy the path: {{ file.outputfullfilename }}</q-tooltip>
+          <q-btn v-if="filePath" aria-label="Copy the path of the file" flat round dense color="grey-7" icon="fas fa-copy" @click="copyPath">
+            <q-tooltip anchor="top middle" self="bottom middle" max-width="600px">Copy the path: {{ filePath }}</q-tooltip>
           </q-btn>
-          <q-btn v-if="viewable" aria-label="Download the file" flat round dense color="grey-7" icon="fas fa-download" :loading="downloading" @click="download">
+          <q-btn v-if="viewable && !incoming" aria-label="Download the file" flat round dense color="grey-7" icon="fas fa-download" :loading="downloading" @click="download">
             <q-tooltip anchor="top middle" self="bottom middle">Download the file</q-tooltip>
           </q-btn>
           <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
@@ -51,7 +57,11 @@
            moved), the split only sizes the two. -->
       <div ref="panes" class="col column no-wrap viewer-panes">
         <div v-show="layout !== 'db'" class="column no-wrap file-pane" :style="filePaneStyle">
-          <asn1-pane v-if="viewAs === 'asn1' && asn1Shown" :key="`${file.id}|${settingsVersion}`" class="col" :file-id="file.id" :datasource-id="datasourceId" :saved="settings.asn1 || null" @saved="settingsSaved" @facts="asn1Facts = $event" />
+          <q-banner v-if="vanished" dense class="bg-orange-1 text-orange-10 q-mx-md q-mt-sm">
+            <template #avatar><q-icon name="fas fa-exclamation-triangle" size="18px" /></template>
+            {{ vanished }}
+          </q-banner>
+          <asn1-pane v-if="viewAs === 'asn1' && asn1Shown" :key="`${fileKey}|${settingsVersion}`" class="col" :file-ref="fileRef" :datasource-id="datasourceId" :saved="settings.asn1 || null" @saved="settingsSaved" @facts="asn1Facts = $event" />
           <q-card-section v-show="viewAs === 'text'" class="row items-start q-gutter-sm q-py-sm">
             <q-input
               v-model="search"
@@ -200,7 +210,7 @@ import { darkExtensions } from "../utils/codeTheme";
 import { columnColors, DELIMITER_PRESETS, delimiterText, detectDelimiter, headerNames, matchMarks, parseLayout, refreshDecorations, searchExpression } from "../utils/csvView";
 import { fileStatus } from "../constants";
 import { downloadFiles } from "../utils/datasources";
-import { formatBytes, formatNumber } from "../utils/format";
+import { formatBytes, formatNumber, toDateTimeString } from "../utils/format";
 import { copyAndNotify } from "../runActions";
 import FileRecordsPane from "./FileRecordsPane.vue";
 import Asn1Pane from "./asn1/Asn1Pane.vue";
@@ -250,6 +260,8 @@ export default {
       visible: false,
       file: null,
       info: null,
+      // Why an incoming file can no longer be read (PDI Core picked it up): the lines read stay shown.
+      vanished: null,
       // head: the file from a line; grep: the lines matching `search`.
       mode: "head",
       search: "",
@@ -300,6 +312,23 @@ export default {
   },
   computed: {
     ...mapGetters(["getEnvInfo"]),
+    // A file waiting in the datasource's input directory, not in the file log: read by its path, never downloaded.
+    incoming() {
+      return Boolean(this.file && this.file.incoming);
+    },
+    // What the server's viewer routes take: the file ID, or the datasource and path of an incoming file.
+    fileRef() {
+      if (!this.file) {
+        return null;
+      }
+      return this.incoming ? { source_id: this.file.sourceid, path: this.file.path } : { id: this.file.id };
+    },
+    fileKey() {
+      return JSON.stringify(this.fileRef);
+    },
+    filePath() {
+      return this.file ? (this.incoming ? this.file.path : this.file.outputfullfilename) || null : null;
+    },
     // file: the file pane alone; split: the records below it; db: the records alone.
     layout() {
       return !this.fileShown ? "db" : this.recordsOn ? "split" : "file";
@@ -354,7 +383,7 @@ export default {
       return this.count >= this.maxLines && !this.eof;
     },
     canLoadMore() {
-      return Boolean(this.viewAs === "text" && this.info && !this.info.binary && !this.eof && !this.capped && !this.loading);
+      return Boolean(this.viewAs === "text" && this.info && !this.info.binary && !this.eof && !this.capped && !this.loading && !this.vanished);
     },
     detectedText() {
       return delimiterText(this.detected);
@@ -377,7 +406,7 @@ export default {
       return `${formatBytes(info.size)} · ${kind} · ${info.encoding === "utf-8" ? "UTF-8" : "Latin-1"}`;
     },
     statusText() {
-      if (!this.info || this.info.binary) {
+      if (!this.info || this.info.binary || (this.vanished && !this.count)) {
         return "";
       }
       if (this.mode === "grep") {
@@ -418,8 +447,10 @@ export default {
   },
   methods: {
     formatNumber,
+    toDateTimeString,
     fileStatus,
-    // A file of the file log row ({id, inputfilename, sourcename, filestatus, ...}), shown from its first line. `layout`
+    // A file of the file log row ({id, inputfilename, sourcename, filestatus, ...}), or an incoming file of the input
+    // directory ({incoming: true, path, inputfilename, filesize, modified, sourcename, sourceid}), shown from its first line. `layout`
     // db shows its records alone (the file log's database button), else the file with the records as last picked for
     // the datasource; `viewable` whether the archived file can be read, `hasTables` whether the datasource has tables.
     open(file, { datasourceId = null, layout = "file", viewable = true, hasTables = false } = {}) {
@@ -453,6 +484,7 @@ export default {
       }
       this.loadSettings();
       this.info = null;
+      this.vanished = null;
       this.search = "";
       this.matchCase = false;
       this.regex = false;
@@ -602,7 +634,7 @@ export default {
       this.typedLayout = "";
     },
     async copyPath() {
-      await copyAndNotify(this.file.outputfullfilename, "Path", "The path was not copied.");
+      await copyAndNotify(this.filePath, "Path", "The path was not copied.");
     },
     async saveLayout() {
       this.savingLayout = true;
@@ -730,7 +762,7 @@ export default {
       const grep = this.mode === "grep";
       this.loading = true;
       try {
-        const params = { id: this.file.id, offset: this.nextOffset, line: this.nextLine };
+        const params = { ...this.fileRef, offset: this.nextOffset, line: this.nextLine };
         const result = grep
           ? await api("grep-ds-file", { params: { ...params, pattern: this.search, regex: this.regex, case: this.matchCase }, loadingBar: false })
           : await api("view-ds-file", { params: { ...params, lines: Math.min(lines || 0, this.maxLines - this.count) || undefined }, loadingBar: false });
@@ -738,6 +770,7 @@ export default {
           return;
         }
         this.searchError = null;
+        this.vanished = null;
         this.info = result;
         if (result.binary && result.asn1 && !this.viewChosen) {
           this.showAsn1();
@@ -764,7 +797,9 @@ export default {
           return;
         }
         this.loading = false;
-        if (grep && error.status === 400) {
+        if (this.incoming && error.status === 404) {
+          this.vanished = error.message;
+        } else if (grep && error.status === 400) {
           this.searchError = error.message;
         } else {
           notifyError(grep ? "The file was not searched." : "The file was not read.", error);

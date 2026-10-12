@@ -6,7 +6,8 @@ error or duplicate directory of its datasource, so that a file log row can
 not name any other file of the server. Only SUCCESS and ERROR files whose
 archived file is kept (OUTFILEDELETED = 0) are sent. Several files are sent
 as one ZIP, written while it is sent. The viewer (viewer.py) reads files
-under the same rules (locate).
+under the same rules (locate), and also the incoming files of a datasource,
+from its input directories (never sent as a download).
 """
 
 import os
@@ -15,7 +16,7 @@ import zipfile
 from ..logger import logger
 
 from .files import OTHER_DIRECTORIES, number_option, option
-from .store import DOWNLOAD_FROM, DatasourceError, pdi
+from .store import DOWNLOAD_FROM, DatasourceError, pdi, split_directories
 
 CHUNK_BYTES = 1024 * 1024
 # Files already compressed are stored in the ZIP as they are.
@@ -85,18 +86,29 @@ def prepare(ids):
     return {'files': files, 'skipped': skipped, 'bytes': total}
 
 
-def locate(id):
-    """Find one file of the file log that can be sent, for the viewer.
+def locate(ref):
+    """Find one file the viewer may read.
+
+    Parameters
+    ----------
+    ref : int or dict
+        A file ID of the file log, whose file is one a download would send,
+        or `{source_id, path}`, an incoming file in the input directories
+        of a datasource.
 
     Returns
     -------
     file : dict
-        `{id, path, name, size, sourcename, day}`. Raises DatasourceError
-        naming why the file can not be sent.
+        `{id, path, name, size, sourcename, day, incoming}` (`id` and `day`
+        None for an incoming file). Raises DatasourceError naming why the
+        file can not be read.
     """
     if not enabled():
         raise DatasourceError('File downloads are switched off on this '
                               'server ([DATASOURCES] file_download).', 403)
+    if isinstance(ref, dict):
+        return _locate_input(ref.get('source_id'), ref.get('path'))
+    id = ref
     ids, rows = pdi.read_download_files([id])
     row = rows.get(ids[0])
     if row is None:
@@ -108,7 +120,47 @@ def locate(id):
     return {'id': row['id'], 'path': path, 'size': size,
             'name': os.path.basename(row['outputfullfilename']),
             'sourcename': row['sourcename'],
-            'day': day.strftime('%Y%m%d') if day else None}
+            'day': day.strftime('%Y%m%d') if day else None,
+            'incoming': False}
+
+
+def _locate_input(source_id, path):
+    """Find a file in the input directories of a datasource (its real path
+    inside one of them, so a symbolic link can not lead out)."""
+    if source_id is None or not path:
+        raise DatasourceError('Give the datasource and the path of the file.')
+    datasource = pdi.read_datasource(source_id)
+    if datasource is None:
+        raise DatasourceError(f'Datasource {source_id} does not exist.', 404)
+    roots = [os.path.realpath(root) for root in
+             split_directories(datasource['input_directory'])]
+    real = os.path.realpath(path)
+    if not any(_inside(real, root) for root in roots):
+        raise DatasourceError('The file can not be shown: outside the input '
+                              'directories of the datasource.')
+    try:
+        if not os.path.isfile(real):
+            raise DatasourceError('The file is no longer in the input '
+                                  'directory (PDI Core may have picked it '
+                                  'up).', 404)
+        if not os.access(real, os.R_OK):
+            raise DatasourceError('The file can not be shown: not readable '
+                                  'on this server.')
+        size = os.path.getsize(real)
+    except OSError as error:
+        raise DatasourceError(f'The file can not be shown: not readable '
+                              f'({error.strerror}).')
+    return {'id': None, 'path': real, 'size': size,
+            'name': os.path.basename(path),
+            'sourcename': datasource['sourcename'], 'day': None,
+            'incoming': True}
+
+
+def describe(file):
+    """Name a located file in a log line."""
+    if file['incoming']:
+        return f'{file["path"]} (incoming, {file["sourcename"]})'
+    return f'{file["name"]} (file ID {file["id"]})'
 
 
 def _roots(sourceid):

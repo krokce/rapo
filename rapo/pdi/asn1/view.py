@@ -1,6 +1,7 @@
-"""Contains the ASN.1 view of the files of the file log.
+"""Contains the ASN.1 view of the files of the file log and incoming files.
 
-A file is read under the rules of a download (download.locate), decompressed
+A file is found as the text viewer finds it (download.locate: `ref` is a
+file ID or `{source_id, path}` of an incoming file), decompressed
 as the text viewer does (viewer._open), as BER from a start offset. Nothing
 is kept between requests but the noted child offsets (ber.index) and the
 gzip checkpoints, so each request opens the file and reads what it answers:
@@ -54,13 +55,13 @@ def _number(value, name):
 
 
 class _File:
-    """A file of the file log read as BER from a start offset (with a record
+    """A file of the file log (or an incoming file) read as BER from a start offset (with a record
     header before each record and the filler between records), and the
     grammar (and top type) naming its nodes."""
 
-    def __init__(self, id, start_offset=0, grammar=None, top=None,
+    def __init__(self, ref, start_offset=0, grammar=None, top=None,
                  record_header=0, filler='00ff'):
-        self.file = download.locate(id)
+        self.file = download.locate(ref)
         self.start = _number(start_offset, 'start_offset')
         self.record_header = _number(record_header, 'record_header')
         if self.record_header > MAX_RECORD_HEADER:
@@ -98,6 +99,7 @@ class _File:
 
     def meta(self):
         return {'id': self.file['id'], 'name': self.file['name'],
+                'incoming': self.file['incoming'],
                 'size': self.file['size'], 'compression': self.stream.kind,
                 'data_size': self.stream.data_size(),
                 'start_offset': self.start,
@@ -199,7 +201,7 @@ class _File:
         return tag_text(node.item.cls, node.item.number)
 
 
-def nodes(id, parent=None, state=None, ordinal=0, count=None,
+def nodes(ref, parent=None, state=None, ordinal=0, count=None,
           start_offset=0, grammar=None, top=None, record_header=0,
           filler='00ff'):
     """Get a page of the children of a node (`parent`: its offset), or of the
@@ -215,7 +217,7 @@ def nodes(id, parent=None, state=None, ordinal=0, count=None,
     count = min(max(int(count or number_option('asn1_page_nodes')), 1),
                 MAX_PAGE)
     ordinal = _number(ordinal, 'ordinal')
-    with _File(id, start_offset, grammar, top, record_header,
+    with _File(ref, start_offset, grammar, top, record_header,
                filler) as file:
         if parent is None:
             file.guess_top()
@@ -237,10 +239,10 @@ def nodes(id, parent=None, state=None, ordinal=0, count=None,
                 'eof': eof}
 
 
-def node(id, offset, state=None, start_offset=0, grammar=None, top=None,
+def node(ref, offset, state=None, start_offset=0, grammar=None, top=None,
          record_header=0, filler='00ff'):
     """Get one node with what its value reads as (the details pane)."""
-    with _File(id, start_offset, grammar, top, record_header,
+    with _File(ref, start_offset, grammar, top, record_header,
                filler) as file:
         found = file.node_at(_number(offset, 'offset'))
         info = None
@@ -252,7 +254,7 @@ def node(id, offset, state=None, start_offset=0, grammar=None, top=None,
                                                      detail=True)}
 
 
-def locate(id, offset, start_offset=0, grammar=None, top=None,
+def locate(ref, offset, start_offset=0, grammar=None, top=None,
            record_header=0, filler='00ff'):
     """Get the nodes holding an offset, from the root down to the deepest.
 
@@ -263,7 +265,7 @@ def locate(id, offset, start_offset=0, grammar=None, top=None,
         offset of the node the node is a child of, None for the root).
     """
     offset = _number(offset, 'offset')
-    with _File(id, start_offset, grammar, top, record_header,
+    with _File(ref, start_offset, grammar, top, record_header,
                filler) as file:
         file.guess_top()
         levels = []
@@ -291,8 +293,8 @@ def _chain(file, offset):
         info_of = _info_of(file, info)
 
 
-def read_bytes(id, offset, size=MAX_BYTES):
-    """Get uncompressed bytes of a file of the file log.
+def read_bytes(ref, offset, size=MAX_BYTES):
+    """Get uncompressed bytes of a file of the file log or an incoming file.
 
     Returns
     -------
@@ -301,14 +303,14 @@ def read_bytes(id, offset, size=MAX_BYTES):
     """
     offset = _number(offset, 'offset')
     size = min(max(_number(size, 'size'), 1), MAX_BYTES)
-    file = download.locate(id)
+    file = download.locate(ref)
     with viewer._open(file['path']) as stream:
         stream.seek(offset)
         data = stream.read(size)
         return data, stream.data_size()
 
 
-def render(id, offset, state=None, format='xml', start_offset=0,
+def render(ref, offset, state=None, format='xml', start_offset=0,
            grammar=None, top=None, record_header=0, filler='00ff'):
     """Get a node's subtree as XML or as an indented text listing, at most
     [DATASOURCES] asn1_render_nodes nodes and RENDER_CHARS characters.
@@ -321,7 +323,7 @@ def render(id, offset, state=None, format='xml', start_offset=0,
     if format not in ('xml', 'text'):
         raise DatasourceError('format is xml or text.')
     limit = max(number_option('asn1_render_nodes'), 1)
-    with _File(id, start_offset, grammar, top, record_header,
+    with _File(ref, start_offset, grammar, top, record_header,
                filler) as file:
         root = file.node_at(_number(offset, 'offset'))
         info = None
@@ -424,7 +426,7 @@ def _text_line(file, depth, event, node, info):
     return line
 
 
-def search(id, field=None, value=None, match='contains', hex=None,
+def search(ref, field=None, value=None, match='contains', hex=None,
            offset=0, start_offset=0, grammar=None, top=None, record_header=0,
            filler='00ff'):
     """Find nodes by field and value, or byte sequences, from an offset.
@@ -459,8 +461,9 @@ def search(id, field=None, value=None, match='contains', hex=None,
     limit = max(number_option('view_grep_matches'), 1)
     deadline = time.monotonic() + max(number_option('view_grep_seconds'), 1)
     started = time.monotonic()
-    with _File(id, start_offset, grammar, top, record_header,
+    with _File(ref, start_offset, grammar, top, record_header,
                filler) as file:
+        located = file.file
         file.guess_top()
         if pattern is not None:
             result = _search_bytes(file, pattern, offset, limit, deadline)
@@ -471,7 +474,7 @@ def search(id, field=None, value=None, match='contains', hex=None,
                   'scanned_bytes': result['next_offset'] - offset}
     what = f'bytes {hex}' if pattern is not None else \
         f'field {field!r} value {value!r}'
-    logger.info(f'File searched as ASN.1: {result["name"]} (file ID {id}) '
+    logger.info(f'File searched as ASN.1: {download.describe(located)} '
                 f'for {what}, {len(result["hits"])} hit(s) in '
                 f'{time.monotonic() - started:.1f} s')
     return result

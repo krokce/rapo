@@ -36,7 +36,8 @@ const MAX_HEIGHT = 8000000;
 export default {
   name: "HexPane",
   props: {
-    fileId: { type: Number, required: true },
+    // The file read: {id} of the file log, or {source_id, path} of an incoming file.
+    fileRef: { type: Object, required: true },
     // The uncompressed size when known.
     dataSize: { type: Number, default: null },
     // Byte ranges to color: [{kind: prefix|tag|len|value|hit, from, to}] (prefix: a record header).
@@ -54,6 +55,10 @@ export default {
     };
   },
   computed: {
+    // The file as a value: a watcher on it fires only for another file.
+    fileKey() {
+      return JSON.stringify(this.fileRef);
+    },
     size() {
       if (this.knownEnd !== null) {
         return this.knownEnd;
@@ -123,7 +128,7 @@ export default {
     },
   },
   watch: {
-    fileId() {
+    fileKey() {
       this.reset();
       this.requestShown();
     },
@@ -198,12 +203,12 @@ export default {
       }
     },
     async fetchPage(index) {
-      const fileId = this.fileId;
+      const fileKey = this.fileKey;
       this.loading.add(index);
       try {
-        const response = await api("get-ds-file-bytes", { params: { id: fileId, offset: index * PAGE, size: PAGE }, raw: true, loadingBar: false });
+        const response = await api("get-ds-file-bytes", { params: { ...this.fileRef, offset: index * PAGE, size: PAGE }, raw: true, loadingBar: false });
         const data = new Uint8Array(await response.arrayBuffer());
-        if (fileId !== this.fileId) {
+        if (fileKey !== this.fileKey) {
           return;
         }
         this.pages.set(index, data);

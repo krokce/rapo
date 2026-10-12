@@ -52,6 +52,8 @@ Dashboard's file summary.
   takes any delimiter (several characters too) or fixed column widths (`10,5,8`), saved per datasource for everyone.
   Header: datasource link, file ID, status, *Copy* path; chips *Text* / *ASN.1* / *Records*, reopened as last picked
   per datasource. Options `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
+  **Incoming files** (eye icon in the input file lists, incl. the Files page's *Incoming*) open in it too, read from
+  the input directory (text or ASN.1, no download or records; routes take `source_id` + `path` instead of `id`).
 - **ASN.1 view** of binary files (BER, DER, CER; opened so when the file looks like it, or *Text* / *ASN.1*): a tree
   of tags read node by node (500 children at a time, so files of any size; 00/FF padding skipped, undecodable bytes
   shown and passed), beside a hex dump of the whole file coloring the selected node's tag, length and value (a byte

@@ -95,6 +95,9 @@
                 <span v-if="kind === 'all'" class="text-caption">{{ file.reason }}</span>
               </td>
               <td class="text-right">
+                <q-btn v-if="canView" aria-label="View the file" flat round dense size="sm" icon="fas fa-eye" color="blue-grey-6" @click="openViewer(file)">
+                  <q-tooltip>View the file</q-tooltip>
+                </q-btn>
                 <q-btn aria-label="Copy the path" flat round dense size="sm" icon="fas fa-copy" color="grey-7" @click="copyPath(file)">
                   <q-tooltip>Copy the path</q-tooltip>
                 </q-btn>
@@ -112,6 +115,7 @@
       </q-card-section>
 
       <file-upload-dialog ref="upload" @uploaded="load" />
+      <file-viewer-dialog ref="viewer" />
       <div v-if="dragging" class="absolute-full drop-overlay column items-center justify-center">
         <q-icon name="fas fa-cloud-upload-alt" size="40px" class="q-mb-sm" />
         <div class="text-h6">Drop the files to upload them into the input directory</div>
@@ -124,6 +128,7 @@
 import { mapGetters } from "vuex";
 import { api, notifyError } from "../api";
 import FileUploadDialog from "./FileUploadDialog.vue";
+import FileViewerDialog from "./FileViewerDialog.vue";
 import { copyAndNotify } from "../runActions";
 import { formatBytes, formatNumber, toDateTimeString } from "../utils/format";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
@@ -150,7 +155,7 @@ const COLUMNS = [
 // unsaved masks, so they can be tried before a save; the directories are always the saved ones.
 export default {
   name: "FileListDialog",
-  components: { FileUploadDialog },
+  components: { FileUploadDialog, FileViewerDialog },
   data() {
     return {
       visible: false,
@@ -167,6 +172,10 @@ export default {
   },
   computed: {
     ...mapGetters(["getEnvInfo"]),
+    // [DATASOURCES] file_download allows reading the files of the server, incoming ones too.
+    canView() {
+      return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_download);
+    },
     canUpload() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_file_upload);
     },
@@ -268,6 +277,21 @@ export default {
     directoryColor(directory) {
       return directory.exists && directory.readable ? "teal" : "red-5";
     },
+    // An incoming file in the viewer, read from the input directory (no file log row, no records, no download).
+    openViewer(file) {
+      this.$refs.viewer.open(
+        {
+          incoming: true,
+          path: file.path,
+          inputfilename: file.subdir ? `${file.subdir}/${file.name}` : file.name,
+          filesize: file.size,
+          modified: file.modified,
+          sourcename: this.datasource.sourcename,
+          sourceid: this.datasource.id,
+        },
+        { datasourceId: this.datasource.id }
+      );
+    },
     async copyPath(file) {
       await copyAndNotify(file.path, "Path", "The path was not copied.");
     },
@@ -314,5 +338,5 @@ function emptyResult() {
 .file-table th:nth-child(5) { width: 150px; }
 .file-table th:nth-child(6) { width: 110px; }
 .file-table th:nth-child(7) { width: 300px; }
-.file-table th:nth-child(8) { width: 50px; }
+.file-table th:nth-child(8) { width: 76px; }
 </style>

@@ -1288,23 +1288,41 @@ def download_ds_files(data: dict = fastapi.Body(...)):
         headers=headers)
 
 
-@api.get('/view-ds-file')
-def view_ds_file(id: int, offset: int = 0, line: int = 1,
-                 lines: int | None = None):
-    """Read lines of a loaded file from where PDI Core kept it.
+def file_ref(id, source_id, path):
+    """The file a viewer request reads: a file ID of the file log, or an
+    incoming file by its datasource and path (see download.locate)."""
+    if (id is None) == (source_id is None and path is None):
+        raise DatasourceError('Give either the file ID or the datasource and '
+                              'the path of an incoming file.')
+    return id if id is not None else {'source_id': source_id, 'path': path}
 
-    The file is one a download would send. `offset` is the uncompressed byte
+
+@api.get('/view-ds-file')
+def view_ds_file(offset: int = 0, line: int = 1,
+                 lines: int | None = None,
+                 id: int | None = None, source_id: int | None = None,
+                 path: str | None = None):
+    """Read lines of a loaded file from where PDI Core kept it, or of an
+    incoming file from the input directories of its datasource.
+
+    The file is `id`, one a download would send, or `source_id` and `path`,
+    a file in the datasource's input directories (one of the two, here and
+    in the other viewer routes; [DATASOURCES] file_download allows both).
+    `offset` is the uncompressed byte
     offset to read from (the `next_offset` of the previous answer, 0 the
     start), `line` its line number (only shown) and `lines` how many lines
     ([DATASOURCES] view_lines). A gzip or ZIP is read decompressed.
     """
     with datasource_errors():
-        return ds_viewer.read(id, offset=offset, line=line, lines=lines)
+        ref = file_ref(id, source_id, path)
+        return ds_viewer.read(ref, offset=offset, line=line, lines=lines)
 
 
 @api.get('/grep-ds-file')
-def grep_ds_file(id: int, pattern: str, regex: bool = False,
-                 case: bool = False, offset: int = 0, line: int = 1):
+def grep_ds_file(pattern: str, regex: bool = False,
+                 case: bool = False, offset: int = 0, line: int = 1,
+                 id: int | None = None, source_id: int | None = None,
+                 path: str | None = None):
     """Find the lines of a loaded file containing a text or expression.
 
     It reads from `offset` (and `line`) until [DATASOURCES]
@@ -1313,16 +1331,19 @@ def grep_ds_file(id: int, pattern: str, regex: bool = False,
     `pattern` as a regular expression, `case` matches case.
     """
     with datasource_errors():
-        return ds_viewer.grep(id, pattern, regex=regex, case=case,
+        ref = file_ref(id, source_id, path)
+        return ds_viewer.grep(ref, pattern, regex=regex, case=case,
                               offset=offset, line=line)
 
 
 @api.get('/get-ds-file-asn1')
-def get_ds_file_asn1(id: int, parent: int | None = None,
+def get_ds_file_asn1(parent: int | None = None,
                      state: str | None = None, ordinal: int = 0,
                      count: int | None = None, start_offset: int = 0,
                      record_header: int = 0, filler: str = '00ff',
-                     grammar: str | None = None, top: str | None = None):
+                     grammar: str | None = None, top: str | None = None,
+                     id: int | None = None, source_id: int | None = None,
+                     path: str | None = None):
     """Get a page of the ASN.1 (BER) nodes of a loaded file.
 
     Without `parent` the nodes of the root (the TLVs from `start_offset`,
@@ -1334,7 +1355,8 @@ def get_ds_file_asn1(id: int, parent: int | None = None,
     """
     layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.nodes(id, parent=parent, state=state, ordinal=ordinal,
+        ref = file_ref(id, source_id, path)
+        return ds_asn1.nodes(ref, parent=parent, state=state, ordinal=ordinal,
                              count=count, grammar=grammar, top=top, **layout)
 
 
@@ -1345,35 +1367,44 @@ def asn1_layout(start_offset, record_header, filler):
 
 
 @api.get('/get-ds-file-asn1-node')
-def get_ds_file_asn1_node(id: int, offset: int, state: str | None = None,
+def get_ds_file_asn1_node(offset: int, state: str | None = None,
                           start_offset: int = 0, record_header: int = 0,
                           filler: str = '00ff', grammar: str | None = None,
-                          top: str | None = None):
+                          top: str | None = None,
+                          id: int | None = None, source_id: int | None = None,
+                          path: str | None = None):
     """Get one ASN.1 node of a loaded file with what its value reads as."""
     layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.node(id, offset, state=state, grammar=grammar,
+        ref = file_ref(id, source_id, path)
+        return ds_asn1.node(ref, offset, state=state, grammar=grammar,
                             top=top, **layout)
 
 
 @api.get('/locate-ds-file-asn1')
-def locate_ds_file_asn1(id: int, offset: int, start_offset: int = 0,
+def locate_ds_file_asn1(offset: int, start_offset: int = 0,
                         record_header: int = 0, filler: str = '00ff',
-                        grammar: str | None = None, top: str | None = None):
+                        grammar: str | None = None, top: str | None = None,
+                        id: int | None = None, source_id: int | None = None,
+                        path: str | None = None):
     """Get the ASN.1 nodes holding a byte of a loaded file, from the root
     down to the deepest."""
     layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.locate(id, offset, grammar=grammar, top=top, **layout)
+        ref = file_ref(id, source_id, path)
+        return ds_asn1.locate(ref, offset, grammar=grammar, top=top, **layout)
 
 
 @api.get('/get-ds-file-bytes')
-def get_ds_file_bytes(id: int, offset: int = 0, size: int = 65536):
+def get_ds_file_bytes(offset: int = 0, size: int = 65536,
+                      id: int | None = None, source_id: int | None = None,
+                      path: str | None = None):
     """Get uncompressed bytes of a loaded file (at most 64 KB), as
     application/octet-stream; `X-Rapo-Data-Size` is the uncompressed size
     when known."""
     with datasource_errors():
-        data, data_size = ds_asn1.read_bytes(id, offset, size)
+        ref = file_ref(id, source_id, path)
+        data, data_size = ds_asn1.read_bytes(ref, offset, size)
     headers = {'X-Rapo-Offset': str(offset)}
     if data_size is not None:
         headers['X-Rapo-Data-Size'] = str(data_size)
@@ -1383,31 +1414,37 @@ def get_ds_file_bytes(id: int, offset: int = 0, size: int = 65536):
 
 
 @api.get('/render-ds-file-asn1')
-def render_ds_file_asn1(id: int, offset: int, state: str | None = None,
+def render_ds_file_asn1(offset: int, state: str | None = None,
                         format: str = 'xml', start_offset: int = 0,
                         record_header: int = 0, filler: str = '00ff',
-                        grammar: str | None = None, top: str | None = None):
+                        grammar: str | None = None, top: str | None = None,
+                        id: int | None = None, source_id: int | None = None,
+                        path: str | None = None):
     """Get an ASN.1 node and its subtree as XML or text (`format`), at most
     [DATASOURCES] asn1_render_nodes nodes."""
     layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.render(id, offset, state=state, format=format,
+        ref = file_ref(id, source_id, path)
+        return ds_asn1.render(ref, offset, state=state, format=format,
                               grammar=grammar, top=top, **layout)
 
 
 @api.get('/search-ds-file-asn1')
-def search_ds_file_asn1(id: int, field: str | None = None,
+def search_ds_file_asn1(field: str | None = None,
                         value: str | None = None, match: str = 'contains',
                         hex: str | None = None, offset: int = 0,
                         start_offset: int = 0, record_header: int = 0,
                         filler: str = '00ff', grammar: str | None = None,
-                        top: str | None = None):
+                        top: str | None = None,
+                        id: int | None = None, source_id: int | None = None,
+                        path: str | None = None):
     """Find the ASN.1 nodes of a loaded file by field (names or tags) and
     value, or by hex bytes, from `offset` until [DATASOURCES]
     view_grep_matches hits or view_grep_seconds passed."""
     layout = asn1_layout(start_offset, record_header, filler)
     with datasource_errors():
-        return ds_asn1.search(id, field=field, value=value, match=match,
+        ref = file_ref(id, source_id, path)
+        return ds_asn1.search(ref, field=field, value=value, match=match,
                               hex=hex, offset=offset, grammar=grammar,
                               top=top, **layout)
 
