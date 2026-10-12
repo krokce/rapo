@@ -41,7 +41,7 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      (started, missed, failed per hour) and what it will start in the next 24, on each side of *Now*, the count written
      in each hour (as in the runs and files over time, when the cells are wide enough).
    - **Files** (with the PDI Core file log). The files over time by status (a strip per status), donuts of the files by status, of the top datasources by records loaded
-     and by files in error (seven each, the rest as *Others*) and of the datasources by state (stalled, delivering
+     and by number of files loaded (`SUCCESS`; seven each, the rest as *Others*, a datasource in the same color in both) and of the datasources by state (stalled, delivering
      files in the span, silent, disabled; the files waiting beside the title), and *Loading* (records loaded with the
      records rejected in the span as a chip, and the load throughput in records per minute of load time, as two small
      trends side by side, both of all datasources or the one picked in the panel's head). Days are those of the database clock, as on the Files page.
@@ -75,7 +75,10 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      deletes change older files) and fills the days missing of `[DASHBOARD] file_summary_days` (90); today, and
      yesterday until it is summed, are read from the file log. Days neither summed nor read live show as gaps, with a
      note; the Files section's refresh button sums the span's days at once (`refresh-file-summary`). Without
-     `[SCHEDULER] maintenance_interval` only that button fills the summary.
+     `[SCHEDULER] maintenance_interval` only that button fills the summary. Counts show each file's current status:
+     a recycle, reload or delete from Rapo sums the past days of those files again at once and refreshes the open
+     Dashboards (a file in error, recycled, no longer counts as in error); status changes made outside Rapo show on
+     past days with the next maintenance.
    - **Files waiting history.** With no browser connected, the server running the scheduler still counts the files
      waiting every `[DATASOURCES] scan_idle_interval` seconds (300; 0: only while someone looks, as before), so the
      tile's history has no gaps.

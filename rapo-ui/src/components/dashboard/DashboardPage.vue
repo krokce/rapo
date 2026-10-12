@@ -139,9 +139,8 @@
                 <donut-chart :items="topLoadedItems" center-label="records" :format="compactNumber" :height="150" @pick="openDatasource" />
               </div>
               <div>
-                <div class="dashboard__list-title">By files in error</div>
-                <donut-chart v-if="topErrorItems.length" :items="topErrorItems" center-label="in error" :height="150" @pick="openDatasource" />
-                <div v-else class="dashboard__clear row no-wrap items-center"><q-icon name="fas fa-check-circle" class="q-mr-sm" />No file in error in this span.</div>
+                <div class="dashboard__list-title">By number of files</div>
+                <donut-chart :items="topFileItems" center-label="files" :format="compactNumber" :height="150" @pick="openDatasource" />
               </div>
             </div>
             <donut-chart v-else-if="panel.id === 'files-datasources'" :items="datasourceItems" center-label="datasources" :height="150" @pick="pickDatasourceState" />
@@ -204,8 +203,8 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DONE_STATUS_COLORS = { RECYCLED: "blue-grey-4", RELOADED: "grey-6", DELETED: "blue-grey-7" };
 // The slices of the top datasources (one each, the rest as Others).
 const TOP_SLICES = 7;
-const LOADED_COLORS = ["teal-6", "blue-6", "indigo-4", "purple-4", "amber-8", "cyan-7", "light-green-7"];
-const ERROR_COLORS = ["deep-orange-6", "red-5", "orange-7", "pink-5", "amber-9", "brown-4", "deep-purple-4"];
+// By datasource, the same in both donuts of Top datasources: enough for two different top lists.
+const TOP_COLORS = ["teal-6", "blue-6", "indigo-4", "purple-4", "amber-8", "cyan-7", "light-green-7", "orange-7", "pink-4", "brown-4", "deep-purple-3", "lime-8", "green-9", "light-blue-8"];
 // The datasources by state, each in one (rapo/dashboard/files.py _lanes).
 const DATASOURCE_STATES = [
   { key: "stalled", label: "Stalled", color: "red-5", icon: "fas fa-hourglass-end", title: "Active datasources whose oldest waiting file waits too long (the last scan)" },
@@ -374,13 +373,33 @@ export default {
     topLoadedItems() {
       const files = this.parts.files;
       const total = files.records.write.reduce((sum, value) => sum + (value || 0), 0);
-      return this.topItems(files.top_loaded, "records", total, LOADED_COLORS, (row) => `${row.sourcename || row.sourceid}: ${formatNumber(row.records)} records loaded, ${formatNumber(row.files)} files`);
+      return this.topItems(files.top_loaded, "records", total, (row) => `${row.sourcename || row.sourceid}: ${formatNumber(row.records)} records loaded, ${formatNumber(row.files)} files`);
     },
-    topErrorItems() {
+    // The files loaded (SUCCESS) of the span by datasource.
+    topFileItems() {
       const files = this.parts.files;
-      const error = files.status.find((item) => item.code === "ERROR");
-      const total = error ? error.counts.reduce((sum, value) => sum + (value || 0), 0) : 0;
-      return this.topItems(files.top_errors, "errors", total, ERROR_COLORS, (row) => `${row.sourcename || row.sourceid}: ${formatNumber(row.errors)} files in error, ${formatNumber(row.rejects)} records rejected`);
+      const success = files.status.find((item) => item.code === "SUCCESS");
+      const total = success ? success.counts.reduce((sum, value) => sum + (value || 0), 0) : 0;
+      return this.topItems(files.top_files, "success", total, (row) => `${row.sourcename || row.sourceid}: ${formatNumber(row.success)} files loaded, ${formatNumber(row.records)} records loaded`);
+    },
+    // A color per datasource of either top list, the records' first.
+    topColors() {
+      const files = this.parts.files;
+      const colors = {};
+      for (const [rows, field] of [
+        [files.top_loaded, "records"],
+        [files.top_files, "success"],
+      ]) {
+        rows
+          .filter((row) => row[field])
+          .slice(0, TOP_SLICES)
+          .forEach((row) => {
+            if (!(row.sourceid in colors)) {
+              colors[row.sourceid] = TOP_COLORS[Object.keys(colors).length % TOP_COLORS.length];
+            }
+          });
+      }
+      return colors;
     },
     datasourceItems() {
       const states = (this.parts.files.datasources && this.parts.files.datasources.states) || {};
@@ -619,11 +638,11 @@ export default {
       this.go({ path: `/files-log/${key}` });
     },
     // The first TOP_SLICES rows of a top list as slices, the rest of `total` as Others (opens nothing).
-    topItems(rows, field, total, colors, title) {
+    topItems(rows, field, total, title) {
       const items = rows
         .filter((row) => row[field])
         .slice(0, TOP_SLICES)
-        .map((row, index) => ({ key: row.sourceid, label: row.sourcename || String(row.sourceid), color: colors[index % colors.length], value: row[field], title: title(row) }));
+        .map((row) => ({ key: row.sourceid, label: row.sourcename || String(row.sourceid), color: this.topColors[row.sourceid], value: row[field], title: title(row) }));
       const others = total - items.reduce((sum, item) => sum + item.value, 0);
       if (items.length && others > 0) {
         items.push({ key: "others", label: "Others", color: "blue-grey-3", value: others, pick: false, title: "The other datasources together" });
@@ -772,11 +791,5 @@ export default {
   font-weight: 600;
   color: var(--rapo-strong);
   margin-bottom: 2px;
-}
-
-.dashboard__clear {
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--rapo-teal);
 }
 </style>

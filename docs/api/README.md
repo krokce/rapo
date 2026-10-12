@@ -700,7 +700,8 @@ the files of one datasource. Each with `id`,
 Ask PDI Core to recycle, reload or delete loaded files. The body is `{"ids": [...], "status": "RECYCLE"|"RELOAD"|
 "DELETE"}`, at most 5000 ids. `RECYCLE` changes a `SUCCESS` or `ERROR` file, `RELOAD` a `SUCCESS` file, both only with
 `OUTFILEDELETED = 0`; `DELETE` a file of any status but `DELETE`; PDI Core does the rest (DELETE also deletes the archived file). Answers `{"status": 200, "requested", "changed",
-"skipped": [{id, status, reason}]}`. `403` without `UPDATE` on the file log.
+"skipped": [{id, status, reason}]}`. `403` without `UPDATE` on the file log. Emits `datasources:changed {kind: files}`
+and sums the Dashboard's summarized days of the changed files again in the background (`{kind: summary}` when done).
 
 #### `GET /api/get-pdi-state`
 The lane locks of `PDI_CORE_STATE`: `lanes` (`{lane: since}` of the `LOAD_<lane>` rows), `lock` (since when the `LOCK`
@@ -1194,9 +1195,9 @@ all clients, and dropped by the live events that change them.
   `scheduler-upcoming`, the current hour first), `missed_total` (missed fires never caught up) and `missed_capped`
   (500 or more).
 * `files` (database clock; `{available: false}` without the file log): `status: [{code, counts}]` (files per
-  bucket), `duplicates`, `records` `{read, write, reject}`, `reject_rate` (%), `top_loaded` and `top_errors` (top 8
-  datasources `{sourceid, sourcename, files, records, rejects, errors}` by records written, and those with files in
-  `ERROR` by them, then records rejected), `throughput` `{all, sources: [{sourceid, sourcename, records, write, reject, read,
+  bucket), `duplicates`, `records` `{read, write, reject}`, `reject_rate` (%), `top_loaded` and `top_files` (top 8
+  datasources `{sourceid, sourcename, files, success, records, rejects}` by records written, and those with files in
+  `SUCCESS` by them, then records written), `throughput` `{all, sources: [{sourceid, sourcename, records, write, reject, read,
   rates}]}` (per datasource with files in the span: its records per bucket, and `rates` the records written per
   minute of load time of its `SUCCESS` files), `datasources` `{states, totals, scanned}` (`states`
   counts each datasource once: `disabled` (lane 0), else `stalled` (the last scan), else `delivering` (files in the

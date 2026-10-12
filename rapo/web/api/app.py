@@ -1251,8 +1251,14 @@ def set_file_status(data: dict = fastapi.Body(...)):
     """
     with datasource_errors():
         result = pdi.set_file_status(data.get('ids'), data.get('status'))
-    dashboard.invalidate('files')
-    events.poke()
+    days = result.pop('days')
+    # The Watcher does not see a status change: tell the clients, and sum
+    # the closed days of these files again (done = {kind: summary}).
+    events.emit_datasources('files')
+    try:
+        dashboard.file_data.resummarize(days)
+    except Exception:
+        logger.error()
     return {'status': 200, **result}
 
 

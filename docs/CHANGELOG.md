@@ -18,11 +18,12 @@ Dashboard's file summary.
   records rejected) against the same weekday last week (incl. *Files in input* and *Files in
   processing*); over 24h / 7d / 30d: runs over time by status, donuts of runs by status, type and trigger, slowest
   controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, donuts of files by status, top
-  datasources (records loaded, files in error) and datasources by state, loading and throughput; KPI alarms per
+  datasources (records loaded, files loaded) and datasources by state, loading and throughput; KPI alarms per
   control (compact strips, all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
   Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
   `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
-  scheduler's maintenance or *Refresh* (`refresh-file-summary`). Options `[DASHBOARD] file_summary_days`,
+  scheduler's maintenance or *Refresh* (`refresh-file-summary`), and at once for files recycled, reloaded or deleted
+  from Rapo, so counts follow the files' current status. Options `[DASHBOARD] file_summary_days`,
   `[DATASOURCES] scan_idle_interval` (unattended scans by the scheduling server).
 - **Instance health kept across restarts:** minutes stored in `rapo_health_minute` (`[HEALTH] history_days`, 7) and
   read back at start; Health tabs gain a 7d span.

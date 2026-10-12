@@ -185,6 +185,34 @@ def _refresh(days):
         _notify()
 
 
+def resummarize(days):
+    """Sum the summarized days among `days` again, in the background, after
+    rapo changed the status of their files (set-file-status), so the counts
+    show the files' current status without waiting for the maintenance.
+    """
+    if not days or not available():
+        return
+    today = database_now().date()
+    days = sorted(day for day in summarized_days(min(days), today)
+                  if day in set(days))
+    if days:
+        thread = threading.Thread(target=_resummarize, args=(days,),
+                                  name='FileSummaryStatus', daemon=True)
+        thread.start()
+
+
+def _resummarize(days):
+    try:
+        for day in days:
+            summarize(day)
+        logger.info(f'File log summary: {len(days)} days summed again '
+                    f'after a file status change')
+    except Exception:
+        logger.error()
+    finally:
+        _notify()
+
+
 def _notify():
     for listener in listeners:
         try:
@@ -293,13 +321,13 @@ def files(span):
         reject[position] += row['records_reject'] or 0
         id = row['sourceid']
         names.setdefault(id, row.get('sourcename'))
-        source = sources.setdefault(id, {'files': 0, 'records': 0,
-                                         'rejects': 0, 'errors': 0})
+        source = sources.setdefault(id, {'files': 0, 'success': 0,
+                                         'records': 0, 'rejects': 0})
         source['files'] += files_count
         source['records'] += row['records_write'] or 0
         source['rejects'] += row['records_reject'] or 0
-        if row['filestatus'] == 'ERROR':
-            source['errors'] += files_count
+        if row['filestatus'] == 'SUCCESS':
+            source['success'] += files_count
         # Per datasource: records loaded, loaded with a runtime, runtime,
         # rejected, read.
         per = source_series.setdefault(id, [[0] * size for _ in range(5)])
@@ -341,9 +369,9 @@ def files(span):
         'reject_rate': [_rate(rejected, total) if total is not None
                         else None for rejected, total in zip(reject, read)],
         'top_loaded': sorted(tops, key=lambda row: -row['records'])[:TOP],
-        'top_errors': sorted(
-            [row for row in tops if row['errors']],
-            key=lambda row: (-row['errors'], -row['rejects']))[:TOP],
+        'top_files': sorted(
+            [row for row in tops if row['success']],
+            key=lambda row: (-row['success'], -row['records']))[:TOP],
         'throughput': {
             'all': [_per_minute(records, seconds) if seconds is not None
                     else None for records, seconds in zip(loaded, runtime)],

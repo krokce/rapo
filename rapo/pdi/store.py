@@ -660,7 +660,8 @@ class Store:
         Returns
         -------
         result : dict
-            `requested`, `changed` and `skipped`, `[{id, status, reason}]`.
+            `requested`, `changed` and `skipped`, `[{id, status, reason}]`;
+            `days`, the load days of the changed files.
         """
         self.check()
         if not self.file_actions_available:
@@ -675,6 +676,7 @@ class Store:
         allowed = ACTION_FROM[status]
         changed = 0
         skipped = []
+        days = set()
         connection = db.connect()
         try:
             with connection.begin():
@@ -683,7 +685,8 @@ class Store:
                     binds = {f'id{index}': id for index, id in enumerate(batch)}
                     in_list = ', '.join(f':{bind}' for bind in binds)
                     rows = connection.execute(sa.text(
-                        f'select id, filestatus, outfiledeleted from {LOG_TABLE} '
+                        f'select id, filestatus, outfiledeleted, '
+                        f'trunc(startloaddate) from {LOG_TABLE} '
                         f'where id in ({in_list}) for update').bindparams(
                             **binds)).fetchall()
                     found = {int(row[0]): row for row in rows}
@@ -704,6 +707,8 @@ class Store:
                                             'reason': 'archived file deleted'})
                         else:
                             eligible.append(id)
+                            if row[3] is not None:
+                                days.add(row[3].date())
                     if eligible:
                         binds = {f'id{index}': id
                                  for index, id in enumerate(eligible)}
@@ -719,7 +724,8 @@ class Store:
             connection.close()
         logger.info(f'Files set to {status}: {changed} of {len(ids)} '
                     f'(IDs {ids[0]}..{ids[-1]})')
-        return {'requested': len(ids), 'changed': changed, 'skipped': skipped}
+        return {'requested': len(ids), 'changed': changed, 'skipped': skipped,
+                'days': sorted(days)}
 
     def read_download_files(self, ids):
         """Get the file log rows of files asked to be downloaded.
@@ -874,8 +880,8 @@ class Store:
     def files_signature(self):
         """Get a value that changes with the files loaded today.
 
-        New files and finished loads change it; a status set by rapo pokes
-        the clients itself.
+        New files and finished loads change it; a status set by rapo is
+        told to the clients by set-file-status itself.
         """
         if not self.log_available:
             return None
