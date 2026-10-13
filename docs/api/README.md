@@ -158,10 +158,10 @@ CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run
 `max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
 `superseded_by` is the process ID of the latest later run of the same control and period (the days of `date_from` and
 `date_to`), whatever its status, and `superseded_on` its start (null when none): a period counts by its latest run, and
-the UI folds the runs it superseded under it. With `control_name`, each run also has `kpis` `{KPI_TYPE: {value,
-alarm_level}}` (the values `RACS_KPI_RUNHISTORY_ALL` stored for it, `{}` when none), and the answer `kpi_types`
-`[{kpi_type, kpi_type_desc, kpi_value_unit, kpi_decimal_places}]`, the types stored for these runs by priority (absent
-without the KPI tables or their history).
+the UI folds the runs it superseded under it. Each run also has `kpis` `{KPI_TYPE: {value, alarm_level}}` (the values
+`RACS_KPI_RUNHISTORY_ALL` stored for it, `{}` when none), and the answer `kpi_types` `[{kpi_type, kpi_type_desc,
+kpi_value_unit, kpi_decimal_places, kpi_priority}]`, the types stored for these runs by priority (both absent without
+the KPI tables or their history).
 
 > Until v0.8.0 this route took no parameters and returned the last 200 runs as a plain array.
 

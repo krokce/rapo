@@ -38,6 +38,7 @@ export default {
   updateControlResults(state, payload) {
     state.controlResults = freezeRows(payload.runs);
     state.controlResultsDay = payload.date;
+    state.controlResultsKpiTypes = Object.freeze(payload.kpi_types || []);
     state.serverToday = payload.today;
     state.serverClockOffset = clockOffset(payload.server_time);
   },

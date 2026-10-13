@@ -51,6 +51,7 @@
       :filtered-name="filter.control_name"
       :has-kpis="kpiControlIds ? (run) => kpiControlIds.has(run.control_id) : null"
       expand-key="rapo_runs_expand_results"
+      :kpi-summary="controlResultsKpiTypes"
       @filter="applyRowFilter"
       @calculate-kpis="openKpiCalculate"
       @open-run="openRun">
@@ -234,7 +235,7 @@ export default {
     },
   },
   computed: {
-    ...mapState(["controlResults", "controlResultsDay", "serverToday", "serverClockOffset"]),
+    ...mapState(["controlResults", "controlResultsDay", "controlResultsKpiTypes", "serverToday", "serverClockOffset"]),
     // The present by the server's clock, which the runs' hours are counted in: marked on today's heatmap only.
     nowPosition() {
       return dayPosition(this.now + this.serverClockOffset, this.day);

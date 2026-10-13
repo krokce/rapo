@@ -90,10 +90,6 @@
               {{ compact ? "Err. B %" : "Err. lvl B [%]" }}
               <q-icon v-if="sort.key === 'error_level_b'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="Prerequisite value: what the Prerequisite SQL returned; 0 stops the run" class="col-pv text-right sortable" @click="toggleSort(sort, 'prerequisite_value')" v-keyboard :aria-sort="ariaSort(sort, 'prerequisite_value')">
-              PV
-              <q-icon v-if="sort.key === 'prerequisite_value'" :name="sortIcon(sort)" size="12px" />
-            </th>
             <th
               v-for="kpi in kpiColumns"
               :key="kpi.kpi_type"
@@ -104,6 +100,16 @@
               :aria-sort="ariaSort(sort, kpiSortKey(kpi))">
               {{ kpi.kpi_type }}
               <q-icon v-if="sort.key === kpiSortKey(kpi)" :name="sortIcon(sort)" size="12px" />
+            </th>
+            <th
+              v-if="kpiSummary.length"
+              title="The KPIs stored for the run: the alarmed ones first, then by priority; hover a value for its KPI, + for all of them; sorts by the highest alarm"
+              class="col-kpis text-left sortable"
+              @click="toggleSort(sort, KPI_ALARM_SORT, 'desc')"
+              v-keyboard
+              :aria-sort="ariaSort(sort, KPI_ALARM_SORT)">
+              KPIs
+              <q-icon v-if="sort.key === KPI_ALARM_SORT" :name="sortIcon(sort)" size="12px" />
             </th>
             <th :title="filterable ? 'The status of the run; click a status to filter by it' : 'The status of the run'" class="col-status text-left sortable" @click="toggleSort(sort, 'status')" v-keyboard :aria-sort="ariaSort(sort, 'status')">
               Status
@@ -121,7 +127,7 @@
             'run-row--superseded': run.superseded_by,
             'run-row--folded': grouping.folded.has(run.process_id),
           }">
-          <td v-if="show.type" class="text-center">
+          <td v-if="show.type" class="text-center run-chip-cell">
             <q-chip :clickable="filterable" :title="controlType(run.control_type).label" @click="filterable && $emit('filter', { type: run.control_type })">
               <q-avatar :icon="controlType(run.control_type).icon" :color="controlType(run.control_type).color" text-color="white" />
               {{ run.control_type }}
@@ -228,10 +234,6 @@
             </span>
             <span v-else> {{ formatNumber(run.error_level_b, 2) }}% </span>
           </td>
-          <td class="text-right">
-            <q-icon v-if="run.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop" title="Prerequisite SQL value is 0" />
-            <q-icon v-if="run.prerequisite_value" class="cursor-pointer text-green" name="fas fa-play" :title="`Prerequisite SQL value is ${run.prerequisite_value}`" />
-          </td>
           <td v-for="kpi in kpiColumns" :key="kpi.kpi_type" class="text-right number-cell">
             <span
               v-if="kpiCell(run, kpi)"
@@ -244,19 +246,45 @@
               {{ compactKpiValue(kpiCell(run, kpi).value) }}
             </span>
           </td>
-          <td class="text-left text-no-wrap">
-            <q-chip :clickable="filterable" :class="{ 'cursor-pointer': filterable }" @click="filterable && $emit('filter', { status: run.status })">
-              <q-avatar :icon="runStatus(run.status).icon" :color="runStatus(run.status).color" text-color="white" />
+          <td v-if="kpiSummary.length" class="text-left number-cell no-wrap">
+            <template v-for="kpi in summaryOf(run).shown" :key="kpi.type">
+              <span v-if="!compact" class="run-kpi-code">{{ kpi.type }}</span>
+              <span
+                class="run-kpi run-kpi--summary cursor-pointer"
+                :class="{ 'run-kpi--alarm': kpi.alarm_level > 0 }"
+                :style="kpi.alarm_level > 0 ? { background: alarmColor(kpi.alarm_level) } : null"
+                :title="summaryTitle(run, kpi)"
+                v-keyboard:button
+                @click="$emit('calculate-kpis', run)">
+                {{ compactKpiValue(kpi.value) }}
+              </span>
+            </template>
+            <span v-if="summaryOf(run).more" class="run-kpi-more" :title="summaryAllTitle(run)">+{{ summaryOf(run).more }}</span>
+          </td>
+          <td class="text-left text-no-wrap run-chip-cell">
+            <q-chip :clickable="filterable" :class="{ 'cursor-pointer': filterable }" :title="statusTitle(run)" @click="filterable && $emit('filter', { status: run.status })">
+              <q-avatar :icon="prerequisiteStopped(run) ? 'fas fa-stop' : runStatus(run.status).icon" :color="runStatus(run.status).color" text-color="white">
+                <q-badge
+                  v-if="run.has_warning"
+                  floating
+                  rounded
+                  color="amber-9"
+                  class="run-warning cursor-pointer"
+                  title="Finished with warnings: click for the run details"
+                  @click.stop="$refs.runLogDialog.open(run)">
+                  <q-icon name="fas fa-exclamation" size="7px" />
+                </q-badge>
+                <q-badge
+                  v-if="hasPrerequisite(run)"
+                  rounded
+                  color="blue-7"
+                  class="run-pv"
+                  :title="`Prerequisite SQL value ${run.prerequisite_value}${prerequisiteStopped(run) ? ': the control stopped before its checks' : ''}`">
+                  <q-icon name="fas fa-info" size="7px" />
+                </q-badge>
+              </q-avatar>
               {{ runStatus(run.status).label }}
             </q-chip>
-            <q-icon
-              v-if="run.has_warning"
-              class="cursor-pointer"
-              name="fas fa-exclamation-triangle"
-              color="amber-9"
-              size="16px"
-              title="Finished with warnings: click for the run details"
-              @click="$refs.runLogDialog.open(run)" />
           </td>
           <td class="text-left">
             <q-btn aria-label="Row actions" size="sm" color="grey-7" round flat icon="fas fa-ellipsis-v" @click="openRowMenu($event, run)" />
@@ -336,7 +364,7 @@ import { formatNumber, round, toDateString, toDateTimeString, toTimeString } fro
 import { alarmLevel, compactKpiValue, formatKpiValue } from "../utils/kpi";
 import { paletteColor } from "../utils/palette";
 import { textWidth } from "../utils/layout";
-import { KPI_SORT_PREFIX, groupRuns, runSortValue, startsNewDay, supersededTitle, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
+import { KPI_ALARM_SORT, KPI_SORT_PREFIX, groupRuns, summaryKpis, runSortValue, startsNewDay, supersededTitle, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // A table of runs (get-control-runs rows), shared by the Results page and the editor's Run log: sortable columns,
@@ -346,11 +374,13 @@ import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // The fixed widths of the columns (px), as the style sets them; the Processname column takes the rest, else the Status
 // column (`status`; beside a name it is `namedStatus`). Compact: one Period column and narrower numbers.
-const WIDTHS = { type: 114, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, pv: 34, kpi: 56, status: 86, namedStatus: 128, menu: 50 };
+const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 170, status: 96, namedStatus: 104, menu: 50 };
 // Compact widths are the content's (7-digit counts, "100.00%", a Done chip with its warning) plus the cell padding.
-const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, pv: 30, kpi: 54, status: 92, menu: 40 };
+const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 110, status: 96, menu: 40 };
+// The values in the KPIs column: with their codes in the full layout, else without.
+const SUMMARY_SHOWN = { full: 3, compact: 2 };
 // The least width of the Processname column before it is cut (ellipsis).
-const NAME_MIN = 140;
+const NAME_MIN = 100;
 // The bubble of a period's number of runs: darker the more (the last for any more).
 const VERSION_COLORS = ["blue-grey-2", "indigo-2", "indigo-3", "indigo-5", "indigo-7", "indigo-9"];
 
@@ -374,6 +404,8 @@ export default {
     columns: { type: Object, default: () => ({ type: true, name: true }) },
     // KPI columns (get-control-runs' kpi_types of one control): the values stored for each run.
     kpiColumns: { type: Array, default: () => [] },
+    // One KPIs column instead (Results: controls with other KPIs): get-control-runs' kpi_types of the runs.
+    kpiSummary: { type: Array, default: () => [] },
     // Where this browser keeps whether every period's earlier runs are shown.
     expandKey: { type: String, default: "rapo_runs_expand" },
     // The row menu's Edit control (not inside the editor itself).
@@ -397,6 +429,7 @@ export default {
   emits: ["filter", "calculate-kpis", "open-run"],
   data() {
     return {
+      KPI_ALARM_SORT,
       expandAll: readFlag(this.expandKey),
       // The width the table has (px), 0 until measured.
       width: 0,
@@ -456,7 +489,7 @@ export default {
       return this.sort.key === "date_from" ? "date_from" : "start_date";
     },
     colspan() {
-      return 11 + (this.compact ? 0 : 1) + ["type", "name"].filter((column) => this.show[column]).length + (this.showB ? 3 : 0) + this.kpiColumns.length;
+      return 10 + (this.compact ? 0 : 1) + ["type", "name"].filter((column) => this.show[column]).length + (this.showB ? 3 : 0) + this.kpiColumns.length + (this.kpiSummary.length ? 1 : 0);
     },
     tableMinWidth() {
       return this.minWidth(this.show);
@@ -471,7 +504,7 @@ export default {
         ...(this.show.name ? ["text"] : []),
         ...Array((this.showB ? 8 : 5) - (this.compact ? 1 : 0)).fill("text"),
         ...this.kpiColumns.map(() => "text"),
-        null,
+        ...(this.kpiSummary.length ? ["text"] : []),
         "QChip",
         null,
       ];
@@ -518,11 +551,25 @@ export default {
         w.pid +
         (level.compact ? w.period : 2 * w.date) +
         sides * (w.fetched + w.discr + w.level) +
-        w.pv +
         this.kpiColumns.length * w.kpi +
+        (this.kpiSummary.length ? w.kpis : 0) +
         (level.name ? w.namedStatus : w.status) +
         w.menu
       );
+    },
+    hasPrerequisite(run) {
+      return run.prerequisite_value !== null && run.prerequisite_value !== undefined;
+    },
+    // A run whose Prerequisite SQL returned 0: it stopped before its checks.
+    prerequisiteStopped(run) {
+      return this.hasPrerequisite(run) && Number(run.prerequisite_value) === 0;
+    },
+    // The status chip's title, with the Prerequisite SQL's value (once the PV column).
+    statusTitle(run) {
+      const label = runStatus(run.status).label;
+      if (this.prerequisiteStopped(run)) return `${label}: the Prerequisite SQL returned 0, so the control stopped before its checks`;
+      if (this.hasPrerequisite(run)) return `${label} · Prerequisite SQL value ${run.prerequisite_value}`;
+      return label;
     },
     // A bubble of `count` runs: the darker the more.
     versionStyle(count) {
@@ -555,6 +602,28 @@ export default {
       return (run.kpis && run.kpis[kpi.kpi_type]) || null;
     },
     compactKpiValue,
+    // The KPIs a run shows in the KPIs column and how many more it has.
+    summaryOf(run) {
+      const all = summaryKpis(run, this.kpiSummary);
+      const count = SUMMARY_SHOWN[this.compact ? "compact" : "full"];
+      return { shown: all.slice(0, count), more: Math.max(all.length - count, 0) };
+    },
+    summaryType(code) {
+      return this.kpiSummary.find((type) => type.kpi_type === code) || { kpi_type: code };
+    },
+    summaryTitle(run, kpi) {
+      return this.kpiCellTitle(run, this.summaryType(kpi.type));
+    },
+    // Every KPI of the run, exact.
+    summaryAllTitle(run) {
+      return summaryKpis(run, this.kpiSummary)
+        .map((kpi) => {
+          const type = this.summaryType(kpi.type);
+          const unit = type.kpi_value_unit ? ` ${type.kpi_value_unit}` : "";
+          return `${kpi.type} = ${formatKpiValue(kpi.value, type.kpi_decimal_places)}${unit} · ${alarmLevel(kpi.alarm_level).label}`;
+        })
+        .join("\n");
+    },
     // "2026-10-12" for a window of one day, "2026-10-01 → 31" within a month, "2026-09-28 → 10-04" within a year.
     periodText(run) {
       const from = toDateString(run.date_from);
@@ -651,6 +720,28 @@ a:visited {
   line-height: 1;
 }
 /* The Ver header shows or folds every period's earlier runs. */
+/* The type and status chips sit tight in their cells (13px, no outer margin), so the name keeps the width. */
+.run-chip-cell :deep(.q-chip) {
+  margin: 0;
+  font-size: 13px;
+}
+/* Badges on the status chip's avatar: warnings (amber, top right), the Prerequisite SQL's value (blue, bottom right). */
+.run-warning,
+.run-pv {
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  justify-content: center;
+}
+.run-warning {
+  top: -5px;
+  right: -5px;
+}
+.run-pv {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+}
 .run-ver-all {
   cursor: pointer;
   border-bottom: 1px dashed currentColor;
@@ -680,6 +771,19 @@ a:visited {
   text-overflow: ellipsis;
   vertical-align: middle;
 }
+.run-kpi--summary {
+  margin-right: 4px;
+}
+.run-kpi-code {
+  margin-right: 3px;
+  font-size: 10px;
+  color: var(--rapo-label);
+}
+.run-kpi-more {
+  font-size: 11px;
+  color: var(--rapo-label);
+  cursor: default;
+}
 .run-kpi:hover {
   text-decoration: underline;
 }
@@ -702,12 +806,14 @@ a:visited {
 .runs-table.with-name :deep(table) {
   min-width: calc(var(--table-min-width) + var(--name-column-width));
 }
-.runs-table .col-type { width: 114px; }
+.runs-table .col-type { width: 86px; }
 .runs-table .col-start { width: 162px; }
 .runs-table .col-runtime { width: 66px; }
 .runs-table .col-ver { width: 40px; }
 .runs-table .col-pid { width: 96px; }
 .runs-table .col-kpi { width: 56px; }
+.runs-table .col-kpis { width: 170px; }
+.runs-table.runs-table--compact .col-kpis { width: 110px; }
 .runs-table .col-period { width: 132px; }
 .runs-table.runs-table--compact .col-start { width: 156px; }
 .runs-table.runs-table--compact .col-ver { width: 38px; }
@@ -715,14 +821,12 @@ a:visited {
 .runs-table.runs-table--compact .col-fetched { width: 84px; }
 .runs-table.runs-table--compact .col-discr { width: 70px; }
 .runs-table.runs-table--compact .col-level { width: 66px; }
-.runs-table.runs-table--compact .col-pv { width: 30px; }
 .runs-table.runs-table--compact .col-kpi { width: 54px; }
 .runs-table.runs-table--compact .col-menu { width: 40px; }
 .runs-table .col-date { width: 87px; }
 .runs-table .col-fetched { width: 92px; }
 .runs-table .col-discr { width: 84px; }
 .runs-table .col-level { width: 80px; }
-.runs-table .col-pv { width: 34px; }
-.runs-table.with-name .col-status { width: 128px; }
+.runs-table.with-name .col-status { width: 104px; }
 .runs-table .col-menu { width: 50px; }
 </style>

@@ -346,7 +346,13 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     its alarm level's color when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
     soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
     then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
-    error does not hide the period's alarm.
+    error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
+    alarmed KPIs first, then the others by priority, two values (three with their codes on wide screens) and `+N` for
+    the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
+    highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
+    values no longer show as `-…`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
+    returned 0 shows a stop icon in its status chip, and a run with a Prerequisite value a small blue info badge on
+    the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter.
     **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
     as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
     log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer

@@ -16,13 +16,13 @@ export function sortRows(rows, valueOf, dir) {
     .map(([, row]) => row);
 }
 
-// Clicking the current column flips the direction, another column sorts it ascending.
-export function toggleSort(sort, key) {
+// Clicking the current column flips the direction, another column sorts it `first` (ascending unless said).
+export function toggleSort(sort, key, first = "asc") {
   if (sort.key === key) {
     sort.dir = sort.dir === "asc" ? "desc" : "asc";
   } else {
     sort.key = key;
-    sort.dir = "asc";
+    sort.dir = first;
   }
 }
 

@@ -20,7 +20,8 @@ export function alarmLevel(level) {
   return ALARM_LEVELS[Number(level)] || NO_ALARM;
 }
 
-// A KPI value in at most 4 characters, for a heatmap cell: 0.35, 12.4, 98, 1.2k, 3.4M; empty for none.
+// A KPI value in at most 4 characters with its sign, for a heatmap cell or a box: 0.35, 12.4, 98, 1.2k, 3.4M, and a
+// decimal fewer when negative (-0.6, -5.0, -12, -1.2k); empty for none.
 export function compactKpiValue(value) {
   if (value === null || value === undefined || value === "") return "";
   const number = Number(value);
@@ -39,9 +40,9 @@ export function compactKpiValue(value) {
       return `${sign}${scaled < 10 ? trim(scaled.toFixed(1)) : Math.round(scaled)}${unit}`;
     }
   }
-  if (size >= 100) return `${sign}${Math.round(size)}`;
-  if (size >= 10) return `${sign}${trim(size.toFixed(1))}`;
-  return `${sign}${trim(size.toFixed(2))}`;
+  // The decimals the 4 characters leave: one for the sign when negative.
+  const places = (size >= 100 ? 0 : size >= 10 ? 1 : 2) - (sign ? 1 : 0);
+  return `${sign}${places > 0 ? trim(size.toFixed(places)) : Math.round(size)}`;
 }
 
 // A KPI value as the dashboard shows it: the type's decimal places, else the 4 the package rounds to.

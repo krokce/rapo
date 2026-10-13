@@ -806,23 +806,25 @@ def get_control_runs(date: dt.date | None = None,
     if control_name:
         runs = reader.read_control_runs(control_name=control_name, days=days)
         return {'date': None, 'today': today.isoformat(), 'server_time': now,
-                'runs': runs, **control_run_kpis(control_name, runs)}
+                'runs': runs, **control_run_kpis(runs)}
     day = date or today
+    runs = reader.read_control_runs(day=day)
     return {'date': day.isoformat(), 'today': today.isoformat(),
-            'server_time': now, 'runs': reader.read_control_runs(day=day)}
+            'server_time': now, 'runs': runs, **control_run_kpis(runs)}
 
 
-def control_run_kpis(control_name, runs):
-    """Put the stored KPI values on one control's runs (`kpis`: {kpi_type:
-    {value, alarm_level}}) and get the types present, by priority, as
-    {kpi_types: [{kpi_type, kpi_type_desc, kpi_value_unit,
-    kpi_decimal_places}]}; nothing without the KPI history.
+def control_run_kpis(runs):
+    """Put the stored KPI values on runs (`kpis`: {kpi_type: {value,
+    alarm_level}}) and get the types present, by priority, as {kpi_types:
+    [{kpi_type, kpi_type_desc, kpi_value_unit, kpi_decimal_places,
+    kpi_priority}]}; nothing without the KPI history.
     """
     if not runs or not (kpi.available and kpi.history_available):
         return {}
     first = min(run['process_id'] for run in runs)
     values = {}
-    for row in kpi.read_control_history(control_name, first):
+    names = [run['control_name'] for run in runs]
+    for row in kpi.read_runs_history(names, first):
         values.setdefault(int(row['processid']), {})[row['kpi_type']] = {
             'value': row['kpi_value'], 'alarm_level': row['alarm_level']}
     for run in runs:
@@ -832,7 +834,7 @@ def control_run_kpis(control_name, runs):
     return {'kpi_types': [
         {key: row.get(key) for key in ('kpi_type', 'kpi_type_desc',
                                        'kpi_value_unit',
-                                       'kpi_decimal_places')}
+                                       'kpi_decimal_places', 'kpi_priority')}
         for row in kpi.read_kpi_types() if row['kpi_type'] in present]}
 
 

@@ -21,6 +21,8 @@ const store = createStore({
       schemaDrift: {},
       controlResults: [],
       controlResultsDay: null,
+      // The KPI types stored for that day's runs (get-control-runs' kpi_types), for the KPIs column.
+      controlResultsKpiTypes: [],
       serverToday: null,
       // The server's clock minus the browser's, as of the last get-control-runs (utils/clock.js).
       serverClockOffset: 0,
