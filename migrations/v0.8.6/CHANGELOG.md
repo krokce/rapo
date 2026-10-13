@@ -335,14 +335,18 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
 11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
     *Scheduler* tab, as on the *Upcoming* and *History* tabs.
 12. **Superseded runs folded, KPIs in the Run log.** A run is *superseded* when a later run of the same control and
-    period (the days of its *Run from* and *Run to*) ended Done: a re-run, or the fix of a failed run. In Results and
+    period (the days of its *Run from* and *Run to*) exists, whatever its status: a re-run takes over the moment it is
+    queued, and the older runs fold under it at once. In Results and
     the editor's Run log a new *Ver* column shows the number of runs of the period as a bubble, darker the more there
     are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
     (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
     superseded run whose newer run is on another day stays in place with a ⟲ mark, which opens that run's day on
-    Results. A later run in error or still running supersedes nothing. The Run log is sorted by the period by default,
-    leaves out side B for ANL and REP, and has a column per KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the
-    value, compact (exact on hover), on its alarm level's color; a click calculates the KPIs of that run.
+    Results. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
+    KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a light grey box, on
+    its alarm level's color when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
+    soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
+    then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
+    error does not hide the period's alarm.
     **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
     as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
     log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer

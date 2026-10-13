@@ -27,7 +27,7 @@
               <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th
-              title="Runs of this period: this run and the earlier ones it superseded (a later run of the same period that ended Done supersedes them); click a number to show or fold them"
+              title="Runs of this period: this run and the earlier ones it superseded (any later run of the same period supersedes them); click a number to show or fold them"
               class="col-ver text-center">
               <span
                 v-if="grouping.earlier.size"
@@ -668,10 +668,12 @@ a:visited {
   border: 1.5px solid var(--rapo-label);
   color: var(--rapo-label);
 }
-/* A stored KPI value, on its alarm level's color when it alarmed. */
+/* A stored KPI value in a box: light grey, its alarm level's color when it alarmed. */
 .run-kpi {
   display: inline-block;
   padding: 0 4px;
+  background: var(--rapo-grid);
+  font-weight: 400;
   border-radius: 3px;
   max-width: 100%;
   overflow: hidden;
@@ -683,7 +685,6 @@ a:visited {
 }
 .run-kpi--alarm {
   color: var(--rapo-on-strong);
-  font-weight: 600;
 }
 .number-link:hover {
   color: var(--rapo-teal);

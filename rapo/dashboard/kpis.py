@@ -2,8 +2,8 @@
 
 The history is read once for the last LOOKBACK_DAYS (`kpi.read_run_history_
 since`) and every view is cut from it. A period run more than once counts by
-its last done run only (`reader.superseded_sql`): the values of superseded
-runs are left out. The heatmap puts a run in the bucket of its date_from (the
+its last done run only (`reader.superseded_sql`, `done_only`): the values of
+superseded runs are left out. The heatmap puts a run in the bucket of its date_from (the
 period it read), the tile in that of STARTRUNDATE (the run's start on the app
 server's clock).
 """
@@ -46,7 +46,7 @@ def rows():
                        select l.process_id, l.date_from
                          from rapo_log l
                         where l.process_id >= :first
-                          and {superseded_sql('l')} is null
+                          and {superseded_sql('l', done_only=True)} is null
                    """).bindparams(first=first), as_table=True)}
         result = []
         for row in history:

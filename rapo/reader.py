@@ -10,22 +10,25 @@ from .database import db
 WARNING_PREFIX = 'Warning: '
 
 
-def superseded_sql(alias='l', value='n.process_id'):
+def superseded_sql(alias='l', value='n.process_id', done_only=False):
     """Get a scalar subquery over the newer runs superseding a run of
-    rapo_log `alias`: the max of `value` of them, null when none.
+    rapo_log `alias`: `value` of the latest of them, null when none.
 
-    A period (the days of date_from and date_to) counts once, by its last
-    done run: a run is superseded by a newer run (higher process ID) of the
-    same control for the same period that ended D. A newer run in error,
-    canceled or still running supersedes nothing; a run without date_from is
-    never superseded. Data analysis' trend counts periods the same way.
+    A period (the days of date_from and date_to) counts once, by its latest
+    run: a run is superseded by any newer run (higher process ID) of the same
+    control for the same period, whatever its status, so a re-run takes over
+    as soon as it is initiated (Results and the Run log fold the older runs
+    under it). With `done_only`, only a newer run that ended D supersedes:
+    the period's last done run, which holds the stored results and KPIs (the
+    Dashboard's KPIs; Data analysis' trend counts periods the same way). A
+    run without date_from is never superseded.
     """
     return f"""(select max({value}) keep (dense_rank last
                                         order by n.process_id)
                   from rapo_log n
                  where n.control_id = {alias}.control_id
                    and n.process_id > {alias}.process_id
-                   and n.status = 'D'
+                   {"and n.status = 'D'" if done_only else ''}
                    and trunc(n.date_from) = trunc({alias}.date_from)
                    and trunc(n.date_to) = trunc({alias}.date_to))"""
 

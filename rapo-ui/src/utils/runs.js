@@ -140,7 +140,7 @@ export function startsNewDay(runs, index, key = "start_date") {
   return index > 0 && toDateString(runs[index - 1][key]) !== toDateString(runs[index][key]);
 }
 
-// The runs of a table with the superseded ones (a later run of their period ended Done: `superseded_by`, see
+// The runs of a table with the superseded ones (a later run of their period, any status: `superseded_by`, see
 // reader.superseded_sql) folded under that run when it is among them, newest first, right under it whatever the sort;
 // a superseded run whose newer run is not listed (another day, filtered out) stays in place. `expanded(processId)`
 // says whether a run's earlier runs are shown. Answers {rows, earlier: Map(processId -> count), folded: Set(processId),
@@ -180,7 +180,7 @@ export function groupRuns(runs, expanded) {
 
 // The tooltip of a superseded run's mark.
 export function supersededTitle(run) {
-  return `Superseded by run ${run.superseded_by}${run.superseded_on ? ` of ${toDateString(run.superseded_on)}` : ""}: a later run of the same period ended Done`;
+  return `Superseded by run ${run.superseded_by}${run.superseded_on ? ` of ${toDateString(run.superseded_on)}` : ""}: a later run of the same period`;
 }
 
 // RunTable's column headers by sort key, for the sort chip of the Results page.

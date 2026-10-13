@@ -1044,6 +1044,11 @@ def reingest_kpis(process_id: int):
     except Exception as error:
         logger.error()
         raise fastapi.HTTPException(status_code=400, detail=str(error))
+    # A new `updated` makes open run logs read the stored values again.
+    log = db.tables.log
+    db.execute(log.update().values(updated=dt.datetime.now())
+                  .where(log.c.process_id == process_id))
+    events.poke()
     return {'status': 200, 'kpis': stored}
 
 

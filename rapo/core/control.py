@@ -1494,6 +1494,9 @@ class Control:
         if self.need_hook and self.need_postrun_hook:
             try:
                 self.executor.postrun_hook()
+                # The hook stores the run's KPIs after it is D: a new
+                # `updated` makes the live update read them.
+                self._update_process_log()
             except Exception as error:
                 logger.error()
                 reason = str(getattr(error, 'orig', None) or error)

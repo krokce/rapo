@@ -86,10 +86,12 @@ Dashboard's file summary.
 - **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.
-- **Superseded runs** (a later run of the same period ended Done) folded under it in Results and the Run log: a *Ver*
+- **Superseded runs** (any later run of the same period, from the moment it is queued) folded under it in Results and
+  the Run log: a *Ver*
   bubble (runs of the period, darker the more) unpacks them, faded with their version number; columns follow the
   width (one *Period* column, no Type, no Processname only as needed); the Run log sorted by period with a column per
-  stored KPI value in its alarm color (`get-control-runs`: `superseded_by`, `kpis`, `kpi_types`).
+  stored KPI value in a grey or alarm-colored box, filled once the post-run hook stored it (`get-control-runs`:
+  `superseded_by`, `kpis`, `kpi_types`).
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
 - **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
   `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.

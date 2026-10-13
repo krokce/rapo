@@ -157,7 +157,7 @@ CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run
 `Warning: ` line (a key field that is not unique, `correlation_limit` reached, approximate matching over
 `max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
 `superseded_by` is the process ID of the latest later run of the same control and period (the days of `date_from` and
-`date_to`) that ended `D`, and `superseded_on` its start (null when none): a period counts by its last done run, and
+`date_to`), whatever its status, and `superseded_on` its start (null when none): a period counts by its latest run, and
 the UI folds the runs it superseded under it. With `control_name`, each run also has `kpis` `{KPI_TYPE: {value,
 alarm_level}}` (the values `RACS_KPI_RUNHISTORY_ALL` stored for it, `{}` when none), and the answer `kpi_types`
 `[{kpi_type, kpi_type_desc, kpi_value_unit, kpi_decimal_places}]`, the types stored for these runs by priority (absent
@@ -572,7 +572,8 @@ when it is older than those (the editor's KPIs tab opened on a run from the Dash
 Calculate, store and post the saved KPIs of one run (`process_id`) by calling
 `racs_kpi_pkg.ingest_rapo_control`: environment snapshot, `racs_kpi_runhistory_all`, dashboard post. Answers
 `{"status": 200, "kpis": [...]}` with the rows `get-kpi-history` answers afterwards; the package logs its own failures
-instead of raising them, so check their `status`. `400` when the run did not end `D`, the control is aliased `TEST...`
+instead of raising them, so check their `status`. The run's `rapo_log.updated` is touched, so open run logs read the
+new values. `400` when the run did not end `D`, the control is aliased `TEST...`
 or has no KPIs (the package would skip it), or the package fails.
 
 ### Datasources
@@ -1221,8 +1222,8 @@ all clients, and dropped by the live events that change them.
   day neither summarized nor read live is in `missing_days` and its values are `null`.
 * `kpis` (`{available: false}` without the KPI tables or their history): `heatmap` `{controls: [{control_name,
   control_id, level}], cells: [{row, column, level, process_id}]}` (the highest alarm level per control and bucket
-  of the runs' `date_from` (the period read), only the last done run of a period counting (`superseded_by`, see
-  `get-control-runs`), and the run that reached it, the latest on a tie; every control with values, the worst first; a cell at level 1 or
+  of the runs' `date_from` (the period read), only the last run of a period that ended `D` counting (its KPIs; a
+  later run still running or in error does not hide them), and the run that reached it, the latest on a tie; every control with values, the worst first; a cell at level 1 or
   above also has `kpi_type`, `value`, `unit`, `decimals` of that run's KPI at that level whose type comes first by
   `kpi_priority`, and `others`, the number of its other KPIs at level 1 or above) and `alarms` (values at level 2 or
   3 of those runs in the span).
