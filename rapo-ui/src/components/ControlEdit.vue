@@ -947,6 +947,7 @@
                     :columns="{ type: true, name: 'optional', b: ['REC', 'CMP'].includes(control.control_type) }"
                     :kpi-columns="kpiAvailable ? logKpiTypes : []"
                     expand-key="rapo_runs_expand_runlog"
+                    :focus-run="logFocus"
                     :edit-link="false"
                     separators
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
@@ -1077,7 +1078,7 @@ import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { diffControl, diffKpis, revertControlPath, revertKpiPath } from "../utils/controlDiff";
 import UnsavedChangesDialog from "./UnsavedChangesDialog.vue";
-import { escapeHtml, toDateTimeString } from "../utils/format";
+import { escapeHtml, toDateTimeString, toMillis } from "../utils/format";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
@@ -1182,6 +1183,8 @@ export default {
       kpiConfigObject: [],
       // The runs of the last log_days_back days (get-control-runs), shown by the Run log's RunTable.
       controlLogs: [],
+      // The run the Run log was opened on (?run=, from Results), shown with its period's versions; null otherwise.
+      logFocus: null,
       // The KPI types stored for the runs of the Run log (get-control-runs' kpi_types), a column each.
       logKpiTypes: [],
       logsLoaded: false,
@@ -1441,6 +1444,24 @@ export default {
     },
   },
   methods: {
+    // A link may name a run of this control (?run=, from Results): the Run log reaches back to it and shows it. The
+    // parameter is dropped, so a reload does not jump again.
+    async takeRouteRun() {
+      const processId = Number(this.$route.query.run);
+      if (!Number.isInteger(processId) || processId <= 0) return;
+      const query = { ...this.$route.query };
+      delete query.run;
+      this.$router.replace({ query });
+      try {
+        const found = await api("get-control-run", { params: { process_id: processId }, loadingBar: false });
+        const start = toMillis(found.start_date || found.added);
+        const days = Math.ceil((Date.now() - start) / 86400000) + 1;
+        if (days > this.log_days_back) this.log_days_back = Math.min(days, 366);
+        this.logFocus = processId;
+      } catch (error) {
+        notifyError(`Run ${processId} could not be found.`, error);
+      }
+    },
     // A link may open a tab (?tab=kpi from a KPI type's Controls tab, ?tab=scheduler from the Scheduler page); one the
     // control does not show is ignored.
     openRouteTab() {
@@ -2570,6 +2591,7 @@ export default {
         this.ready = true;
         if (this.control.control_id) {
           this.getControlVersions(this.controlId);
+          await this.takeRouteRun();
           this.getControlLogs(this.control.control_name, this.log_days_back);
         }
         this.loadedUpdatedDate = this.control.updated_date;

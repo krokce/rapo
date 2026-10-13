@@ -340,18 +340,19 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     the editor's Run log a new *Ver* column shows the number of runs of the period as a bubble, darker the more there
     are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
     (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
-    superseded run whose newer run is on another day stays in place with a ⟲ mark, which opens that run's day on
-    Results. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
+    superseded run whose newer run is on another day stays in place with a ⟲ mark. On Results, that mark and the
+    version number of an unpacked older run open the control's Run log on that run: *Days back* reaches back to it,
+    its period is unpacked, the row scrolled into view and its version number marked yellow. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
     KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a box of one width for
     every value with the digits on the right, green on light grey within its limits, white on its alarm level's color
     when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
     soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
     then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
     error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
-    KPIs by priority, two values (three with their codes on wide screens) and `+N` for
-    the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
+    KPIs by priority, three values (four on wide screens; the KPI's code on hover) and
+    `+N` for the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
     highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
-    values no longer show as `-…`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
+    values no longer show as `-…`; a NULL value reads `NULL`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
     returned 0 shows a stop icon in its status chip, and a run with a Prerequisite value a small blue info badge on
     the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter.
     **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only

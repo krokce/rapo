@@ -51,6 +51,7 @@
       :filtered-name="filter.control_name"
       :has-kpis="kpiControlIds ? (run) => kpiControlIds.has(run.control_id) : null"
       expand-key="rapo_runs_expand_results"
+      open-runs
       :kpi-summary="controlResultsKpiTypes"
       @filter="applyRowFilter"
       @calculate-kpis="openKpiCalculate"
@@ -182,13 +183,9 @@ export default {
         }
       }
     },
-    // The run that superseded a run of this day: searched for, on its day.
-    openRun({ processId, date }) {
-      this.$store.commit("updateSearch", String(processId));
-      const day = toDateString(date);
-      if (day && day !== this.day) {
-        this.goToDay(day);
-      }
+    // A superseded run: its control's Run log, on it, with every version of its period.
+    openRun(run) {
+      this.$router.push({ name: "edit-control", params: { controlId: run.control_id }, query: { tab: "log", run: String(run.process_id) } });
     },
     addStatusFilter(status) {
       if (!this.filter.status.includes(status)) {

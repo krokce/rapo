@@ -21,9 +21,9 @@ export function alarmLevel(level) {
 }
 
 // A KPI value in at most 4 characters with its sign, for a heatmap cell or a box: 0.35, 12.4, 98, 1.2k, 3.4M, and a
-// decimal fewer when negative (-0.6, -5.0, -12, -1.2k); empty for none.
+// decimal fewer when negative (-0.6, -5.0, -12, -1.2k); NULL for none.
 export function compactKpiValue(value) {
-  if (value === null || value === undefined || value === "") return "";
+  if (value === null || value === undefined || value === "") return "NULL";
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
   const sign = number < 0 ? "-" : "";

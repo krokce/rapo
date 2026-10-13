@@ -2,6 +2,7 @@
   <div class="run-table column no-wrap">
     <q-resize-observer @resize="onResize" />
     <q-virtual-scroll
+      ref="scroll"
       type="table"
       dense
       class="list-table runs-table"
@@ -150,13 +151,20 @@
             <span
               v-if="grouping.earlier.has(run.process_id)"
               class="run-ver run-ver--link"
+              :class="{ 'run-ver--focus': run.process_id === focusRun }"
               :style="versionStyle(grouping.earlier.get(run.process_id) + 1)"
               :title="`${grouping.earlier.get(run.process_id) + 1} runs of this period: ${isExpanded(run.process_id) ? 'fold' : 'show'} the ${grouping.earlier.get(run.process_id)} earlier one(s) it superseded`"
               v-keyboard:button
               @click="toggleExpanded(run.process_id)">
               {{ grouping.earlier.get(run.process_id) + 1 }}
             </span>
-            <span v-else-if="grouping.versions.has(run.process_id)" class="run-ver run-ver--old" :title="supersededTitle(run)">
+            <span
+              v-else-if="grouping.versions.has(run.process_id)"
+              class="run-ver run-ver--old"
+              :class="{ 'run-ver--focus': run.process_id === focusRun, 'run-ver--link': openRuns }"
+              :title="openRuns ? `${supersededTitle(run)}; click to open the run log on this run` : supersededTitle(run)"
+              v-keyboard:button="openRuns"
+              @click="openRuns && $emit('open-run', run)">
               {{ grouping.versions.get(run.process_id) }}
             </span>
             <q-icon
@@ -164,10 +172,10 @@
               name="fas fa-history"
               size="12px"
               color="blue-grey-5"
-              class="cursor-pointer"
-              :title="`${supersededTitle(run)}; click to open it`"
-              @click="$emit('open-run', { processId: run.superseded_by, date: run.superseded_on })" />
-            <span v-else class="run-ver" :style="versionStyle(1)" title="The only run of this period">1</span>
+              :class="{ 'cursor-pointer': openRuns }"
+              :title="openRuns ? `${supersededTitle(run)}; click to open the run log on this run` : supersededTitle(run)"
+              @click="openRuns && $emit('open-run', run)" />
+            <span v-else class="run-ver" :class="{ 'run-ver--focus': run.process_id === focusRun }" :style="versionStyle(1)" title="The only run of this period">1</span>
           </td>
           <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ run.process_id }}</td>
           <td v-if="show.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
@@ -248,7 +256,6 @@
           </td>
           <td v-if="kpiSummary.length" class="text-left number-cell no-wrap">
             <template v-for="kpi in summaryOf(run).shown" :key="kpi.type">
-              <span v-if="!compact" class="run-kpi-code" :title="kpi.type">{{ kpi.type }}</span>
               <span
                 class="run-kpi run-kpi--summary cursor-pointer"
                 :class="{ 'run-kpi--alarm': kpi.alarm_level > 0 }"
@@ -374,11 +381,11 @@ import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // The fixed widths of the columns (px), as the style sets them; the Processname column takes the rest, else the Status
 // column (`status`; beside a name it is `namedStatus`). Compact: one Period column and narrower numbers.
-const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 260, status: 96, namedStatus: 104, menu: 50 };
+const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 210, status: 96, namedStatus: 104, menu: 50 };
 // Compact widths are the content's (7-digit counts, "100.00%", a Done chip with its warning) plus the cell padding.
-const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 124, status: 96, menu: 40 };
-// The values in the KPIs column: with their codes in the full layout, else without.
-const SUMMARY_SHOWN = { full: 3, compact: 2 };
+const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 166, status: 96, menu: 40 };
+// The values in the KPIs column: 4 in the full layout, 3 in the compact ones (their codes in the titles).
+const SUMMARY_SHOWN = { full: 4, compact: 3 };
 // The least width of the Processname column before it is cut (ellipsis).
 const NAME_MIN = 100;
 // The bubble of a period's number of runs: darker the more (the last for any more).
@@ -406,6 +413,10 @@ export default {
     kpiColumns: { type: Array, default: () => [] },
     // One KPIs column instead (Results: controls with other KPIs): get-control-runs' kpi_types of the runs.
     kpiSummary: { type: Array, default: () => [] },
+    // Whether a superseded run's mark (⟲, its version number) emits open-run with the run (Results).
+    openRuns: { type: Boolean, default: false },
+    // A run to show: its period unpacked, scrolled to, its version bubble marked (the Run log opened from Results).
+    focusRun: { type: Number, default: null },
     // Where this browser keeps whether every period's earlier runs are shown.
     expandKey: { type: String, default: "rapo_runs_expand" },
     // The row menu's Edit control (not inside the editor itself).
@@ -433,6 +444,8 @@ export default {
       expandAll: readFlag(this.expandKey),
       // The width the table has (px), 0 until measured.
       width: 0,
+      // The focus run already shown (showFocusRun).
+      focused: null,
       // The runs whose earlier runs are shown (or folded, while expandAll): process ID -> true.
       toggled: {},
       activeRunStatuses: ACTIVE_RUN_STATUSES,
@@ -526,6 +539,11 @@ export default {
   watch: {
     shownRuns() {
       this.$nextTick(this.onResize);
+      this.showFocusRun();
+    },
+    focusRun() {
+      this.focused = null;
+      this.showFocusRun();
     },
     expandKey(key) {
       this.expandAll = readFlag(key);
@@ -535,6 +553,18 @@ export default {
   methods: {
     supersededTitle,
     // The width the rows have: the table's box less its vertical scrollbar (measured again when the rows change).
+    // Unpacks the focus run's period once it is among the runs, then scrolls to it (once per focus run).
+    showFocusRun() {
+      const run = this.focusRun && this.focused !== this.focusRun && this.runs.find((row) => row.process_id === this.focusRun);
+      if (!run) return;
+      this.focused = this.focusRun;
+      const parent = run.superseded_by && this.runs.some((row) => row.process_id === run.superseded_by) ? run.superseded_by : null;
+      if (parent && !this.isExpanded(parent)) this.toggleExpanded(parent);
+      this.$nextTick(() => {
+        const index = this.shownRuns.findIndex((row) => row.process_id === this.focusRun);
+        if (index >= 0 && this.$refs.scroll) this.$refs.scroll.scrollTo(Math.max(index - 2, 0), "start-force");
+      });
+    },
     onResize() {
       const scroll = this.$el.querySelector(".runs-table");
       this.width = scroll ? scroll.clientWidth : 0;
@@ -759,6 +789,15 @@ a:visited {
   border: 1.5px solid var(--rapo-label);
   color: var(--rapo-label);
 }
+/* The run the page was opened on (Results' jump to the Run log). */
+.run-ver.run-ver--focus {
+  background: var(--rapo-focus) !important;
+  color: var(--rapo-header-text) !important;
+  border: 1.5px solid var(--rapo-warn);
+}
+.run-row--superseded:has(.run-ver--focus) > td {
+  opacity: 1;
+}
 /* A stored KPI value in a box: green on light grey, white on its alarm level's color when it alarmed. */
 /* One width for every value (4 compact characters), digits on the right, so the KPIs of each row line up. */
 .run-kpi {
@@ -778,16 +817,6 @@ a:visited {
 }
 .run-kpi--summary {
   margin-right: 4px;
-}
-.run-kpi-code {
-  display: inline-block;
-  width: 30px;
-  margin-right: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: middle;
-  font-size: 10px;
-  color: var(--rapo-label);
 }
 .run-kpi-more {
   font-size: 11px;
@@ -822,8 +851,8 @@ a:visited {
 .runs-table .col-ver { width: 40px; }
 .runs-table .col-pid { width: 96px; }
 .runs-table .col-kpi { width: 56px; }
-.runs-table .col-kpis { width: 260px; }
-.runs-table.runs-table--compact .col-kpis { width: 124px; }
+.runs-table .col-kpis { width: 210px; }
+.runs-table.runs-table--compact .col-kpis { width: 166px; }
 .runs-table .col-period { width: 132px; }
 .runs-table.runs-table--compact .col-start { width: 156px; }
 .runs-table.runs-table--compact .col-ver { width: 38px; }
