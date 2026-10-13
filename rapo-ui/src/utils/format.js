@@ -75,6 +75,27 @@ export function formatDuration(seconds) {
   return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
 }
 
+// A stretch of time as text: "4 s", "12 min", "3 h 12 min", "2 d 5 h".
+export function durationText(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total < 60) return `${total} s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+  return `${Math.floor(hours / 24)} d${hours % 24 ? ` ${hours % 24} h` : ""}`;
+}
+
+// A stretch of time in one short unit, for a counter: "45 s", "52 min", "3.4 h", "2.1 d".
+export function compactDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const short = (value) => (value < 10 ? value.toFixed(1).replace(/\.0$/, "") : String(Math.round(value)));
+  if (total < 60) return `${Math.round(total)} s`;
+  if (total < 3600) return `${Math.round(total / 60)} min`;
+  if (total < 86400) return `${short(total / 3600)} h`;
+  return `${short(total / 86400)} d`;
+}
+
 // navigator.clipboard needs a secure context, which a plain-http intranet server isn't, so fall back to execCommand.
 export async function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {

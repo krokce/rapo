@@ -1002,9 +1002,13 @@ def get_kpi_history(process_id: int):
 
 
 @api.get('/get-kpi-runs')
-def get_kpi_runs(control_name: str | None = None, limit: int = 50):
-    """Get the latest runs of one control to calculate KPIs for in JSON."""
-    return kpi.read_kpi_runs(control_name, limit=limit)
+def get_kpi_runs(control_name: str | None = None, limit: int = 50,
+                 process_id: int | None = None):
+    """Get the latest runs of one control to calculate KPIs for in JSON, with
+    the run `process_id` of the control when older than those.
+    """
+    return kpi.read_kpi_runs(control_name, limit=limit,
+                             process_id=process_id)
 
 
 @api.post('/reingest-kpis')

@@ -21,8 +21,9 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      topic, the edge and the week of a tile in the topic's color (red or orange when it needs attention): the runs,
      **run errors** (runs in error today; red with "N controls still failing" while a control's latest run is in
      error, orange with "all recovered" when every one was fixed by a later run), run warnings, KPI alarms (level
-     2–3), then the instance: the scheduler's state with a ring of this server's slots (running of all; queued and the next fire below, its time
-     and control)
+     2–3), then the instance: the scheduler's state with a ring of this server's slots (running of all; below, the
+     queued runs, the time left to the next fire with its control, `in 23 min · NAME +2`, and to the next
+     maintenance, `Maintenance in 41 min`, while this server schedules; the times themselves on hover)
      and health; and the files along their way: **files in input** (waiting in
      the input directories now, with the oldest one's age; red, and linking to the stalled datasources, when any is
      stalled), **files in processing** (files of any day in the file log loading or waiting to be loaded, now:
@@ -34,19 +35,27 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    - **Runs.** The runs over time by status (a strip per status, a click opens that status of that day or hour), donuts
      of the runs by status, by type and by trigger, the slowest controls (bars in the control type's color, names in
      full), the records fetched with the discrepancies found as two areas on one scale (a point per day or hour, the
-     discrepancy rate on hover), and the runs by
+     discrepancy rate on hover; the chart fills the height of its row), and the runs by
      weekday and hour (the full width, the count in each cell, the errors on hover). Every panel of a row is the same height.
    - **Scheduler.** One line with its state, server, heartbeat, slots and the missed fires never caught up (a chip
      opening them on the Scheduler page), then one strip of 48 hours whatever the span: what it did in the last 24
      (started, missed, failed per hour) and what it will start in the next 24, on each side of *Now*, the count written
      in each hour (as in the runs and files over time, when the cells are wide enough).
-   - **Files** (with the PDI Core file log). The files over time by status (a strip per status), donuts of the files by status, of the top datasources by records loaded
-     and by number of files loaded (`SUCCESS`; seven each, the rest as *Others*, a datasource in the same color in both) and of the datasources by state (stalled, delivering
+   - **Files** (with the PDI Core file log). The files over time by status (a strip per status, its total and a
+     click per status), *Top datasources* as three donuts over the full width: by records loaded, by number of files
+     loaded (`SUCCESS`) and **by loading time** (the `RUNTIME` of their files of every status, `52 min`, `3.4 h`;
+     seven each, the rest as *Others*, a datasource in the same color in all three), donuts of the datasources by state (stalled, delivering
      files in the span, silent, disabled; the files waiting beside the title), and *Loading* (records loaded with the
      records rejected in the span as a chip, and the load throughput in records per minute of load time, as two small
-     trends side by side, both of all datasources or the one picked in the panel's head). Days are those of the database clock, as on the Files page.
+     trends side by side filling the height of their row, both of all datasources or the one picked in the panel's head). Days are those of the database clock, as on the Files page.
+     There is no *Files by status* donut: the files over time already have a row per status with its total, and a
+     click on it opens the same Files page.
    - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as compact strips over
-     the full width: the worst 25 controls, *Show N more controls* for the rest (remembered by the browser).
+     the full width: the worst 25 controls, *Show N more controls* for the rest (remembered by the browser). An
+     alarmed cell (level 1–3) writes the value of the run that reached that level (the latest on a tie), of its most
+     important KPI at that level (the KPI type's priority), in at most four characters (`0.35`, `12.4`, `1.2k`, `3.4M`)
+     when the cells are wide enough; the exact value, unit, run and the number of its other alarmed KPIs on hover. A
+     cell opens the control's KPIs tab with that run picked; a control's name opens its run log.
    - **Health.** The instance health as two rows of six tiles, tall like *Today* (the rapo server's, the database's; the file
      systems as one Disk tile, the fullest, all listed on hover), each with its value, level and a line over the last
      24 hours (24h) or 7 days (7d, 30d); a click opens Instance details on Health.
@@ -58,8 +67,8 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      header's *Panels* menu adds hidden panels back and resets the layout (kept by the browser). A hidden panel's
      data is not read at all.
    - **Clicks** open the page behind a value, filtered: a status slice opens Results with that status, a type or
-     trigger slice Results with that filter, a control its editor's run log or KPIs, a file status slice the Files
-     page with that status, a datasource its file log, the stalled or disabled datasources the Datasources page so
+     trigger slice Results with that filter, a control its editor's run log, a KPI cell its KPIs with the run picked,
+     a datasource its file log, the stalled or disabled datasources the Datasources page so
      filtered, a row of the scheduler strip the Scheduler page's history or upcoming fires. Results
      (`status`, `type`, `name`, `trigger`, `warnings`, `hour`), Files (`status`, `lane`, `issue`, `hour`, `dup`),
      Scheduler (`tab`, `event`, `type`, `trigger`, `status`, `missed=1` opening the older missed fires), Controls
@@ -323,6 +332,11 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.
 11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
     *Scheduler* tab, as on the *Upcoming* and *History* tabs.
-12. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
+12. **Next maintenance on the Scheduler page.** A chip after the next fire shows the time left to the scheduler's
+    next maintenance (database clean-up, the file log summary, the controls' retention, old scheduler events), the
+    time and interval on hover; also on the Dashboard's scheduler tile. Only the server holding the lease maintains, so
+    the chip shows there only; `scheduler-status` no longer reports a `next_maintenance` after the scheduler was
+    stopped or the lease moved (it reported one that never came), and adds `maintenance_interval`.
+13. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
     `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
     `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).

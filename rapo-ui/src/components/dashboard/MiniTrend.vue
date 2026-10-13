@@ -1,5 +1,5 @@
 <template>
-  <div class="mini-trend">
+  <div class="mini-trend" :class="{ 'mini-trend--fill': fill }">
     <div class="mini-trend__head row no-wrap items-baseline">
       <span v-if="headline" class="mini-trend__value dash-value">{{ headline }}</span>
       <span v-if="caption" class="mini-trend__caption dash-note ellipsis">{{ caption }}</span>
@@ -9,7 +9,11 @@
       </span>
       <slot name="actions" />
     </div>
-    <dashboard-chart :option="option" :height="height" @select="select" />
+    <div v-if="fill" class="mini-trend__chart" :style="{ minHeight: `${height}px` }">
+      <q-resize-observer @resize="onResize" />
+      <dashboard-chart :option="option" :height="Math.max(height, chartHeight)" @select="select" />
+    </div>
+    <dashboard-chart v-else :option="option" :height="height" @select="select" />
   </div>
 </template>
 
@@ -32,13 +36,18 @@ export default {
     series: { type: Array, required: true },
     headline: { type: String, default: "" },
     caption: { type: String, default: "" },
+    // The chart's height, or its least with `fill`: then it takes the height its parent leaves it (a flex item).
     height: { type: Number, default: 72 },
+    fill: { type: Boolean, default: false },
     // The series' keys in the head; off when something else names them (a select).
     legend: { type: Boolean, default: true },
     // A last line of the tooltip of a bucket (its index), e.g. a rate of two series.
     note: { type: Function, default: null },
   },
   emits: ["pick"],
+  data() {
+    return { chartHeight: 0 };
+  },
   computed: {
     // paletteColor reads the theme, so the colors follow it.
     option() {
@@ -92,6 +101,9 @@ export default {
       }
       return lines.join("<br/>");
     },
+    onResize({ height }) {
+      this.chartHeight = Math.floor(height);
+    },
     select(event) {
       this.$emit("pick", { index: event.dataIndex, bucket: this.buckets[event.dataIndex] });
     },
@@ -100,6 +112,22 @@ export default {
 </script>
 
 <style scoped>
+.mini-trend--fill {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The chart over the whole space left, out of the flow, so its height never feeds back into the space. */
+.mini-trend__chart {
+  position: relative;
+  flex: 1 1 0;
+}
+
+.mini-trend__chart > .dashboard-chart {
+  position: absolute;
+  inset: 0 0 auto;
+}
+
 .mini-trend__head {
   gap: 8px;
   min-height: 30px;

@@ -1,13 +1,13 @@
 <template>
   <div class="files-loading">
-    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="recordSeries" :headline="compactNumber(loaded)" caption="records loaded" :legend="false" @pick="$emit('pick', $event)">
+    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="recordSeries" :headline="compactNumber(loaded)" caption="records loaded" :legend="false" fill @pick="$emit('pick', $event)">
       <template #actions>
         <q-chip dense :color="rejected ? 'red-1' : null" :text-color="rejected ? 'red-9' : null" class="files-loading__rejected" :title="rejectedTitle">
           {{ compactNumber(rejected) }} rejected · {{ rejectedShare }}
         </q-chip>
       </template>
     </mini-trend>
-    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="rateSeries" :headline="rateHeadline" caption="records/min of load time" :legend="false" />
+    <mini-trend :buckets="data.buckets" :unit="data.unit" :series="rateSeries" :headline="rateHeadline" caption="records/min of load time" :legend="false" fill />
   </div>
 </template>
 
@@ -22,7 +22,7 @@ const sum = (values) => (values || []).reduce((total, value) => total + (value |
 
 // How the files loaded, for every datasource or the one picked in the panel's head (`source`): the records loaded with
 // the records rejected over the span as a chip, and the throughput (records written per minute of the SUCCESS files'
-// load time), as two small trends side by side (one under the other when narrow).
+// load time), as two small trends side by side (one under the other when narrow), filling the panel's height.
 export default {
   name: "FilesLoading",
   components: { MiniTrend },

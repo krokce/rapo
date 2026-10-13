@@ -1,6 +1,6 @@
 <template>
   <div class="heat-strip" :style="{ '--label': `${labelWidth}px`, '--columns': columns.length, '--cell': `${cellHeight}px` }">
-    <q-resize-observer v-if="numbers" @resize="onResize" />
+    <q-resize-observer v-if="numbers || hasText" @resize="onResize" />
     <div class="heat-strip__row heat-strip__head">
       <div class="heat-strip__label"></div>
       <div v-for="(column, index) in columns" :key="index" class="heat-strip__column" :class="{ 'heat-strip__column--divider': column.divider }">
@@ -8,9 +8,14 @@
       </div>
     </div>
     <div v-for="row in rows" :key="row.key" class="heat-strip__row">
-      <div class="heat-strip__label dash-text row no-wrap items-center" :title="row.title || row.label">
+      <div
+        class="heat-strip__label dash-text row no-wrap items-center"
+        :class="{ 'heat-strip__label--link': row.link }"
+        :title="row.title || row.label"
+        v-keyboard:button="Boolean(row.link)"
+        @click="row.link && $emit('label-pick', { row: row.key })">
         <span v-if="row.color" class="heat-strip__dot" :style="{ background: rowColor(row) }" />
-        <span class="ellipsis col">{{ row.label }}</span>
+        <span class="ellipsis col heat-strip__name">{{ row.label }}</span>
         <span v-if="row.total !== undefined && row.total !== null" class="heat-strip__total dash-text">{{ compactNumber(row.total) }}</span>
       </div>
       <div
@@ -22,12 +27,14 @@
           'heat-strip__cell--errors': cell && cell.errors,
           'heat-strip__cell--divider': columns[index] && columns[index].divider,
           'heat-strip__cell--link': clickable && cell && cell.count,
-          'heat-strip__cell--strong': showNumbers && strong(row, cell),
+          'heat-strip__cell--strong': (showNumbers && strong(row, cell)) || (showText && cell && cell.text),
+          'heat-strip__cell--text': showText && cell && cell.text,
         }"
         :style="{ background: background(row, cell) }"
         :title="cellTitle(row, cell, index)"
         @click="clickable && cell && cell.count && $emit('pick', { row: row.key, column: index })">
-        <template v-if="showNumbers && cell && cell.count && !cell.color">{{ compactNumber(cell.count) }}</template>
+        <template v-if="showText && cell && cell.text">{{ cell.text }}</template>
+        <template v-else-if="showNumbers && cell && cell.count && !cell.color">{{ compactNumber(cell.count) }}</template>
       </div>
     </div>
   </div>
@@ -40,11 +47,13 @@ import { paletteColor } from "../../utils/palette";
 // Counts over time as a strip per category: a row per status (or type, or control), a cell per hour or day, colored in
 // the row's chip color, stronger the more it counts (square root of its share of the row's busiest cell, or of the whole
 // strip's with `scale="all"`). An empty cell is the grid's grey, one without data (null) hatched, one with errors outlined
-// red. A divider column (Now, midnight) has a line before it. A click on a cell with counts picks it.
+// red. A divider column (Now, midnight) has a line before it. A click on a cell with counts picks it, one on the label of a
+// row with `link` picks the row (`label-pick`). A cell's own `text` (up to 4 characters, e.g. a KPI value) is written on
+// its color when the cells are wide enough for it.
 export default {
   name: "HeatStrip",
   props: {
-    // [{key, label, color (Quasar name), title?, total?, cells: [{count, errors?, title?, color?} | null]}]
+    // [{key, label, color (Quasar name), title?, total?, link?, cells: [{count, errors?, title?, color?, text?} | null]}]
     rows: { type: Array, required: true },
     // [{label?, title, divider?}], one per cell; label shown above (sparse).
     columns: { type: Array, required: true },
@@ -61,12 +70,21 @@ export default {
   data() {
     return { width: 0 };
   },
-  emits: ["pick"],
+  emits: ["pick", "label-pick"],
   computed: {
     // A cell's width: the strip's less the label and the 2px gaps, by column.
+    cellWidth() {
+      return (this.width - this.labelWidth - 2 * this.columns.length) / Math.max(this.columns.length, 1);
+    },
     showNumbers() {
-      const cell = (this.width - this.labelWidth - 2 * this.columns.length) / Math.max(this.columns.length, 1);
-      return this.numbers && cell >= 18;
+      return this.numbers && this.cellWidth >= 18;
+    },
+    hasText() {
+      return this.rows.some((row) => row.cells.some((cell) => cell && cell.text));
+    },
+    // Four characters of 10px text.
+    showText() {
+      return this.hasText && this.cellWidth >= 26;
     },
     maxima() {
       const all = Math.max(1, ...this.rows.flatMap((row) => row.cells.map((cell) => (cell && cell.count) || 0)));
@@ -197,6 +215,19 @@ export default {
 
 .heat-strip__cell--divider {
   box-shadow: -3px 0 0 -1px var(--rapo-label);
+}
+
+.heat-strip__cell--text {
+  font-size: 10px;
+  letter-spacing: -0.2px;
+}
+
+.heat-strip__label--link {
+  cursor: pointer;
+}
+
+.heat-strip__label--link:hover .heat-strip__name {
+  text-decoration: underline;
 }
 
 .heat-strip__cell--link {

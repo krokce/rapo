@@ -14,12 +14,14 @@ Python package `asn1tools` (`phik` no longer needed); new `[DATASOURCES]` option
 Dashboard's file summary.
 
 - **Dashboard**, the new start page (`/`, sign-in, logo), compact, live and full width (panels fill each row): 12
-  tiles of today in two rows of six (run errors with controls still failing, a scheduler slot ring with the next fire, files success,
+  tiles of today in two rows of six (run errors with controls still failing, a scheduler slot ring with the time left to the next fire and maintenance, files success,
   records rejected) against the same weekday last week (incl. *Files in input* and *Files in
   processing*); over 24h / 7d / 30d: runs over time by status, donuts of runs by status, type and trigger, slowest
-  controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, donuts of files by status, top
-  datasources (records loaded, files loaded) and datasources by state, loading and throughput; KPI alarms per
-  control (compact strips, all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
+  controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, top
+  datasources (records loaded, files loaded, loading time) and datasources by state, loading and throughput (trends
+  fill their row; no *Files by status* donut, the files over time have its rows); KPI alarms per control (compact
+  strips with the alarmed value of the most important KPI, a cell opens the KPIs tab with its run picked, a name the
+  run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
   Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
   `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
   scheduler's maintenance or *Refresh* (`refresh-file-summary`), and at once for files recycled, reloaded or deleted
@@ -85,6 +87,8 @@ Dashboard's file summary.
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
+- **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
+  `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.
 - **Python 3.10 installs again:** `websockets` pinned to 16.0 (17.1 needs Python 3.11; broken since v0.8.3).
 
 ## v0.8.5 — 2026-10-05

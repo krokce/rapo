@@ -1,6 +1,6 @@
 <template>
-  <!-- The scheduler at a glance, on the page title row: state, scheduling server, heartbeat, slots, next fire and the
-       last 24 hours; details in tooltips, the slots, next fire and counters open their tab. -->
+  <!-- The scheduler at a glance, on the page title row: state, scheduling server, heartbeat, slots, next fire, next
+       maintenance and the last 24 hours; details in tooltips, the slots, next fire and counters open their tab. -->
   <div v-if="status" class="row items-center status-bar">
     <q-chip class="status-chip">
       <q-avatar :color="state.color" text-color="white">
@@ -22,7 +22,6 @@
         </div>
         <div v-if="holder.pid">PID {{ holder.pid }}<template v-if="holder.username">, user {{ holder.username }}</template></div>
         <div v-if="holder.start_date">Since {{ toDateTimeString(holder.start_date) }}</div>
-        <div v-if="status.next_maintenance">Next maintenance {{ toDateTimeString(status.next_maintenance) }} (in {{ age(status.next_maintenance, true) }})</div>
       </q-tooltip>
     </q-chip>
 
@@ -64,6 +63,15 @@
       </q-tooltip>
     </q-chip>
 
+    <q-chip v-if="status.next_maintenance" class="status-chip">
+      <q-avatar icon="fas fa-broom" color="blue-grey-6" text-color="white" />
+      <span class="text-grey-7">in {{ age(status.next_maintenance, true) }}</span>
+      <q-tooltip anchor="bottom middle" self="top middle" :offset="[0, 8]">
+        <div>Next maintenance at {{ toDateTimeString(status.next_maintenance) }}<template v-if="status.maintenance_interval">, every {{ durationText(status.maintenance_interval) }}</template></div>
+        <div>Database clean-up, file log summary, the controls' retention and old scheduler events, on the scheduling server</div>
+      </q-tooltip>
+    </q-chip>
+
     <q-chip class="status-chip">
       <span class="text-grey-7 q-mr-xs">24 h</span>
       <span
@@ -90,7 +98,7 @@
 <script>
 import SchedulerToggleButton from "./SchedulerToggleButton.vue";
 import { TRIGGER_TYPES, schedulerEventType, schedulerState } from "../constants";
-import { toDateTimeString, toMillis, toTimeString } from "../utils/format";
+import { durationText, toDateTimeString, toMillis, toTimeString } from "../utils/format";
 
 const COUNTED = ["STARTED", "MISSED", "FAILED"];
 
@@ -137,6 +145,7 @@ export default {
     },
   },
   methods: {
+    durationText,
     toDateTimeString,
     toTimeString,
     triggerIcon(type) {
@@ -149,13 +158,7 @@ export default {
     },
     // "4 s", "12 min", "3 h 12 min", "2 d 5 h".
     age(value, ahead = false) {
-      const seconds = this.seconds(value, ahead);
-      if (seconds < 60) return `${seconds} s`;
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes} min`;
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
-      return `${Math.floor(hours / 24)} d${hours % 24 ? ` ${hours % 24} h` : ""}`;
+      return durationText(this.seconds(value, ahead));
     },
   },
 };

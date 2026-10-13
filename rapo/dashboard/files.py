@@ -322,8 +322,11 @@ def files(span):
         id = row['sourceid']
         names.setdefault(id, row.get('sourcename'))
         source = sources.setdefault(id, {'files': 0, 'success': 0,
-                                         'records': 0, 'rejects': 0})
+                                         'records': 0, 'rejects': 0,
+                                         'runtime': 0})
         source['files'] += files_count
+        # The loader's time on the files of every status.
+        source['runtime'] += row['runtime_seconds'] or 0
         source['records'] += row['records_write'] or 0
         source['rejects'] += row['records_reject'] or 0
         if row['filestatus'] == 'SUCCESS':
@@ -369,6 +372,10 @@ def files(span):
         'reject_rate': [_rate(rejected, total) if total is not None
                         else None for rejected, total in zip(reject, read)],
         'top_loaded': sorted(tops, key=lambda row: -row['records'])[:TOP],
+        'top_runtime': sorted(
+            [row for row in tops if row['runtime']],
+            key=lambda row: -row['runtime'])[:TOP],
+        'runtime_total': sum(row['runtime'] for row in tops),
         'top_files': sorted(
             [row for row in tops if row['success']],
             key=lambda row: (-row['success'], -row['records']))[:TOP],

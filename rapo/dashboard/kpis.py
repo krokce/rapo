@@ -34,9 +34,25 @@ def rows():
     return memo.get(('kpi_rows',), read)
 
 
+def types():
+    """Get the KPI types by code: their priority rank, unit and decimals."""
+    def read():
+        return {row['kpi_type']: {'rank': rank,
+                                  'unit': row.get('kpi_value_unit'),
+                                  'decimals': row.get('kpi_decimal_places')}
+                for rank, row in enumerate(kpi.read_kpi_types())}
+    return memo.get(('kpi_types',), read)
+
+
 def kpis(span):
     """Get the KPI alarms of a span: the highest level per control and
-    bucket, and the number of values at level ALARM or above.
+    bucket with the run that reached it, and the number of values at level
+    ALARM or above.
+
+    A cell is {level, process_id} of its run (the highest level, the latest
+    run on a tie) and, when that level is an alarm (1 and above), the KPI of
+    the run at that level whose type comes first by priority (`kpi_type`,
+    `value`, `unit`, `decimals`) and how many `others` of the run alarmed.
     """
     if not available():
         return {'available': False}
@@ -44,6 +60,9 @@ def kpis(span):
     start, buckets = spans.window(span, now)
     bucket_unit = spans.unit(span)
     positions = spans.index(buckets)
+    catalogue = types()
+    last = len(catalogue)
+    runs = {}
     cells = {}
     worst = collections.Counter()
     alarms = 0
@@ -55,8 +74,12 @@ def kpis(span):
         if position is None:
             continue
         level = int(row['alarm_level'] or 0)
+        runs.setdefault(int(row['processid']), []).append(row)
         key = (row['processname'], position)
-        cells[key] = max(cells.get(key, 0), level)
+        best = cells.get(key)
+        candidate = (level, int(row['processid']))
+        if best is None or candidate > best:
+            cells[key] = candidate
         worst[row['processname']] = max(worst[row['processname']], level)
         if level >= ALARM:
             alarms += 1
@@ -64,6 +87,24 @@ def kpis(span):
     order = {name: index for index, name in enumerate(names)}
     ids = {row['control_name']: id
            for id, row in run_data.controls().items()}
+
+    def cell(name, position, level, process_id):
+        result = {'row': order[name], 'column': position, 'level': level,
+                  'process_id': process_id}
+        if level < 1:
+            return result
+        alarmed = [row for row in runs[process_id]
+                   if int(row['alarm_level'] or 0) >= 1]
+        top = min((row for row in alarmed
+                   if int(row['alarm_level'] or 0) == level),
+                  key=lambda row: (catalogue.get(row['kpi_type'], {})
+                                   .get('rank', last), row['kpi_type']))
+        info = catalogue.get(top['kpi_type'], {})
+        return {**result, 'kpi_type': top['kpi_type'],
+                'value': top['kpi_value'], 'unit': info.get('unit'),
+                'decimals': info.get('decimals'),
+                'others': len(alarmed) - 1}
+
     return {
         'available': True,
         'unit': bucket_unit,
@@ -71,8 +112,9 @@ def kpis(span):
         'heatmap': {
             'controls': [{'control_name': name, 'control_id': ids.get(name),
                           'level': worst[name]} for name in names],
-            'cells': [[order[name], position, level]
-                      for (name, position), level in cells.items()]},
+            'cells': [cell(name, position, level, process_id)
+                      for (name, position), (level, process_id)
+                      in cells.items()]},
         'alarms': alarms,
     }
 

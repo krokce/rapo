@@ -899,7 +899,8 @@
                     :control-name="control.control_name"
                     :control-type="control.control_type"
                     :calculable="schemaEnabled"
-                    :runs-control-name="savedControlName">
+                    :runs-control-name="savedControlName"
+                    :initial-process-id="routeProcessId">
                   </kpi-config-box>
                 </div>
               </div>
@@ -1220,6 +1221,11 @@ export default {
     window.addEventListener("resize", this.sizeLogTable);
   },
   computed: {
+    // The run a link asks the KPIs tab to pick (?process_id=, from the Dashboard's KPI alarms).
+    routeProcessId() {
+      const id = Number(this.$route.query.process_id);
+      return Number.isInteger(id) && id > 0 ? id : null;
+    },
     // The control's name as saved: its runs are found by it, whatever the form calls it now.
     savedControlName() {
       const saved = this.controlCatalogueById(this.control.control_id);

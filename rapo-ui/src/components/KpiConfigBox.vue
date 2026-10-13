@@ -278,6 +278,8 @@ export default {
     calculable: { type: Boolean, default: false },
     // The saved name of the control, whose runs are offered (the form's name may be an unsaved rename).
     runsControlName: String,
+    // The run to pick first instead of the default one (a Dashboard link), when it is one of the control's.
+    initialProcessId: { type: Number, default: null },
   },
   data() {
     return {
@@ -293,6 +295,8 @@ export default {
       runs: [],
       runsLoading: false,
       processId: null,
+      // The run to pick once the runs are loaded (initialProcessId), then null.
+      wanted: null,
       // {kpi_type: {id, pending, result, error, processId, statements}}: the inline results of the ▶ buttons.
       inline: {},
       // Numbers the inline calculations, so a late answer for a superseded one is dropped.
@@ -338,9 +342,16 @@ export default {
       immediate: true,
       handler() {
         this.processId = null;
+        this.wanted = this.initialProcessId;
         this.runs = [];
         this.loadRuns();
       },
+    },
+    // Another link to the same control picks its run.
+    initialProcessId(processId) {
+      if (processId === null || processId === this.processId) return;
+      this.wanted = processId;
+      this.loadRuns();
     },
     // Rows already calculated follow the run picked in the header.
     // Every KPI is calculated for the run picked: the default one once the runs are loaded (the box is built when the
@@ -381,10 +392,16 @@ export default {
       if (!name) return;
       this.runsLoading = true;
       try {
-        const runs = await api("get-kpi-runs", { params: { control_name: name, limit: RUN_LIMIT }, loadingBar: false });
+        const wanted = this.wanted;
+        const runs = await api("get-kpi-runs", { params: { control_name: name, limit: RUN_LIMIT, process_id: wanted }, loadingBar: false });
         if (name !== this.runsKey) return;
         this.runs = runs;
-        if (!runs.some((run) => run.process_id === this.processId)) this.processId = defaultRunId(runs);
+        if (wanted !== null && runs.some((run) => run.process_id === wanted)) {
+          this.processId = wanted;
+        } else if (!runs.some((run) => run.process_id === this.processId)) {
+          this.processId = defaultRunId(runs);
+        }
+        this.wanted = null;
       } catch (error) {
         notifyError("Loading the runs failed", error);
       } finally {

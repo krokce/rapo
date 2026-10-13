@@ -86,7 +86,7 @@
               <span title="Files in the input directories of the datasources, as last scanned">{{ formatNumber(parts.files.datasources.totals.waiting || 0) }} files waiting</span>
             </template>
 
-            <stat-tiles v-if="panel.id === 'tiles'" :tiles="parts.tiles" :scheduler="schedulerStatus" :health="instanceHealth" @open="openTile" />
+            <stat-tiles v-if="panel.id === 'tiles'" :tiles="parts.tiles" :scheduler="schedulerStatus" :health="instanceHealth" :now="now" @open="openTile" />
 
             <heat-strip
               v-else-if="panel.id === 'run-timeline'"
@@ -110,6 +110,7 @@
               :headline="compactNumber(volumeTotals.fetched)"
               :caption="`fetched · ${compactNumber(volumeTotals.discrepancies)} discrepancies`"
               :height="128"
+              fill
               @pick="pickRuns" />
             <heat-strip
               v-else-if="panel.id === 'run-heatmap'"
@@ -132,7 +133,6 @@
               numbers
               unit="file(s)"
               @pick="pickFileCell" />
-            <donut-chart v-else-if="panel.id === 'files-status'" :items="fileStatusItems" center-label="files" :height="150" @pick="pickFileStatus" />
             <div v-else-if="panel.id === 'files-top'" class="dashboard__pair">
               <div>
                 <div class="dashboard__list-title">By records loaded</div>
@@ -142,11 +142,15 @@
                 <div class="dashboard__list-title">By number of files</div>
                 <donut-chart :items="topFileItems" center-label="files" :format="compactNumber" :height="150" @pick="openDatasource" />
               </div>
+              <div>
+                <div class="dashboard__list-title">By loading time</div>
+                <donut-chart :items="topRuntimeItems" center-label="load time" :format="compactDuration" :exact-format="durationText" :center-format="compactDuration" :height="150" @pick="openDatasource" />
+              </div>
             </div>
             <donut-chart v-else-if="panel.id === 'files-datasources'" :items="datasourceItems" center-label="datasources" :height="150" @pick="pickDatasourceState" />
             <files-loading v-else-if="panel.id === 'files-loading'" :data="parts.files" :source="loadingSource" @pick="({ bucket }) => go(filesLink(bucket, parts.files.unit, databaseToday))" />
 
-            <kpi-alarm-heatmap v-else-if="panel.id === 'kpi-heatmap'" :data="parts.kpis" @pick="openKpis" />
+            <kpi-alarm-heatmap v-else-if="panel.id === 'kpi-heatmap'" :data="parts.kpis" @pick="openKpis" @open-log="openControl({ key: $event.control_id })" />
 
             <health-mini-tiles v-else-if="panel.id === 'health-tiles'" :span="span" :active="active" @open="(group) => openHealth(group)" />
           </dashboard-panel>
@@ -180,7 +184,7 @@ import {
   sectionPanels,
   showPanel,
 } from "../../utils/dashboard";
-import { compactNumber, formatDuration, formatNumber, toDateTimeString } from "../../utils/format";
+import { compactDuration, compactNumber, durationText, formatDuration, formatNumber, toDateTimeString } from "../../utils/format";
 import { triggerOfKey } from "../../utils/runs";
 import AnalysisLayout from "../analysis/AnalysisLayout.vue";
 import AnalysisSection from "../analysis/AnalysisSection.vue";
@@ -363,13 +367,6 @@ export default {
         return { label: hour % 3 === 0 ? text : "", title: `${text}:00–${String((hour + 1) % 24).padStart(2, "0")}:00` };
       });
     },
-    // The files of the span by status, the statuses of a request done told apart.
-    fileStatusItems() {
-      return this.parts.files.status.map((item) => {
-        const info = this.fileStatusInfo(item.code);
-        return { key: item.code, label: info.label, color: info.color, icon: info.icon, title: info.title, value: item.counts.reduce((sum, value) => sum + (value || 0), 0) };
-      });
-    },
     topLoadedItems() {
       const files = this.parts.files;
       const total = files.records.write.reduce((sum, value) => sum + (value || 0), 0);
@@ -382,13 +379,19 @@ export default {
       const total = success ? success.counts.reduce((sum, value) => sum + (value || 0), 0) : 0;
       return this.topItems(files.top_files, "success", total, (row) => `${row.sourcename || row.sourceid}: ${formatNumber(row.success)} files loaded, ${formatNumber(row.records)} records loaded`);
     },
-    // A color per datasource of either top list, the records' first.
+    // The loader's time (RUNTIME of the files of every status) of the span by datasource.
+    topRuntimeItems() {
+      const files = this.parts.files;
+      return this.topItems(files.top_runtime || [], "runtime", files.runtime_total || 0, (row) => `${row.sourcename || row.sourceid}: ${durationText(row.runtime)} loading, ${formatNumber(row.files)} files`);
+    },
+    // A color per datasource of any top list, the records' first.
     topColors() {
       const files = this.parts.files;
       const colors = {};
       for (const [rows, field] of [
         [files.top_loaded, "records"],
         [files.top_files, "success"],
+        [files.top_runtime || [], "runtime"],
       ]) {
         rows
           .filter((row) => row[field])
@@ -461,7 +464,9 @@ export default {
     clearTimeout(this.kpiTimer);
   },
   methods: {
+    compactDuration,
     compactNumber,
+    durationText,
     formatNumber,
     toDateTimeString,
     sectionPanels(section) {
@@ -556,7 +561,6 @@ export default {
           return part.slowest.length ? null : "No run finished in this span.";
         case "run-volume":
           return sum(part.volume.fetched) ? null : "Nothing fetched in this span.";
-        case "files-status":
         case "files-timeline":
         case "files-loading":
         case "files-top":
@@ -649,9 +653,11 @@ export default {
       }
       return items;
     },
-    openKpis({ control }) {
+    // A cell of KPI alarms by control: its KPIs with the cell's run picked.
+    openKpis({ control, processId }) {
       const id = control && control.control_id;
-      this.go(id ? { path: `/edit-control/${id}`, query: { tab: "kpi" } } : { path: "/kpi-types" });
+      const query = processId ? { tab: "kpi", process_id: String(processId) } : { tab: "kpi" };
+      this.go(id ? { path: `/edit-control/${id}`, query } : { path: "/kpi-types" });
     },
     pickStatus({ key }) {
       this.go({ path: "/results", query: key === "void" ? {} : { status: key } });
@@ -683,10 +689,6 @@ export default {
     },
     pickRuns({ bucket }) {
       this.go(resultsLink(bucket, this.parts.runs.unit, this.serverToday));
-    },
-    // A status of Files by status: today's Files page with that status.
-    pickFileStatus({ key }) {
-      this.go({ path: "/files", query: FILE_STATUSES[key] ? { status: key } : {} });
     },
     pickDatasourceState({ key }) {
       const links = {

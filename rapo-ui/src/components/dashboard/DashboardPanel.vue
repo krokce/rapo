@@ -1,7 +1,7 @@
 <template>
   <div
     class="dashboard-panel column no-wrap"
-    :class="{ 'dashboard-panel--over': over, 'dashboard-panel--dragging': dragging, 'dashboard-panel--tall': panel.height }"
+    :class="{ 'dashboard-panel--over': over, 'dashboard-panel--dragging': dragging, 'dashboard-panel--tall': panel.height || panel.fill }"
     :style="{ '--span': panel.width, '--min': `${panel.minWidth || 0}px`, '--height': `${panel.height || 0}px` }"
     :draggable="handleDown"
     @dragstart="onDragStart"
@@ -166,7 +166,7 @@ export default {
   min-height: 0;
 }
 
-/* A panel with a height gives it to its content (tiles that stretch to fill it). */
+/* A panel with a height, or one that fills its row's (`fill`), gives it to its content (tiles and charts that stretch). */
 .dashboard-panel--tall .dashboard-panel__body {
   display: flex;
   flex-direction: column;

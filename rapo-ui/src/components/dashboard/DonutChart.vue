@@ -44,6 +44,10 @@ export default {
     clickable: { type: Boolean, default: true },
     // The values in the list (the tooltip has them exact).
     format: { type: Function, default: formatNumber },
+    // A value in the tooltip, exact.
+    exactFormat: { type: Function, default: formatNumber },
+    // The total in the middle, compact.
+    centerFormat: { type: Function, default: compactNumber },
   },
   emits: ["pick"],
   computed: {
@@ -54,7 +58,7 @@ export default {
       return this.rows.reduce((sum, item) => sum + item.value, 0);
     },
     centerValue() {
-      return compactNumber(this.total);
+      return this.centerFormat(this.total);
     },
     option() {
       return {
@@ -62,7 +66,7 @@ export default {
         tooltip: {
           trigger: "item",
           confine: true,
-          formatter: (item) => `${escapeHtml(item.name)} <b>${formatNumber(item.value)}</b> (${this.share(item.value)})`,
+          formatter: (item) => `${escapeHtml(item.name)} <b>${this.exactFormat(item.value)}</b> (${this.share(item.value)})`,
         },
         series: [
           {

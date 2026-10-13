@@ -625,19 +625,31 @@ class Kpi:
         """).bindparams(first=first, length=len(first), since=since)
         return db.execute(statement, as_table=True)
 
-    def read_kpi_runs(self, control_name, limit=50):
-        """Get the latest runs of one control, newest first."""
+    def read_kpi_runs(self, control_name, limit=50, process_id=None):
+        """Get the latest runs of one control, newest first, with the run
+        `process_id` of the control in its place when older than those.
+        """
         if not control_name:
             return []
         log, controls = db.tables.log, db.tables.config
-        select = (sa.select(log.c.process_id, log.c.status, log.c.date_from,
-                            log.c.date_to, log.c.start_date, log.c.added)
-                    .select_from(log.join(
-                        controls, log.c.control_id == controls.c.control_id))
-                    .where(controls.c.control_name == control_name)
-                    .order_by(log.c.process_id.desc())
-                    .limit(max(1, min(int(limit), 500))))
-        return db.execute(select, as_table=True)
+
+        def select(*conditions):
+            return (sa.select(log.c.process_id, log.c.status,
+                              log.c.date_from, log.c.date_to,
+                              log.c.start_date, log.c.added)
+                      .select_from(log.join(
+                          controls,
+                          log.c.control_id == controls.c.control_id))
+                      .where(controls.c.control_name == control_name,
+                             *conditions))
+        latest = (select().order_by(log.c.process_id.desc())
+                          .limit(max(1, min(int(limit), 500))))
+        runs = db.execute(latest, as_table=True)
+        if process_id is not None and not any(
+                run['process_id'] == process_id for run in runs):
+            runs += db.execute(select(log.c.process_id == process_id),
+                               as_table=True)
+        return runs
 
     def reingest(self, process_id):
         """Calculate and store the KPIs of one run with RACS_KPI_PKG.

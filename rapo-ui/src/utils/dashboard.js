@@ -19,6 +19,7 @@ export const TALL_HEIGHT = 300;
 
 // Every panel in its default order. `part`: the get-dashboard part it shows (null: data of its own); `height`: its minimum height in px, if any; `width`: its share
 // of a row in sixths (2 a third, 4 two thirds, 6 the row); `minWidth` (px): below it the panel wraps to the next row.
+// `fill`: its content stretches to the height of its row (a trend beside a taller panel).
 // The panels of a row grow to fill it, so a row is always full, also beside a hidden panel.
 export const DASHBOARD_PANELS = [
   { id: "tiles", section: "overview", title: "Today", part: "tiles", width: 6, height: TALL_HEIGHT },
@@ -27,14 +28,14 @@ export const DASHBOARD_PANELS = [
   { id: "run-types", section: "runs", title: "Runs by type", part: "runs", width: 2, minWidth: 300 },
   { id: "run-triggers", section: "runs", title: "Runs by trigger", part: "runs", width: 2, minWidth: 300 },
   { id: "run-slowest", section: "runs", title: "Slowest controls", part: "runs", width: 3, minWidth: 300 },
-  { id: "run-volume", section: "runs", title: "Records fetched and discrepancies", part: "runs", width: 3, minWidth: 300 },
+  { id: "run-volume", section: "runs", title: "Records fetched and discrepancies", part: "runs", width: 3, minWidth: 300, fill: true },
   { id: "run-heatmap", section: "runs", title: "Runs by weekday and hour", part: "runs", width: 6 },
   { id: "scheduler", section: "scheduler", title: "Last and next 24 hours", part: "scheduler", width: 6 },
   { id: "files-timeline", section: "files", title: "Files over time", part: "files", width: 6 },
-  { id: "files-status", section: "files", title: "Files by status", part: "files", width: 2, minWidth: 300 },
-  { id: "files-top", section: "files", title: "Top datasources", part: "files", width: 4, minWidth: 560 },
+  // Files by status was dropped: Files over time has a row per status with totals and clickable cells.
+  { id: "files-top", section: "files", title: "Top datasources", part: "files", width: 6 },
   { id: "files-datasources", section: "files", title: "Datasources", part: "files", width: 2, minWidth: 300 },
-  { id: "files-loading", section: "files", title: "Loading", part: "files", width: 4, minWidth: 560 },
+  { id: "files-loading", section: "files", title: "Loading", part: "files", width: 4, minWidth: 560, fill: true },
   { id: "kpi-heatmap", section: "kpis", title: "KPI alarms by control", part: "kpis", width: 6 },
   { id: "health-tiles", section: "health", title: "Instance health", part: null, width: 6, height: TALL_HEIGHT },
 ];

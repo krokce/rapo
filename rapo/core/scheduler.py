@@ -177,8 +177,12 @@ class Scheduler:
             },
             'scheduled_controls': len(self.schedule) if self.leader else None,
             'last_fire': self.last_fire,
+            # Only the holder maintains, and not while stopped: the mark of a
+            # lease given up is stale.
             'next_maintenance': (dt.datetime.fromtimestamp(
-                self.next_maintenance) if self.next_maintenance else None),
+                self.next_maintenance).replace(microsecond=0)
+                if self.leader and self.next_maintenance else None),
+            'maintenance_interval': get_setting('maintenance_interval'),
             'lease_timeout': timeout,
             'server_time': dt.datetime.now().replace(microsecond=0),
         }

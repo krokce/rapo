@@ -25,6 +25,9 @@
       <div v-if="tile.next" class="stat-tile__sub dash-note ellipsis" :title="tile.nextTitle">
         <q-icon v-if="tile.nextIcon" name="fas fa-forward" size="10px" class="q-mr-xs" />{{ tile.next }}
       </div>
+      <div v-if="tile.maintenance" class="stat-tile__sub dash-note ellipsis" :title="tile.maintenanceTitle">
+        <q-icon name="fas fa-broom" size="10px" class="q-mr-xs" />{{ tile.maintenance }}
+      </div>
       <svg v-if="tile.spark" class="stat-tile__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
         <polygon :points="tile.spark.area" />
         <polyline :points="tile.spark.line" />
@@ -36,7 +39,8 @@
 
 <script>
 import { schedulerState } from "../../constants";
-import { compactNumber, formatNumber, toDateTimeString } from "../../utils/format";
+import { clockOffset } from "../../utils/clock";
+import { compactNumber, durationText, formatNumber, toDateTimeString, toMillis } from "../../utils/format";
 import { LEVEL_TEXT } from "../../utils/health";
 import { gridColumns, tileDelta } from "../../utils/dashboard";
 import { paletteColor } from "../../utils/palette";
@@ -86,10 +90,21 @@ export default {
     tiles: { type: Object, default: null },
     scheduler: { type: Object, default: null },
     health: { type: Object, default: null },
+    // The browser's now (ms), ticking: the countdowns of the scheduler tile.
+    now: { type: Number, default: () => Date.now() },
   },
   emits: ["open"],
   data() {
-    return { width: 0 };
+    return { width: 0, offset: 0 };
+  },
+  watch: {
+    // The app server's clock minus this browser's, taken when its status arrives.
+    "scheduler.server_time": {
+      immediate: true,
+      handler(time) {
+        this.offset = clockOffset(time);
+      },
+    },
   },
   computed: {
     shown() {
@@ -116,6 +131,7 @@ export default {
         sub: status ? `${queued} queued` : "",
         textValue: true,
         ...this.nextFire(status),
+        ...this.maintenance(status),
         hint: `${state.description}\n${running} of ${runner.capacity || 0} slots of this server running, ${queued} queued`,
         ring: status ? this.ring(running, runner.capacity || 0) : null,
         state: status && (status.disabled || status.state === "off") ? "alert" : null,
@@ -214,8 +230,8 @@ export default {
         spark: this.spark(tile.days),
       };
     },
-    // The next fire of the schedules: "⏩ 13:00 · NAME +2" ("tomorrow 09:00" past midnight), none while the
-    // scheduler does not fire on any server.
+    // The next fire of the schedules as a countdown: "⏩ in 23 min · NAME +2", none while the scheduler does not fire on
+    // any server.
     nextFire(status) {
       const fire = this.tiles && this.tiles.next_fire;
       if (!status || ["stopped", "off"].includes(status.state)) {
@@ -224,15 +240,27 @@ export default {
       if (!fire) {
         return { next: "No fire in 24 h" };
       }
-      const time = String(fire.time);
-      const today = status.server_time ? String(status.server_time).slice(0, 10) : null;
-      const when = `${today && time.slice(0, 10) !== today ? "tomorrow " : ""}${time.slice(11, 16)}`;
       const others = fire.others ? ` +${fire.others}` : "";
       return {
-        next: `${when} · ${fire.control_name}${others}`,
+        next: `${this.countdown(fire.time)} · ${fire.control_name}${others}`,
         nextIcon: true,
-        nextTitle: `Next fire at ${toDateTimeString(time)}: ${fire.control_name}${fire.others ? ` and ${fire.others} other control${fire.others > 1 ? "s" : ""}` : ""}`,
+        nextTitle: `Next fire at ${toDateTimeString(fire.time)}: ${fire.control_name}${fire.others ? ` and ${fire.others} other control${fire.others > 1 ? "s" : ""}` : ""}`,
       };
+    },
+    // The next maintenance of the scheduling server, when this server schedules and one is set.
+    maintenance(status) {
+      if (!status || !status.next_maintenance) {
+        return {};
+      }
+      return {
+        maintenance: `Maintenance ${this.countdown(status.next_maintenance)}`,
+        maintenanceTitle: `Next maintenance at ${toDateTimeString(status.next_maintenance)}`,
+      };
+    },
+    // "in 23 min" to a naive time of the app server, on its clock; the page ticks every 30 s, so no seconds.
+    countdown(value) {
+      const seconds = (toMillis(value) - (this.now + this.offset)) / 1000;
+      return seconds < 60 ? "in under 1 min" : `in ${durationText(seconds)}`;
     },
     // A ring of the slots, one segment each (a gap between them), the running ones first: stroke dashes on a circle of
     // radius 16 starting at the top.

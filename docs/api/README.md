@@ -559,7 +559,8 @@ What `RACS_KPI_PKG` stored for one run (`process_id`) in `racs_kpi_runhistory_al
 
 #### `GET /api/get-kpi-runs`
 The latest runs of one control (`control_name`, `limit` default 50, at most 500), newest first: `process_id`,
-`status`, `date_from`, `date_to`, `start_date`, `added`.
+`status`, `date_from`, `date_to`, `start_date`, `added`. With `process_id`, that run of the control is added last
+when it is older than those (the editor's KPIs tab opened on a run from the Dashboard).
 
 #### `POST /api/reingest-kpis`
 Calculate, store and post the saved KPIs of one run (`process_id`) by calling
@@ -1203,7 +1204,8 @@ all clients, and dropped by the live events that change them.
 * `files` (database clock; `{available: false}` without the file log): `status: [{code, counts}]` (files per
   bucket), `duplicates`, `records` `{read, write, reject}`, `reject_rate` (%), `top_loaded` and `top_files` (top 8
   datasources `{sourceid, sourcename, files, success, records, rejects}` by records written, and those with files in
-  `SUCCESS` by them, then records written), `throughput` `{all, sources: [{sourceid, sourcename, records, write, reject, read,
+  `SUCCESS` by them, then records written; `runtime` the seconds of load time of its files of every status),
+  `top_runtime` (the top 8 by `runtime`) and `runtime_total` (of all datasources), `throughput` `{all, sources: [{sourceid, sourcename, records, write, reject, read,
   rates}]}` (per datasource with files in the span: its records per bucket, and `rates` the records written per
   minute of load time of its `SUCCESS` files), `datasources` `{states, totals, scanned}` (`states`
   counts each datasource once: `disabled` (lane 0), else `stalled` (the last scan), else `delivering` (files in the
@@ -1212,8 +1214,11 @@ all clients, and dropped by the live events that change them.
   maintenance}`. Past days come from `rapo_file_summary`, today and an unsummarized yesterday from the file log; a
   day neither summarized nor read live is in `missing_days` and its values are `null`.
 * `kpis` (`{available: false}` without the KPI tables or their history): `heatmap` `{controls: [{control_name,
-  control_id, level}], cells: [[control, bucket, level]]}` (the highest alarm level per control and bucket, every
-  control with values, the worst first) and `alarms` (values at level 2 or 3 in the span).
+  control_id, level}], cells: [{row, column, level, process_id}]}` (the highest alarm level per control and bucket
+  and the run that reached it, the latest on a tie; every control with values, the worst first; a cell at level 1 or
+  above also has `kpi_type`, `value`, `unit`, `decimals` of that run's KPI at that level whose type comes first by
+  `kpi_priority`, and `others`, the number of its other KPIs at level 1 or above) and `alarms` (values at level 2 or
+  3 in the span).
 
 #### `POST /api/refresh-file-summary`
 Sums the closed days of a `span`'s window (default `7d`) of the PDI Core file log into `rapo_file_summary` again, in
@@ -1230,7 +1235,9 @@ The state of the scheduler, of its lease and of the run manager of **this** serv
 * `enabled`, `disabled`, `leader`, `instance_id`, `lease_timeout`;
 * `holder` - `{instance_id, server, username, pid, start_date, stop_date, heartbeat, alive}` of the server that
   currently holds the lease;
-* `scheduled_controls`, `last_fire`, `next_maintenance`;
+* `scheduled_controls`, `last_fire`;
+* `next_maintenance` - the next maintenance pass, only while this server holds the lease (null otherwise, and while
+  stopped or without `[SCHEDULER] maintenance_interval`); `maintenance_interval` - that option (seconds or null);
 * `server_time` - the server's clock, which the UI uses to show relative times;
 * `runner` - `{runner, active, capacity, queued, running}`, where `queued` and `running` list
   `{event_id, control_name, control_type, job_control_name, trigger_type, process_id, pid, queued, started,

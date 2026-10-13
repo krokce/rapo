@@ -1,6 +1,6 @@
 <template>
   <div>
-    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="18" class="kpi-heatmap" @pick="pick" />
+    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="18" class="kpi-heatmap" @pick="pick" @label-pick="pickLabel" />
     <q-btn v-if="rows.length > LIMIT" flat dense no-caps size="sm" color="primary" class="q-mt-xs" :icon="all ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" :label="all ? 'Show fewer' : `Show ${rows.length - LIMIT} more control${rows.length - LIMIT > 1 ? 's' : ''}`" @click="toggle" />
   </div>
 </template>
@@ -8,7 +8,7 @@
 <script>
 import HeatStrip from "./HeatStrip.vue";
 import { bucketColumns } from "../../utils/dashboard";
-import { alarmLevel } from "../../utils/kpi";
+import { alarmLevel, compactKpiValue, formatKpiValue } from "../../utils/kpi";
 
 // The controls shown before "Show more", and where the browser keeps whether all are shown.
 const LIMIT = 25;
@@ -23,8 +23,9 @@ function readAll() {
 }
 
 // The highest KPI alarm level of each control per bucket: a compact row per control (the worst first) in the level
-// colors (no alarm a pale grey), empty where it stored nothing; the first LIMIT, the others behind a button. A click
-// opens the control's KPIs.
+// colors (no alarm a pale grey), empty where it stored nothing; the first LIMIT, the others behind a button. An alarmed
+// cell writes the value of its run's most important KPI at that level. A cell opens the control's KPIs with its run
+// picked, a control's name its run log.
 export default {
   name: "KpiAlarmHeatmap",
   components: { HeatStrip },
@@ -32,7 +33,7 @@ export default {
     // The kpis part of get-dashboard.
     data: { type: Object, required: true },
   },
-  emits: ["pick"],
+  emits: ["pick", "open-log"],
   data() {
     return { LIMIT, all: readAll() };
   },
@@ -48,15 +49,21 @@ export default {
     rows() {
       const size = this.data.buckets.length;
       const grid = this.data.heatmap.controls.map(() => Array(size).fill(null));
-      this.data.heatmap.cells.forEach(([row, column, level]) => {
-        const info = alarmLevel(level);
-        grid[row][column] = { count: 1, color: level ? info.color : "blue-grey-2", title: `${this.data.heatmap.controls[row].control_name}: ${info.label}` };
+      this.data.heatmap.cells.forEach((cell) => {
+        const info = alarmLevel(cell.level);
+        grid[cell.row][cell.column] = {
+          count: 1,
+          color: cell.level ? info.color : "blue-grey-2",
+          text: cell.level ? compactKpiValue(cell.value) : "",
+          title: this.cellTitle(this.data.heatmap.controls[cell.row].control_name, cell, info),
+        };
       });
       return this.data.heatmap.controls.map((control, index) => ({
         key: control.control_name,
         label: control.control_name,
         color: alarmLevel(control.level).color,
-        title: `${control.control_name}: highest ${alarmLevel(control.level).label.toLowerCase()} in the span`,
+        link: Boolean(control.control_id),
+        title: `${control.control_name}: highest ${alarmLevel(control.level).label.toLowerCase()} in the span${control.control_id ? "; open its run log" : ""}`,
         cells: grid[index].map((cell) => cell || { count: 0 }),
       }));
     },
@@ -73,9 +80,27 @@ export default {
         // Not remembered, which is all a failure costs.
       }
     },
+    // "NAME · run 1234567 · RATE_LOSS = 12.3456 % · Alarm 3 (+2 other KPIs alarmed)".
+    cellTitle(name, cell, info) {
+      const parts = [name, `run ${cell.process_id}`];
+      if (cell.level && cell.kpi_type) {
+        parts.push(`${cell.kpi_type} = ${formatKpiValue(cell.value, cell.decimals)}${cell.unit ? ` ${cell.unit}` : ""}`);
+      }
+      const others = cell.others ? ` (+${cell.others} other KPI${cell.others > 1 ? "s" : ""} alarmed)` : "";
+      parts.push(`${info.label}${others}`);
+      return parts.join(" · ");
+    },
     pick({ row, column }) {
       const control = this.data.heatmap.controls.find((item) => item.control_name === row);
-      this.$emit("pick", { key: row, control, bucket: this.data.buckets[column] });
+      const index = this.data.heatmap.controls.indexOf(control);
+      const cell = this.data.heatmap.cells.find((item) => item.row === index && item.column === column);
+      this.$emit("pick", { key: row, control, bucket: this.data.buckets[column], processId: cell ? cell.process_id : null });
+    },
+    pickLabel({ row }) {
+      const control = this.data.heatmap.controls.find((item) => item.control_name === row);
+      if (control && control.control_id) {
+        this.$emit("open-log", control);
+      }
     },
   },
 };
