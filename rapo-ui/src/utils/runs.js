@@ -115,8 +115,15 @@ function numeric(value) {
   return match ? Number(match[0]) : null;
 }
 
-// The value a run table sorts a column by: dates as time, error levels as numbers.
+// The sort key of a KPI column of the Run log, and the KPI type of one.
+export const KPI_SORT_PREFIX = "kpi:";
+
+// The value a run table sorts a column by: dates as time, error levels as numbers, a KPI column by its value.
 export function runSortValue(run, key) {
+  if (key.startsWith(KPI_SORT_PREFIX)) {
+    const kpi = run.kpis && run.kpis[key.slice(KPI_SORT_PREFIX.length)];
+    return kpi ? numeric(kpi.value) : null;
+  }
   const value = run[key];
   if (["start_date", "end_date", "date_from", "date_to"].includes(key)) {
     return value ? new Date(value).getTime() : null;
@@ -127,9 +134,53 @@ export function runSortValue(run, key) {
   return value ?? null;
 }
 
-// Whether a run starts another day than the run before it, for the separator line of a list sorted by time.
-export function startsNewDay(runs, index) {
-  return index > 0 && toDateString(runs[index - 1].start_date) !== toDateString(runs[index].start_date);
+// Whether a run is on another day (of `key`: its start, or the start of its data window) than the run before it, for
+// the separator line of a list sorted by time.
+export function startsNewDay(runs, index, key = "start_date") {
+  return index > 0 && toDateString(runs[index - 1][key]) !== toDateString(runs[index][key]);
+}
+
+// The runs of a table with the superseded ones (a later run of their period ended Done: `superseded_by`, see
+// reader.superseded_sql) folded under that run when it is among them, newest first, right under it whatever the sort;
+// a superseded run whose newer run is not listed (another day, filtered out) stays in place. `expanded(processId)`
+// says whether a run's earlier runs are shown. Answers {rows, earlier: Map(processId -> count), folded: Set(processId),
+// versions: Map(processId -> its number among the runs of its period, the oldest 1) of the folded runs}.
+export function groupRuns(runs, expanded) {
+  const listed = new Set(runs.map((run) => run.process_id));
+  const children = new Map();
+  const top = [];
+  for (const run of runs) {
+    if (run.superseded_by && listed.has(run.superseded_by)) {
+      if (!children.has(run.superseded_by)) children.set(run.superseded_by, []);
+      children.get(run.superseded_by).push(run);
+    } else {
+      top.push(run);
+    }
+  }
+  const rows = [];
+  const earlier = new Map();
+  const folded = new Set();
+  const versions = new Map();
+  for (const run of top) {
+    rows.push(run);
+    const kids = children.get(run.process_id);
+    if (!kids) continue;
+    const newest = [...kids].sort((a, b) => b.process_id - a.process_id);
+    earlier.set(run.process_id, kids.length);
+    newest.forEach((kid, index) => {
+      folded.add(kid.process_id);
+      versions.set(kid.process_id, kids.length - index);
+    });
+    if (expanded(run.process_id)) {
+      rows.push(...newest);
+    }
+  }
+  return { rows, earlier, folded, versions };
+}
+
+// The tooltip of a superseded run's mark.
+export function supersededTitle(run) {
+  return `Superseded by run ${run.superseded_by}${run.superseded_on ? ` of ${toDateString(run.superseded_on)}` : ""}: a later run of the same period ended Done`;
 }
 
 // RunTable's column headers by sort key, for the sort chip of the Results page.

@@ -603,6 +603,23 @@ class Kpi:
                     .order_by(table.c.kpi_type))
         return db.execute(select, as_table=True)
 
+    def read_control_history(self, control_name, first_process_id):
+        """Get the KPI values stored for the runs of one control from a
+        process ID on: processname, kpi_type, processid, kpi_value,
+        alarm_level (the unique index leads with the processname).
+        """
+        if not self.history_available or not control_name \
+                or first_process_id is None:
+            return []
+        first = str(int(first_process_id))
+        statement = sa.text(f"""
+            select processid, kpi_type, kpi_value, alarm_level
+              from {HISTORY_TABLE}
+             where processname = :name
+               and processid >= :first and length(processid) = :length
+        """).bindparams(name=control_name, first=first, length=len(first))
+        return db.execute(statement, as_table=True)
+
     def read_run_history_since(self, first_process_id, since):
         """Get the KPI values stored for the runs since a moment, no logs.
 

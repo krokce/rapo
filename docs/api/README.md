@@ -156,6 +156,12 @@ CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run
 `has_warning` is `1` when the run's messages hold a
 `Warning: ` line (a key field that is not unique, `correlation_limit` reached, approximate matching over
 `max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
+`superseded_by` is the process ID of the latest later run of the same control and period (the days of `date_from` and
+`date_to`) that ended `D`, and `superseded_on` its start (null when none): a period counts by its last done run, and
+the UI folds the runs it superseded under it. With `control_name`, each run also has `kpis` `{KPI_TYPE: {value,
+alarm_level}}` (the values `RACS_KPI_RUNHISTORY_ALL` stored for it, `{}` when none), and the answer `kpi_types`
+`[{kpi_type, kpi_type_desc, kpi_value_unit, kpi_decimal_places}]`, the types stored for these runs by priority (absent
+without the KPI tables or their history).
 
 > Until v0.8.0 this route took no parameters and returned the last 200 runs as a plain array.
 
@@ -1215,10 +1221,11 @@ all clients, and dropped by the live events that change them.
   day neither summarized nor read live is in `missing_days` and its values are `null`.
 * `kpis` (`{available: false}` without the KPI tables or their history): `heatmap` `{controls: [{control_name,
   control_id, level}], cells: [{row, column, level, process_id}]}` (the highest alarm level per control and bucket
-  and the run that reached it, the latest on a tie; every control with values, the worst first; a cell at level 1 or
+  of the runs' `date_from` (the period read), only the last done run of a period counting (`superseded_by`, see
+  `get-control-runs`), and the run that reached it, the latest on a tie; every control with values, the worst first; a cell at level 1 or
   above also has `kpi_type`, `value`, `unit`, `decimals` of that run's KPI at that level whose type comes first by
   `kpi_priority`, and `others`, the number of its other KPIs at level 1 or above) and `alarms` (values at level 2 or
-  3 in the span).
+  3 of those runs in the span).
 
 #### `POST /api/refresh-file-summary`
 Sums the closed days of a `span`'s window (default `7d`) of the PDI Core file log into `rapo_file_summary` again, in

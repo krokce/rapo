@@ -1,14 +1,21 @@
 """Contains the KPIs of the Dashboard: the values RACS_KPI_PKG stored.
 
 The history is read once for the last LOOKBACK_DAYS (`kpi.read_run_history_
-since`) and every view is cut from it; STARTRUNDATE is the run's start on the
-app server's clock, so the buckets are those of the runs.
+since`) and every view is cut from it. A period run more than once counts by
+its last done run only (`reader.superseded_sql`): the values of superseded
+runs are left out. The heatmap puts a run in the bucket of its date_from (the
+period it read), the tile in that of STARTRUNDATE (the run's start on the app
+server's clock).
 """
 
 import collections
 import datetime as dt
 
+import sqlalchemy as sa
+
+from ..database import db
 from ..kpi import kpi
+from ..reader import superseded_sql
 from . import runs as run_data
 from . import spans
 from .memo import memo
@@ -24,13 +31,32 @@ def available():
 
 
 def rows():
-    """Get the KPI values of the runs of the last LOOKBACK_DAYS."""
+    """Get the KPI values of the runs of the last LOOKBACK_DAYS that no
+    later run of their period superseded, each with its run's `date_from`.
+    """
     def read():
         since = (dt.datetime.combine(dt.date.today(), dt.time())
                  - dt.timedelta(days=LOOKBACK_DAYS))
         first = run_data.first_process_id(since)
-        return [run_data._numbers(row)
-                for row in kpi.read_run_history_since(first, since)]
+        history = kpi.read_run_history_since(first, since)
+        if not history:
+            return []
+        periods = {row['process_id']: row['date_from']
+                   for row in db.execute(sa.text(f"""
+                       select l.process_id, l.date_from
+                         from rapo_log l
+                        where l.process_id >= :first
+                          and {superseded_sql('l')} is null
+                   """).bindparams(first=first), as_table=True)}
+        result = []
+        for row in history:
+            process_id = int(row['processid'])
+            if process_id not in periods:
+                continue
+            row = run_data._numbers(row)
+            row['date_from'] = periods[process_id] or row['startrundate']
+            result.append(row)
+        return result
     return memo.get(('kpi_rows',), read)
 
 
@@ -67,7 +93,7 @@ def kpis(span):
     worst = collections.Counter()
     alarms = 0
     for row in rows():
-        moment = row['startrundate']
+        moment = row['date_from']
         if moment is None or moment < start:
             continue
         position = positions.get(spans.truncate(moment, bucket_unit))

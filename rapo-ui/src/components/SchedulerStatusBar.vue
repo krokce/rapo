@@ -64,7 +64,7 @@
     </q-chip>
 
     <q-chip v-if="status.next_maintenance" class="status-chip">
-      <q-avatar icon="fas fa-broom" color="blue-grey-6" text-color="white" />
+      <q-avatar icon="fas fa-tools" color="blue-grey-6" text-color="white" />
       <span class="text-grey-7">in {{ age(status.next_maintenance, true) }}</span>
       <q-tooltip anchor="bottom middle" self="top middle" :offset="[0, 8]">
         <div>Next maintenance at {{ toDateTimeString(status.next_maintenance) }}<template v-if="status.maintenance_interval">, every {{ durationText(status.maintenance_interval) }}</template></div>

@@ -937,12 +937,16 @@
                   <q-space />
                   <run-summary v-if="logsLoaded" :runs="controlLogs" />
                 </div>
-                <!-- The Results table, without its filters (the runs are this control's) and Edit control. -->
+                <!-- The Results table, without its filters, side B for ANL and REP and Edit control, plus a column per KPI
+                     stored for the runs; Type and Processname (the same on every row) are dropped when the width is
+                     needed. -->
                 <div ref="logTable" class="column no-wrap" :style="{ maxHeight: logTableHeight + 'px' }">
                   <run-table
                     :runs="controlLogs"
                     :sort="logSort"
-                    :columns="{ type: true, name: true }"
+                    :columns="{ type: true, name: 'optional', b: ['REC', 'CMP'].includes(control.control_type) }"
+                    :kpi-columns="kpiAvailable ? logKpiTypes : []"
+                    expand-key="rapo_runs_expand_runlog"
                     :edit-link="false"
                     separators
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
@@ -1099,14 +1103,15 @@ const LOG_SORT_KEY = "rapo_filters_control_runlog";
 function readLogSort() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(LOG_SORT_KEY) || "null");
-    // end_date: the End column of an earlier Run log.
-    if (saved && typeof saved.key === "string" && saved.key !== "end_date" && ["asc", "desc"].includes(saved.dir)) {
+    // end_date: the End column of an earlier Run log; the type and name columns are not in it.
+    if (saved && typeof saved.key === "string" && !["end_date", "control_type", "control_name"].includes(saved.key) && ["asc", "desc"].includes(saved.dir)) {
       return saved;
     }
   } catch (error) {
     // The default then.
   }
-  return { key: "start_date", dir: "desc" };
+  // The periods read, newest first.
+  return { key: "date_from", dir: "desc" };
 }
 
 export default {
@@ -1177,6 +1182,8 @@ export default {
       kpiConfigObject: [],
       // The runs of the last log_days_back days (get-control-runs), shown by the Run log's RunTable.
       controlLogs: [],
+      // The KPI types stored for the runs of the Run log (get-control-runs' kpi_types), a column each.
+      logKpiTypes: [],
       logsLoaded: false,
       // The Run log's sort, kept for the browser session (LOG_SORT_KEY), and the table's height down to the
       // Save/Apply bar.
@@ -1725,6 +1732,7 @@ export default {
       try {
         const answer = await api("get-control-runs", { params: { control_name: controlName, days: numberDays }, loadingBar: false });
         this.controlLogs = Object.freeze(answer.runs);
+        this.logKpiTypes = Object.freeze(answer.kpi_types || []);
         this.logsLoaded = true;
       } catch (error) {
         notifyError("Failed to load run log.", error);

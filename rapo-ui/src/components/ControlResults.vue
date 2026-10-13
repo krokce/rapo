@@ -50,8 +50,10 @@
       :empty-text="controlResults.length ? 'No runs match the filters' : `No runs on ${dayTitle}`"
       :filtered-name="filter.control_name"
       :has-kpis="kpiControlIds ? (run) => kpiControlIds.has(run.control_id) : null"
+      expand-key="rapo_runs_expand_results"
       @filter="applyRowFilter"
-      @calculate-kpis="openKpiCalculate">
+      @calculate-kpis="openKpiCalculate"
+      @open-run="openRun">
       <!-- A process ID searched for that is not on this day: its day is looked up on request. -->
       <template v-if="searchedProcessId" #empty>
         <span v-if="missingRun === searchedProcessId">No run {{ searchedProcessId }}</span>
@@ -177,6 +179,14 @@ export default {
         } else {
           notifyError(`Failed to find run ${processId}.`, error);
         }
+      }
+    },
+    // The run that superseded a run of this day: searched for, on its day.
+    openRun({ processId, date }) {
+      this.$store.commit("updateSearch", String(processId));
+      const day = toDateString(date);
+      if (day && day !== this.day) {
+        this.goToDay(day);
       }
     },
     addStatusFilter(status) {

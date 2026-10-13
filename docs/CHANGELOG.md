@@ -20,8 +20,8 @@ Dashboard's file summary.
   controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, top
   datasources (records loaded, files loaded, loading time) and datasources by state, loading and throughput (trends
   fill their row; no *Files by status* donut, the files over time have its rows); KPI alarms per control (compact
-  strips with the alarmed value of the most important KPI, a cell opens the KPIs tab with its run picked, a name the
-  run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
+  strips by period, last done run of a period only, with the alarmed value of the most important KPI, a cell opens the
+  KPIs tab with its run picked, a name the run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
   Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
   `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
   scheduler's maintenance or *Refresh* (`refresh-file-summary`), and at once for files recycled, reloaded or deleted
@@ -86,6 +86,10 @@ Dashboard's file summary.
 - **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
   the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
   order and are not timed out while held. The limit also counts active runs older than a day.
+- **Superseded runs** (a later run of the same period ended Done) folded under it in Results and the Run log: a *Ver*
+  bubble (runs of the period, darker the more) unpacks them, faded with their version number; columns follow the
+  width (one *Period* column, no Type, no Processname only as needed); the Run log sorted by period with a column per
+  stored KPI value in its alarm color (`get-control-runs`: `superseded_by`, `kpis`, `kpi_types`).
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
 - **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
   `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.

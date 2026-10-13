@@ -52,6 +52,8 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      click on it opens the same Files page.
    - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as compact strips over
      the full width: the worst 25 controls, *Show N more controls* for the rest (remembered by the browser). An
+     cell is the day (or hour) of the period a run read (`date_from`), and a period run more than once counts by its
+     last done run only (as in Data analysis' trend), also in the *KPI alarms* tile and the section's count. An
      alarmed cell (level 1–3) writes the value of the run that reached that level (the latest on a tie), of its most
      important KPI at that level (the KPI type's priority), in at most four characters (`0.35`, `12.4`, `1.2k`, `3.4M`)
      when the cells are wide enough; the exact value, unit, run and the number of its other alarmed KPIs on hover. A
@@ -332,11 +334,25 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.
 11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
     *Scheduler* tab, as on the *Upcoming* and *History* tabs.
-12. **Next maintenance on the Scheduler page.** A chip after the next fire shows the time left to the scheduler's
+12. **Superseded runs folded, KPIs in the Run log.** A run is *superseded* when a later run of the same control and
+    period (the days of its *Run from* and *Run to*) ended Done: a re-run, or the fix of a failed run. In Results and
+    the editor's Run log a new *Ver* column shows the number of runs of the period as a bubble, darker the more there
+    are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
+    (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
+    superseded run whose newer run is on another day stays in place with a ⟲ mark, which opens that run's day on
+    Results. A later run in error or still running supersedes nothing. The Run log is sorted by the period by default,
+    leaves out side B for ANL and REP, and has a column per KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the
+    value, compact (exact on hover), on its alarm level's color; a click calculates the KPIs of that run.
+    **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
+    as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
+    log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer
+    scrolls sideways at common widths. `get-control-runs` answers
+    `superseded_by`/`superseded_on` per run and, for one control, `kpis` per run and `kpi_types`.
+13. **Next maintenance on the Scheduler page.** A chip after the next fire shows the time left to the scheduler's
     next maintenance (database clean-up, the file log summary, the controls' retention, old scheduler events), the
     time and interval on hover; also on the Dashboard's scheduler tile. Only the server holding the lease maintains, so
     the chip shows there only; `scheduler-status` no longer reports a `next_maintenance` after the scheduler was
     stopped or the lease moved (it reported one that never came), and adds `maintenance_interval`.
-13. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
+14. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
     `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
     `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).

@@ -1,19 +1,20 @@
 <template>
   <div class="run-table column no-wrap">
+    <q-resize-observer @resize="onResize" />
     <q-virtual-scroll
       type="table"
       dense
       class="list-table runs-table"
-      :class="{ 'with-name': columns.name }"
-      :style="{ '--name-column-width': nameColumnWidth + 'px' }"
-      :items="sortedRuns"
+      :class="{ 'with-name': show.name, 'runs-table--compact': compact }"
+      :style="{ '--name-column-width': nameWidth + 'px', '--table-min-width': tableMinWidth + 'px' }"
+      :items="shownRuns"
       :virtual-scroll-item-size="45"
       :virtual-scroll-sticky-size-start="28"
       :table-colspan="colspan">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th v-if="columns.type" :title="filterable ? 'The control type: ANL analysis, REC reconciliation, CMP comparison, REP report; click a type to filter by it' : 'The control type: ANL analysis, REC reconciliation, CMP comparison, REP report'" class="col-type text-left sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
+            <th v-if="show.type" :title="filterable ? 'The control type: ANL analysis, REC reconciliation, CMP comparison, REP report; click a type to filter by it' : 'The control type: ANL analysis, REC reconciliation, CMP comparison, REP report'" class="col-type text-left sortable" @click="toggleSort(sort, 'control_type')" v-keyboard :aria-sort="ariaSort(sort, 'control_type')">
               Type
               <q-icon v-if="sort.key === 'control_type'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -25,19 +26,43 @@
               Runtime
               <q-icon v-if="sort.key === 'duration_minutes'" :name="sortIcon(sort)" size="12px" />
             </th>
+            <th
+              title="Runs of this period: this run and the earlier ones it superseded (a later run of the same period that ended Done supersedes them); click a number to show or fold them"
+              class="col-ver text-center">
+              <span
+                v-if="grouping.earlier.size"
+                class="run-ver-all"
+                :class="{ 'run-ver-all--on': expandAll }"
+                :title="expandAll ? 'Fold the earlier runs of every period' : 'Show the earlier runs of every period'"
+                v-keyboard:button
+                @click.stop="toggleExpandAll">
+                Ver
+              </span>
+              <template v-else>Ver</template>
+            </th>
             <th title="The process ID of the run" class="col-pid text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th v-if="columns.name" :title="filterable ? 'The control the run belongs to: its name opens the control, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
+            <th v-if="show.name" :title="filterable ? 'The control the run belongs to: its name opens the control, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Processname
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="The start of the data window the run read" class="col-date text-left sortable" @click="toggleSort(sort, 'date_from')" v-keyboard :aria-sort="ariaSort(sort, 'date_from')">
+            <th
+              v-if="compact"
+              title="The data window the run read: its day, or its first and last day; sorted by its start"
+              class="col-period text-left sortable"
+              @click="toggleSort(sort, 'date_from')"
+              v-keyboard
+              :aria-sort="ariaSort(sort, 'date_from')">
+              Period
+              <q-icon v-if="sort.key === 'date_from'" :name="sortIcon(sort)" size="12px" />
+            </th>
+            <th v-if="!compact" title="The start of the data window the run read" class="col-date text-left sortable" @click="toggleSort(sort, 'date_from')" v-keyboard :aria-sort="ariaSort(sort, 'date_from')">
               Run from
               <q-icon v-if="sort.key === 'date_from'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="The end of the data window the run read" class="col-date text-left sortable" @click="toggleSort(sort, 'date_to')" v-keyboard :aria-sort="ariaSort(sort, 'date_to')">
+            <th v-if="!compact" title="The end of the data window the run read" class="col-date text-left sortable" @click="toggleSort(sort, 'date_to')" v-keyboard :aria-sort="ariaSort(sort, 'date_to')">
               Run to
               <q-icon v-if="sort.key === 'date_to'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -45,7 +70,7 @@
               Fetched A
               <q-icon v-if="sort.key === 'fetched_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="Records fetched from datasource B; click the number for its SQL or data analysis" class="col-fetched text-right sortable" @click="toggleSort(sort, 'fetched_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_b')">
+            <th v-if="showB" title="Records fetched from datasource B; click the number for its SQL or data analysis" class="col-fetched text-right sortable" @click="toggleSort(sort, 'fetched_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'fetched_number_b')">
               Fetched B
               <q-icon v-if="sort.key === 'fetched_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -53,21 +78,32 @@
               Discr. A
               <q-icon v-if="sort.key === 'error_number_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="Discrepancies found on side B; click the number for its SQL or data analysis" class="col-discr text-right sortable" @click="toggleSort(sort, 'error_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_b')">
+            <th v-if="showB" title="Discrepancies found on side B; click the number for its SQL or data analysis" class="col-discr text-right sortable" @click="toggleSort(sort, 'error_number_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_number_b')">
               Discr. B
               <q-icon v-if="sort.key === 'error_number_b'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th title="Discrepancies of side A as a percentage of the records fetched from A" class="col-level text-right sortable" @click="toggleSort(sort, 'error_level_a')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_a')">
-              Err. lvl A [%]
+              {{ compact ? "Err. A %" : "Err. lvl A [%]" }}
               <q-icon v-if="sort.key === 'error_level_a'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th title="Discrepancies of side B as a percentage of the records fetched from B" class="col-level text-right sortable" @click="toggleSort(sort, 'error_level_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_b')">
-              Err. lvl B [%]
+            <th v-if="showB" title="Discrepancies of side B as a percentage of the records fetched from B" class="col-level text-right sortable" @click="toggleSort(sort, 'error_level_b')" v-keyboard :aria-sort="ariaSort(sort, 'error_level_b')">
+              {{ compact ? "Err. B %" : "Err. lvl B [%]" }}
               <q-icon v-if="sort.key === 'error_level_b'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th title="Prerequisite value: what the Prerequisite SQL returned; 0 stops the run" class="col-pv text-right sortable" @click="toggleSort(sort, 'prerequisite_value')" v-keyboard :aria-sort="ariaSort(sort, 'prerequisite_value')">
               PV
               <q-icon v-if="sort.key === 'prerequisite_value'" :name="sortIcon(sort)" size="12px" />
+            </th>
+            <th
+              v-for="kpi in kpiColumns"
+              :key="kpi.kpi_type"
+              :title="kpiHeaderTitle(kpi)"
+              class="col-kpi text-right sortable ellipsis"
+              @click="toggleSort(sort, kpiSortKey(kpi))"
+              v-keyboard
+              :aria-sort="ariaSort(sort, kpiSortKey(kpi))">
+              {{ kpi.kpi_type }}
+              <q-icon v-if="sort.key === kpiSortKey(kpi)" :name="sortIcon(sort)" size="12px" />
             </th>
             <th :title="filterable ? 'The status of the run; click a status to filter by it' : 'The status of the run'" class="col-status text-left sortable" @click="toggleSort(sort, 'status')" v-keyboard :aria-sort="ariaSort(sort, 'status')">
               Status
@@ -78,8 +114,14 @@
         </thead>
       </template>
       <template #default="{ item: run, index }">
-        <tr :key="run.process_id" :class="{ 'new-day-separator': separatorRows && startsNewDay(sortedRuns, index) }">
-          <td v-if="columns.type" class="text-center">
+        <tr
+          :key="run.process_id"
+          :class="{
+            'new-day-separator': separatorRows && !grouping.folded.has(run.process_id) && startsNewDay(shownRuns, index, separatorKey),
+            'run-row--superseded': run.superseded_by,
+            'run-row--folded': grouping.folded.has(run.process_id),
+          }">
+          <td v-if="show.type" class="text-center">
             <q-chip :clickable="filterable" :title="controlType(run.control_type).label" @click="filterable && $emit('filter', { type: run.control_type })">
               <q-avatar :icon="controlType(run.control_type).icon" :color="controlType(run.control_type).color" text-color="white" />
               {{ run.control_type }}
@@ -98,8 +140,31 @@
             </div>
           </td>
           <td class="text-right number-cell">{{ round(run.duration_minutes, 1) }} min</td>
+          <td class="text-center">
+            <span
+              v-if="grouping.earlier.has(run.process_id)"
+              class="run-ver run-ver--link"
+              :style="versionStyle(grouping.earlier.get(run.process_id) + 1)"
+              :title="`${grouping.earlier.get(run.process_id) + 1} runs of this period: ${isExpanded(run.process_id) ? 'fold' : 'show'} the ${grouping.earlier.get(run.process_id)} earlier one(s) it superseded`"
+              v-keyboard:button
+              @click="toggleExpanded(run.process_id)">
+              {{ grouping.earlier.get(run.process_id) + 1 }}
+            </span>
+            <span v-else-if="grouping.versions.has(run.process_id)" class="run-ver run-ver--old" :title="supersededTitle(run)">
+              {{ grouping.versions.get(run.process_id) }}
+            </span>
+            <q-icon
+              v-else-if="run.superseded_by"
+              name="fas fa-history"
+              size="12px"
+              color="blue-grey-5"
+              class="cursor-pointer"
+              :title="`${supersededTitle(run)}; click to open it`"
+              @click="$emit('open-run', { processId: run.superseded_by, date: run.superseded_on })" />
+            <span v-else class="run-ver" :style="versionStyle(1)" title="The only run of this period">1</span>
+          </td>
           <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ run.process_id }}</td>
-          <td v-if="columns.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
+          <td v-if="show.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
             <q-btn
               v-if="filterable"
               :aria-label="isFilteredName(run) ? 'Clear the filter by this control' : 'Filter by this control'"
@@ -116,19 +181,24 @@
               </span>
             </router-link>
           </td>
-          <td class="text-left text-weight-bold text-blue-grey-7">
-            {{ toDateString(run.date_from) }}
+          <td v-if="compact" class="text-left text-weight-bold text-blue-grey-7 no-wrap ellipsis" :title="periodTitle(run)">
+            {{ periodText(run) }}
           </td>
-          <td class="text-left text-weight-bold text-blue-grey-7">
-            {{ toDateString(run.date_to) }}
-          </td>
+          <template v-else>
+            <td class="text-left text-weight-bold text-blue-grey-7">
+              {{ toDateString(run.date_from) }}
+            </td>
+            <td class="text-left text-weight-bold text-blue-grey-7">
+              {{ toDateString(run.date_to) }}
+            </td>
+          </template>
           <td class="text-right number-cell">
             <span v-if="run.fetched_number_a > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, run, 'fetched_a')" @contextmenu.prevent="openNumberMenu($event, run, 'fetched_a')">
               {{ formatNumber(run.fetched_number_a) }}
             </span>
             <span v-else>{{ formatNumber(run.fetched_number_a) }}</span>
           </td>
-          <td class="text-right number-cell">
+          <td v-if="showB" class="text-right number-cell">
             <span v-if="run.fetched_number_b > 0" class="cursor-pointer number-link" v-keyboard:button @click="openNumberMenu($event, run, 'fetched_b')" @contextmenu.prevent="openNumberMenu($event, run, 'fetched_b')">
               {{ formatNumber(run.fetched_number_b) }}
             </span>
@@ -140,7 +210,7 @@
             </span>
             <span v-else>{{ formatNumber(run.error_number_a) }}</span>
           </td>
-          <td class="text-right number-cell">
+          <td v-if="showB" class="text-right number-cell">
             <span v-if="run.error_number_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
               {{ formatNumber(run.error_number_b) }}
             </span>
@@ -152,7 +222,7 @@
             </span>
             <span v-else> {{ formatNumber(run.error_level_a, 2) }}% </span>
           </td>
-          <td class="text-right number-cell">
+          <td v-if="showB" class="text-right number-cell">
             <span v-if="run.error_level_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
               {{ formatNumber(run.error_level_b, 2) }}%
             </span>
@@ -161,6 +231,18 @@
           <td class="text-right">
             <q-icon v-if="run.prerequisite_value == 0" class="cursor-pointer text-red" name="fas fa-stop" title="Prerequisite SQL value is 0" />
             <q-icon v-if="run.prerequisite_value" class="cursor-pointer text-green" name="fas fa-play" :title="`Prerequisite SQL value is ${run.prerequisite_value}`" />
+          </td>
+          <td v-for="kpi in kpiColumns" :key="kpi.kpi_type" class="text-right number-cell">
+            <span
+              v-if="kpiCell(run, kpi)"
+              class="run-kpi cursor-pointer"
+              :class="{ 'run-kpi--alarm': kpiCell(run, kpi).alarm_level > 0 }"
+              :style="kpiCell(run, kpi).alarm_level > 0 ? { background: alarmColor(kpiCell(run, kpi).alarm_level) } : null"
+              :title="kpiCellTitle(run, kpi)"
+              v-keyboard:button
+              @click="$emit('calculate-kpis', run)">
+              {{ compactKpiValue(kpiCell(run, kpi).value) }}
+            </span>
           </td>
           <td class="text-left text-no-wrap">
             <q-chip :clickable="filterable" :class="{ 'cursor-pointer': filterable }" @click="filterable && $emit('filter', { status: run.status })">
@@ -188,7 +270,7 @@
             <td :colspan="colspan" class="text-center text-grey-7 q-pa-lg">Runs could not be loaded</td>
           </tr>
         </tbody>
-        <tbody v-else-if="!sortedRuns.length">
+        <tbody v-else-if="!shownRuns.length">
           <tr>
             <td :colspan="colspan" class="text-center text-grey-7 q-pa-lg">
               <slot name="empty">{{ emptyText }}</slot>
@@ -250,22 +332,50 @@ import SkeletonRows from "./SkeletonRows.vue";
 import { ACTIVE_RUN_STATUSES, controlType, controlTypeColor, runStatus } from "../constants";
 import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
-import { formatNumber, round, toDateString, toTimeString } from "../utils/format";
+import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { alarmLevel, compactKpiValue, formatKpiValue } from "../utils/kpi";
+import { paletteColor } from "../utils/palette";
 import { textWidth } from "../utils/layout";
-import { runSortValue, startsNewDay, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
+import { KPI_SORT_PREFIX, groupRuns, runSortValue, startsNewDay, supersededTitle, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // A table of runs (get-control-runs rows), shared by the Results page and the editor's Run log: sortable columns,
 // the trigger icon, the number menus (RunDatasetMenu), one row menu for the whole table and the full log dialog.
-// A virtual scroll: the parent sizes it, and the table scrolls inside with its header kept in view.
+// A virtual scroll: the parent sizes it, and the table scrolls inside with its header kept in view. A run superseded by a
+// later Done run of its period is folded under that run (when listed) and faded; optional KPI columns (Run log).
+
+// The fixed widths of the columns (px), as the style sets them; the Processname column takes the rest, else the Status
+// column (`status`; beside a name it is `namedStatus`). Compact: one Period column and narrower numbers.
+const WIDTHS = { type: 114, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, pv: 34, kpi: 56, status: 86, namedStatus: 128, menu: 50 };
+// Compact widths are the content's (7-digit counts, "100.00%", a Done chip with its warning) plus the cell padding.
+const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, pv: 30, kpi: 54, status: 92, menu: 40 };
+// The least width of the Processname column before it is cut (ellipsis).
+const NAME_MIN = 140;
+// The bubble of a period's number of runs: darker the more (the last for any more).
+const VERSION_COLORS = ["blue-grey-2", "indigo-2", "indigo-3", "indigo-5", "indigo-7", "indigo-9"];
+
+
+function readFlag(key) {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch (error) {
+    return false;
+  }
+}
+
 export default {
   components: { RunControlDialog, RunDatasetMenu, RunLogDialog, SkeletonRows },
   props: {
     runs: { type: Array, required: true },
     // { key, dir }, changed in place by the headers.
     sort: { type: Object, required: true },
-    // Optional columns: the type and the control's name.
+    // The columns that may show: the type, the control's name (true: always, "optional": dropped last when the table
+    // is narrow) and side B's numbers (b, shown unless false). The width decides the rest (`levels`).
     columns: { type: Object, default: () => ({ type: true, name: true }) },
+    // KPI columns (get-control-runs' kpi_types of one control): the values stored for each run.
+    kpiColumns: { type: Array, default: () => [] },
+    // Where this browser keeps whether every period's earlier runs are shown.
+    expandKey: { type: String, default: "rapo_runs_expand" },
     // The row menu's Edit control (not inside the editor itself).
     editLink: { type: Boolean, default: true },
     // Type and status chips and the name's magnifier emit filter ({ type } / { status } / { control_name }).
@@ -284,9 +394,14 @@ export default {
     // Whether a run's control has KPIs; the row menu's Calculate KPIs emits calculate-kpis (run).
     hasKpis: { type: Function, default: null },
   },
-  emits: ["filter", "calculate-kpis"],
+  emits: ["filter", "calculate-kpis", "open-run"],
   data() {
     return {
+      expandAll: readFlag(this.expandKey),
+      // The width the table has (px), 0 until measured.
+      width: 0,
+      // The runs whose earlier runs are shown (or folded, while expandAll): process ID -> true.
+      toggled: {},
       activeRunStatuses: ACTIVE_RUN_STATUSES,
       // The one row menu of the table, opened at the kebab button of the row it acts on.
       menuTarget: false,
@@ -298,20 +413,64 @@ export default {
     sortedRuns() {
       return sortRows(this.runs, (run) => runSortValue(run, this.sort.key), this.sort.dir);
     },
+    grouping() {
+      return groupRuns(this.sortedRuns, this.isExpanded);
+    },
+    shownRuns() {
+      return this.grouping.rows;
+    },
+    showB() {
+      return this.columns.b !== false;
+    },
+    // The layouts from the widest down, each dropping what the next needs: separate Run from/to and the type, one
+    // Period column and narrower numbers, no type, no name (only an optional name).
+    levels() {
+      const type = Boolean(this.columns.type);
+      const name = Boolean(this.columns.name);
+      const levels = [
+        { compact: false, type, name },
+        { compact: true, type, name },
+        { compact: true, type: false, name },
+      ];
+      if (this.columns.name === "optional") levels.push({ compact: true, type: false, name: false });
+      return levels;
+    },
+    // The first layout that fits the width with the name whole, else the last one (a cut name, or scrolling).
+    show() {
+      const fits = this.levels.find((level) => this.minWidth(level) + (level.name ? this.nameColumnWidth : 0) <= this.width);
+      return !this.width ? this.levels[0] : fits || this.levels[this.levels.length - 1];
+    },
+    compact() {
+      return this.show.compact;
+    },
+    // The name column's least width: whole when it fits, else what is left, at least NAME_MIN.
+    nameWidth() {
+      if (!this.show.name) return 0;
+      const left = this.width ? this.width - this.minWidth(this.show) : this.nameColumnWidth;
+      return Math.max(NAME_MIN, Math.min(this.nameColumnWidth, left));
+    },
     separatorRows() {
-      return this.separators && ["start_date", "process_id"].includes(this.sort.key);
+      return this.separators && ["start_date", "process_id", "date_from"].includes(this.sort.key);
+    },
+    separatorKey() {
+      return this.sort.key === "date_from" ? "date_from" : "start_date";
     },
     colspan() {
-      return 14 + ["type", "name"].filter((column) => this.columns[column]).length;
+      return 11 + (this.compact ? 0 : 1) + ["type", "name"].filter((column) => this.show[column]).length + (this.showB ? 3 : 0) + this.kpiColumns.length;
+    },
+    tableMinWidth() {
+      return this.minWidth(this.show);
     },
     skeletonColumns() {
       return [
-        ...(this.columns.type ? ["QChip"] : []),
+        ...(this.show.type ? ["QChip"] : []),
         "text",
         "text",
+        "QChip",
         "text",
-        ...(this.columns.name ? ["text"] : []),
-        ...Array(8).fill("text"),
+        ...(this.show.name ? ["text"] : []),
+        ...Array((this.showB ? 8 : 5) - (this.compact ? 1 : 0)).fill("text"),
+        ...this.kpiColumns.map(() => "text"),
         null,
         "QChip",
         null,
@@ -331,7 +490,91 @@ export default {
       return control ? sendsEmail(control) : Boolean(this.menuRow) && EMAIL_CONTROL_TYPES.includes(this.menuRow.control_type);
     },
   },
+  watch: {
+    shownRuns() {
+      this.$nextTick(this.onResize);
+    },
+    expandKey(key) {
+      this.expandAll = readFlag(key);
+      this.toggled = {};
+    },
+  },
   methods: {
+    supersededTitle,
+    // The width the rows have: the table's box less its vertical scrollbar (measured again when the rows change).
+    onResize() {
+      const scroll = this.$el.querySelector(".runs-table");
+      this.width = scroll ? scroll.clientWidth : 0;
+    },
+    // The least width of the table in a layout without the Processname column: every fixed column and Status.
+    minWidth(level) {
+      const w = level.compact ? COMPACT_WIDTHS : WIDTHS;
+      const sides = this.showB ? 2 : 1;
+      return (
+        (level.type ? w.type : 0) +
+        w.start +
+        w.runtime +
+        w.ver +
+        w.pid +
+        (level.compact ? w.period : 2 * w.date) +
+        sides * (w.fetched + w.discr + w.level) +
+        w.pv +
+        this.kpiColumns.length * w.kpi +
+        (level.name ? w.namedStatus : w.status) +
+        w.menu
+      );
+    },
+    // A bubble of `count` runs: the darker the more.
+    versionStyle(count) {
+      const index = Math.min(count, VERSION_COLORS.length) - 1;
+      return { background: paletteColor(VERSION_COLORS[index]), color: index >= 3 ? "var(--rapo-on-strong)" : "var(--rapo-header-text)" };
+    },
+    isExpanded(processId) {
+      return Boolean(this.expandAll) !== Boolean(this.toggled[processId]);
+    },
+    toggleExpanded(processId) {
+      this.toggled = { ...this.toggled, [processId]: !this.toggled[processId] };
+    },
+    toggleExpandAll() {
+      this.expandAll = !this.expandAll;
+      this.toggled = {};
+      try {
+        localStorage.setItem(this.expandKey, this.expandAll ? "1" : "0");
+      } catch (error) {
+        // Not remembered, which is all a failure costs.
+      }
+    },
+    kpiSortKey(kpi) {
+      return `${KPI_SORT_PREFIX}${kpi.kpi_type}`;
+    },
+    kpiHeaderTitle(kpi) {
+      const unit = kpi.kpi_value_unit ? ` (${kpi.kpi_value_unit})` : "";
+      return `KPI ${kpi.kpi_type}${kpi.kpi_type_desc ? `: ${kpi.kpi_type_desc}` : ""}${unit}, as stored for the run, on its alarm level's color; click a value to calculate the KPIs of the run`;
+    },
+    kpiCell(run, kpi) {
+      return (run.kpis && run.kpis[kpi.kpi_type]) || null;
+    },
+    compactKpiValue,
+    // "2026-10-12" for a window of one day, "2026-10-01 → 31" within a month, "2026-09-28 → 10-04" within a year.
+    periodText(run) {
+      const from = toDateString(run.date_from);
+      const to = toDateString(run.date_to);
+      if (!from || !to || from === to) return from || to;
+      if (from.slice(0, 7) === to.slice(0, 7)) return `${from}\u2009→\u2009${to.slice(8)}`;
+      if (from.slice(0, 4) === to.slice(0, 4)) return `${from}\u2009→\u2009${to.slice(5)}`;
+      return `${from}\u2009→\u2009${to}`;
+    },
+    periodTitle(run) {
+      return run.date_from ? `${toDateTimeString(run.date_from)} – ${toDateTimeString(run.date_to)}` : "";
+    },
+    kpiCellTitle(run, kpi) {
+      const cell = this.kpiCell(run, kpi);
+      const unit = kpi.kpi_value_unit ? ` ${kpi.kpi_value_unit}` : "";
+      return `${kpi.kpi_type} = ${formatKpiValue(cell.value, kpi.kpi_decimal_places)}${unit} · ${alarmLevel(cell.alarm_level).label}; click to calculate the KPIs of run ${run.process_id}`;
+    },
+    alarmColor(level) {
+      return paletteColor(alarmLevel(level).color);
+    },
     isFilteredName(run) {
       return Boolean(this.filteredName) && (run.control_name || "").toUpperCase() === this.filteredName.toUpperCase();
     },
@@ -366,9 +609,11 @@ export default {
 </script>
 
 <style lang="css" scoped>
+/* Its width is what the page gives it, never its rows' (the layout level is picked from it): it scrolls inside. */
 .run-table {
   flex: 0 1 auto;
   min-height: 0;
+  contain: inline-size;
 }
 
 /* Override the default link styles */
@@ -382,6 +627,64 @@ a:hover {
 a:visited {
   color: var(--rapo-teal);
 }
+/* A run superseded by a later Done run of its period: faded, whole again on hover; folded under that run, indented. */
+.run-row--superseded > td {
+  opacity: 0.5;
+}
+.run-row--superseded:hover > td {
+  opacity: 1;
+}
+.run-row--folded > td:first-child {
+  box-shadow: inset 3px 0 0 var(--rapo-grid);
+}
+/* The number of runs of a period as a bubble; an earlier run's version outlined. */
+.run-ver {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+/* The Ver header shows or folds every period's earlier runs. */
+.run-ver-all {
+  cursor: pointer;
+  border-bottom: 1px dashed currentColor;
+}
+.run-ver-all--on {
+  color: var(--rapo-teal);
+}
+.run-ver--link {
+  cursor: pointer;
+}
+.run-ver--link:hover {
+  box-shadow: 0 0 0 2px var(--rapo-teal);
+}
+.run-ver--old {
+  border: 1.5px solid var(--rapo-label);
+  color: var(--rapo-label);
+}
+/* A stored KPI value, on its alarm level's color when it alarmed. */
+.run-kpi {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.run-kpi:hover {
+  text-decoration: underline;
+}
+.run-kpi--alarm {
+  color: var(--rapo-on-strong);
+  font-weight: 600;
+}
 .number-link:hover {
   color: var(--rapo-teal);
   text-decoration: underline;
@@ -393,15 +696,27 @@ a:visited {
    rest. */
 .runs-table :deep(table) {
   table-layout: fixed;
-  min-width: 1290px;
+  min-width: var(--table-min-width);
 }
 .runs-table.with-name :deep(table) {
-  min-width: calc(1290px + var(--name-column-width));
+  min-width: calc(var(--table-min-width) + var(--name-column-width));
 }
 .runs-table .col-type { width: 114px; }
 .runs-table .col-start { width: 162px; }
 .runs-table .col-runtime { width: 66px; }
-.runs-table .col-pid { width: 92px; }
+.runs-table .col-ver { width: 40px; }
+.runs-table .col-pid { width: 96px; }
+.runs-table .col-kpi { width: 56px; }
+.runs-table .col-period { width: 132px; }
+.runs-table.runs-table--compact .col-start { width: 156px; }
+.runs-table.runs-table--compact .col-ver { width: 38px; }
+.runs-table.runs-table--compact .col-pid { width: 90px; }
+.runs-table.runs-table--compact .col-fetched { width: 84px; }
+.runs-table.runs-table--compact .col-discr { width: 70px; }
+.runs-table.runs-table--compact .col-level { width: 66px; }
+.runs-table.runs-table--compact .col-pv { width: 30px; }
+.runs-table.runs-table--compact .col-kpi { width: 54px; }
+.runs-table.runs-table--compact .col-menu { width: 40px; }
 .runs-table .col-date { width: 87px; }
 .runs-table .col-fetched { width: 92px; }
 .runs-table .col-discr { width: 84px; }

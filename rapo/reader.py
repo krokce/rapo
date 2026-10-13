@@ -10,6 +10,26 @@ from .database import db
 WARNING_PREFIX = 'Warning: '
 
 
+def superseded_sql(alias='l', value='n.process_id'):
+    """Get a scalar subquery over the newer runs superseding a run of
+    rapo_log `alias`: the max of `value` of them, null when none.
+
+    A period (the days of date_from and date_to) counts once, by its last
+    done run: a run is superseded by a newer run (higher process ID) of the
+    same control for the same period that ended D. A newer run in error,
+    canceled or still running supersedes nothing; a run without date_from is
+    never superseded. Data analysis' trend counts periods the same way.
+    """
+    return f"""(select max({value}) keep (dense_rank last
+                                        order by n.process_id)
+                  from rapo_log n
+                 where n.control_id = {alias}.control_id
+                   and n.process_id > {alias}.process_id
+                   and n.status = 'D'
+                   and trunc(n.date_from) = trunc({alias}.date_from)
+                   and trunc(n.date_to) = trunc({alias}.date_to))"""
+
+
 class Reader:
     """Represents application data reader.
 
@@ -385,7 +405,9 @@ class Reader:
                     nvl(round((l.end_date - nvl(l.start_date, l.added)) * 1440, 2), 0) duration_minutes,
                     e.trigger_type,
                     e.trigger_message,
-                    e.scheduled_time
+                    e.scheduled_time,
+                    {superseded_sql('l')} superseded_by,
+                    {superseded_sql('l', 'nvl(n.start_date, n.added)')} superseded_on
                 from rapo_log l
                 left join rapo_config c on l.control_id = c.control_id
                 -- What started the run (rapo_scheduler_event, one row per process), null for a run the run

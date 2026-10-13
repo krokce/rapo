@@ -26,7 +26,7 @@
         <q-icon v-if="tile.nextIcon" name="fas fa-forward" size="10px" class="q-mr-xs" />{{ tile.next }}
       </div>
       <div v-if="tile.maintenance" class="stat-tile__sub dash-note ellipsis" :title="tile.maintenanceTitle">
-        <q-icon name="fas fa-broom" size="10px" class="q-mr-xs" />{{ tile.maintenance }}
+        <q-icon name="fas fa-tools" size="10px" class="q-mr-xs" />{{ tile.maintenance }}
       </div>
       <svg v-if="tile.spark" class="stat-tile__spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
         <polygon :points="tile.spark.area" />
