@@ -342,12 +342,13 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
     superseded run whose newer run is on another day stays in place with a ⟲ mark, which opens that run's day on
     Results. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
-    KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a light grey box, on
-    its alarm level's color when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
+    KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a box of one width for
+    every value with the digits on the right, green on light grey within its limits, white on its alarm level's color
+    when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
     soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
     then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
     error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
-    alarmed KPIs first, then the others by priority, two values (three with their codes on wide screens) and `+N` for
+    KPIs by priority, two values (three with their codes on wide screens) and `+N` for
     the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
     highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
     values no longer show as `-…`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL

@@ -103,7 +103,7 @@
             </th>
             <th
               v-if="kpiSummary.length"
-              title="The KPIs stored for the run: the alarmed ones first, then by priority; hover a value for its KPI, + for all of them; sorts by the highest alarm"
+              title="The KPIs stored for the run by priority, green within their limits, on the alarm's color when alarmed; hover a value for its KPI, + for all of them; sorts by the highest alarm"
               class="col-kpis text-left sortable"
               @click="toggleSort(sort, KPI_ALARM_SORT, 'desc')"
               v-keyboard
@@ -248,7 +248,7 @@
           </td>
           <td v-if="kpiSummary.length" class="text-left number-cell no-wrap">
             <template v-for="kpi in summaryOf(run).shown" :key="kpi.type">
-              <span v-if="!compact" class="run-kpi-code">{{ kpi.type }}</span>
+              <span v-if="!compact" class="run-kpi-code" :title="kpi.type">{{ kpi.type }}</span>
               <span
                 class="run-kpi run-kpi--summary cursor-pointer"
                 :class="{ 'run-kpi--alarm': kpi.alarm_level > 0 }"
@@ -374,9 +374,9 @@ import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // The fixed widths of the columns (px), as the style sets them; the Processname column takes the rest, else the Status
 // column (`status`; beside a name it is `namedStatus`). Compact: one Period column and narrower numbers.
-const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 170, status: 96, namedStatus: 104, menu: 50 };
+const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 260, status: 96, namedStatus: 104, menu: 50 };
 // Compact widths are the content's (7-digit counts, "100.00%", a Done chip with its warning) plus the cell padding.
-const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 110, status: 96, menu: 40 };
+const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 124, status: 96, menu: 40 };
 // The values in the KPIs column: with their codes in the full layout, else without.
 const SUMMARY_SHOWN = { full: 3, compact: 2 };
 // The least width of the Processname column before it is cut (ellipsis).
@@ -759,12 +759,17 @@ a:visited {
   border: 1.5px solid var(--rapo-label);
   color: var(--rapo-label);
 }
-/* A stored KPI value in a box: light grey, its alarm level's color when it alarmed. */
+/* A stored KPI value in a box: green on light grey, white on its alarm level's color when it alarmed. */
+/* One width for every value (4 compact characters), digits on the right, so the KPIs of each row line up. */
 .run-kpi {
   display: inline-block;
+  box-sizing: border-box;
+  width: 40px;
   padding: 0 4px;
+  text-align: right;
   background: var(--rapo-grid);
-  font-weight: 400;
+  color: var(--rapo-ok);
+  font-weight: 500;
   border-radius: 3px;
   max-width: 100%;
   overflow: hidden;
@@ -775,7 +780,12 @@ a:visited {
   margin-right: 4px;
 }
 .run-kpi-code {
+  display: inline-block;
+  width: 30px;
   margin-right: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
   font-size: 10px;
   color: var(--rapo-label);
 }
@@ -812,8 +822,8 @@ a:visited {
 .runs-table .col-ver { width: 40px; }
 .runs-table .col-pid { width: 96px; }
 .runs-table .col-kpi { width: 56px; }
-.runs-table .col-kpis { width: 170px; }
-.runs-table.runs-table--compact .col-kpis { width: 110px; }
+.runs-table .col-kpis { width: 260px; }
+.runs-table.runs-table--compact .col-kpis { width: 124px; }
 .runs-table .col-period { width: 132px; }
 .runs-table.runs-table--compact .col-start { width: 156px; }
 .runs-table.runs-table--compact .col-ver { width: 38px; }

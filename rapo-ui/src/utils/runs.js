@@ -120,13 +120,13 @@ export const KPI_SORT_PREFIX = "kpi:";
 // The sort key of the KPIs column of Results: the highest alarm level, then how many KPIs alarmed.
 export const KPI_ALARM_SORT = "kpi_alarm";
 
-// The KPIs of a run the KPIs column shows first: alarmed ones by level, then the others by priority (`types`: the
-// kpi_types of get-control-runs), as [{type, value, alarm_level}].
+// The KPIs of a run in the KPIs column's order: by priority (`types`: the kpi_types of get-control-runs), then code,
+// as [{type, value, alarm_level}].
 export function summaryKpis(run, types) {
   const rank = new Map(types.map((type) => [type.kpi_type, type.kpi_priority ?? Infinity]));
   return Object.entries(run.kpis || {})
     .map(([type, kpi]) => ({ type, value: kpi.value, alarm_level: Number(kpi.alarm_level) || 0 }))
-    .sort((a, b) => b.alarm_level - a.alarm_level || (rank.get(a.type) ?? Infinity) - (rank.get(b.type) ?? Infinity) || a.type.localeCompare(b.type));
+    .sort((a, b) => (rank.get(a.type) ?? Infinity) - (rank.get(b.type) ?? Infinity) || a.type.localeCompare(b.type));
 }
 
 // The value a run table sorts a column by: dates as time, error levels as numbers, a KPI column by its value.

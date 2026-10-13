@@ -91,7 +91,7 @@ Dashboard's file summary.
   bubble (runs of the period, darker the more) unpacks them, faded with their version number; columns follow the
   width (one *Period* column, no Type, no Processname only as needed); the Run log sorted by period with a column per
   stored KPI value in a grey or alarm-colored box, filled once the post-run hook stored it; Results has one *KPIs*
-  column (alarmed first, then by priority, `+N`, sorts by alarm); no *PV* column (a blue info badge on the status chip,
+  column (by priority, same-width boxes, green or alarm-colored, `+N`, sorts by alarm); no *PV* column (a blue info badge on the status chip,
   a stop icon for 0), warnings as an amber badge on it (`get-control-runs`: `superseded_by`, `kpis`,
   `kpi_types`).
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
