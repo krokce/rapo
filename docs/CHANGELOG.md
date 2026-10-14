@@ -6,109 +6,61 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
-## v0.8.6 — unreleased
+## v0.8.6 — 2026-10-14
 
 New tables `rapo_viewer_config`, `rapo_file_summary` and `rapo_health_minute` (`migrations/v0.8.6/upgrade.sql`) and
 Python package `asn1tools` (`phik` no longer needed); new `[DATASOURCES]` options (uploads are off until
 `file_upload=True`), `[HEALTH] history_days` and section `[DASHBOARD]`; set `[SCHEDULER] maintenance_interval` for the
 Dashboard's file summary.
 
-- **Dashboard**, the new start page (`/`, sign-in, logo), compact, live and full width (panels fill each row): 12
-  tiles of today in two rows of six (run errors with controls still failing, a scheduler slot ring with the time left to the next fire and maintenance, files success,
-  records rejected) against the same weekday last week (incl. *Files in input* and *Files in
-  processing*); over 24h / 7d / 30d: runs over time by status, donuts of runs by status, type and trigger, slowest
-  controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, top
-  datasources (records loaded, files loaded, loading time) and datasources by state, loading and throughput (trends
-  fill their row; no *Files by status* donut, the files over time have its rows); KPI alarms per control (compact
-  strips by period, last done run of a period only, with the value of the most important KPI in the Results boxes' colors (soft green without an alarm), a cell
-  opens the run log on its run, a name the run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
-  Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
-  `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
-  scheduler's maintenance or *Refresh* (`refresh-file-summary`), and at once for files recycled, reloaded or deleted
-  from Rapo, so counts follow the files' current status. Options `[DASHBOARD] file_summary_days`,
-  `[DATASOURCES] scan_idle_interval` (unattended scans by the scheduling server).
-- **Instance health kept across restarts:** minutes stored in `rapo_health_minute` (`[HEALTH] history_days`, 7) and
-  read back at start; Health tabs gain a 7d span.
-- **Faster loading:** UI bundles gzipped and cached for good (named by content), JSON answers gzipped; ECharts its
-  own shared bundle (analysis bundle 628 → 134 KB).
-
-- **Data analysis and Discrepancy analysis redesigned** as single scrolling pages with an *On this page* list
-  (section kept in the link, old `?tab=` links still work), avatar chips and the app's buttons. Data analysis:
-  Summary (records, columns, duplicates and missing only when present, the 3 strongest related columns, 30-day
-  trend), Result types (split bar, fields that differ), compact column cards with one visual each (top values or a
-  histogram; date histograms in whole hours/days/months covering the run's window, a daily control's 24 hours;
-  constant/empty/unique columns named only), Records (any click on the page filters it). Discrepancy
-  analysis: notes as chips, trend, the findings as cards (shares of discrepancies vs normal records, lift, Records),
-  Attributes one row per column opening in place to its binnings and a butterfly of its bins (the Time binning in
-  whole units of the run's window), Differences with sums.
-  Removed: Missing values, Duplicates, correlation heatmap, **Compare** (routes `get-analysis-targets`,
-  `get-control-done-runs`, `analysis-compare*`), column details, Random/First rows switch, *Profile these rows*,
-  story sentences, Time bands, example records, φK. Faster: a spare analysis process kept connected, random samples
-  without sorting the dataset (a Bernoulli sample, or the whole dataset when it fits), lighter profile and charts.
-
-- **File viewer** (eye icon on a file log row): the archived file a download would send, read a few lines at a time
-  (100, more on scrolling or *Load 1,000 more*, at most 50,000 kept) from gzip, ZIP or plain files of any size, with
-  the file's line numbers, monospace, columns of a delimited file colored (delimiter detected or picked, header name on
-  hover). A search reads the whole file on the server (text or regular expression, match case), lists the matching
-  lines with their numbers and goes on with *Find more*; a click shows the file from that line. The *Delimiter* field
-  takes any delimiter (several characters too) or fixed column widths (`10,5,8`), saved per datasource for everyone.
-  Header: datasource link, file ID, status, *Copy* path; chips *Text* / *ASN.1* / *Records*, reopened as last picked
-  per datasource. Options `[DATASOURCES] view_*`; routes `view-ds-file`, `grep-ds-file`.
-  **Incoming files** (eye icon in the input file lists, incl. the Files page's *Incoming*) open in it too, read from
-  the input directory (text or ASN.1, no download or records; routes take `source_id` + `path` instead of `id`).
-- **ASN.1 view** of binary files (BER, DER, CER; opened so when the file looks like it, or *Text* / *ASN.1*): a tree
-  of tags read node by node (500 children at a time, so files of any size; 00/FF padding skipped, undecodable bytes
-  shown and passed), beside a hex dump of the whole file coloring the selected node's tag, length and value (a byte
-  click selects its node), with *XML* / *Text* tabs of the node's subtree and its details (value readings: integer,
-  text, TBCD, address, 3GPP time, IP). **Grammars** (*Grammars…*, or the Datasources page's *ASN.1 grammars* chip:
-  TAP, RAP, NRTRDE, 3GPP 32.298, a vendor's own; none shipped), added by pasting or uploading and edited in place
-  (files as tabs, rename carries the datasources), name fields and decode values by type; search by field path and
-  value, or by hex bytes; *Save
-  for datasource* keeps grammar, type and record layout (start offset, a record header before each record as in
-  Huawei SBC files, filler 00/FF, FF or none), shown in the datasource editor's *File viewer* box and as a badge in
-  the Datasources list (filters by grammar). Pentaho decoders' **tag maps** (`props.put("82.4.1",...)`) upload as
-  grammars and decode as the decoder does; details show the full tag (`SEQ.1.4.0`). Options `[DATASOURCES] asn1_*`; routes `*-ds-file-asn1`,
+- **Dashboard**, the new start page (`/`, sign-in, logo), live and full width: 12 tiles of today against the same
+  weekday last week (run errors, scheduler slots with the next fire and maintenance, files in input and processing,
+  records rejected...); over 24h / 7d / 30d runs by status, type and trigger, slowest controls, fetched vs
+  discrepancies, weekday × hour, the scheduler's last and next 24 hours, files over time by status, top datasources,
+  loading and throughput, KPI alarms per control (a cell opens the run in its Run log) and health tiles. Panels hidden
+  and moved per browser; clicks open the list pages filtered. Route `get-dashboard`; past file log days summed into
+  `rapo_file_summary` by the maintenance or *Refresh* (`refresh-file-summary`). Options `[DASHBOARD]
+  file_summary_days`, `[DATASOURCES] scan_idle_interval`.
+- **File viewer** (eye icon on a file log row or an incoming file): gzip, ZIP or plain files of any size read a few
+  lines at a time with their line numbers, delimited columns colored (any delimiter or fixed widths, saved per
+  datasource); search of the whole file on the server (text or regex). Options `[DATASOURCES] view_*`; routes
+  `view-ds-file`, `grep-ds-file`.
+- **ASN.1 view** of binary files (BER, DER, CER): a tree of tags read node by node beside a hex dump, XML/Text of a
+  subtree, typed value readings; **grammars** (TAP, RAP, NRTRDE, 3GPP 32.298, a vendor's; none shipped) and Pentaho
+  **tag maps** uploaded and edited in place, saved per datasource with the record layout (start offset, record header,
+  filler); search by field path, value or hex bytes. Options `[DATASOURCES] asn1_*`; routes `*-ds-file-asn1`,
   `get-ds-file-bytes`, `*-asn1-grammar*`, `*-viewer-settings`.
-- **Loaded records** (database icon on a file log row, or the viewer's *Records* chip): the rows PDI Core
-  loaded from the file (`FILE_ID`) in each table of the datasource (a select with each table's count), as a plain
-  table read page by page from the database and searched there in all columns (no sampling), with the columns to
-  show; alone or below the file in a draggable split; counts checked against the file log; *Open in Data analysis*
-  shows them on the full page (`/analysis/file/:fileId/:table`). Routes `get-file-tables`, `get-file-records`,
-  `analysis-start-file`.
-- **Upload files** into the first input directory of a datasource: *Upload* on the file log and *Upload files* in the
-  editor's Input files box and the input files dialog, or drop files on any of them. Per-file progress; a file not matching the file name pattern is
-  flagged, one already waiting is never overwritten; written under a temporary name and renamed when complete, so
-  PDI Core never loads a partial file. `[DATASOURCES] file_upload` (off), `max_upload_mb`; routes `check-ds-upload`,
-  `upload-ds-file`.
-- **File log page** like Results/Files: day navigator in the title, status/*Duplicate* chips toggle the filters,
-  *Upload* beside them, no filter fields; the header search takes a file name, `?prefix` or `#file ID` and offers
-  matches of other days (*Not duplicates* filter dropped; `search-files` `source_id`).
-- **Instance limit no longer blocks the queue:** a queued run whose control already runs `instance_limit` jobs on
-  the server is held (*Queued · instance limit*) and other controls take the free slots; held runs start in queue
-  order and are not timed out while held. The limit also counts active runs older than a day.
-- **Superseded runs** (any later run of the same period, from the moment it is queued) folded under it in Results and
-  the Run log: a *Ver*
-  bubble (runs of the period, darker the more) unpacks them, faded with their version number; columns follow the
-  width (one *Period* column, no Type, no Processname only as needed); the Run log sorted by period with a column per
-  stored KPI value in a soft green or alarm-colored box, filled once the post-run hook stored it; Results has one *KPIs*
-  column (by priority, 3–4 same-width boxes, green or alarm-colored, `+N`, sorts by alarm); *Calculate KPIs* flags a
-  stored KPI that differs, failed or is missing with a warning icon instead of *Stored* columns; and a superseded run there
-  opens its control's Run log on it, as does a control's name (the run selected; a click selects a Run log row); discrepancies blue instead of red; no *PV* column (a blue info badge on the status chip,
-  a stop icon for 0), warnings as an amber badge on it (`get-control-runs`: `superseded_by`, `kpis`,
-  `kpi_types`).
-- **Email: several files with several sheets each** (*+ File*, *+ Sheet*): result sheets (REC: side and result
-  types per sheet, the same table in several sheets) and Free SQL sheets, each named, filtered and laid out on its own;
-  an *Attach* switch and a row limit per file, the size limit over all files; a file whose sheets have no rows is left
-  out; the summary has a line per file. The Email tab is now boxes with one-line sheets that open (the Evaluate SQL
-  folds alike), moved by drag or menu. Old configurations are read as one file (REC sheets keep `A`/`B`) and saved as `files` the next time.
-- **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
-- **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
-  `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.
+- **Loaded records** of a file (database icon, or the viewer's *Records* chip): the rows PDI Core loaded into each
+  table of the datasource, paged and searched in the database, alone or below the file; *Open in Data analysis*
+  (`/analysis/file/:fileId/:table`). Routes `get-file-tables`, `get-file-records`, `analysis-start-file`.
+- **Upload files** into a datasource's first input directory (file log, editor, input files dialog, or drop), with
+  progress and a pattern check, never overwriting and renamed when complete. `[DATASOURCES] file_upload` (off),
+  `max_upload_mb`; routes `check-ds-upload`, `upload-ds-file`.
+- **Data analysis and Discrepancy analysis redesigned** as single scrolling pages with an *On this page* list (old
+  `?tab=` links work): Summary with a 30-day trend, Result types, compact column cards (one visual each, date
+  histograms in whole units of the run's window), Records; findings as cards and Attributes opening in place to a
+  butterfly of their bins. Faster (a spare connected process, Bernoulli samples without sorting). Removed: Compare
+  (`get-analysis-targets`, `get-control-done-runs`, `analysis-compare*`), Missing values, Duplicates, correlation
+  heatmap, Time bands, example records, φK.
+- **Superseded runs folded** under the later run of the same period in Results and the Run log (*Ver* bubble unpacks
+  them); stored KPI values in colored boxes (a *KPIs* column in Results sorting by alarm, a column per KPI in the Run
+  log); a superseded run or a control name in Results opens the Run log on the run; *Calculate KPIs* flags stored
+  values that differ; columns drop as the width shrinks; no *PV* column (a badge on the status chip, as warnings).
+  `get-control-runs`: `superseded_by`, `kpis`, `kpi_types`.
+- **Email: several files with several sheets each**: result sheets (REC: side and result types per sheet) and Free
+  SQL sheets, named and filtered each; *Attach* and a row limit per file, the size limit over all; files without rows
+  left out. Old configurations read as one file and saved as `files` on the next save.
+- **Run log by periods:** the latest 14 periods with all their runs, older ones loading as the table scrolls; no *Days
+  back* (`get-control-runs`: `periods`, `before_*`, `through_*`, `all` instead of `days`).
+- **Instance limit no longer blocks the queue:** a run whose control already runs `instance_limit` jobs is held
+  (*Queued · instance limit*) while other controls take the free slots, in queue order and without timing out.
+- **File log page** like Results/Files: day navigator in the title, status/*Duplicate* chips as filters, *Upload*
+  beside them; the search takes a file name, `?prefix` or `#file ID` and finds other days (`search-files`).
+- **Instance health kept across restarts** in `rapo_health_minute` (`[HEALTH] history_days`, 7); a 7d span.
+- **Faster loading:** UI bundles gzipped and cached for good, JSON answers gzipped, ECharts its own bundle.
 - **Python 3.10 installs again:** `websockets` pinned to 16.0 (17.1 needs Python 3.11; broken since v0.8.3).
-- **Run log by periods:** no *Days back*; the latest 14 periods (by *Run from*) with all their runs, older ones loading
-  as the table scrolls until all are shown (`28 of 58 periods` in the header); another sort loads all and shows a
-  sort chip; links to a run load down to its period (`get-control-runs`: `periods`, `before_*`, `through_*`, `all`
-  instead of `days`).
+- **Next maintenance** chip on the Scheduler page (lease holder only); `scheduler-status` adds `maintenance_interval`.
+- **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
 
 ## v0.8.5 — 2026-10-05
 

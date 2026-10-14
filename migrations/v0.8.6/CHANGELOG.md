@@ -1,14 +1,18 @@
 # Rapo v0.8.6 Change Log
 
 ## Annotation
-Rapo opens on a new **Dashboard**: what goes on in the instance at a glance and live (today's numbers against last
-week, runs, scheduler, files, KPIs and health as donuts, strips and small trends over 24 hours, 7 or 30 days), the instance health keeps a week of history across restarts, and the UI loads faster. A file of the file log can be viewed in the browser, however large, and searched as a whole on the server. Files can
-be uploaded into a datasource's input directory from the file log and the datasource editor, and the records a
-file loaded are shown below it or on the Data analysis page. A binary file is shown as ASN.1 (BER, DER, CER): its
-tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. Data
-analysis and Discrepancy analysis are redesigned as single pages that lead with what matters and open in under a
-second. A control's email can carry several Excel files, each with any number of result and Free SQL sheets. The release adds three tables (`rapo_viewer_config`, `rapo_file_summary`, `rapo_health_minute`) and one Python
-package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [migration instructions](README.md).
+Rapo opens on a new **Dashboard**: the instance at a glance and live (today's numbers against last week, then runs,
+scheduler, files, KPI alarms and health as donuts, strips and small trends over 24 hours, 7 or 30 days); the instance
+health keeps a week of history across restarts, and the UI loads faster. The PDI Core file log becomes a working
+tool: a file can be viewed in the browser however large, searched as a whole on the server, shown as ASN.1 (BER, DER,
+CER: a tree of tags named by an uploaded grammar or Pentaho tag map, beside its bytes) and next to the records it
+loaded, and files can be uploaded into a datasource's input directory. Data analysis and Discrepancy analysis are
+redesigned as single pages that lead with what matters and open in under a second. Results and the Run log fold
+superseded runs under the run that replaced them and show stored KPI values; the Run log loads period by period as it
+scrolls. A control's email can carry several Excel files, each with any number of result and Free SQL sheets. A
+control at its instance limit no longer blocks the queue, and Python 3.10 installs again. The release adds three
+tables (`rapo_viewer_config`, `rapo_file_summary`, `rapo_health_minute`) and one Python package (`asn1tools`), and
+drops one (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **Dashboard.** A new page, first in the side menu, is where Rapo opens (`/`, unknown paths, the sign-in and the
    logo lead to `/dashboard`; Results stays one click away). One scrolling page without a title: a sticky row of links to its sections at
@@ -97,23 +101,12 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      tile's history has no gaps.
    - New options `[DASHBOARD] file_summary_days`, `[DATASOURCES] scan_idle_interval`; new routes
      `get-dashboard`, `refresh-file-summary`; `datasources:changed` has the kind `summary`.
-2. **Instance health kept across restarts.** The one-minute aggregates of the Health tabs are stored in the new
-   table `rapo_health_minute` (per server, `[HEALTH] history_days`, default 7, purged hourly) and read back when the
-   server starts, so a restart no longer empties the charts; the Health tabs offer a **7d** span (from 7 days kept).
-   The minutes also hold the files waiting in the input directories (the Dashboard's *Files in input*). A database
-   that cannot store them (the table missing) is noted once in the server log and the history stays in memory.
-3. **Faster loading.** The UI's files are sent compressed (gzip, about a quarter of their size: the main bundle 118
-   KB instead of 442 KB) and, being named by their content, kept by the browser for good, so a reload asks only for
-   the page itself; JSON answers of 1 KB or more are compressed too (downloads and file views are not). Charts are a
-   bundle of their own, loaded with the first page that draws one and shared by the Dashboard and the analysis pages
-   (the analysis bundle drops from 628 KB to 134 KB). A tab still showing an older build reloads itself when it asks
-   for a bundle that is gone.
-4. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
+2. **File viewer.** Each file log row whose archived file can be downloaded (`SUCCESS` or `ERROR`, archived file kept,
    found on this server within the datasource's archive, error or duplicate directory) has an eye icon opening the
    file in a viewer, on the Files page's file log and in the editor's *File log* tab.
    - **Header.** The file's name, its datasource (a link to the datasource editor), its file ID and status, and the
      size, compression and encoding of what is shown; *Copy* copies the archived file's full path, beside *Download*.
-     Below, the chips *Text*, *ASN.1* (how the file is read) and *Records* (the rows it loaded, see 5): the ringed
+     Below, the chips *Text*, *ASN.1* (how the file is read) and *Records* (the rows it loaded, see 4): the ringed
      ones are shown. The viewer opens a datasource's files as last picked in this browser (Text or ASN.1, with or
      without the records), except a binary file that looks like ASN.1, which opens as ASN.1.
    - **Reading.** The first 100 lines are shown at once; scrolling to the bottom loads the next ones, *Load 1,000
@@ -154,42 +147,7 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      `view_grep_matches`. The viewer is offered wherever downloads are (`file_download`), for incoming files too.
      Each opening and search is written to the server log. New routes `view-ds-file` and `grep-ds-file`; they and
      the ASN.1 routes take a file ID (`id`) or an incoming file (`source_id` and `path`).
-5. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
-   (when the datasource has tables and the file wrote or rejected records) opens the viewer on them alone, and the
-   viewer's *Records* chip (with the file log's written count) shows or hides them: with *Text* or *ASN.1* also on,
-   the records are below the file, half each, resizable by dragging the bar (the share is kept); clicking the ringed
-   *Text* or *ASN.1* again leaves the records alone.
-   - **Tables.** The records are read from the datasource's tables (*Retention* tab) by `FILE_ID`, the file's ID in
-     the file log. The *Table* select lists them with the rows of this file in each (read by the `FILE_ID` index);
-     a table that does not exist or has no `FILE_ID` is listed but can not be chosen. The first table with rows is
-     shown. Next to it the rows are checked against the file log's written and rejected counts (orange when the
-     tables hold a different number).
-   - **Rows.** The rows are a plain table read straight from the database, 200 at a time as you scroll, so every
-     row of the file can be reached; nothing is sampled or analysed. *Search all columns* searches all of the file's
-     rows in the database (case-insensitive, numbers and dates as text) and shows `N of M rows`. *Columns* chooses and
-     orders the columns shown (the same choice as on the Data analysis page for that table). *Open in Data analysis*
-     opens the rows (the search included) on the full page (Summary, Columns, Records), at
-     `/analysis/file/<file ID>/<table>`, a link that can be shared.
-   - The viewer is as large in every layout.
-   - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
-     read.
-6. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
-   editor's *Input files* box and the input files dialog (*Matching files* / *All files*, Incoming counts on the Files
-   page) open a dialog to choose files, or files are dropped on any of these places. They go into the **first**
-   directory of the saved *Input directory* (in the editor, save changes first); the input files dialog lists the
-   directories again after an upload.
-   - Each file is listed with its size; one whose name the file name pattern does not match is flagged in orange
-     (PDI Core will not pick it up) but can be uploaded; one already waiting in the directory is left out, as are
-     names with a path, a leading dot or control characters, and files over `max_upload_mb`.
-   - Files are uploaded one by one with a progress bar; *Cancel* stops the current one. A missing input directory can
-     be created from the dialog; a disabled datasource takes files too (the dialog notes that PDI Core picks them up
-     once it is in a lane).
-   - **Safe for PDI Core.** A file is streamed to disk under a temporary name the file name pattern does not match
-     and renamed when complete, so PDI Core never loads a partial file; an existing file is never overwritten, and a
-     canceled or failed upload leaves nothing behind. Each upload is written to the server log.
-   - New options `[DATASOURCES] file_upload` (**off by default**) and `max_upload_mb` (2048 MB per file). New routes
-     `check-ds-upload` and `upload-ds-file`.
-7. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
+3. **ASN.1 view.** A binary file (TAP, RAP, NRTRDE, CDR files of the core network) opens in the viewer as ASN.1 when
    its first bytes read as BER; the header's *Text* / *ASN.1* switch changes the view of any file, and a binary file
    that does not start as ASN.1 offers *Decode as ASN.1*.
    - **Record layout.** *Start offset* skips a file header that is no ASN.1; *Record header* skips that many bytes
@@ -249,175 +207,221 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      `locate-ds-file-asn1`, `render-ds-file-asn1`, `search-ds-file-asn1`, `get-ds-file-bytes`, `get-asn1-grammars`,
      `get-asn1-grammar-types`, `save-asn1-grammar`, `delete-asn1-grammar`, `get-viewer-settings`,
      `save-viewer-settings`. Grammar and settings changes are written to the server log.
-8. **Instance limit no longer blocks the queue.** A queued run whose control already runs as many jobs as its
-   `instance_limit` on this server is held in the queue and passed over, so other controls take the free slots.
-   Before, ten runs of one control with `instance_limit = 1` filled every `control_parallelism` slot while only one of
-   them worked. Held runs start in the order they were queued (before, in no particular order) and, like any queued
-   run, are not timed out while held (before, a run waiting for its own control could end canceled by its
-   `timeout`). The Scheduler's *Running* tab shows them as *Queued · instance limit*, and `scheduler-status` marks
-   them with `held: "instance_limit"`. The limit also counts active runs started more than a day ago (they were
-   ignored). Runs of the control on another server, or as another control's cascade or chain source, are still waited
-   for inside the run's process, holding its slot, as before.
-9. **File log page laid out like Results and Files.** The file log of a datasource (`/files-log/<id>`, and the
-   datasource editor's *File log* tab) has the day navigator in its title (previous/next day, a date picker, today)
-   instead of the day buttons of its filter row, and no filter fields any more: the status and *Duplicate* chips of
-   the header toggle their filter (highlighted while on), and *Upload* sits beside them. The page searches with the
-   header search, as the Files page does: a file name (any case), `?<start of a file name>` (case-sensitive) or
-   `#<file ID>`; a datasource name or ID carried over from the Files page filters nothing. A file ID or name prefix not
-   on the day shown is looked up on the other days of the datasource: *Go to its day* (file ID) or a list of the
-   files found opens their day with the file picked. The editor's tab keeps a *File name* box (it has no header
-   search). The *Not duplicates* filter is gone (`dup=N` in a link is ignored). `search-files` takes an optional
-   `source_id`.
-10. **Data analysis and Discrepancy analysis redesigned.** Both pages are one scrolling page instead of tabs, with an
+4. **Loaded records.** The rows PDI Core loaded from a file can be shown beside it: a database icon on a file log row
+   (when the datasource has tables and the file wrote or rejected records) opens the viewer on them alone, and the
+   viewer's *Records* chip (with the file log's written count) shows or hides them: with *Text* or *ASN.1* also on,
+   the records are below the file, half each, resizable by dragging the bar (the share is kept); clicking the ringed
+   *Text* or *ASN.1* again leaves the records alone.
+   - **Tables.** The records are read from the datasource's tables (*Retention* tab) by `FILE_ID`, the file's ID in
+     the file log. The *Table* select lists them with the rows of this file in each (read by the `FILE_ID` index);
+     a table that does not exist or has no `FILE_ID` is listed but can not be chosen. The first table with rows is
+     shown. Next to it the rows are checked against the file log's written and rejected counts (orange when the
+     tables hold a different number).
+   - **Rows.** The rows are a plain table read straight from the database, 200 at a time as you scroll, so every
+     row of the file can be reached; nothing is sampled or analysed. *Search all columns* searches all of the file's
+     rows in the database (case-insensitive, numbers and dates as text) and shows `N of M rows`. *Columns* chooses and
+     orders the columns shown (the same choice as on the Data analysis page for that table). *Open in Data analysis*
+     opens the rows (the search included) on the full page (Summary, Columns, Records), at
+     `/analysis/file/<file ID>/<table>`, a link that can be shared.
+   - The viewer is as large in every layout.
+   - New routes `get-file-tables`, `get-file-records` and `analysis-start-file`. Only tables linked to the file's datasource are ever
+     read.
+5. **Upload files.** *Upload* on the file log (Files page and the editor's *File log* tab) and *Upload files* in the
+   editor's *Input files* box and the input files dialog (*Matching files* / *All files*, Incoming counts on the Files
+   page) open a dialog to choose files, or files are dropped on any of these places. They go into the **first**
+   directory of the saved *Input directory* (in the editor, save changes first); the input files dialog lists the
+   directories again after an upload.
+   - Each file is listed with its size; one whose name the file name pattern does not match is flagged in orange
+     (PDI Core will not pick it up) but can be uploaded; one already waiting in the directory is left out, as are
+     names with a path, a leading dot or control characters, and files over `max_upload_mb`.
+   - Files are uploaded one by one with a progress bar; *Cancel* stops the current one. A missing input directory can
+     be created from the dialog; a disabled datasource takes files too (the dialog notes that PDI Core picks them up
+     once it is in a lane).
+   - **Safe for PDI Core.** A file is streamed to disk under a temporary name the file name pattern does not match
+     and renamed when complete, so PDI Core never loads a partial file; an existing file is never overwritten, and a
+     canceled or failed upload leaves nothing behind. Each upload is written to the server log.
+   - New options `[DATASOURCES] file_upload` (**off by default**) and `max_upload_mb` (2048 MB per file). New routes
+     `check-ds-upload` and `upload-ds-file`.
+6. **Data analysis and Discrepancy analysis redesigned.** Both pages are one scrolling page instead of tabs, with an
    *On this page* list on the right (in a row under the header on narrow screens) that marks the section being read
    and jumps to a section; the section is kept in the link (`#records`, `#attributes`), and older links with `?tab=`
    open the matching section. The run's datasets (and sides) are avatar chips with their counts, the one shown ringed;
    the buttons are the app's outlined ones; filters show as the orange filter chips of the list pages.
    - **Data analysis** shows *Summary*, *Result types* (discrepancies), *Columns* and *Records*.
-     - *Summary*: chips for the records loaded (all, a random sample, or the first ones; with *Load … more* or *Sample
-       …*), the columns, and only when there are any: duplicate records (a click shows them), columns 5% or more
-       missing, columns not profiled, *Config changed*. Below them the three strongest **related columns** (Pearson,
-       Spearman or Cramér's V, 0.4 or more); a click shows the records grouped by both. Then a compact trend of the
-       last 30 days.
-     - *Result types*: one bar in the result type colors, chips per type, and the fields the value discrepancies
-       differ in (from RAPO_DISCREPANCY_DESCRIPTION, *DURATION_SEC (239 of 239)*), each opening its records; case
-       values when there are several.
-     - *Columns*: a compact card per column, the columns that split the records first (few values, then numbers,
-       dates, other text), each with its number of values, missing (grey, orange from 5%), blank and zero shares as
-       chips, and **one** visual: its most frequent values as bars, or a histogram of its numbers or dates, never a
-       chart of one bar. A date histogram counts **whole clock hours, days or months**: one bar per hour up to 2
-       days (a daily control's 24 hours, ticks 00 06 12 18 24), per day up to 62 days, per month beyond, and when
-       most of a column's values lie in the run's window (`date_from` – `date_to`) its bars cover exactly that
-       window (*Run window 2026-10-09 · by hour*), records outside it (e.g. a reconciliation's time shift) as faded
-       bars at the ends; other date columns are bucketed over their own range the same way. A bar shows its hour
-       (day, month) and opens its records. Constant, empty and (nearly) unique columns are only named in one line; the RAPO_ columns
-       are left out (Result types shows them, Records has them).
-     - *Records* is the last section, one window tall: a click on any value, bar, chip or bin of the page filters it
-       and scrolls there. Its tools are the same (search, Columns, Group by, Export, the REC counterpart); *Filter in
-       the database* moves its filters into the database (the whole page then describes the matching records).
-     - **Removed:** the Missing values tab (bar chart and nullity matrix), the Duplicates tab (the top-50 table; the
-       duplicate records stay one click away), the correlation heatmap and its method switch, the **Compare** tab
-       (with another sample, the previous run, the other side or any run), the alerts list, the column types list,
-       the memory figure, each column's details (quantiles, moments, extremes, hour and weekday charts), the
-       *Random / First rows* switch, *Profile these rows*, the trend's 10/30/90 days switch and the column order in
-       the Columns menu (show and hide stay). Routes `get-analysis-targets`, `get-control-done-runs`,
-       `analysis-compare-mapping` and `analysis-compare` are gone; `analysis-profile` has the sections `overview`,
-       `columns`, `relations` and `breakdown` and no `filters`/`search`.
+    - *Summary*: chips for the records loaded (all, a random sample, or the first ones; with *Load … more* or *Sample
+      …*), the columns, and only when there are any: duplicate records (a click shows them), columns 5% or more
+      missing, columns not profiled, *Config changed*. Below them the three strongest **related columns** (Pearson,
+      Spearman or Cramér's V, 0.4 or more); a click shows the records grouped by both. Then a compact trend of the
+      last 30 days.
+    - *Result types*: one bar in the result type colors, chips per type, and the fields the value discrepancies
+      differ in (from RAPO_DISCREPANCY_DESCRIPTION, *DURATION_SEC (239 of 239)*), each opening its records; case
+      values when there are several.
+    - *Columns*: a compact card per column, the columns that split the records first (few values, then numbers,
+      dates, other text), each with its number of values, missing (grey, orange from 5%), blank and zero shares as
+      chips, and **one** visual: its most frequent values as bars, or a histogram of its numbers or dates, never a
+      chart of one bar. A date histogram counts **whole clock hours, days or months**: one bar per hour up to 2
+      days (a daily control's 24 hours, ticks 00 06 12 18 24), per day up to 62 days, per month beyond, and when
+      most of a column's values lie in the run's window (`date_from` – `date_to`) its bars cover exactly that
+      window (*Run window 2026-10-09 · by hour*), records outside it (e.g. a reconciliation's time shift) as faded
+      bars at the ends; other date columns are bucketed over their own range the same way. A bar shows its hour
+      (day, month) and opens its records. Constant, empty and (nearly) unique columns are only named in one line; the RAPO_ columns
+      are left out (Result types shows them, Records has them).
+    - *Records* is the last section, one window tall: a click on any value, bar, chip or bin of the page filters it
+      and scrolls there. Its tools are the same (search, Columns, Group by, Export, the REC counterpart); *Filter in
+      the database* moves its filters into the database (the whole page then describes the matching records).
+    - **Removed:** the Missing values tab (bar chart and nullity matrix), the Duplicates tab (the top-50 table; the
+      duplicate records stay one click away), the correlation heatmap and its method switch, the **Compare** tab
+      (with another sample, the previous run, the other side or any run), the alerts list, the column types list,
+      the memory figure, each column's details (quantiles, moments, extremes, hour and weekday charts), the
+      *Random / First rows* switch, *Profile these rows*, the trend's 10/30/90 days switch and the column order in
+      the Columns menu (show and hide stay). Routes `get-analysis-targets`, `get-control-done-runs`,
+      `analysis-compare-mapping` and `analysis-compare` are gone; `analysis-profile` has the sections `overview`,
+      `columns`, `relations` and `breakdown` and no `filters`/`search`.
    - **Discrepancy analysis** shows *Summary*, *Attributes* and *Differences* (REC value discrepancies).
-     - *Summary*: chips for the discrepancies and their share of the fetched records, the result types (a click
-       analyses one; *All* returns) and the notes (*Preliminary*, *Sampled N%*, *Config changed*, *Source changed*,
-       *Counts clamped*, explained on hover) in place of banners and sentences; a 30-day trend of the discrepancies
-       and their rate (a click opens that run's analysis); then the **findings as cards**, the strongest one wider:
-       up to three drivers and two combinations, each with the share of the discrepancies against the share of the
-       normal records on one scale, its lift, and *Records*, which opens Data analysis on those discrepancies at
-       their records (*Back* returns to the same place). A click on a card opens its attribute. The columns not
-       related are named in one line.
-     - *Attributes*: one row per column by its best binning, strongest first, with its *Explained* bar (Theil's U)
-       and its over-represented bins. The *Time* binning is whole hours, days or months of the run's window (or of
-       the column's range), with *Before* / *From* bins for records outside it, instead of 20 equal periods between
-       the first and last record; it is left out for a one-day window (the *Hour of day* binning is the same), as is
-       *Weekday* for values of one day; a click opens it in place: chips for its other binnings and the shares of its
-       largest 12 bins as a butterfly (normal records left, discrepancies right), each bin opening its discrepancies
-       or its fetched records. The columns not related are folded at the end.
-     - *Differences*: one row per field with the range, median and sum of the differences and a histogram.
-     - **Removed:** the story sentences, the Time bands heatmap, the Records tab of example records (and the queries
-       that read them), the Combinations and Not analysed tabs (now cards and a footnote), and **φK**: the report has no
-       `story`, `excerpts`, `heatmaps` or `phik`; `findings` carry `kind`, `column`, `what`, `phrase`, counts, `lift`
-       and `rate`; `unrelated` lists the columns not related; `magnitude` fields have `sum`.
+    - *Summary*: chips for the discrepancies and their share of the fetched records, the result types (a click
+      analyses one; *All* returns) and the notes (*Preliminary*, *Sampled N%*, *Config changed*, *Source changed*,
+      *Counts clamped*, explained on hover) in place of banners and sentences; a 30-day trend of the discrepancies
+      and their rate (a click opens that run's analysis); then the **findings as cards**, the strongest one wider:
+      up to three drivers and two combinations, each with the share of the discrepancies against the share of the
+      normal records on one scale, its lift, and *Records*, which opens Data analysis on those discrepancies at
+      their records (*Back* returns to the same place). A click on a card opens its attribute. The columns not
+      related are named in one line.
+    - *Attributes*: one row per column by its best binning, strongest first, with its *Explained* bar (Theil's U)
+      and its over-represented bins. The *Time* binning is whole hours, days or months of the run's window (or of
+      the column's range), with *Before* / *From* bins for records outside it, instead of 20 equal periods between
+      the first and last record; it is left out for a one-day window (the *Hour of day* binning is the same), as is
+      *Weekday* for values of one day; a click opens it in place: chips for its other binnings and the shares of its
+      largest 12 bins as a butterfly (normal records left, discrepancies right), each bin opening its discrepancies
+      or its fetched records. The columns not related are folded at the end.
+    - *Differences*: one row per field with the range, median and sum of the differences and a histogram.
+    - **Removed:** the story sentences, the Time bands heatmap, the Records tab of example records (and the queries
+      that read them), the Combinations and Not analysed tabs (now cards and a footnote), and **φK**: the report has no
+      `story`, `excerpts`, `heatmaps` or `phik`; `findings` carry `kind`, `column`, `what`, `phrase`, counts, `lift`
+      and `rate`; `unrelated` lists the columns not related; `magnitude` fields have `sum`.
    - **Faster.** A spare analysis process is kept spawned and connected to the database, so a session or a
-     discrepancy analysis starts without the 1–2 s a new process needs (it is replaced after `reload-config`). A
-     random sample of a dataset larger than `initial_rows` no longer has the database sort the whole dataset first:
-     each record is kept with the probability that gives the sample's size, so the records stream at once (*Sample
-     …* reads a bigger one); a dataset that fits is read as it is, without any sort. Only when its count is not
-     known (a fetched dataset filtered in the database) is it still shuffled. The column profile computes less, the
-     charts of the cards are drawn without a chart library, and the analysis bundle is 20% smaller. On Dev a
-     discrepancy analysis of 6,000 records takes 0.6 s instead of 3–4 s.
+    discrepancy analysis starts without the 1–2 s a new process needs (it is replaced after `reload-config`). A
+    random sample of a dataset larger than `initial_rows` no longer has the database sort the whole dataset first:
+    each record is kept with the probability that gives the sample's size, so the records stream at once (*Sample
+    …* reads a bigger one); a dataset that fits is read as it is, without any sort. Only when its count is not
+    known (a fetched dataset filtered in the database) is it still shuffled. The column profile computes less, the
+    charts of the cards are drawn without a chart library, and the analysis bundle is 20% smaller. On Dev a
+    discrepancy analysis of 6,000 records takes 0.6 s instead of 3–4 s.
    - The menu of a run's discrepancies number lists *Discrepancy analysis* first.
    - The Python package `phik` (with `scipy`, `matplotlib`, `joblib`) is no longer required.
-11. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
-    *Scheduler* tab, as on the *Upcoming* and *History* tabs.
-12. **Superseded runs folded, KPIs in the Run log.** A run is *superseded* when a later run of the same control and
-    period (the days of its *Run from* and *Run to*) exists, whatever its status: a re-run takes over the moment it is
-    queued, and the older runs fold under it at once. In Results and
-    the editor's Run log a new *Ver* column shows the number of runs of the period as a bubble, darker the more there
-    are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
-    (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
-    superseded run whose newer run is on another day stays in place with a ⟲ mark. On Results, that mark and the
-    version number of an unpacked older run open the control's Run log on that run: the Run log loads down to its
-    period, which is unpacked, the row scrolled into view and selected (tinted yellow). A control's name on Results opens
-    its Run log on that run the same way (the row menu's *Edit control* opens the editor as before). A click on a row of
-    the Run log selects it, one at a time; a click on the selected row (not on its numbers, chips or buttons) or Esc
-    clears it, and leaving the page forgets it. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
-    KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a box of one width for
-    every value with the digits on the right, dark on soft green within its limits, white on its alarm level's color
-    when it alarmed; a click calculates the KPIs of that run. The *Calculate KPIs* dialog no longer has *Stored*
-    columns: a row whose stored value or alarm level differs from the calculation, was stored with an error or not at
-    all ends with a warning icon (orange, red, grey) saying what was stored on hover. The values of a run appear as
-    soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
-    then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
-    error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
-    KPIs by priority, three values (four on wide screens; the KPI's code on hover) and
-    `+N` for the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
-    highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
-    values no longer show as `-…`; a NULL value reads `NULL`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
-    returned 0 shows a stop icon in its status chip, and a run with a Prerequisite value a small blue info badge on
-    the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter. Discrepancy counts and rates are blue
-    (underlined on hover, as the fetched counts), no longer red: red is left to the KPI alarms.
-    **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
-    as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
-    log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer
-    scrolls sideways at common widths. `get-control-runs` answers
-    `superseded_by`/`superseded_on` per run and, for one control, `kpis` per run and `kpi_types`.
-13. **Next maintenance on the Scheduler page.** A chip after the next fire shows the time left to the scheduler's
+7. **Superseded runs folded, KPIs in the Run log.** A run is *superseded* when a later run of the same control and
+   period (the days of its *Run from* and *Run to*) exists, whatever its status: a re-run takes over the moment it is
+   queued, and the older runs fold under it at once. In Results and
+   the editor's Run log a new *Ver* column shows the number of runs of the period as a bubble, darker the more there
+   are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
+   (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
+   superseded run whose newer run is on another day stays in place with a ⟲ mark. On Results, that mark and the
+   version number of an unpacked older run open the control's Run log on that run: the Run log loads down to its
+   period, which is unpacked, the row scrolled into view and selected (tinted yellow). A control's name on Results opens
+   its Run log on that run the same way (the row menu's *Edit control* opens the editor as before). A click on a row of
+   the Run log selects it, one at a time; a click on the selected row (not on its numbers, chips or buttons) or Esc
+   clears it, and leaving the page forgets it. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
+   KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a box of one width for
+   every value with the digits on the right, dark on soft green within its limits, white on its alarm level's color
+   when it alarmed; a click calculates the KPIs of that run. The *Calculate KPIs* dialog no longer has *Stored*
+   columns: a row whose stored value or alarm level differs from the calculation, was stored with an error or not at
+   all ends with a warning icon (orange, red, grey) saying what was stored on hover. The values of a run appear as
+   soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
+   then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
+   error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
+   KPIs by priority, three values (four on wide screens; the KPI's code on hover) and
+   `+N` for the rest (all of them, exact, on hover); a value calculates the KPIs of the run, and the header sorts by the
+   highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
+   values no longer show as `-…`; a NULL value reads `NULL`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
+   returned 0 shows a stop icon in its status chip, and a run with a Prerequisite value a small blue info badge on
+   the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter. Discrepancy counts and rates are blue
+   (underlined on hover, as the fetched counts), no longer red: red is left to the KPI alarms.
+   **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
+   as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
+   log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer
+   scrolls sideways at common widths. `get-control-runs` answers
+   `superseded_by`/`superseded_on` per run and, for one control, `kpis` per run and `kpi_types`.
+8. **Email: several files, several sheets per file.** The *Attachment* part of the editor's *Email* tab becomes a list
+   of files (*+ File*), each an Excel file with its own name and *Attach* switch and any number of sheets (*+ Sheet*):
+   result sheets (the run's rows of the result table; for a reconciliation side A or B with the result types chosen
+   per sheet, so e.g. losses and discrepancies of side A can be two sheets) and Free SQL sheets, each with its own
+   name, filter and fields, or query. The same table can be exported in several sheets and files.
+   - **Names.** An empty file name gives `<NAME>_<run from>[_<run to>].xlsx`, then `_2`, `_3` from the second file on;
+     a sheet without a name is named after the control (ANL/REP) or its side, with its result types when they are not
+     all the side saves (`A`, `A Loss+Discrepancy`), Free SQL sheets `SQL`, `SQL 2`... Names must differ within a file
+     (sheets) and an email (files); two names that still meet after the variables are rendered get ` (2)`.
+   - **No empty files.** A file needs at least one sheet to be saved. When a run's rows leave every sheet of a file
+     empty, that file is not attached; a file with rows keeps its empty sheets (header only), so its layout stays.
+     A REC sheet on a side that saves none of its result types refuses the save (also after *Need A/B* or the
+     saved result types change on another tab).
+   - **Limits per file.** *Max records* (capped by `[EMAIL] max_attachment_rows`) applies to each file: a file with
+     more rows is left out and the others are still attached. `[EMAIL] max_attachment_mb` applies to all attachments
+     together (the SMTP server limits the message): files are attached in their order until the next one would
+     exceed it.
+   - **Attach per file.** A file whose *Attach* is off is not sent, but its rows still count for *Done, with
+     results* and `{attachment_rows}` (the email-level *Attach Excel file* switch is gone). *Done, with results*
+     needs at least one file; with another *Send when* an email may have none.
+   - The run summary lists each file: its rows and sheets, or why it was not attached (no rows, above the row limit,
+     over the size limit, *Attach off*); without the summary those notes follow the body.
+   - **Layout.** The tab is now boxes: *Delivery* (Send when, Max records per file, run summary, Evaluate SQL),
+     *Recipients* (CC and BCC side by side), *Message*, *Attachments* and *Send a test*. A sheet is one line (kind,
+     name, table, result types, filter and field count) that opens its editor; new sheets and the sheet a refused
+     save points to open by themselves. The Evaluate SQL folds the same way to its chip and first line (a saved
+     query starts folded, an empty one open). Files and sheets are moved by their handles (a sheet also into another
+     file) or with their menu (*Move up/down*, *Duplicate*, *Move to file*, *Remove*).
+   - **Existing configurations** (one `attachment_name`, `attach` and the fixed `sheets` object) keep working
+     unchanged: Rapo and the editor read them as one file with their enabled sheets (a disabled sheet was never sent
+     and is left out; it stays in the version history), and the next save writes the new `files` list. A REC sheet
+     without a name keeps its old name `A` / `B`, so recipients' files keep their sheet names.
+9. **Run log by periods, older ones as you scroll.** The editor's *Run log* no longer has a *Days back* field. It shows
+   the control's latest 14 periods (a period: the days of *Run from* and *Run to*, the latest first), with every run
+   of each, whenever they ran; while the runs do not fill the table, and as you scroll near its end, the next 14
+   older periods load (a *Loading older periods…* row meanwhile) until every period of the control is shown. The
+   header is one row: how many periods are loaded (`28 of 58 periods`, `All 58 periods`) leading the totals of the
+   runs loaded on the left, the status chips on the right.
+   Live updates reload the periods loaded so far, so a new period appears at the top; a run of an older period
+   shows in its place once scrolled to. Sorted by any other column than the period (newest first), the Run log
+   loads every period at once, so the order is right over the whole history, and a sort chip in its header puts the
+   period order back. A link to a run (Results, the Dashboard's KPI alarms) loads down to that run's period.
+   - `get-control-runs` with `control_name` no longer takes `days`; it takes `periods` (14), a page after a period
+     (`before_from`, `before_to`), at least down to one (`through_from`, `through_to`) or `all`, and answers
+     `total_periods`, `more` and `oldest` (the period to continue after).
+10. **Instance limit no longer blocks the queue.** A queued run whose control already runs as many jobs as its
+    `instance_limit` on this server is held in the queue and passed over, so other controls take the free slots.
+    Before, ten runs of one control with `instance_limit = 1` filled every `control_parallelism` slot while only one of
+    them worked. Held runs start in the order they were queued (before, in no particular order) and, like any queued
+    run, are not timed out while held (before, a run waiting for its own control could end canceled by its
+    `timeout`). The Scheduler's *Running* tab shows them as *Queued · instance limit*, and `scheduler-status` marks
+    them with `held: "instance_limit"`. The limit also counts active runs started more than a day ago (they were
+    ignored). Runs of the control on another server, or as another control's cascade or chain source, are still waited
+    for inside the run's process, holding its slot, as before.
+11. **File log page laid out like Results and Files.** The file log of a datasource (`/files-log/<id>`, and the
+    datasource editor's *File log* tab) has the day navigator in its title (previous/next day, a date picker, today)
+    instead of the day buttons of its filter row, and no filter fields any more: the status and *Duplicate* chips of
+    the header toggle their filter (highlighted while on), and *Upload* sits beside them. The page searches with the
+    header search, as the Files page does: a file name (any case), `?<start of a file name>` (case-sensitive) or
+    `#<file ID>`; a datasource name or ID carried over from the Files page filters nothing. A file ID or name prefix not
+    on the day shown is looked up on the other days of the datasource: *Go to its day* (file ID) or a list of the
+    files found opens their day with the file picked. The editor's tab keeps a *File name* box (it has no header
+    search). The *Not duplicates* filter is gone (`dup=N` in a link is ignored). `search-files` takes an optional
+    `source_id`.
+12. **Instance health kept across restarts.** The one-minute aggregates of the Health tabs are stored in the new
+    table `rapo_health_minute` (per server, `[HEALTH] history_days`, default 7, purged hourly) and read back when the
+    server starts, so a restart no longer empties the charts; the Health tabs offer a **7d** span (from 7 days kept).
+    The minutes also hold the files waiting in the input directories (the Dashboard's *Files in input*). A database
+    that cannot store them (the table missing) is noted once in the server log and the history stays in memory.
+13. **Faster loading.** The UI's files are sent compressed (gzip, about a quarter of their size: the main bundle 118
+    KB instead of 442 KB) and, being named by their content, kept by the browser for good, so a reload asks only for
+    the page itself; JSON answers of 1 KB or more are compressed too (downloads and file views are not). Charts are a
+    bundle of their own, loaded with the first page that draws one and shared by the Dashboard and the analysis pages
+    (the analysis bundle drops from 628 KB to 134 KB). A tab still showing an older build reloads itself when it asks
+    for a bundle that is gone.
+14. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
+    `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
+    `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).
+15. **Next maintenance on the Scheduler page.** A chip after the next fire shows the time left to the scheduler's
     next maintenance (database clean-up, the file log summary, the controls' retention, old scheduler events), the
     time and interval on hover; also on the Dashboard's scheduler tile. Only the server holding the lease maintains, so
     the chip shows there only; `scheduler-status` no longer reports a `next_maintenance` after the scheduler was
     stopped or the lease moved (it reported one that never came), and adds `maintenance_interval`.
-14. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
-    `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
-    `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).
-15. **Email: several files, several sheets per file.** The *Attachment* part of the editor's *Email* tab becomes a list
-    of files (*+ File*), each an Excel file with its own name and *Attach* switch and any number of sheets (*+ Sheet*):
-    result sheets (the run's rows of the result table; for a reconciliation side A or B with the result types chosen
-    per sheet, so e.g. losses and discrepancies of side A can be two sheets) and Free SQL sheets, each with its own
-    name, filter and fields, or query. The same table can be exported in several sheets and files.
-    - **Names.** An empty file name gives `<NAME>_<run from>[_<run to>].xlsx`, then `_2`, `_3` from the second file on;
-      a sheet without a name is named after the control (ANL/REP) or its side, with its result types when they are not
-      all the side saves (`A`, `A Loss+Discrepancy`), Free SQL sheets `SQL`, `SQL 2`... Names must differ within a file
-      (sheets) and an email (files); two names that still meet after the variables are rendered get ` (2)`.
-    - **No empty files.** A file needs at least one sheet to be saved. When a run's rows leave every sheet of a file
-      empty, that file is not attached; a file with rows keeps its empty sheets (header only), so its layout stays.
-      A REC sheet on a side that saves none of its result types refuses the save (also after *Need A/B* or the
-      saved result types change on another tab).
-    - **Limits per file.** *Max records* (capped by `[EMAIL] max_attachment_rows`) applies to each file: a file with
-      more rows is left out and the others are still attached. `[EMAIL] max_attachment_mb` applies to all attachments
-      together (the SMTP server limits the message): files are attached in their order until the next one would
-      exceed it.
-    - **Attach per file.** A file whose *Attach* is off is not sent, but its rows still count for *Done, with
-      results* and `{attachment_rows}` (the email-level *Attach Excel file* switch is gone). *Done, with results*
-      needs at least one file; with another *Send when* an email may have none.
-    - The run summary lists each file: its rows and sheets, or why it was not attached (no rows, above the row limit,
-      over the size limit, *Attach off*); without the summary those notes follow the body.
-    - **Layout.** The tab is now boxes: *Delivery* (Send when, Max records per file, run summary, Evaluate SQL),
-      *Recipients* (CC and BCC side by side), *Message*, *Attachments* and *Send a test*. A sheet is one line (kind,
-      name, table, result types, filter and field count) that opens its editor; new sheets and the sheet a refused
-      save points to open by themselves. The Evaluate SQL folds the same way to its chip and first line (a saved
-      query starts folded, an empty one open). Files and sheets are moved by their handles (a sheet also into another
-      file) or with their menu (*Move up/down*, *Duplicate*, *Move to file*, *Remove*).
-    - **Existing configurations** (one `attachment_name`, `attach` and the fixed `sheets` object) keep working
-      unchanged: Rapo and the editor read them as one file with their enabled sheets (a disabled sheet was never sent
-      and is left out; it stays in the version history), and the next save writes the new `files` list. A REC sheet
-      without a name keeps its old name `A` / `B`, so recipients' files keep their sheet names.
-16. **Run log by periods, older ones as you scroll.** The editor's *Run log* no longer has a *Days back* field. It shows
-    the control's latest 14 periods (a period: the days of *Run from* and *Run to*, the latest first), with every run
-    of each, whenever they ran; while the runs do not fill the table, and as you scroll near its end, the next 14
-    older periods load (a *Loading older periods…* row meanwhile) until every period of the control is shown. The
-    header is one row: how many periods are loaded (`28 of 58 periods`, `All 58 periods`) leading the totals of the
-    runs loaded on the left, the status chips on the right.
-    Live updates reload the periods loaded so far, so a new period appears at the top; a run of an older period
-    shows in its place once scrolled to. Sorted by any other column than the period (newest first), the Run log
-    loads every period at once, so the order is right over the whole history, and a sort chip in its header puts the
-    period order back. A link to a run (Results, the Dashboard's KPI alarms) loads down to that run's period.
-    - `get-control-runs` with `control_name` no longer takes `days`; it takes `periods` (14), a page after a period
-      (`before_from`, `before_to`), at least down to one (`through_from`, `through_to`) or `all`, and answers
-      `total_periods`, `more` and `oldest` (the period to continue after).
+16. **Scheduler's Running tab links its controls.** The name of a running or queued control opens its editor on the
+    *Scheduler* tab, as on the *Upcoming* and *History* tabs.
