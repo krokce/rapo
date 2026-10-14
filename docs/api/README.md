@@ -134,17 +134,25 @@ or its file does not exist.
 ### Reads
 
 #### `GET /api/get-control-runs`
-Every run **started** on one day, newest first, or the runs of one control over the last days.
+Every run **started** on one day, newest first, or the runs of one control by periods.
 
 | Parameter      | Type | Default            | Meaning                                                        |
 |----------------|------|--------------------|-----------------------------------------------------------------|
 | `date`         | date | the server's today | Day to report.                                                  |
 | `control_name` | str  | -                  | One control's runs instead (the editor's *Run log*); `date` is then ignored and answered as null. |
-| `days`         | int  | 7                  | With `control_name`: how many days back from now, 1 .. 366.     |
+| `periods`      | int  | 14                 | With `control_name`: how many periods to answer, 1 .. 1000.     |
+| `before_from`, `before_to` | date | -      | With `control_name`: only periods older than this one (the next page after `oldest`). |
+| `through_from`, `through_to` | date | -    | With `control_name`: at least down to this period (a refresh of what is loaded, a link to a run). |
+| `all`          | bool | false              | With `control_name`: every period (older than `before_*`).      |
 
 Answers `{date, today, server_time, runs}`, where `today` is the server's current day, so a caller can tell whether it
 is looking at today without a clock of its own, and `server_time` its time (the Results heatmap's *Now* marker). A run that never started is reported on the day it was added. The
 list is not capped.
+
+With `control_name`, a **period** is the days of `date_from` and `date_to` (as `superseded_by` counts them), ordered by
+`date_from`, then `date_to`, both descending, whenever its runs started; a page holds every run of its periods. The
+answer adds `total_periods` (the control's), `more` (older periods are left) and `oldest` `{date_from, date_to}`
+(`YYYY-MM-DD`, the last period answered, null without runs). Each `*_from`/`*_to` pair goes together (`400` otherwise).
 
 Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `added`, `start_date`, `end_date`,
 `date_from`, `date_to`,

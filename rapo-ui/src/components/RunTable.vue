@@ -314,6 +314,14 @@
             </td>
           </tr>
         </tbody>
+        <tbody v-if="loadingMore && !loading && !error">
+          <tr>
+            <td :colspan="colspan" class="text-center text-grey-7 q-pa-md">
+              <q-spinner size="14px" class="q-mr-sm" />
+              {{ loadingMoreText }}
+            </td>
+          </tr>
+        </tbody>
       </template>
     </q-virtual-scroll>
     <run-dataset-menu ref="numberMenu" />
@@ -441,8 +449,13 @@ export default {
     filteredName: { type: String, default: null },
     // Whether a run's control has KPIs; the row menu's Calculate KPIs emits calculate-kpis (run).
     hasKpis: { type: Function, default: null },
+    // More runs can be loaded (the Run log's older periods): load-more is emitted near the end of the rows, and while
+    // the rows do not fill the table. `loadingMore` shows `loadingMoreText` in a last row meanwhile.
+    more: { type: Boolean, default: false },
+    loadingMore: { type: Boolean, default: false },
+    loadingMoreText: { type: String, default: "Loading more…" },
   },
-  emits: ["filter", "calculate-kpis", "open-run"],
+  emits: ["filter", "calculate-kpis", "open-run", "load-more"],
   data() {
     return {
       KPI_ALARM_SORT,
@@ -545,14 +558,26 @@ export default {
   },
   mounted() {
     if (this.selectable) document.addEventListener("keydown", this.onKeydown);
+    this.scrollElement = this.$el.querySelector(".runs-table");
+    if (this.scrollElement) this.scrollElement.addEventListener("scroll", this.fillRows, { passive: true });
   },
   beforeUnmount() {
     document.removeEventListener("keydown", this.onKeydown);
+    if (this.scrollElement) this.scrollElement.removeEventListener("scroll", this.fillRows);
   },
   watch: {
     shownRuns() {
-      this.$nextTick(this.onResize);
+      this.$nextTick(() => {
+        this.onResize();
+        this.fillRows();
+      });
       this.showFocusRun();
+    },
+    more() {
+      this.$nextTick(this.fillRows);
+    },
+    loadingMore() {
+      this.$nextTick(this.fillRows);
     },
     focusRun() {
       this.focused = null;
@@ -601,6 +626,14 @@ export default {
     onResize() {
       const scroll = this.$el.querySelector(".runs-table");
       this.width = scroll ? scroll.clientWidth : 0;
+      this.fillRows();
+    },
+    // Asks for more runs (more) while the end of the rows is within ten rows of the view, also when they do not fill the
+    // table; checked on scrolling and whenever the rows or the table's size change.
+    fillRows() {
+      if (!this.more || this.loadingMore || this.loading || this.error) return;
+      const scroll = this.scrollElement;
+      if (scroll && scroll.clientHeight && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 450) this.$emit("load-more");
     },
     // The least width of the table in a layout without the Processname column: every fixed column and Status.
     minWidth(level) {

@@ -798,17 +798,31 @@ def delete_control_versions(
 @api.get('/get-control-runs')
 def get_control_runs(date: dt.date | None = None,
                      control_name: str | None = None,
-                     days: int = fastapi.Query(7, ge=1, le=366)):
-    """Get all control runs started on the passed day (default: the server's today), or those of one control of the
-    last days, in JSON."""
+                     periods: int = fastapi.Query(14, ge=1, le=1000),
+                     before_from: dt.date | None = None,
+                     before_to: dt.date | None = None,
+                     through_from: dt.date | None = None,
+                     through_to: dt.date | None = None,
+                     all: bool = False):
+    """Get all control runs started on the passed day (default: the server's today), or those of one control by
+    periods (the latest first, a page after `before_*`, at least down to `through_*`, or `all` of them), in JSON."""
     now = dt.datetime.now().replace(microsecond=0)
     today = now.date()
     if control_name:
-        runs = reader.read_control_runs(control_name=control_name, days=days)
+        cursors = {}
+        for name, period in (('before', (before_from, before_to)),
+                             ('through', (through_from, through_to))):
+            if (period[0] is None) != (period[1] is None):
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=f'{name}_from and {name}_to go together')
+            cursors[name] = period if period[0] else None
+        page = reader.read_control_run_periods(control_name, periods=periods,
+                                               everything=all, **cursors)
         return {'date': None, 'today': today.isoformat(), 'server_time': now,
-                'runs': runs, **control_run_kpis(runs)}
+                **page, **control_run_kpis(page['runs'])}
     day = date or today
-    runs = reader.read_control_runs(day=day)
+    runs = reader.read_control_runs(day)
     return {'date': day.isoformat(), 'today': today.isoformat(),
             'server_time': now, 'runs': runs, **control_run_kpis(runs)}
 

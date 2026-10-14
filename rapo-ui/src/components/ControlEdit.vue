@@ -920,24 +920,14 @@
             </q-tab-panel>
             <q-tab-panel name="log">
               <div class="q-mt-md">
-                <div class="row items-end q-mb-md">
-                  <q-input
-                    style="width: 140px"
-                    v-model.number="log_days_back"
-                    type="number"
-                    outlined
-                    label="Days back"
-                    :min="1"
-                    :max="365"
-                    :step="1"
-                    @update:model-value="updateLogDaysBack">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-history" @click.stop.prevent />
-                    </template>
-                  </q-input>
-                  <q-space />
-                  <run-summary v-if="logsLoaded" :runs="controlLogs" />
-                </div>
+                <!-- One row: the periods loaded (the latest first, older ones as the table scrolls), the totals of the runs
+                     loaded and the sort chip on the left, the status chips on the right. -->
+                <run-summary v-if="logsLoaded" :runs="controlLogs" inline class="q-mb-md">
+                  <template v-if="logPeriodsText" #lead>
+                    <span :title="logPeriodsTitle">{{ logPeriodsText }}</span>
+                  </template>
+                  <filter-chips :filters="[]" :sort="logSortChip" class="inline q-ml-sm" style="vertical-align: middle" />
+                </run-summary>
                 <!-- The Results table, without its filters, side B for ANL and REP and Edit control, plus a column per KPI
                      stored for the runs; Type and Processname (the same on every row) are dropped when the width is
                      needed. -->
@@ -955,7 +945,10 @@
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
                     :refresh="refreshLogs"
                     :loading="!logsLoaded"
-                    :empty-text="`No runs in the last ${log_days_back} days`"
+                    :more="logPeriods.more && logSortsByPeriod"
+                    :loading-more="logPeriods.loadingMore"
+                    loading-more-text="Loading older periods…"
+                    @load-more="loadOlderLogs()"
                     :has-kpis="() => kpiConfigObject.length > 0"
                     @calculate-kpis="(run) => openKpiCalculate(run.process_id)" />
                 </div>
@@ -1080,7 +1073,10 @@ import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { diffControl, diffKpis, revertControlPath, revertKpiPath } from "../utils/controlDiff";
 import UnsavedChangesDialog from "./UnsavedChangesDialog.vue";
-import { escapeHtml, toDateTimeString, toMillis } from "../utils/format";
+import { escapeHtml, toDateTimeString } from "../utils/format";
+import FilterChips from "./FilterChips.vue";
+import { KPI_SORT_PREFIX, RUN_SORT_LABELS } from "../utils/runs";
+import { sortChip } from "../utils/sort";
 import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema";
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
@@ -1106,13 +1102,27 @@ function readLogSort() {
     // The default then.
   }
   // The periods read, newest first.
-  return { key: "date_from", dir: "desc" };
+  return { ...LOG_DEFAULT_SORT };
+}
+
+// The Run log's default order, the one it pages in: the latest period first.
+const LOG_DEFAULT_SORT = { key: "date_from", dir: "desc" };
+// Periods per page of the Run log (get-control-runs), the least it shows.
+const LOG_PERIODS = 14;
+
+// The KPI types of the Run log's pages together, by priority, then code (as get-control-runs orders them).
+function mergeKpiTypes(types, more) {
+  const known = new Set(types.map((type) => type.kpi_type));
+  const merged = [...types, ...more.filter((type) => !known.has(type.kpi_type))];
+  const priority = (type) => (type.kpi_priority == null ? Infinity : type.kpi_priority);
+  return merged.sort((a, b) => priority(a) - priority(b) || a.kpi_type.localeCompare(b.kpi_type));
 }
 
 export default {
   components: {
     CodeBox,
     EditorSkeleton,
+    FilterChips,
     RunSummary,
     RunTable,
     RunControlDialog,
@@ -1156,7 +1166,6 @@ export default {
       control: {},
       controlVersions: [],
       controlVersion: null,
-      log_days_back: 7,
       datasourceColumns: null,
       datasourceDateColumns: null,
       datasourceAColumns: null,
@@ -1177,8 +1186,13 @@ export default {
       caseConfigObject: [],
       iterationConfigObject: [],
       kpiConfigObject: [],
-      // The runs of the last log_days_back days (get-control-runs), shown by the Run log's RunTable.
+      // The runs of the latest periods loaded (get-control-runs), shown by the Run log's RunTable.
       controlLogs: [],
+      // The Run log's paging by periods: how many the control has, whether older ones are left, the oldest loaded
+      // ({date_from, date_to}: a refresh reloads down to it, the next page starts after it) and whether a page is
+      // being loaded. `logThrough`: the period the first load reaches down to (a ?run= link), or null.
+      logPeriods: { total: 0, more: false, oldest: null, loadingMore: false },
+      logThrough: null,
       // The run the Run log was opened on (?run=, from Results), shown with its period's versions; null otherwise.
       logFocus: null,
       // The KPI types stored for the runs of the Run log (get-control-runs' kpi_types), a column each.
@@ -1233,6 +1247,27 @@ export default {
       return Number.isInteger(id) && id > 0 ? id : null;
     },
     // The control's name as saved: its runs are found by it, whatever the form calls it now.
+    logSortsByPeriod() {
+      return this.logSort.key === LOG_DEFAULT_SORT.key && this.logSort.dir === LOG_DEFAULT_SORT.dir;
+    },
+    // The Run log's sort chip while another order than the latest period first is picked; its ✕ restores that.
+    logSortChip() {
+      const kpiLabels = Object.fromEntries(this.logKpiTypes.map((type) => [`${KPI_SORT_PREFIX}${type.kpi_type}`, type.kpi_type]));
+      return sortChip(this.logSort, LOG_DEFAULT_SORT, { ...RUN_SORT_LABELS, ...kpiLabels }, "latest period first");
+    },
+    // How many of the control's periods the Run log holds (a period: the days of Run from and Run to).
+    logPeriodsText() {
+      const { total, more } = this.logPeriods;
+      if (!this.logsLoaded || !total) return "";
+      if (!more) return total === 1 ? "1 period" : `All ${total} periods`;
+      const loaded = new Set(this.controlLogs.map((run) => `${(run.date_from || "").slice(0, 10)}|${(run.date_to || "").slice(0, 10)}`)).size;
+      return `${loaded} of ${total} periods`;
+    },
+    logPeriodsTitle() {
+      return this.logPeriods.more
+        ? "The latest periods (the days of Run from and Run to) with all their runs; older periods load as you scroll down"
+        : "Every period (the days of Run from and Run to) the control has runs for";
+    },
     savedControlName() {
       const saved = this.controlCatalogueById(this.control.control_id);
       return saved ? saved.control_name : this.control.control_name;
@@ -1440,7 +1475,7 @@ export default {
     },
   },
   methods: {
-    // A link may name a run of this control (?run=, from Results): the Run log reaches back to it and shows it. The
+    // A link may name a run of this control (?run=, from Results): the Run log loads down to its period and shows it. The
     // parameter is dropped, so a reload does not jump again.
     async takeRouteRun() {
       const processId = Number(this.$route.query.run);
@@ -1450,9 +1485,9 @@ export default {
       this.$router.replace({ query });
       try {
         const found = await api("get-control-run", { params: { process_id: processId }, loadingBar: false });
-        const start = toMillis(found.start_date || found.added);
-        const days = Math.ceil((Date.now() - start) / 86400000) + 1;
-        if (days > this.log_days_back) this.log_days_back = Math.min(days, 366);
+        if (found.date_from && found.date_to) {
+          this.logThrough = { date_from: found.date_from.slice(0, 10), date_to: found.date_to.slice(0, 10) };
+        }
         // Again for the same run (a second link to it), so the Run log selects it anew.
         this.logFocus = null;
         await this.$nextTick();
@@ -1487,9 +1522,6 @@ export default {
         });
     },
     ...mapActions(["updateControlCatalogue", "updateKpiTypes"]),
-    updateLogDaysBack() {
-      return this.refreshLogs();
-    },
     controlType,
     controlTypeColor,
     filterDatasourceList(val, update) {
@@ -1748,15 +1780,58 @@ export default {
       this.controlVersion = version;
       this.controlVersionChanged();
     },
-    async getControlLogs(controlName, numberDays) {
-      try {
-        const answer = await api("get-control-runs", { params: { control_name: controlName, days: numberDays }, loadingBar: false });
-        this.controlLogs = Object.freeze(answer.runs);
-        this.logKpiTypes = Object.freeze(answer.kpi_types || []);
-        this.logsLoaded = true;
-      } catch (error) {
-        notifyError("Failed to load run log.", error);
-      }
+    // The Run log's requests run one after another, so a refresh and a page never cross; each takes the cursor as it
+    // is when it starts. An answer for another control (the editor moved on) is dropped.
+    queueLogs(load) {
+      const controlId = this.control.control_id;
+      this.logQueue = (this.logQueue || Promise.resolve()).then(() => (this.control.control_id === controlId ? load(controlId) : null));
+      return this.logQueue;
+    },
+    // The latest periods' runs: at least LOG_PERIODS, down to the oldest period loaded so far (a refresh keeps what was
+    // scrolled to) or a ?run= link's period, all of them under a sort other than the latest period first.
+    getControlLogs() {
+      return this.queueLogs(async (controlId) => {
+        const through = this.logPeriods.oldest || this.logThrough;
+        const params = { control_name: this.savedControlName, periods: LOG_PERIODS, all: this.logSortsByPeriod ? null : true };
+        if (through) Object.assign(params, { through_from: through.date_from, through_to: through.date_to });
+        try {
+          const answer = await api("get-control-runs", { params, loadingBar: false });
+          if (this.control.control_id !== controlId) return;
+          this.controlLogs = Object.freeze(answer.runs);
+          this.logKpiTypes = Object.freeze(answer.kpi_types || []);
+          this.setLogPeriods(answer);
+          this.logsLoaded = true;
+        } catch (error) {
+          notifyError("Failed to load run log.", error);
+        }
+      });
+    },
+    // The next LOG_PERIODS older periods (RunTable's load-more near the end of its rows), or all of them.
+    loadOlderLogs(all = false) {
+      if (!this.logPeriods.more || this.logPeriods.loadingMore) return null;
+      this.logPeriods.loadingMore = true;
+      return this.queueLogs(async (controlId) => {
+        const { oldest, more } = this.logPeriods;
+        try {
+          if (!more || !oldest) return;
+          const params = { control_name: this.savedControlName, periods: LOG_PERIODS, before_from: oldest.date_from, before_to: oldest.date_to, all: all || null };
+          const answer = await api("get-control-runs", { params, loadingBar: false });
+          if (this.control.control_id !== controlId) return;
+          const known = new Set(this.controlLogs.map((run) => run.process_id));
+          this.controlLogs = Object.freeze([...this.controlLogs, ...answer.runs.filter((run) => !known.has(run.process_id))]);
+          this.logKpiTypes = Object.freeze(mergeKpiTypes(this.logKpiTypes, answer.kpi_types || []));
+          this.setLogPeriods(answer);
+          // The sort changed to another order while a page was loading: the rest follows.
+          if (this.logPeriods.more && !this.logSortsByPeriod) this.$nextTick(() => this.loadOlderLogs(true));
+        } catch (error) {
+          notifyError("Failed to load older runs.", error);
+        } finally {
+          this.logPeriods.loadingMore = false;
+        }
+      });
+    },
+    setLogPeriods(answer) {
+      Object.assign(this.logPeriods, { total: answer.total_periods || 0, more: Boolean(answer.more), oldest: answer.oldest || null });
     },
     // The Run log table runs from where it starts down to the sticky Save/Apply bar, and scrolls inside.
     sizeLogTable() {
@@ -1769,7 +1844,7 @@ export default {
       this.logTableHeight = Math.max(window.innerHeight - top - (bar ? bar.offsetHeight : 0) - 24, 300);
     },
     refreshLogs() {
-      return this.getControlLogs(this.control.control_name, this.log_days_back);
+      return this.getControlLogs();
     },
     // Calculate KPIs with the statements as edited. The runs are the saved control's, whatever the form calls it now.
     openKpiCalculate(processId) {
@@ -2318,7 +2393,7 @@ export default {
         // The form already holds the saved control: the new route is not another control to load.
         this.replacingRoute = true;
         await this.$router.replace({ name: "edit-control", params: { controlId: String(this.control.control_id) } });
-        this.getControlLogs(this.control.control_name, this.log_days_back);
+        this.getControlLogs();
         if (!this.stopLiveUpdates) {
           this.startLiveUpdates();
         }
@@ -2554,7 +2629,7 @@ export default {
         if (this.control.control_id) {
           this.getControlVersions(this.controlId);
           await this.takeRouteRun();
-          this.getControlLogs(this.control.control_name, this.log_days_back);
+          this.getControlLogs();
         }
         this.loadedUpdatedDate = this.control.updated_date;
         // A clone has never been saved, so it stays dirty (null) until it is.
@@ -2616,7 +2691,7 @@ export default {
     },
     // A run may have created or updated the result tables, so a notice about them is re-checked.
     onRunsChanged() {
-      this.updateLogDaysBack();
+      this.refreshLogs();
       if (this.schemaNotice && !this.schemaCheck.rebuilt_each_run) {
         this.checkSchema(2000);
       }
@@ -2672,6 +2747,8 @@ export default {
     logSort: {
       deep: true,
       handler(sort) {
+        // Any other order than the latest period first is only right over every run.
+        if (!this.logSortsByPeriod) this.loadOlderLogs(true);
         try {
           sessionStorage.setItem(LOG_SORT_KEY, JSON.stringify(sort));
         } catch (error) {

@@ -105,6 +105,10 @@ Dashboard's file summary.
 - **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
   `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.
 - **Python 3.10 installs again:** `websockets` pinned to 16.0 (17.1 needs Python 3.11; broken since v0.8.3).
+- **Run log by periods:** no *Days back*; the latest 14 periods (by *Run from*) with all their runs, older ones loading
+  as the table scrolls until all are shown (`28 of 58 periods` in the header); another sort loads all and shows a
+  sort chip; links to a run load down to its period (`get-control-runs`: `periods`, `before_*`, `through_*`, `all`
+  instead of `days`).
 
 ## v0.8.5 — 2026-10-05
 

@@ -343,8 +343,8 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     are; a click on it unpacks the earlier versions (hidden otherwise), faded, each with its version number outlined
     (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
     superseded run whose newer run is on another day stays in place with a ⟲ mark. On Results, that mark and the
-    version number of an unpacked older run open the control's Run log on that run: *Days back* reaches back to it,
-    its period is unpacked, the row scrolled into view and selected (tinted yellow). A control's name on Results opens
+    version number of an unpacked older run open the control's Run log on that run: the Run log loads down to its
+    period, which is unpacked, the row scrolled into view and selected (tinted yellow). A control's name on Results opens
     its Run log on that run the same way (the row menu's *Edit control* opens the editor as before). A click on a row of
     the Run log selects it, one at a time; a click on the selected row (not on its numbers, chips or buttons) or Esc
     clears it, and leaving the page forgets it. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
@@ -407,3 +407,16 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
       unchanged: Rapo and the editor read them as one file with their enabled sheets (a disabled sheet was never sent
       and is left out; it stays in the version history), and the next save writes the new `files` list. A REC sheet
       without a name keeps its old name `A` / `B`, so recipients' files keep their sheet names.
+16. **Run log by periods, older ones as you scroll.** The editor's *Run log* no longer has a *Days back* field. It shows
+    the control's latest 14 periods (a period: the days of *Run from* and *Run to*, the latest first), with every run
+    of each, whenever they ran; while the runs do not fill the table, and as you scroll near its end, the next 14
+    older periods load (a *Loading older periods…* row meanwhile) until every period of the control is shown. The
+    header is one row: how many periods are loaded (`28 of 58 periods`, `All 58 periods`) leading the totals of the
+    runs loaded on the left, the status chips on the right.
+    Live updates reload the periods loaded so far, so a new period appears at the top; a run of an older period
+    shows in its place once scrolled to. Sorted by any other column than the period (newest first), the Run log
+    loads every period at once, so the order is right over the whole history, and a sort chip in its header puts the
+    period order back. A link to a run (Results, the Dashboard's KPI alarms) loads down to that run's period.
+    - `get-control-runs` with `control_name` no longer takes `days`; it takes `periods` (14), a page after a period
+      (`before_from`, `before_to`), at least down to one (`through_from`, `through_to`) or `all`, and answers
+      `total_periods`, `more` and `oldest` (the period to continue after).

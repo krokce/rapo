@@ -1,7 +1,8 @@
 <template>
-  <!-- Totals of the runs: chips above (each filters by itself where clickable), the counts below. -->
-  <div class="column items-end text-blue-grey-8">
-    <div v-if="(showTypes && summary.types.length) || summary.statuses.length || summary.warnings" class="row items-center justify-end">
+  <!-- Totals of the runs: chips above (each filters by itself where clickable), the counts below; inline, one row with
+       the counts on the left (after the lead slot, before the default slot) and the chips on the right. -->
+  <div class="text-blue-grey-8" :class="inline ? 'run-summary--inline row no-wrap items-center' : 'column items-end'">
+    <div v-if="(showTypes && summary.types.length) || summary.statuses.length || summary.warnings" class="run-summary__chips row items-center justify-end">
       <template v-if="showTypes">
         <q-chip v-for="item in summary.types" :key="item.key" :clickable="clickable" @click="clickable && $emit('filter-type', item.key)">
           <q-avatar :icon="controlType(item.key).icon" :color="controlType(item.key).color" text-color="white" />
@@ -19,7 +20,8 @@
         <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Runs flagged with a warning about their results</q-tooltip>
       </q-chip>
     </div>
-    <div class="q-mr-xs">
+    <div class="run-summary__counts" :class="{ 'q-mr-xs': !inline }">
+      <span v-if="$slots.lead" class="q-mr-xs"><slot name="lead" /> &middot;</span>
       <template v-if="showControls">{{ summary.controls }} {{ summary.controls === 1 ? "control" : "controls" }} &middot; </template>
       {{ summary.runs }}
       {{ summary.runs === 1 ? "run" : "runs" }}
@@ -54,6 +56,7 @@
           The runtimes of the runs summed; the longest: {{ summary.longest.control_name }} ({{ formatDuration(summary.longest.duration_minutes * 60) }})
         </q-tooltip>
       </span>
+      <slot />
     </div>
   </div>
 </template>
@@ -73,6 +76,8 @@ export default {
     showControls: { type: Boolean, default: false },
     // Chips emit filter-type, filter-status and filter-warnings, triggers filter-trigger (a triggerKey) when clicked.
     clickable: { type: Boolean, default: false },
+    // One row: the counts on the left, the chips on the right (the editor's Run log).
+    inline: { type: Boolean, default: false },
   },
   emits: ["filter-type", "filter-status", "filter-warnings", "filter-trigger"],
   computed: {
@@ -91,3 +96,18 @@ export default {
   },
 };
 </script>
+
+<style lang="sass" scoped>
+// Inline: the counts first; the chips pushed to the right, wrapping there (right-aligned) before the counts do.
+.run-summary--inline
+  .run-summary__counts
+    order: 0
+    min-width: 0
+    flex: 0 1 auto
+  .run-summary__chips
+    order: 1
+    margin-left: auto
+    padding-left: 16px
+    flex: 0 10 auto
+    min-width: 0
+</style>

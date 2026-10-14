@@ -9,6 +9,18 @@ from .database import db
 # Prefix of the rapo_log.text_message lines that flag a run with a warning.
 WARNING_PREFIX = 'Warning: '
 
+# The period of a run of rapo_log `l` (the days of date_from and date_to, as superseded_sql folds runs), comparable
+# also without dates: those take :no_period (NO_PERIOD), the oldest possible.
+NO_PERIOD = dt.datetime(1, 1, 1)
+PERIOD_FROM = 'nvl(trunc(l.date_from), :no_period)'
+PERIOD_TO = 'nvl(trunc(l.date_to), :no_period)'
+
+
+def _period_key(period):
+    """Get a (date_from, date_to) period as a comparable pair of datetimes."""
+    return tuple(dt.datetime.combine(value, dt.time()) if value else NO_PERIOD
+                 for value in period)
+
 
 def superseded_sql(alias='l', value='n.process_id', done_only=False):
     """Get a scalar subquery over the newer runs superseding a run of
@@ -360,27 +372,94 @@ class Reader:
 
     def read_control_results_for_day(self, day):
         """Get list of all control runs started on the passed day."""
-        return self.read_control_runs(day=day)
+        return self.read_control_runs(day)
 
-    def read_control_runs(self, day=None, control_name=None, days=None):
-        """Get the runs started on a day, or those of one control.
-
-        Parameters
-        ----------
-        day : date or None
-            Day the runs started on (a run that never started counts on the
-            day it was added).
-        control_name : str or None
-            One control's runs of the last `days` days instead.
-        days : int or None
-            Days back, counted from now, for `control_name`.
+    def read_control_runs(self, day):
+        """Get the runs started on a day (a run that never started counts on
+        the day it was added), newest first.
 
         Returns
         -------
         runs : list
-            Rows with the control, counters, trigger and dates, newest first.
+            Rows with the control, counters, trigger and dates.
         """
-        select = f"""
+        day_start = dt.datetime.combine(day, dt.time())
+        select = sa.text(self._control_runs_select("""
+                    c.control_name is not null
+                    and ((l.start_date >= :day_start and l.start_date < :day_end)
+                         or (l.start_date is null and l.added >= :day_start and l.added < :day_end))
+        """)).bindparams(day_start=day_start,
+                         day_end=day_start+dt.timedelta(days=1))
+        return db.execute(select, as_table=True)
+
+    def read_control_run_periods(self, control_name, periods=14, before=None,
+                                 through=None, everything=False):
+        """Get the runs of one control by periods, the latest first.
+
+        A period is the days of date_from and date_to (as superseded_sql
+        folds runs), ordered by date_from, then date_to, both descending; a
+        page always holds every run of its periods.
+
+        Parameters
+        ----------
+        control_name : str
+            The control.
+        periods : int
+            How many periods to return.
+        before : tuple or None
+            (date_from, date_to) of a period: only older periods (the next
+            page after it).
+        through : tuple or None
+            (date_from, date_to) of a period: at least down to it.
+        everything : bool
+            Every period (older than `before`).
+
+        Returns
+        -------
+        page : dict
+            `runs` (newest first), `total_periods`, `more` (older periods
+            exist) and `oldest` {date_from, date_to} of the last period
+            returned (the cursor of the next page), null without runs.
+        """
+        rows = db.execute(sa.text(f"""
+            select distinct {PERIOD_FROM} period_from, {PERIOD_TO} period_to
+              from rapo_log l
+              join rapo_config c on l.control_id = c.control_id
+             where c.control_name = :control_name
+        """).bindparams(control_name=control_name, no_period=NO_PERIOD),
+                          as_table=True)
+        keys = sorted(((row['period_from'], row['period_to'])
+                       for row in rows), reverse=True)
+        first = (sum(1 for key in keys if key >= _period_key(before))
+                 if before else 0)
+        last = len(keys) if everything else first + periods
+        if through and not everything:
+            last = max(last, sum(1 for key in keys
+                                 if key >= _period_key(through)))
+        page = keys[first:last]
+        if not page:
+            return {'runs': [], 'total_periods': len(keys), 'more': False,
+                    'oldest': None}
+        (newest_from, newest_to), (oldest_from, oldest_to) = page[0], page[-1]
+        select = sa.text(self._control_runs_select(f"""
+                    c.control_name = :control_name
+                    and ({PERIOD_FROM} < :newest_from
+                         or ({PERIOD_FROM} = :newest_from and {PERIOD_TO} <= :newest_to))
+                    and ({PERIOD_FROM} > :oldest_from
+                         or ({PERIOD_FROM} = :oldest_from and {PERIOD_TO} >= :oldest_to))
+        """)).bindparams(control_name=control_name, no_period=NO_PERIOD,
+                         newest_from=newest_from, newest_to=newest_to,
+                         oldest_from=oldest_from, oldest_to=oldest_to)
+        return {'runs': db.execute(select, as_table=True),
+                'total_periods': len(keys),
+                'more': last < len(keys),
+                'oldest': {'date_from': oldest_from.date().isoformat(),
+                           'date_to': oldest_to.date().isoformat()}}
+
+    def _control_runs_select(self, where):
+        """Get the select of runs with their control, counters, trigger and
+        superseding run, filtered by `where`, newest first."""
+        return f"""
                 select
                     c.control_name,
                     c.control_id,
@@ -422,26 +501,9 @@ class Reader:
                              from rapo_scheduler_event
                             where process_id is not null
                             group by process_id) e on e.process_id = l.process_id
-                where 1=1
-                    and c.control_name is not null
-                    and {'c.control_name = :control_name' if control_name else '1=1'}
-                    and ((l.start_date >= :day_start and l.start_date < :day_end)
-                         or (l.start_date is null and l.added >= :day_start and l.added < :day_end))
+                where {where}
                 order by process_id desc
         """
-        if control_name:
-            # As read_control_logs counts days back: from now, on the app clock.
-            day_end = dt.datetime.now()+dt.timedelta(days=1)
-            day_start = dt.datetime.now()-dt.timedelta(days=days or 7)
-            params = {'control_name': control_name}
-        else:
-            day_start = dt.datetime.combine(day, dt.time())
-            day_end = day_start + dt.timedelta(days=1)
-            params = {}
-        select = sa.text(select).bindparams(day_start=day_start, day_end=day_end,
-                                            **params)
-        answerset = db.execute(select, as_table=True)
-        return answerset
 
     def read_datasources(self, types=False):
         """Get list of all datasources in the DB.
