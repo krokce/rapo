@@ -7,7 +7,7 @@ be uploaded into a datasource's input directory from the file log and the dataso
 file loaded are shown below it or on the Data analysis page. A binary file is shown as ASN.1 (BER, DER, CER): its
 tree of tags, named by an uploaded grammar (TAP, RAP, NRTRDE, 3GPP CDRs, a vendor's own), beside its bytes. Data
 analysis and Discrepancy analysis are redesigned as single pages that lead with what matters and open in under a
-second. The release adds three tables (`rapo_viewer_config`, `rapo_file_summary`, `rapo_health_minute`) and one Python
+second. A control's email can carry several Excel files, each with any number of result and Free SQL sheets. The release adds three tables (`rapo_viewer_config`, `rapo_file_summary`, `rapo_health_minute`) and one Python
 package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [migration instructions](README.md).
 
 1. **Dashboard.** A new page, first in the side menu, is where Rapo opens (`/`, unknown paths, the sign-in and the
@@ -376,3 +376,34 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
 14. **Python 3.10 installs again.** `websockets` is pinned to 16.0 instead of 17.1, which needs Python 3.11, so
     `pip install -r requirements.txt` failed on Python 3.10 since v0.8.3. `./install.sh` downgrades it in an existing
     `.venv`; nothing else changes (only uvicorn uses it, for the socket.io connection).
+15. **Email: several files, several sheets per file.** The *Attachment* part of the editor's *Email* tab becomes a list
+    of files (*+ File*), each an Excel file with its own name and *Attach* switch and any number of sheets (*+ Sheet*):
+    result sheets (the run's rows of the result table; for a reconciliation side A or B with the result types chosen
+    per sheet, so e.g. losses and discrepancies of side A can be two sheets) and Free SQL sheets, each with its own
+    name, filter and fields, or query. The same table can be exported in several sheets and files.
+    - **Names.** An empty file name gives `<NAME>_<run from>[_<run to>].xlsx`, then `_2`, `_3` from the second file on;
+      a sheet without a name is named after the control (ANL/REP) or its side, with its result types when they are not
+      all the side saves (`A`, `A Loss+Discrepancy`), Free SQL sheets `SQL`, `SQL 2`... Names must differ within a file
+      (sheets) and an email (files); two names that still meet after the variables are rendered get ` (2)`.
+    - **No empty files.** A file needs at least one sheet to be saved. When a run's rows leave every sheet of a file
+      empty, that file is not attached; a file with rows keeps its empty sheets (header only), so its layout stays.
+      A REC sheet on a side that saves none of its result types refuses the save (also after *Need A/B* or the
+      saved result types change on another tab).
+    - **Limits per file.** *Max records* (capped by `[EMAIL] max_attachment_rows`) applies to each file: a file with
+      more rows is left out and the others are still attached. `[EMAIL] max_attachment_mb` applies to all attachments
+      together (the SMTP server limits the message): files are attached in their order until the next one would
+      exceed it.
+    - **Attach per file.** A file whose *Attach* is off is not sent, but its rows still count for *Done, with
+      results* and `{attachment_rows}` (the email-level *Attach Excel file* switch is gone). *Done, with results*
+      needs at least one file; with another *Send when* an email may have none.
+    - The run summary lists each file: its rows and sheets, or why it was not attached (no rows, above the row limit,
+      over the size limit, *Attach off*); without the summary those notes follow the body.
+    - **Layout.** The tab is now boxes: *Delivery* (Send when, Max records per file, run summary, Evaluate SQL),
+      *Recipients* (CC and BCC side by side), *Message*, *Attachments* and *Send a test*. A sheet is one line (kind,
+      name, table, result types, filter and field count) that opens its editor; new sheets and the sheet a refused
+      save points to open by themselves. Files and sheets are moved by their handles (a sheet also into another
+      file) or with their menu (*Move up/down*, *Duplicate*, *Move to file*, *Remove*).
+    - **Existing configurations** (one `attachment_name`, `attach` and the fixed `sheets` object) keep working
+      unchanged: Rapo and the editor read them as one file with their enabled sheets (a disabled sheet was never sent
+      and is left out; it stays in the version history), and the next save writes the new `files` list. A REC sheet
+      without a name keeps its old name `A` / `B`, so recipients' files keep their sheet names.

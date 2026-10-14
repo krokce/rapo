@@ -1,5 +1,5 @@
 // The email configuration of a control: rule_config.email (rapo/core/mailer.py). CMP keeps its rule_config as a list
-// and has no email.
+// and has no email. Its attachments are `files`, each an Excel file of `sheets` (result or Free SQL sheets).
 
 export const EMAIL_CONTROL_TYPES = ["ANL", "REP", "REC"];
 
@@ -11,7 +11,7 @@ export const SEND_WHEN_OPTIONS = [
 ];
 
 // Result types a REC side can export: Loss and Discrepancy when its issues are saved, Match when its matches are.
-const REC_RESULT_TYPES = ["Loss", "Discrepancy", "Match"];
+export const REC_RESULT_TYPES = ["Loss", "Discrepancy", "Match"];
 
 // The {variables} of the subject, the body, the attachment name and the sheet queries (mailer.build_variables).
 // Dates carry a sample strftime format, since a bare datetime prints its time too. `sheets: false` marks the ones
@@ -76,22 +76,37 @@ export function isEmailAddress(value) {
 // Characters Excel does not allow in a sheet name, which it also limits to 31 characters.
 export const SHEET_NAME_INVALID = /[[\]:*?/\\]/;
 
-// The sheet name used when none is set (mailer.build_sheets): the control name, or A / B for REC.
-export function defaultSheetName(key, controlName) {
-  return key === "main" ? (controlName || "").toUpperCase().slice(0, 31) : key.toUpperCase();
+// The result types a REC side saves (mailer.available_result_types): Loss and Discrepancy with its issues, Match with
+// its matches.
+export function availableResultTypes(ruleConfig, side) {
+  const rule = ruleConfig || {};
+  return [...(rule["need_issues_" + side] ? ["Loss", "Discrepancy"] : []), ...(rule["need_recons_" + side] ? ["Match"] : [])];
 }
 
-function defaultSheet(recSide) {
-  const sheet = { enabled: true, name: null, filter: null, fields: [] };
-  return recSide ? { ...sheet, result_types: [...REC_RESULT_TYPES] } : sheet;
+// The result types a REC sheet exports (mailer.chosen_result_types), in their fixed order.
+export function chosenResultTypes(sheet, ruleConfig) {
+  const available = availableResultTypes(ruleConfig, sheet.side);
+  const chosen = sheet.result_types && sheet.result_types.length ? sheet.result_types : available;
+  return REC_RESULT_TYPES.filter((type) => chosen.includes(type) && available.includes(type));
 }
 
-// The sheet name used when none is set for the Free SQL sheet.
-export const DEFAULT_SQL_SHEET_NAME = "SQL";
+// A result sheet of the control's result table (side "main") or of a REC side, with every type the side saves.
+export function defaultResultSheet(side, ruleConfig) {
+  const sheet = { kind: "result", side, name: null, filter: null, fields: [] };
+  if (side === "main") return sheet;
+  const available = ruleConfig ? availableResultTypes(ruleConfig, side) : [];
+  return { ...sheet, result_types: available.length ? available : [...REC_RESULT_TYPES] };
+}
 
-// The Free SQL sheet (mailer.SqlSheet), last in the file and off until chosen.
-function defaultSqlSheet() {
-  return { enabled: false, name: null, query: null };
+// A Free SQL sheet (mailer.SqlSheet): a query of the user's own.
+export function defaultSqlSheet() {
+  return { kind: "sql", name: null, query: null };
+}
+
+// One attached file with the default sheets: the result table, or both REC sides.
+export function defaultFile(controlType, ruleConfig) {
+  const sides = controlType === "REC" ? ["a", "b"] : ["main"];
+  return { name: null, attach: true, sheets: sides.map((side) => defaultResultSheet(side, ruleConfig)) };
 }
 
 export function defaultEmailConfig(controlType) {
@@ -104,37 +119,183 @@ export function defaultEmailConfig(controlType) {
     subject: "{control_name} {control_date_from:%Y-%m-%d}",
     body: "",
     include_summary: true,
-    attach: true,
     max_records: null,
-    // null: <NAME>_<run from>[_<run to>].xlsx (mailer.attachment_name).
-    attachment_name: null,
-    sheets: {
-      ...(controlType === "REC" ? { a: defaultSheet(true), b: defaultSheet(true) } : { main: defaultSheet(false) }),
-      sql: defaultSqlSheet(),
-    },
+    files: [defaultFile(controlType)],
   };
 }
 
-// Fill in what an older or hand-written configuration lacks, in place, so the editor can bind every field.
+// An older configuration (one attachment_name, attach and a fixed `sheets` object) as `files`, in place, as
+// mailer.read_files reads it: its enabled sheets main (or A, B) then the Free SQL; a REC sheet without a name keeps
+// its old default A / B.
+function convertLegacyEmail(email, controlType) {
+  if (Array.isArray(email.files)) return;
+  const legacy = email.sheets || {};
+  const sheets = [];
+  const sides = controlType === "REC" ? ["a", "b"] : ["main"];
+  sides.forEach((side) => {
+    const config = legacy[side] || {};
+    if (!(config.enabled === undefined ? side === "main" : config.enabled)) return;
+    const sheet = { kind: "result", side, name: config.name || null, filter: config.filter || null, fields: config.fields || [] };
+    if (side !== "main") {
+      sheet.name = sheet.name || side.toUpperCase();
+      sheet.result_types = config.result_types && config.result_types.length ? [...config.result_types] : [...REC_RESULT_TYPES];
+    }
+    sheets.push(sheet);
+  });
+  const sql = legacy.sql || {};
+  if (sql.enabled) {
+    sheets.push({ kind: "sql", name: sql.name || null, query: sql.query || null });
+  }
+  email.files = [{ name: email.attachment_name || null, attach: email.attach !== false, sheets }];
+  delete email.attachment_name;
+  delete email.attach;
+  delete email.sheets;
+}
+
+// Fill in what an older or hand-written configuration lacks, in place, so the editor can bind every field. A result
+// sheet follows the control type (side main, or a / b with result types).
 export function completeEmailConfig(email, controlType) {
+  convertLegacyEmail(email, controlType);
   const defaults = defaultEmailConfig(controlType);
   for (const key of Object.keys(defaults)) {
     if (email[key] === undefined) {
       email[key] = defaults[key];
     }
   }
-  for (const key of Object.keys(defaults.sheets)) {
-    if (!email.sheets[key]) {
-      email.sheets[key] = defaults.sheets[key];
+  const rec = controlType === "REC";
+  email.files.forEach((file) => {
+    if (file.name === undefined) file.name = null;
+    if (file.attach === undefined) file.attach = true;
+    if (!Array.isArray(file.sheets)) file.sheets = [];
+    file.sheets.forEach((sheet) => {
+      if (sheet.kind !== "sql") sheet.kind = "result";
+      const template = sheet.kind === "sql" ? defaultSqlSheet() : defaultResultSheet(rec ? "a" : "main");
+      for (const field of Object.keys(template)) {
+        if (sheet[field] === undefined) sheet[field] = template[field];
+      }
+      if (sheet.kind === "result") {
+        if (rec && !["a", "b"].includes(sheet.side)) sheet.side = "a";
+        if (!rec) {
+          sheet.side = "main";
+          delete sheet.result_types;
+        }
+      }
+    });
+  });
+  return email;
+}
+
+// The default names of a file's sheets (mailer.default_sheet_names): the control name (ANL/REP) or the side (REC),
+// with the result types when they are not all the side saves; Free SQL sheets SQL, SQL 2, ...
+export function defaultSheetNames(sheets, controlType, controlName, ruleConfig) {
+  let sqlNumber = 0;
+  return sheets.map((sheet) => {
+    if (sheet.kind === "sql") {
+      sqlNumber += 1;
+      return sqlNumber === 1 ? "SQL" : "SQL " + sqlNumber;
     }
-    for (const field of Object.keys(defaults.sheets[key])) {
-      if (email.sheets[key][field] === undefined) {
-        email.sheets[key][field] = defaults.sheets[key][field];
+    if (controlType !== "REC") return (controlName || "").toUpperCase();
+    const available = availableResultTypes(ruleConfig, sheet.side);
+    const chosen = chosenResultTypes(sheet, ruleConfig);
+    const side = String(sheet.side || "").toUpperCase();
+    return chosen.length && chosen.length < available.length ? side + " " + chosen.join("+") : side;
+  });
+}
+
+// The name of a sheet without the numbering of repeats (mailer.sheet_title): its own, else the default, 31 characters.
+function baseSheetName(name, fallback) {
+  const own = (name || "")
+    .replace(/[[\]:*?/\\]/g, "_")
+    .trim()
+    .replace(/^'+|'+$/g, "")
+    .slice(0, 31);
+  return own || (fallback || "").slice(0, 31);
+}
+
+// The names the sheets of a file get in Excel (mailer.sheet_title): repeats numbered " (2)", case-insensitive.
+export function effectiveSheetNames(sheets, controlType, controlName, ruleConfig) {
+  const defaults = defaultSheetNames(sheets, controlType, controlName, ruleConfig);
+  const taken = new Set();
+  return sheets.map((sheet, index) => {
+    const name = baseSheetName(sheet.name, defaults[index]);
+    let title = name;
+    for (let number = 2; taken.has(title.toLowerCase()); number++) {
+      const suffix = ` (${number})`;
+      title = name.slice(0, 31 - suffix.length) + suffix;
+    }
+    taken.add(title.toLowerCase());
+    return title;
+  });
+}
+
+// The file name used when none is set (mailer.attachment_name): <NAME>_<run from>[_<run to>], then _2, _3...
+export function defaultFileName(index, controlName) {
+  return (controlName || "<NAME>").toUpperCase() + "_<run from>[_<run to>]" + (index ? "_" + (index + 1) : "") + ".xlsx";
+}
+
+// The first problem of an enabled email configuration, or null: { message, file, sheet } with the indexes of the file
+// and sheet it is in, when it is in one.
+export function emailConfigProblem(email, { controlType, controlName, ruleConfig }) {
+  const problem = (message, file = null, sheet = null) => ({ message, file, sheet });
+  const recipients = [...email.to, ...email.cc, ...email.bcc];
+  if (!email.to.length) {
+    return problem("Please enter at least one email recipient (To).");
+  }
+  const invalid = recipients.filter((address) => !isEmailAddress(address));
+  if (invalid.length) {
+    return problem("Not an email address: " + invalid.join(", "));
+  }
+  if (!email.subject || !email.subject.trim()) {
+    return problem("Please enter an email subject.");
+  }
+  if (email.send_when === "evaluate_sql" && !(email.evaluate_sql || "").trim()) {
+    return problem("Please enter the Evaluate SQL of the email, or choose another 'Send when'.");
+  }
+  if (email.max_records != null && !(Number.isInteger(email.max_records) && email.max_records > 0)) {
+    return problem("Max records must be a whole number greater than 0.");
+  }
+  if (email.send_when === "done_with_results" && !email.files.length) {
+    return problem("'Done, with results' needs at least one file to count the results in. Add a file (its Attach may be off), or choose another 'Send when'.");
+  }
+  const fileNames = email.files.map((file) => (file.name || "").trim().replace(/\.xlsx$/i, "").trim().toLowerCase());
+  for (const [fileIndex, file] of email.files.entries()) {
+    const fileLabel = "File " + (fileIndex + 1);
+    if (fileNames[fileIndex] && fileNames.indexOf(fileNames[fileIndex]) < fileIndex) {
+      return problem(fileLabel + " has the same name as file " + (fileNames.indexOf(fileNames[fileIndex]) + 1) + ".", fileIndex);
+    }
+    if (!file.sheets.length) {
+      return problem(fileLabel + " has no sheet. Add one, or remove the file.", fileIndex);
+    }
+    const defaults = defaultSheetNames(file.sheets, controlType, controlName, ruleConfig);
+    const names = effectiveSheetNames(file.sheets, controlType, controlName, ruleConfig);
+    const bases = file.sheets.map((sheet, index) => baseSheetName(sheet.name, defaults[index]).toLowerCase());
+    for (const [sheetIndex, sheet] of file.sheets.entries()) {
+      const sheetLabel = `${fileLabel}, sheet "${names[sheetIndex]}"`;
+      if (sheet.name && SHEET_NAME_INVALID.test(sheet.name)) {
+        return problem(sheetLabel + ": the name contains a character Excel does not allow: [ ] : * ? / \\", fileIndex, sheetIndex);
+      }
+      if (sheet.name && sheet.name.trim() && bases.some((base, index) => index !== sheetIndex && base === bases[sheetIndex])) {
+        return problem(sheetLabel + ": another sheet of the file has this name.", fileIndex, sheetIndex);
+      }
+      if (sheet.kind === "sql" && !(sheet.query || "").trim()) {
+        return problem(sheetLabel + ": please enter the query, or remove the sheet.", fileIndex, sheetIndex);
+      }
+      if (sheet.kind === "result" && controlType === "REC") {
+        const available = availableResultTypes(ruleConfig, sheet.side);
+        if (!available.length) {
+          return problem(sheetLabel + ": side " + String(sheet.side).toUpperCase() + " saves no results. Pick the other side, or remove the sheet.", fileIndex, sheetIndex);
+        }
+        if (!(sheet.result_types || []).some((type) => available.includes(type))) {
+          return problem(sheetLabel + ": please choose at least one result type the side saves.", fileIndex, sheetIndex);
+        }
       }
     }
   }
-  return email;
+  return null;
 }
+
+// What is being dragged in the Email tab: a sheet { file, index } or a file index; plain, set only during a drag.
+export const emailDrag = { sheet: null, file: null };
 
 // Whether a catalogue row sends email, from its stored rule_config string.
 export function sendsEmail(control) {

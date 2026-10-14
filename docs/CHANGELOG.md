@@ -96,6 +96,11 @@ Dashboard's file summary.
   opens its control's Run log on it, as does a control's name (the run selected; a click selects a Run log row); discrepancies blue instead of red; no *PV* column (a blue info badge on the status chip,
   a stop icon for 0), warnings as an amber badge on it (`get-control-runs`: `superseded_by`, `kpis`,
   `kpi_types`).
+- **Email: several files with several sheets each** (*+ File*, *+ Sheet*): result sheets (REC: side and result
+  types per sheet, the same table in several sheets) and Free SQL sheets, each named, filtered and laid out on its own;
+  an *Attach* switch and a row limit per file, the size limit over all files; a file whose sheets have no rows is left
+  out; the summary has a line per file. The Email tab is now boxes with one-line sheets that open, moved by drag or
+  menu. Old configurations are read as one file (REC sheets keep `A`/`B`) and saved as `files` the next time.
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.
 - **Next maintenance** chip on the Scheduler page (time left, time and interval on hover), only on the lease holder;
   `scheduler-status` drops a stale `next_maintenance` after a Stop and adds `maintenance_interval`.

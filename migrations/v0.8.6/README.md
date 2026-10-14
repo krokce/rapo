@@ -47,3 +47,28 @@ it, which does no harm (`./install.sh --force` recreates it without). `websocket
 1. Upload the ASN.1 grammars your binary files use (TAP, RAP, NRTRDE, 3GPP TS 32.298 or a vendor's): open a binary
    file in the viewer, *Grammars…*. None is shipped with Rapo. A delimiter the viewer remembered per browser before is
    offered for saving (orange save icon in the *Delimiter* field) the next time a file of that datasource is viewed.
+
+## Email files and sheets
+
+`rule_config.email` now holds its attachments as `files` instead of `attachment_name`, `attach` and `sheets`:
+
+```json
+"files": [
+  {"name": "Losses_{control_date_from:%Y%m%d}", "attach": true,
+   "sheets": [
+     {"kind": "result", "side": "a", "name": null, "result_types": ["Loss"], "filter": null,
+      "fields": [{"column": "msisdn", "label": "MSISDN"}]},
+     {"kind": "sql", "name": "Summary", "query": "select ... where rapo_process_id = {process_id}"}]}
+]
+```
+
+- `name`: the file name with `{variables}` (`.xlsx` added); null = `<NAME>_<run from>[_<run to>]`, `_2`, `_3`... by
+  position. `attach`: false = not attached, but counted for `done_with_results` and `{attachment_rows}`.
+- A sheet's `kind` is `result` or `sql`. A result sheet has `side` (`main` for ANL/REP, `a`/`b` for REC; REC also
+  `result_types`, empty = all the side saves), `filter` and `fields` as before; a Free SQL sheet has `query`. `name`
+  null = the default (control name, or the side plus its result types when not all of them; `SQL`, `SQL 2`...).
+- `max_records` applies per file; `[EMAIL] max_attachment_mb` to all attached files together.
+
+Nothing has to be done: an older configuration is read as one file with its enabled sheets, by the server and by the
+editor, and written in the new form the next time the control is saved. Check controls whose email had sheets turned
+off: those sheets are dropped when the control is next saved (the previous version keeps them).

@@ -3,6 +3,11 @@
 The configuration of a control is the `email` key of its rule_config (ANL,
 REP and REC; CMP keeps its rule_config as a list and has no email). The SMTP
 parameters come from the [EMAIL] section of rapo.ini.
+
+The attachments are `files`, each an Excel file of `sheets`: result sheets
+(a filtered select from a result table) and Free SQL sheets. An older
+configuration (one `attachment_name`, `attach` and a fixed `sheets` object)
+is converted on read by `read_files`, as the editor does on load.
 """
 
 import io
@@ -32,6 +37,7 @@ DEFAULT_MAX_ROWS = options.default('EMAIL', 'max_attachment_rows')
 DEFAULT_MAX_MB = options.default('EMAIL', 'max_attachment_mb')
 EXCEL_MAX_DIGITS = 15
 EXCEL_MAX_TEXT = 32767
+REC_RESULT_TYPES = ('Loss', 'Discrepancy', 'Match')
 
 
 class EmailError(Exception):
@@ -87,29 +93,38 @@ def render(text, variables):
     return utils.render(text, variables)
 
 
-def attachment_name(control, email_config=None, variables=None):
-    """Get the file name of the attachment of a control run.
+def attachment_name(control, file_config=None, variables=None, index=0,
+                    taken=None):
+    """Get the name of an attached file of a control run.
 
-    The configured `attachment_name` with its {variables} rendered, else the
-    control name, then the date the window starts, then the date it ends
-    when that is another day, in ISO format.
+    The configured `name` with its {variables} rendered, else the control
+    name, then the date the window starts, then the date it ends when that is
+    another day, in ISO format, then _2, _3... from the second file on. A name
+    already in `taken` (case-insensitive) gets ' (2)', ' (3)'...
     """
-    template = (email_config or {}).get('attachment_name')
+    name = None
+    template = (file_config or {}).get('name')
     if template and template.strip():
         name = render(template, variables or {})
         name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', name)
         name = name.strip().strip('.')
         if name.lower().endswith('.xlsx'):
             name = name[:-5].rstrip()
-        if name:
-            return f'{name}.xlsx'
-    date_from = control.date_from.date()
-    date_to = control.date_to.date()
-    dates = f'{date_from:%Y-%m-%d}'
-    if date_to != date_from:
-        dates = f'{dates}_{date_to:%Y-%m-%d}'
-    name = re.sub(r'[^\w.-]+', '_', control.name)
-    return f'{name}_{dates}.xlsx'
+    if not name:
+        date_from = control.date_from.date()
+        date_to = control.date_to.date()
+        dates = f'{date_from:%Y-%m-%d}'
+        if date_to != date_from:
+            dates = f'{dates}_{date_to:%Y-%m-%d}'
+        name = re.sub(r'[^\w.-]+', '_', control.name)
+        name = f'{name}_{dates}' + (f'_{index + 1}' if index else '')
+    title, number = name, 2
+    while taken is not None and title.lower() in taken:
+        title = f'{name} ({number})'
+        number += 1
+    if taken is not None:
+        taken.add(title.lower())
+    return f'{title}.xlsx'
 
 
 def read_text_error(control):
@@ -330,52 +345,226 @@ def sheet_title(sheet_config, default, taken):
     return title
 
 
-def build_sheets(control, email_config, variables):
-    """Get the sheets of the attachment the control is configured for."""
+def available_result_types(control, side):
+    """Get the result types a REC side saves: Loss and Discrepancy with its
+    issues, Match with its matches; none when the side saves nothing."""
+    rule_config = control.rule_config
+    types = []
+    if rule_config.get(f'need_issues_{side}'):
+        types.extend(['Loss', 'Discrepancy'])
+    if rule_config.get(f'need_recons_{side}'):
+        types.append('Match')
+    return types
+
+
+def read_files(control, email_config):
+    """Get the `files` of the email configuration.
+
+    An older configuration is converted: one file named `attachment_name`,
+    attached per `attach`, with its enabled sheets in the order main (or A,
+    B), then the Free SQL. A REC sheet without a name keeps its old default
+    A / B; disabled sheets were never sent and are left out.
+    """
+    files = email_config.get('files')
+    if isinstance(files, list):
+        return [file for file in files if isinstance(file, dict)]
     sheets_config = email_config.get('sheets') or {}
     sheets = []
-    taken = set()
-    if control.is_reconciliation:
-        rule_config = control.rule_config
-        sides = [('a', 'A', control.output_name_a, control.need_a),
-                 ('b', 'B', control.output_name_b, control.need_b)]
-        for key, title, table_name, need in sides:
-            sheet_config = sheets_config.get(key) or {}
-            if not sheet_config.get('enabled') or not need:
-                continue
-            available = []
-            if rule_config.get(f'need_issues_{key}'):
-                available.extend(['Loss', 'Discrepancy'])
-            if rule_config.get(f'need_recons_{key}'):
-                available.append('Match')
-            chosen = sheet_config.get('result_types') or available
-            result_types = [type for type in chosen if type in available]
-            if not result_types:
-                continue
-            title = sheet_title(sheet_config, title, taken)
-            sheets.append(Sheet(control, title, table_name, sheet_config,
-                                variables, result_types=result_types))
-    else:
-        sheet_config = sheets_config.get('main') or {}
-        if sheet_config.get('enabled', True):
-            title = sheet_title(sheet_config, control.name, taken)
-            sheets.append(Sheet(control, title, control.output_name,
-                                sheet_config, variables))
+    sides = ['a', 'b'] if control.is_reconciliation else ['main']
+    for side in sides:
+        sheet_config = sheets_config.get(side) or {}
+        if not sheet_config.get('enabled', side == 'main'):
+            continue
+        sheet = {'kind': 'result', 'side': side,
+                 'name': sheet_config.get('name'),
+                 'filter': sheet_config.get('filter'),
+                 'fields': sheet_config.get('fields') or []}
+        if side != 'main':
+            sheet['name'] = sheet['name'] or side.upper()
+            sheet['result_types'] = list(sheet_config.get('result_types')
+                                         or REC_RESULT_TYPES)
+        sheets.append(sheet)
     sql_config = sheets_config.get('sql') or {}
     if sql_config.get('enabled'):
-        title = sheet_title(sql_config, 'SQL', taken)
-        sheets.append(SqlSheet(control, title, sql_config, variables))
-    return [sheet for sheet in sheets if sheet.prepare()]
+        sheets.append({'kind': 'sql', 'name': sql_config.get('name'),
+                       'query': sql_config.get('query')})
+    return [{'name': email_config.get('attachment_name'),
+             'attach': email_config.get('attach', True),
+             'sheets': sheets}]
 
 
-def count_results(sheets):
+def chosen_result_types(control, sheet_config):
+    """Get the result types a REC sheet exports: its chosen ones the side
+    saves, all of them when none is chosen."""
+    available = available_result_types(control, sheet_config.get('side'))
+    chosen = sheet_config.get('result_types') or available
+    return [type for type in REC_RESULT_TYPES
+            if type in chosen and type in available]
+
+
+def default_sheet_names(control, sheets_config):
+    """Get the default names of the sheets of a file.
+
+    A result sheet is named after the control (ANL/REP) or its side (REC),
+    with its result types when they are not all the side saves, e.g.
+    'A Loss+Discrepancy'. Free SQL sheets are SQL, SQL 2, ... Repeats are
+    numbered by sheet_title.
+    """
+    names = []
+    sql_number = 0
+    for sheet_config in sheets_config:
+        if sheet_config.get('kind') == 'sql':
+            sql_number += 1
+            names.append('SQL' if sql_number == 1 else f'SQL {sql_number}')
+        elif control.is_reconciliation:
+            side = str(sheet_config.get('side') or '')
+            available = available_result_types(control, side)
+            chosen = chosen_result_types(control, sheet_config)
+            name = side.upper()
+            if chosen and len(chosen) < len(available):
+                name = f'{name} {"+".join(chosen)}'
+            names.append(name)
+        else:
+            names.append(control.name)
+    return names
+
+
+class File:
+    """One attached file of the email: its configuration and sheets."""
+
+    def __init__(self, config, index, sheets):
+        self.config = config
+        self.index = index
+        self.sheets = sheets
+
+    @property
+    def attach(self):
+        return self.config.get('attach', True) is not False
+
+    @property
+    def count(self):
+        return sum(sheet.count for sheet in self.sheets)
+
+
+def build_sheet(control, sheet_config, title, variables):
+    """Get the sheet of a sheet configuration, None when it cannot be one."""
+    kind = sheet_config.get('kind')
+    if kind == 'sql':
+        return SqlSheet(control, title, sheet_config, variables)
+    if kind != 'result':
+        logger.warning(f'{control} Email: sheet kind {kind!r} unknown, '
+                       'sheet skipped')
+        return None
+    if not control.is_reconciliation:
+        return Sheet(control, title, control.output_name, sheet_config,
+                     variables)
+    side = sheet_config.get('side')
+    if side not in ('a', 'b'):
+        logger.warning(f'{control} Email: sheet {title} has no side, '
+                       'sheet skipped')
+        return None
+    need = control.need_a if side == 'a' else control.need_b
+    result_types = chosen_result_types(control, sheet_config)
+    if not need or not result_types:
+        logger.warning(f'{control} Email: side {side.upper()} saves none of '
+                       f'the result types of sheet {title}, sheet skipped')
+        return None
+    table_name = control.output_name_a if side == 'a' \
+        else control.output_name_b
+    return Sheet(control, title, table_name, sheet_config, variables,
+                 result_types=result_types)
+
+
+def build_files(control, email_config, variables):
+    """Get the files of the email with their prepared sheets."""
+    files = []
+    for index, file_config in enumerate(read_files(control, email_config)):
+        sheets_config = [sheet for sheet in file_config.get('sheets') or []
+                         if isinstance(sheet, dict)]
+        defaults = default_sheet_names(control, sheets_config)
+        taken = set()
+        sheets = []
+        for sheet_config, default in zip(sheets_config, defaults):
+            title = sheet_title(sheet_config, default, taken)
+            sheet = build_sheet(control, sheet_config, title, variables)
+            if sheet and sheet.prepare():
+                sheets.append(sheet)
+        files.append(File(file_config, index, sheets))
+    return files
+
+
+def count_results(files):
     """Get the rows that count as results for 'done_with_results'.
 
-    The result-table sheets; the Free SQL sheet only when it is the only
-    sheet, since a summary query returns rows for every run.
+    The result-table sheets of every file, attached or not; the Free SQL
+    sheets only when there is no result sheet, since a summary query returns
+    rows for every run.
     """
+    sheets = [sheet for file in files for sheet in file.sheets]
     results = [sheet for sheet in sheets if sheet.counts_as_result]
     return sum(sheet.count for sheet in results or sheets)
+
+
+def attach_files(control, email_config, files, variables):
+    """Build the workbooks of the files that can be attached.
+
+    A file is left out when its Attach is off, its sheets have no rows, it
+    has more rows than the limit, or it would take the attachments above the
+    size limit; the files are attached in their order.
+
+    Returns
+    -------
+    attachments : list of tuple
+        The (name, content) of each attached file.
+    lines : list of dict
+        Per file: `name`, `rows`, `sheets`, and `reason` when not attached.
+    """
+    params = settings()
+    ceiling = params.get('max_attachment_rows') or DEFAULT_MAX_ROWS
+    limit = email_config.get('max_records') or ceiling
+    limit = min(int(limit), int(ceiling))
+    max_mb = params.get('max_attachment_mb') or DEFAULT_MAX_MB
+    attachments, lines = [], []
+    used = 0
+    taken = set()
+    for file in files:
+        name = attachment_name(control, file.config, variables, file.index,
+                               taken)
+        line = {'name': name, 'rows': file.count,
+                'sheets': len(file.sheets), 'reason': None}
+        lines.append(line)
+        if not file.attach:
+            line['reason'] = 'Attach off'
+        elif file.count == 0:
+            line['reason'] = 'no rows'
+        elif file.count > limit:
+            line['reason'] = f'above the limit of {limit:,} rows'
+        else:
+            content = build_workbook(file.sheets)
+            size = len(content) / 1024 / 1024
+            if used + size > max_mb:
+                line['reason'] = (f'{size:.1f} MB would take the attachments '
+                                  f'above the limit of {max_mb} MB')
+            else:
+                used += size
+                attachments.append((name, content))
+                logger.info(f'{control} Email: attachment {name} with '
+                            f'{file.count} rows, {size:.2f} MB')
+        if line['reason'] and line['reason'] != 'Attach off':
+            logger.warning(f'{control} Email: {name} not attached: '
+                           f'{line["reason"]}')
+    return attachments, lines
+
+
+def describe_file(line):
+    """Get the summary line of an attached or left-out file."""
+    rows = f'{line["rows"]:,}'.replace(',', ' ') + \
+        (' row' if line['rows'] == 1 else ' rows')
+    sheets = f'{line["sheets"]} sheet' + ('' if line['sheets'] == 1 else 's')
+    text = f'{line["name"]}: {rows}, {sheets}'
+    if line['reason']:
+        text += f', not attached ({line["reason"]})'
+    return text
 
 
 def column_formats(column, values):
@@ -472,8 +661,9 @@ def build_workbook(sheets):
     return buffer.getvalue()
 
 
-def build_summary(control, variables, note):
-    """Get the run summary block appended to the body."""
+def build_summary(control, variables, files):
+    """Get the run summary block appended to the body, with a line per file
+    (attach_files)."""
     def number(value):
         return '' if value is None else f'{value:,}'.replace(',', ' ')
 
@@ -500,10 +690,9 @@ def build_summary(control, variables, note):
         lines += [f'Fetched: {number(control.fetched_number)}',
                   f'Success: {number(control.success_number)}',
                   f'Errors: {number(control.error_number)}']
-    if variables['attachment_rows'] is not None:
-        lines.append(f'Attachment rows: {number(variables["attachment_rows"])}')
-    if note:
-        lines.append(note)
+    if files:
+        lines.append('Attachments:')
+        lines += [f'  {describe_file(line)}' for line in files]
     return '\n'.join(lines)
 
 
@@ -628,44 +817,16 @@ def send_run_email(control, trigger='run', override_to=None):
 
         variables = build_variables(control)
         variables['evaluate_value'] = evaluate_value
-        note = None
-        content = None
-        name = None
+        attachments, lines = [], []
         if control.status == 'D':
-            sheets = build_sheets(control, email_config, variables)
-            total = sum(sheet.count for sheet in sheets)
-            variables['attachment_rows'] = total
+            files = build_files(control, email_config, variables)
+            variables['attachment_rows'] = sum(file.count for file in files)
             if send_when == 'done_with_results' and not manual and \
-                    count_results(sheets) == 0:
+                    count_results(files) == 0:
                 logger.info(f'{control} Email not sent: no result rows')
                 return False
-            if email_config.get('attach', True) and sheets:
-                params = settings()
-                ceiling = params.get('max_attachment_rows') \
-                    or DEFAULT_MAX_ROWS
-                limit = email_config.get('max_records') or ceiling
-                limit = min(int(limit), int(ceiling))
-                max_mb = params.get('max_attachment_mb') or DEFAULT_MAX_MB
-                if total == 0:
-                    note = 'The run has no result rows, so no file is attached.'
-                elif total > limit:
-                    note = (f'The output has {total:,} rows, above the limit '
-                            f'of {limit:,}, so no file is attached.')
-                    logger.warning(f'{control} Email: {note}')
-                else:
-                    content = build_workbook(sheets)
-                    size = len(content) / 1024 / 1024
-                    if size > max_mb:
-                        note = (f'The file has {size:.1f} MB, above the '
-                                f'limit of {max_mb} MB, so it is not '
-                                'attached.')
-                        logger.warning(f'{control} Email: {note}')
-                        content = None
-                    else:
-                        name = attachment_name(control, email_config,
-                                               variables)
-                        logger.info(f'{control} Email: attachment {name} '
-                                    f'with {total} rows, {size:.2f} MB')
+            attachments, lines = attach_files(control, email_config, files,
+                                              variables)
 
         subject = render(email_config.get('subject') or
                          '{control_name} {control_date_from:%Y-%m-%d}',
@@ -676,9 +837,12 @@ def send_run_email(control, trigger='run', override_to=None):
             body += f'\n\nThe run ended with an error:\n\n' \
                     f'{variables["text_error"] or ""}'
         if email_config.get('include_summary', True):
-            body += '\n' + build_summary(control, variables, note)
-        elif note:
-            body += f'\n\n{note}'
+            body += '\n' + build_summary(control, variables, lines)
+        else:
+            notes = [describe_file(line) for line in lines
+                     if line['reason'] and line['reason'] != 'Attach off']
+            if notes:
+                body += '\n\n' + '\n'.join(notes)
         if trigger == 'test':
             subject = f'[TEST] {subject}'
             if evaluate_note:
@@ -701,7 +865,7 @@ def send_run_email(control, trigger='run', override_to=None):
         message['Date'] = dt.datetime.now().astimezone()
         message['Message-ID'] = make_msgid()
         message.set_content(body.strip() + '\n')
-        if content:
+        for name, content in attachments:
             message.add_attachment(content, maintype='application',
                                    subtype='vnd.openxmlformats-officedocument'
                                            '.spreadsheetml.sheet',

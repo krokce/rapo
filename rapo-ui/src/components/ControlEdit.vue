@@ -913,7 +913,8 @@
                   :control-type="control.control_type"
                   :rule-config="control.control_type === 'REC' ? ruleConfigObject : null"
                   :source-columns="emailSourceColumns"
-                  :saved="Boolean(control.control_id) && !dirty">
+                  :saved="Boolean(control.control_id) && !dirty"
+                  :reveal="emailReveal">
                 </email-config-box>
               </div>
             </q-tab-panel>
@@ -1084,15 +1085,7 @@ import { describeOrphan, describeTable, summarizeSchema } from "../utils/schema"
 import { defaultSchedule, parseSchedule, scheduleType, serializeSchedule } from "../utils/schedule";
 import { allUpstreams, nameIndex, upstreamsOf } from "../utils/chain";
 import { controlGroups, controlSystems, filterOptions, normalizeOption } from "../utils/controlGroups";
-import {
-  DEFAULT_SQL_SHEET_NAME,
-  EMAIL_CONTROL_TYPES,
-  SHEET_NAME_INVALID,
-  completeEmailConfig,
-  defaultEmailConfig,
-  defaultSheetName,
-  isEmailAddress,
-} from "../utils/email";
+import { EMAIL_CONTROL_TYPES, completeEmailConfig, defaultEmailConfig, emailConfigProblem } from "../utils/email";
 
 // The label of a version in the Version select and the Manage versions dialog.
 function versionLabel(version) {
@@ -1148,6 +1141,8 @@ export default {
   },
   data() {
     return {
+      // The email problem the Email tab scrolls to after a refused save ({ file, sheet } of emailConfigProblem).
+      emailReveal: null,
       // The Control group field's options, narrowed to the typed text.
       controlGroupOptions: [],
       // The System fields' options, narrowed to the typed text.
@@ -2153,52 +2148,13 @@ export default {
       }
       return body;
     },
-    // The first problem of an enabled email configuration, or null.
-    emailConfigError() {
-      const email = this.ruleConfigObject.email;
-      const recipients = [...email.to, ...email.cc, ...email.bcc];
-      if (!email.to.length) {
-        return "Please enter at least one email recipient (To).";
-      }
-      const invalid = recipients.filter((address) => !isEmailAddress(address));
-      if (invalid.length) {
-        return "Not an email address: " + invalid.join(", ");
-      }
-      if (!email.subject || !email.subject.trim()) {
-        return "Please enter an email subject.";
-      }
-      if (email.send_when === "evaluate_sql" && !(email.evaluate_sql || "").trim()) {
-        return "Please enter the Evaluate SQL of the email, or choose another 'Send when'.";
-      }
-      if (email.max_records != null && !(Number.isInteger(email.max_records) && email.max_records > 0)) {
-        return "Max records must be a whole number greater than 0.";
-      }
-      const resultKeys = this.control.control_type === "REC" ? ["a", "b"] : ["main"];
-      const sheetKeys = [...resultKeys, "sql"].filter((key) => email.sheets[key].enabled);
-      if (email.sheets.sql.enabled && !(email.sheets.sql.query || "").trim()) {
-        return "Please enter the query of the Free SQL sheet, or turn its Include off.";
-      }
-      const invalidName = sheetKeys.map((key) => email.sheets[key].name).find((name) => name && SHEET_NAME_INVALID.test(name));
-      if (invalidName) {
-        return "Sheet name '" + invalidName + "' contains a character Excel does not allow: [ ] : * ? / \\";
-      }
-      const defaultName = (key) => (key === "sql" ? DEFAULT_SQL_SHEET_NAME : defaultSheetName(key, this.control.control_name));
-      const sheetNames = sheetKeys.map((key) => (email.sheets[key].name || defaultName(key)).trim().toLowerCase());
-      if (new Set(sheetNames).size < sheetNames.length) {
-        return "The sheets of the email need different names.";
-      }
-      if (this.control.control_type === "REC") {
-        const sides = ["a", "b"].filter((side) => email.sheets[side].enabled);
-        const available = (side) => [
-          ...(this.ruleConfigObject["need_issues_" + side] ? ["Loss", "Discrepancy"] : []),
-          ...(this.ruleConfigObject["need_recons_" + side] ? ["Match"] : []),
-        ];
-        const empty = sides.find((side) => available(side).length && !email.sheets[side].result_types.some((type) => available(side).includes(type)));
-        if (empty) {
-          return "Please choose at least one result type for sheet " + empty.toUpperCase() + ", or turn its Include off.";
-        }
-      }
-      return null;
+    // The first problem of an enabled email configuration, or null: { message, file, sheet }.
+    emailConfigProblem() {
+      return emailConfigProblem(this.ruleConfigObject.email, {
+        controlType: this.control.control_type,
+        controlName: this.control.control_name,
+        ruleConfig: this.control.control_type === "REC" ? this.ruleConfigObject : null,
+      });
     },
     isBlank(value) {
       // Number inputs give "" when cleared; 0 is a valid value.
@@ -2248,9 +2204,11 @@ export default {
       }
 
       if (!errorTab && this.emailEnabled) {
-        const emailError = this.emailConfigError();
-        if (emailError) {
-          this.$q.notify({ type: "negative", message: emailError });
+        const emailProblem = this.emailConfigProblem();
+        if (emailProblem) {
+          this.$q.notify({ type: "negative", message: emailProblem.message });
+          // A new object each time, so the box reveals the same place again.
+          this.emailReveal = emailProblem.file === null ? null : { ...emailProblem };
           errorTab = "email";
         }
       }
