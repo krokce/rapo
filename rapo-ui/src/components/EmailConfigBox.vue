@@ -38,15 +38,28 @@
             </q-tooltip>
           </q-toggle>
         </div>
-        <template v-if="email.send_when === 'evaluate_sql'">
-          <code-box label="Evaluate SQL" :template-vars="true" v-model="email.evaluate_sql" :tables="sqlTables" :examples="evaluateExamples" :check="evaluateChecker">
-          </code-box>
-          <div class="text-grey-7 text-caption">
-            A query returning one number, run when the run ends Done or Error. The email is sent only when the number is above 0; 0, a negative number or a
-            failed query sends nothing. Variables as in the Prerequisite SQL, e.g. <span class="text-mono">{process_id}</span>. Its value is
-            <span class="text-mono">{evaluate_value}</span> in the subject, the body and the file names.
+        <div v-if="email.send_when === 'evaluate_sql'" class="email-evaluate" :class="{ 'email-evaluate--open': evaluateOpen }">
+          <div class="email-evaluate__head row no-wrap items-center q-gutter-x-sm" @click="evaluateOpen = !evaluateOpen">
+            <q-chip class="email-evaluate__kind" title="The email is sent only when this query returns a number above 0">
+              <q-avatar icon="fas fa-calculator" color="deep-orange-6" text-color="white" />
+              Evaluate SQL
+            </q-chip>
+            <div v-if="evaluateSummary" class="text-grey-7 text-mono ellipsis">{{ evaluateSummary }}</div>
+            <div v-else class="text-grey-7">no query</div>
+            <q-space />
+            <q-icon v-if="!evaluateSummary" name="fas fa-exclamation-triangle" color="negative" size="14px" title="No query: the email is never sent" />
+            <q-icon :name="evaluateOpen ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" size="12px" color="grey-7" class="q-mr-sm" />
           </div>
-        </template>
+          <div v-if="evaluateOpen" class="email-evaluate__body">
+            <code-box label="Evaluate SQL" :template-vars="true" v-model="email.evaluate_sql" :tables="sqlTables" :examples="evaluateExamples" :check="evaluateChecker">
+            </code-box>
+            <div class="text-grey-7 text-caption">
+              A query returning one number, run when the run ends Done or Error. The email is sent only when the number is above 0; 0, a negative number or a
+              failed query sends nothing. Variables as in the Prerequisite SQL, e.g. <span class="text-mono">{process_id}</span>. Its value is
+              <span class="text-mono">{evaluate_value}</span> in the subject, the body and the file names.
+            </div>
+          </div>
+        </div>
       </q-card-section>
     </q-card>
 
@@ -334,6 +347,8 @@ export default {
       resultColumns: {},
       // Keys of the sheets whose editor is open.
       openKeys: [],
+      // Whether the Evaluate SQL editor is open; a saved query starts folded.
+      evaluateOpen: false,
       fileHandleDown: null,
       draggingFile: null,
       overFile: null,
@@ -374,6 +389,10 @@ export default {
       if (!this.controlName) return {};
       return Object.fromEntries(Object.entries(this.tableNames).map(([side, table]) => [table, this.columnsBySide[side]]));
     },
+    // The first line of the Evaluate SQL, shown while it is folded.
+    evaluateSummary() {
+      return (this.email.evaluate_sql || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
+    },
     evaluateExamples() {
       return examplesFor({ field: "evaluate_sql", controlType: this.controlType, controlName: this.controlName, side: "a" });
     },
@@ -413,7 +432,12 @@ export default {
       immediate: true,
       handler(value) {
         completeEmailConfig(value, this.controlType);
+        this.evaluateOpen = !this.evaluateSummary;
       },
+    },
+    // Choosing Evaluate SQL without a query opens its editor.
+    "email.send_when"(value) {
+      if (value === "evaluate_sql" && !this.evaluateSummary) this.evaluateOpen = true;
     },
     tableNames: {
       immediate: true,
@@ -503,6 +527,7 @@ export default {
       if (!this.openKeys.includes(key)) this.openKeys.push(key);
     },
     revealProblem({ file, sheet }) {
+      if (this.email.send_when === "evaluate_sql" && !this.evaluateSummary) this.evaluateOpen = true;
       const target = this.email.files[file];
       if (!target) return;
       const element = sheet !== null && target.sheets[sheet] ? this.revealSheet(target.sheets[sheet]) : this.fileElements[file];
@@ -631,6 +656,37 @@ export default {
 </script>
 
 <style scoped>
+/* The Evaluate SQL folds like a sheet (EmailSheetRow). */
+.email-evaluate {
+  border: 1px solid var(--rapo-border-soft);
+  border-radius: 4px;
+  background: var(--rapo-surface);
+}
+
+.email-evaluate--open {
+  border-color: var(--rapo-panel-border);
+}
+
+.email-evaluate__head {
+  min-height: 40px;
+  padding: 2px 4px 2px 8px;
+  cursor: pointer;
+}
+
+.email-evaluate__kind {
+  margin: 0;
+  font-size: 12px;
+  flex: none;
+}
+
+.email-evaluate__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  border-top: 1px solid var(--rapo-border-soft);
+}
+
 .email-file {
   padding: 8px 10px 6px;
   border: 1px solid var(--rapo-panel-border);

@@ -401,7 +401,8 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     - **Layout.** The tab is now boxes: *Delivery* (Send when, Max records per file, run summary, Evaluate SQL),
       *Recipients* (CC and BCC side by side), *Message*, *Attachments* and *Send a test*. A sheet is one line (kind,
       name, table, result types, filter and field count) that opens its editor; new sheets and the sheet a refused
-      save points to open by themselves. Files and sheets are moved by their handles (a sheet also into another
+      save points to open by themselves. The Evaluate SQL folds the same way to its chip and first line (a saved
+      query starts folded, an empty one open). Files and sheets are moved by their handles (a sheet also into another
       file) or with their menu (*Move up/down*, *Duplicate*, *Move to file*, *Remove*).
     - **Existing configurations** (one `attachment_name`, `attach` and the fixed `sheets` object) keep working
       unchanged: Rapo and the editor read them as one file with their enabled sheets (a disabled sheet was never sent
