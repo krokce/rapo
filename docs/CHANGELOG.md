@@ -20,8 +20,8 @@ Dashboard's file summary.
   controls, fetched vs discrepancies, weekday × hour; the scheduler's last and next 24 hours as one strip; files over time by status, top
   datasources (records loaded, files loaded, loading time) and datasources by state, loading and throughput (trends
   fill their row; no *Files by status* donut, the files over time have its rows); KPI alarms per control (compact
-  strips by period, last done run of a period only, with the alarmed value of the most important KPI, a cell opens the
-  KPIs tab with its run picked, a name the run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
+  strips by period, last done run of a period only, with the value of the most important KPI in the Results boxes' colors (soft green without an alarm), a cell
+  opens the run log on its run, a name the run log; all controls on demand); health in two rows of six tiles, as tall as *Today*. Panels hidden, moved and dragged per browser; clicks open
   Results, Files, Scheduler, Controls or Datasources filtered (query filters on those pages). One route
   `get-dashboard` (parts in parallel, 3 s shared memo); past file log days from `rapo_file_summary`, summed by the
   scheduler's maintenance or *Refresh* (`refresh-file-summary`), and at once for files recycled, reloaded or deleted
@@ -90,9 +90,10 @@ Dashboard's file summary.
   the Run log: a *Ver*
   bubble (runs of the period, darker the more) unpacks them, faded with their version number; columns follow the
   width (one *Period* column, no Type, no Processname only as needed); the Run log sorted by period with a column per
-  stored KPI value in a grey or alarm-colored box, filled once the post-run hook stored it; Results has one *KPIs*
-  column (by priority, 3–4 same-width boxes, green or alarm-colored, `+N`, sorts by alarm), and a superseded run there
-  opens its control's Run log on it; no *PV* column (a blue info badge on the status chip,
+  stored KPI value in a soft green or alarm-colored box, filled once the post-run hook stored it; Results has one *KPIs*
+  column (by priority, 3–4 same-width boxes, green or alarm-colored, `+N`, sorts by alarm); *Calculate KPIs* flags a
+  stored KPI that differs, failed or is missing with a warning icon instead of *Stored* columns; and a superseded run there
+  opens its control's Run log on it, as does a control's name (the run selected; a click selects a Run log row); discrepancies blue instead of red; no *PV* column (a blue info badge on the status chip,
   a stop icon for 0), warnings as an amber badge on it (`get-control-runs`: `superseded_by`, `kpis`,
   `kpi_types`).
 - **Scheduler's Running tab:** a control's name opens its editor on the *Scheduler* tab.

@@ -76,9 +76,9 @@ def kpis(span):
     ALARM or above.
 
     A cell is {level, process_id} of its run (the highest level, the latest
-    run on a tie) and, when that level is an alarm (1 and above), the KPI of
-    the run at that level whose type comes first by priority (`kpi_type`,
-    `value`, `unit`, `decimals`) and how many `others` of the run alarmed.
+    run on a tie) with the KPI of the run at that level whose type comes
+    first by priority (`kpi_type`, `value`, `unit`, `decimals`; with no
+    alarm, the run's first KPI) and how many `others` of the run alarmed.
     """
     if not available():
         return {'available': False}
@@ -117,11 +117,9 @@ def kpis(span):
     def cell(name, position, level, process_id):
         result = {'row': order[name], 'column': position, 'level': level,
                   'process_id': process_id}
-        if level < 1:
-            return result
         alarmed = [row for row in runs[process_id]
                    if int(row['alarm_level'] or 0) >= 1]
-        top = min((row for row in alarmed
+        top = min((row for row in runs[process_id]
                    if int(row['alarm_level'] or 0) == level),
                   key=lambda row: (catalogue.get(row['kpi_type'], {})
                                    .get('rank', last), row['kpi_type']))
@@ -129,7 +127,7 @@ def kpis(span):
         return {**result, 'kpi_type': top['kpi_type'],
                 'value': top['kpi_value'], 'unit': info.get('unit'),
                 'decimals': info.get('decimals'),
-                'others': len(alarmed) - 1}
+                'others': max(len(alarmed) - 1, 0)}
 
     return {
         'available': True,

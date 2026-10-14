@@ -53,11 +53,13 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
    - **KPIs** (with the KPI tables). The highest alarm level of each control per day (or hour), as compact strips over
      the full width: the worst 25 controls, *Show N more controls* for the rest (remembered by the browser). An
      cell is the day (or hour) of the period a run read (`date_from`), and a period run more than once counts by its
-     last done run only (as in Data analysis' trend), also in the *KPI alarms* tile and the section's count. An
-     alarmed cell (level 1–3) writes the value of the run that reached that level (the latest on a tie), of its most
-     important KPI at that level (the KPI type's priority), in at most four characters (`0.35`, `12.4`, `1.2k`, `3.4M`)
-     when the cells are wide enough; the exact value, unit, run and the number of its other alarmed KPIs on hover. A
-     cell opens the control's KPIs tab with that run picked; a control's name opens its run log.
+     last done run only (as in Data analysis' trend), also in the *KPI alarms* tile and the section's count. A cell
+     writes the value of the run that reached its level (the latest on a tie), of its most important KPI at that level
+     (the KPI type's priority; without an alarm, its most important KPI), in at most four characters (`0.35`, `12.4`,
+     `1.2k`, `3.4M`) when the cells are wide enough, as the KPI boxes of Results show it: white on the alarm level's
+     color, dark on soft green without an alarm; the exact value, unit, run and the number of its other alarmed KPIs on
+     hover. A cell opens the control's run log on that run (as the ⟲ of a superseded run on Results); a control's name
+     opens its run log.
    - **Health.** The instance health as two rows of six tiles, tall like *Today* (the rapo server's, the database's; the file
      systems as one Disk tile, the fullest, all listed on hover), each with its value, level and a line over the last
      24 hours (24h) or 7 days (7d, 30d); a click opens Instance details on Health.
@@ -69,7 +71,7 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
      header's *Panels* menu adds hidden panels back and resets the layout (kept by the browser). A hidden panel's
      data is not read at all.
    - **Clicks** open the page behind a value, filtered: a status slice opens Results with that status, a type or
-     trigger slice Results with that filter, a control its editor's run log, a KPI cell its KPIs with the run picked,
+     trigger slice Results with that filter, a control its editor's run log, a KPI cell its run log on the cell's run,
      a datasource its file log, the stalled or disabled datasources the Datasources page so
      filtered, a row of the scheduler strip the Scheduler page's history or upcoming fires. Results
      (`status`, `type`, `name`, `trigger`, `warnings`, `hour`), Files (`status`, `lane`, `issue`, `hour`, `dup`),
@@ -342,10 +344,15 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     (the oldest 1), and a click on the *Ver* header unpacks or folds every period (remembered by the browser). A
     superseded run whose newer run is on another day stays in place with a ⟲ mark. On Results, that mark and the
     version number of an unpacked older run open the control's Run log on that run: *Days back* reaches back to it,
-    its period is unpacked, the row scrolled into view and its version number marked yellow. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
+    its period is unpacked, the row scrolled into view and selected (tinted yellow). A control's name on Results opens
+    its Run log on that run the same way (the row menu's *Edit control* opens the editor as before). A click on a row of
+    the Run log selects it, one at a time; a click on the selected row (not on its numbers, chips or buttons) or Esc
+    clears it, and leaving the page forgets it. The Run log is sorted by the period by default, leaves out side B for ANL and REP, and has a column per
     KPI stored for the runs (`RACS_KPI_RUNHISTORY_ALL`): the value, compact (exact on hover), in a box of one width for
-    every value with the digits on the right, green on light grey within its limits, white on its alarm level's color
-    when it alarmed; a click calculates the KPIs of that run. The values of a run appear as
+    every value with the digits on the right, dark on soft green within its limits, white on its alarm level's color
+    when it alarmed; a click calculates the KPIs of that run. The *Calculate KPIs* dialog no longer has *Stored*
+    columns: a row whose stored value or alarm level differs from the calculation, was stored with an error or not at
+    all ends with a warning icon (orange, red, grey) saying what was stored on hover. The values of a run appear as
     soon as its post-run hook (or *Re-ingest*) stored them, without reopening (the run's `rapo_log.updated` is touched
     then). The Dashboard's KPI alarms keep counting a period by its last Done run, so a re-run still running or in
     error does not hide the period's alarm. **Results** has one *KPIs* column (controls have different KPIs): a run's
@@ -354,7 +361,8 @@ package (`asn1tools`), and drops one (`phik`). The upgrade steps are in the [mig
     highest alarm, worst first. Compact values keep their sign within four characters (`-0.6`, `-12`), so negative
     values no longer show as `-…`; a NULL value reads `NULL`. To leave the names more room, the *PV* column is gone: a run whose Prerequisite SQL
     returned 0 shows a stop icon in its status chip, and a run with a Prerequisite value a small blue info badge on
-    the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter.
+    the chip (the value on hover, also in the chip's tooltip); a warning is a small amber badge on the status chip (a click opens the run details), and the type and status chips sit tighter. Discrepancy counts and rates are blue
+    (underlined on hover, as the fetched counts), no longer red: red is left to the KPI alarms.
     **Columns follow the width:** both tables show Type, Processname, *Run from* and *Run to* when they fit, and only
     as the window narrows put the period in one *Period* column with narrower numbers, then drop Type, and (the Run
     log only) Processname; the name column takes the width left, so rows have no empty gap, and Results no longer

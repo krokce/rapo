@@ -1,6 +1,6 @@
 <template>
   <div>
-    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="18" class="kpi-heatmap" @pick="pick" @label-pick="pickLabel" />
+    <heat-strip :rows="shownRows" :columns="columns" :label-width="labelWidth" :cell-height="18" boxes class="kpi-heatmap" @pick="pick" @label-pick="pickLabel" />
     <q-btn v-if="rows.length > LIMIT" flat dense no-caps size="sm" color="primary" class="q-mt-xs" :icon="all ? 'fas fa-chevron-up' : 'fas fa-chevron-down'" :label="all ? 'Show fewer' : `Show ${rows.length - LIMIT} more control${rows.length - LIMIT > 1 ? 's' : ''}`" @click="toggle" />
   </div>
 </template>
@@ -13,6 +13,8 @@ import { alarmLevel, compactKpiValue, formatKpiValue } from "../../utils/kpi";
 // The controls shown before "Show more", and where the browser keeps whether all are shown.
 const LIMIT = 25;
 const ALL_KEY = "rapo_dashboard_kpi_all";
+// The color of no alarm, the run tables' KPI box.
+const OK_COLOR = "var(--rapo-kpi-ok)";
 
 function readAll() {
   try {
@@ -23,9 +25,9 @@ function readAll() {
 }
 
 // The highest KPI alarm level of each control per bucket: a compact row per control (the worst first) in the level
-// colors (no alarm a pale grey), empty where it stored nothing; the first LIMIT, the others behind a button. An alarmed
-// cell writes the value of its run's most important KPI at that level. A cell opens the control's KPIs with its run
-// picked, a control's name its run log.
+// colors (no alarm soft green, as the KPI boxes of Results), empty where it stored nothing; the first LIMIT, the others
+// behind a button. A cell writes the value of its run's most important KPI at that level (any KPI without an alarm). A
+// cell opens the control's run log on its run, as does a control's name without one.
 export default {
   name: "KpiAlarmHeatmap",
   components: { HeatStrip },
@@ -53,15 +55,16 @@ export default {
         const info = alarmLevel(cell.level);
         grid[cell.row][cell.column] = {
           count: 1,
-          color: cell.level ? info.color : "blue-grey-2",
-          text: cell.level ? compactKpiValue(cell.value) : "",
+          color: cell.level ? info.color : OK_COLOR,
+          light: !cell.level,
+          text: cell.kpi_type ? compactKpiValue(cell.value) : "",
           title: this.cellTitle(this.data.heatmap.controls[cell.row].control_name, cell, info),
         };
       });
       return this.data.heatmap.controls.map((control, index) => ({
         key: control.control_name,
         label: control.control_name,
-        color: alarmLevel(control.level).color,
+        color: control.level ? alarmLevel(control.level).color : OK_COLOR,
         link: Boolean(control.control_id),
         title: `${control.control_name}: highest ${alarmLevel(control.level).label.toLowerCase()} in the span${control.control_id ? "; open its run log" : ""}`,
         cells: grid[index].map((cell) => cell || { count: 0 }),
@@ -80,10 +83,10 @@ export default {
         // Not remembered, which is all a failure costs.
       }
     },
-    // "NAME · run 1234567 · RATE_LOSS = 12.3456 % · Alarm 3 (+2 other KPIs alarmed)".
+    // "NAME · run 1234567 · RATE_LOSS = 12.3456 % · Alarm 3 (+2 other KPIs alarmed)", "... · No alarm".
     cellTitle(name, cell, info) {
       const parts = [name, `run ${cell.process_id}`];
-      if (cell.level && cell.kpi_type) {
+      if (cell.kpi_type) {
         parts.push(`${cell.kpi_type} = ${formatKpiValue(cell.value, cell.decimals)}${cell.unit ? ` ${cell.unit}` : ""}`);
       }
       const others = cell.others ? ` (+${cell.others} other KPI${cell.others > 1 ? "s" : ""} alarmed)` : "";

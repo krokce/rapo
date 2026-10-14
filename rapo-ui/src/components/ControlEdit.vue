@@ -948,6 +948,7 @@
                     :kpi-columns="kpiAvailable ? logKpiTypes : []"
                     expand-key="rapo_runs_expand_runlog"
                     :focus-run="logFocus"
+                    selectable
                     :edit-link="false"
                     separators
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
@@ -1457,6 +1458,9 @@ export default {
         const start = toMillis(found.start_date || found.added);
         const days = Math.ceil((Date.now() - start) / 86400000) + 1;
         if (days > this.log_days_back) this.log_days_back = Math.min(days, 366);
+        // Again for the same run (a second link to it), so the Run log selects it anew.
+        this.logFocus = null;
+        await this.$nextTick();
         this.logFocus = processId;
       } catch (error) {
         notifyError(`Run ${processId} could not be found.`, error);

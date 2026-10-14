@@ -1,5 +1,5 @@
 <template>
-  <div class="heat-strip" :style="{ '--label': `${labelWidth}px`, '--columns': columns.length, '--cell': `${cellHeight}px` }">
+  <div class="heat-strip" :class="{ 'heat-strip--boxes': boxes }" :style="{ '--label': `${labelWidth}px`, '--columns': columns.length, '--cell': `${cellHeight}px` }">
     <q-resize-observer v-if="numbers || hasText" @resize="onResize" />
     <div class="heat-strip__row heat-strip__head">
       <div class="heat-strip__label"></div>
@@ -27,7 +27,7 @@
           'heat-strip__cell--errors': cell && cell.errors,
           'heat-strip__cell--divider': columns[index] && columns[index].divider,
           'heat-strip__cell--link': clickable && cell && cell.count,
-          'heat-strip__cell--strong': (showNumbers && strong(row, cell)) || (showText && cell && cell.text),
+          'heat-strip__cell--strong': (showNumbers && strong(row, cell)) || (showText && cell && cell.text && !cell.light),
           'heat-strip__cell--text': showText && cell && cell.text,
         }"
         :style="{ background: background(row, cell) }"
@@ -49,11 +49,12 @@ import { paletteColor } from "../../utils/palette";
 // strip's with `scale="all"`). An empty cell is the grid's grey, one without data (null) hatched, one with errors outlined
 // red. A divider column (Now, midnight) has a line before it. A click on a cell with counts picks it, one on the label of a
 // row with `link` picks the row (`label-pick`). A cell's own `text` (up to 4 characters, e.g. a KPI value) is written on
-// its color when the cells are wide enough for it.
+// its color when the cells are wide enough for it (dark on a `light` color); `boxes` writes it as the KPI boxes of the run
+// tables do (mono, rounded). A color is a Quasar palette name, or a CSS color or var() as it is.
 export default {
   name: "HeatStrip",
   props: {
-    // [{key, label, color (Quasar name), title?, total?, link?, cells: [{count, errors?, title?, color?, text?} | null]}]
+    // [{key, label, color (Quasar name), title?, total?, link?, cells: [{count, errors?, title?, color?, text?, light?} | null]}]
     rows: { type: Array, required: true },
     // [{label?, title, divider?}], one per cell; label shown above (sparse).
     columns: { type: Array, required: true },
@@ -66,6 +67,8 @@ export default {
     clickable: { type: Boolean, default: true },
     // The count written in each cell (not 0, nor a cell with a color of its own), when the cells are wide enough.
     numbers: { type: Boolean, default: false },
+    // Text cells as KPI value boxes (Roboto Mono, 3px corners).
+    boxes: { type: Boolean, default: false },
   },
   data() {
     return { width: 0 };
@@ -82,9 +85,9 @@ export default {
     hasText() {
       return this.rows.some((row) => row.cells.some((cell) => cell && cell.text));
     },
-    // Four characters of 10px text.
+    // Four characters of 10px text (mono in boxes).
     showText() {
-      return this.hasText && this.cellWidth >= 26;
+      return this.hasText && this.cellWidth >= (this.boxes ? 28 : 26);
     },
     maxima() {
       const all = Math.max(1, ...this.rows.flatMap((row) => row.cells.map((cell) => (cell && cell.count) || 0)));
@@ -105,7 +108,10 @@ export default {
       return Boolean(cell && cell.count) && this.alpha(row, cell) >= 0.55;
     },
     rowColor(row) {
-      return paletteColor(row.color);
+      return this.color(row.color);
+    },
+    color(name) {
+      return /^(#|var\(|rgb)/.test(name) ? name : paletteColor(name);
     },
     // A cell's own color (e.g. a KPI level) as it is, else the row's color in the strength of its count.
     background(row, cell) {
@@ -113,12 +119,12 @@ export default {
         return null;
       }
       if (cell.color) {
-        return paletteColor(cell.color);
+        return this.color(cell.color);
       }
       if (!cell.count) {
         return "var(--rapo-grid)";
       }
-      const color = paletteColor(row.color || "blue-6");
+      const color = this.color(row.color || "blue-6");
       const alpha = this.alpha(row, cell).toFixed(2);
       return color.startsWith("rgb(") ? color.replace("rgb(", "rgba(").replace(")", `, ${alpha})`) : color;
     },
@@ -220,6 +226,16 @@ export default {
 .heat-strip__cell--text {
   font-size: 10px;
   letter-spacing: -0.2px;
+}
+
+.heat-strip--boxes .heat-strip__cell {
+  border-radius: 3px;
+}
+
+.heat-strip--boxes .heat-strip__cell--text {
+  font-family: var(--rapo-font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .heat-strip__label--link {

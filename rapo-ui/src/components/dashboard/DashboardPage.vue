@@ -150,7 +150,7 @@
             <donut-chart v-else-if="panel.id === 'files-datasources'" :items="datasourceItems" center-label="datasources" :height="150" @pick="pickDatasourceState" />
             <files-loading v-else-if="panel.id === 'files-loading'" :data="parts.files" :source="loadingSource" @pick="({ bucket }) => go(filesLink(bucket, parts.files.unit, databaseToday))" />
 
-            <kpi-alarm-heatmap v-else-if="panel.id === 'kpi-heatmap'" :data="parts.kpis" @pick="openKpis" @open-log="openControl({ key: $event.control_id })" />
+            <kpi-alarm-heatmap v-else-if="panel.id === 'kpi-heatmap'" :data="parts.kpis" @pick="openKpiRun" @open-log="openControl({ key: $event.control_id })" />
 
             <health-mini-tiles v-else-if="panel.id === 'health-tiles'" :span="span" :active="active" @open="(group) => openHealth(group)" />
           </dashboard-panel>
@@ -653,10 +653,10 @@ export default {
       }
       return items;
     },
-    // A cell of KPI alarms by control: its KPIs with the cell's run picked.
-    openKpis({ control, processId }) {
+    // A cell of KPI alarms by control: its control's run log on the cell's run.
+    openKpiRun({ control, processId }) {
       const id = control && control.control_id;
-      const query = processId ? { tab: "kpi", process_id: String(processId) } : { tab: "kpi" };
+      const query = processId ? { tab: "log", run: String(processId) } : { tab: "log" };
       this.go(id ? { path: `/edit-control/${id}`, query } : { path: "/kpi-types" });
     },
     pickStatus({ key }) {

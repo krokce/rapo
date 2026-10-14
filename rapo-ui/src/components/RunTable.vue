@@ -45,7 +45,7 @@
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
-            <th v-if="show.name" :title="filterable ? 'The control the run belongs to: its name opens the control, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
+            <th v-if="show.name" :title="filterable ? 'The control the run belongs to: its name opens its Run log on the run, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
               Processname
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -127,7 +127,10 @@
             'new-day-separator': separatorRows && !grouping.folded.has(run.process_id) && startsNewDay(shownRuns, index, separatorKey),
             'run-row--superseded': run.superseded_by,
             'run-row--folded': grouping.folded.has(run.process_id),
-          }">
+            'run-row--focus': run.process_id === selected,
+            'run-row--selectable': selectable,
+          }"
+          @click="selectable && selectRow(run, $event)">
           <td v-if="show.type" class="text-center run-chip-cell">
             <q-chip :clickable="filterable" :title="controlType(run.control_type).label" @click="filterable && $emit('filter', { type: run.control_type })">
               <q-avatar :icon="controlType(run.control_type).icon" :color="controlType(run.control_type).color" text-color="white" />
@@ -151,7 +154,6 @@
             <span
               v-if="grouping.earlier.has(run.process_id)"
               class="run-ver run-ver--link"
-              :class="{ 'run-ver--focus': run.process_id === focusRun }"
               :style="versionStyle(grouping.earlier.get(run.process_id) + 1)"
               :title="`${grouping.earlier.get(run.process_id) + 1} runs of this period: ${isExpanded(run.process_id) ? 'fold' : 'show'} the ${grouping.earlier.get(run.process_id)} earlier one(s) it superseded`"
               v-keyboard:button
@@ -161,7 +163,7 @@
             <span
               v-else-if="grouping.versions.has(run.process_id)"
               class="run-ver run-ver--old"
-              :class="{ 'run-ver--focus': run.process_id === focusRun, 'run-ver--link': openRuns }"
+              :class="{ 'run-ver--link': openRuns }"
               :title="openRuns ? `${supersededTitle(run)}; click to open the run log on this run` : supersededTitle(run)"
               v-keyboard:button="openRuns"
               @click="openRuns && $emit('open-run', run)">
@@ -175,7 +177,7 @@
               :class="{ 'cursor-pointer': openRuns }"
               :title="openRuns ? `${supersededTitle(run)}; click to open the run log on this run` : supersededTitle(run)"
               @click="openRuns && $emit('open-run', run)" />
-            <span v-else class="run-ver" :class="{ 'run-ver--focus': run.process_id === focusRun }" :style="versionStyle(1)" title="The only run of this period">1</span>
+            <span v-else class="run-ver" :style="versionStyle(1)" title="The only run of this period">1</span>
           </td>
           <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ run.process_id }}</td>
           <td v-if="show.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
@@ -189,7 +191,7 @@
               flat
               icon="fas fa-search"
               @click.stop="$emit('filter', { control_name: run.control_name })" />
-            <router-link :to="{ name: 'edit-control', params: { controlId: run.control_id } }">
+            <router-link :to="controlLink(run)" :title="openRuns ? `${run.control_name}: open its Run log on this run` : run.control_name">
               <span class="col cursor-pointer" style="font-size: 13px" :class="'text-' + controlTypeColor(run.control_type)">
                 {{ run.control_name }}
               </span>
@@ -219,25 +221,25 @@
             <span v-else>{{ formatNumber(run.fetched_number_b) }}</span>
           </td>
           <td class="text-right number-cell">
-            <span v-if="run.error_number_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_a')" @contextmenu.prevent="openNumberMenu($event, run, 'result_a')">
+            <span v-if="run.error_number_a > 0" class="cursor-pointer number-link text-primary" v-keyboard:button @click="openNumberMenu($event, run, 'result_a')" @contextmenu.prevent="openNumberMenu($event, run, 'result_a')">
               {{ formatNumber(run.error_number_a) }}
             </span>
             <span v-else>{{ formatNumber(run.error_number_a) }}</span>
           </td>
           <td v-if="showB" class="text-right number-cell">
-            <span v-if="run.error_number_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
+            <span v-if="run.error_number_b > 0" class="cursor-pointer number-link text-primary" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
               {{ formatNumber(run.error_number_b) }}
             </span>
             <span v-else>{{ formatNumber(run.error_number_b) }}</span>
           </td>
           <td class="text-right number-cell">
-            <span v-if="run.error_level_a > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_a')" @contextmenu.prevent="openNumberMenu($event, run, 'result_a')">
+            <span v-if="run.error_level_a > 0" class="cursor-pointer number-link text-primary" v-keyboard:button @click="openNumberMenu($event, run, 'result_a')" @contextmenu.prevent="openNumberMenu($event, run, 'result_a')">
               {{ formatNumber(run.error_level_a, 2) }}%
             </span>
             <span v-else> {{ formatNumber(run.error_level_a, 2) }}% </span>
           </td>
           <td v-if="showB" class="text-right number-cell">
-            <span v-if="run.error_level_b > 0" class="cursor-pointer text-red" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
+            <span v-if="run.error_level_b > 0" class="cursor-pointer number-link text-primary" v-keyboard:button @click="openNumberMenu($event, run, 'result_b')" @contextmenu.prevent="openNumberMenu($event, run, 'result_b')">
               {{ formatNumber(run.error_level_b, 2) }}%
             </span>
             <span v-else> {{ formatNumber(run.error_level_b, 2) }}% </span>
@@ -415,8 +417,11 @@ export default {
     kpiSummary: { type: Array, default: () => [] },
     // Whether a superseded run's mark (⟲, its version number) emits open-run with the run (Results).
     openRuns: { type: Boolean, default: false },
-    // A run to show: its period unpacked, scrolled to, its version bubble marked (the Run log opened from Results).
+    // A run to show: its period unpacked, scrolled to and selected (the Run log opened on a run by a link).
     focusRun: { type: Number, default: null },
+    // A click on a row selects it (tinted yellow), one at a time; a click on the selected row's plain area or Esc
+    // clears it (the Run log).
+    selectable: { type: Boolean, default: false },
     // Where this browser keeps whether every period's earlier runs are shown.
     expandKey: { type: String, default: "rapo_runs_expand" },
     // The row menu's Edit control (not inside the editor itself).
@@ -446,6 +451,8 @@ export default {
       width: 0,
       // The focus run already shown (showFocusRun).
       focused: null,
+      // The selected run's process ID (selectable, or the focus run), or null.
+      selected: null,
       // The runs whose earlier runs are shown (or folded, while expandAll): process ID -> true.
       toggled: {},
       activeRunStatuses: ACTIVE_RUN_STATUSES,
@@ -536,6 +543,12 @@ export default {
       return control ? sendsEmail(control) : Boolean(this.menuRow) && EMAIL_CONTROL_TYPES.includes(this.menuRow.control_type);
     },
   },
+  mounted() {
+    if (this.selectable) document.addEventListener("keydown", this.onKeydown);
+  },
+  beforeUnmount() {
+    document.removeEventListener("keydown", this.onKeydown);
+  },
   watch: {
     shownRuns() {
       this.$nextTick(this.onResize);
@@ -558,12 +571,32 @@ export default {
       const run = this.focusRun && this.focused !== this.focusRun && this.runs.find((row) => row.process_id === this.focusRun);
       if (!run) return;
       this.focused = this.focusRun;
+      this.selected = this.focusRun;
       const parent = run.superseded_by && this.runs.some((row) => row.process_id === run.superseded_by) ? run.superseded_by : null;
       if (parent && !this.isExpanded(parent)) this.toggleExpanded(parent);
       this.$nextTick(() => {
         const index = this.shownRuns.findIndex((row) => row.process_id === this.focusRun);
         if (index >= 0 && this.$refs.scroll) this.$refs.scroll.scrollTo(Math.max(index - 2, 0), "start-force");
       });
+    },
+    // A click in a row selects it; on the selected row, one outside its buttons, chips and links clears it. Selecting text
+    // is no click.
+    selectRow(run, event) {
+      const selection = window.getSelection();
+      if (selection && selection.toString()) return;
+      const found = event.target.closest('button, a, input, .q-chip, .q-icon, .cursor-pointer, .run-ver--link, [role="button"], [tabindex]');
+      const control = found && found !== event.currentTarget && event.currentTarget.contains(found);
+      this.selected = this.selected === run.process_id && !control ? null : run.process_id;
+    },
+    onKeydown(event) {
+      if (event.key !== "Escape" || this.selected === null || event.defaultPrevented) return;
+      if (document.querySelector(".q-dialog, .q-menu") || ["INPUT", "TEXTAREA"].includes(document.activeElement && document.activeElement.tagName)) return;
+      this.selected = null;
+    },
+    // The editor of a run's control: on Results (openRuns), its Run log on the run.
+    controlLink(run) {
+      const link = { name: "edit-control", params: { controlId: run.control_id } };
+      return this.openRuns ? { ...link, query: { tab: "log", run: String(run.process_id) } } : link;
     },
     onResize() {
       const scroll = this.$el.querySelector(".runs-table");
@@ -789,16 +822,17 @@ a:visited {
   border: 1.5px solid var(--rapo-label);
   color: var(--rapo-label);
 }
-/* The run the page was opened on (Results' jump to the Run log). */
-.run-ver.run-ver--focus {
-  background: var(--rapo-focus) !important;
-  color: var(--rapo-header-text) !important;
-  border: 1.5px solid var(--rapo-warn);
+/* The selected run (a click in the Run log, or the run a link opened it on), whole even when superseded. */
+.run-row--selectable {
+  cursor: pointer;
 }
-.run-row--superseded:has(.run-ver--focus) > td {
+.run-row--focus > td {
+  background: var(--rapo-focus);
+}
+.run-row--superseded.run-row--focus > td {
   opacity: 1;
 }
-/* A stored KPI value in a box: green on light grey, white on its alarm level's color when it alarmed. */
+/* A stored KPI value in a box: dark on soft green, white on its alarm level's color when it alarmed. */
 /* One width for every value (4 compact characters), digits on the right, so the KPIs of each row line up. */
 .run-kpi {
   display: inline-block;
@@ -806,8 +840,8 @@ a:visited {
   width: 40px;
   padding: 0 4px;
   text-align: right;
-  background: var(--rapo-grid);
-  color: var(--rapo-ok);
+  background: var(--rapo-kpi-ok);
+  color: var(--rapo-header-text);
   font-weight: 500;
   border-radius: 3px;
   max-width: 100%;

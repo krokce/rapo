@@ -101,15 +101,15 @@
             <template v-else>The control has no runs to calculate the KPIs of.</template>
           </q-card>
 
-          <!-- One run: a row per KPI with the value calculated now next to what the package stored. -->
+          <!-- One run: a row per KPI with the value calculated now, flagged where the package stored something else. -->
           <q-card v-else-if="calculatedMode == 'run'" flat bordered class="q-pa-sm">
             <div class="kpi-grid kpi-grid--head text-caption">
               <div class="q-pl-xs" title="The KPI type and its description">KPI</div>
               <div></div>
               <div title="The KPI value calculated now, as the package rounds it, its unit and the alarm level calculated from it">Calculated</div>
-              <div title="The KPI value and alarm level RACS_KPI_PKG stored for the run; orange where they differ from the calculation">Stored</div>
               <div class="kpi-time" title="How long the KPI and alarm statements took">Time</div>
               <div></div>
+              <div title="A warning where RACS_KPI_PKG stored another value or alarm level for the run, stored an error or nothing: hover it"></div>
             </div>
             <div v-for="{ kpi, cell, stored } in cards" :key="kpi.kpi_type" class="kpi-row">
               <div class="kpi-grid">
@@ -121,21 +121,6 @@
                 <div>
                   <span v-if="!cell" class="text-grey-7 q-ml-sm">Not calculated</span>
                   <kpi-inline-result v-else :cell="cell" :run="calculatedRunRow" />
-                </div>
-                <div class="row items-center no-wrap stored-cell" :title="storedTitle(stored)">
-                  <template v-if="cell && cell.result && !cell.pending">
-                    <template v-if="stored">
-                      <span class="text-mono q-mr-sm" :class="{ 'text-orange-9 text-weight-bold': differs(cell.result, stored, 'value') }">
-                        {{ formatKpiValue(stored.kpi_value, cell.result.kpi_decimal_places) }}
-                      </span>
-                      <q-icon :name="alarmLevel(stored.alarm_level).icon" :color="alarmLevel(stored.alarm_level).color" size="xs" class="q-mr-xs" />
-                      <span class="ellipsis" :class="{ 'text-orange-9 text-weight-bold': differs(cell.result, stored, 'alarm') }">
-                        {{ alarmLevel(stored.alarm_level).label }}
-                      </span>
-                      <q-icon v-if="stored.status == 'ERROR'" name="fas fa-exclamation-circle" color="red-7" size="xs" class="q-ml-xs" />
-                    </template>
-                    <span v-else class="text-grey-6">Not stored</span>
-                  </template>
                 </div>
                 <div class="kpi-time text-caption text-grey-7 ellipsis">{{ cell && cell.result && !cell.pending ? timing(cell.result) : "" }}</div>
                 <q-btn
@@ -149,6 +134,10 @@
                   @click="expanded[kpi.kpi_type] = !expanded[kpi.kpi_type]">
                   <q-tooltip>{{ expanded[kpi.kpi_type] ? "Hide" : "Show" }} the error, notes and statements</q-tooltip>
                 </q-btn>
+                <div v-else></div>
+                <div class="text-center">
+                  <q-icon v-if="storedIssue(kpi.kpi_type, cell, stored)" v-bind="issueIcon(kpi.kpi_type, cell, stored)" />
+                </div>
               </div>
 
               <div v-if="expanded[kpi.kpi_type] && cell && !cell.pending" class="kpi-details q-mb-sm">
@@ -200,8 +189,8 @@
                     <th class="text-left col-window" title="The date or period the run covered">Window</th>
                     <th class="text-right col-value" title="The KPI value calculated now, as the package rounds it">Value</th>
                     <th class="text-left col-alarm" title="The alarm level calculated now from that value">Alarm</th>
-                    <th class="text-right col-value" title="The KPI value RACS_KPI_PKG stored for the run; orange where it differs">Stored</th>
-                    <th class="text-left" title="The alarm level RACS_KPI_PKG stored for the run; orange where it differs">Stored alarm</th>
+                    <th></th>
+                    <th class="col-flag" title="A warning where RACS_KPI_PKG stored another value or alarm level for the run, stored an error or nothing: hover it"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,23 +200,17 @@
                     <td v-if="!row.cell || row.cell.pending" colspan="2"><q-spinner v-if="row.cell" color="teal" size="1em" /></td>
                     <td v-else-if="row.cell.error" colspan="2" class="text-red-9 ellipsis error-cell" :title="row.cell.error">{{ row.cell.error }}</td>
                     <template v-else>
-                      <td class="number-cell text-right value-cell" :class="{ 'text-orange-9 text-weight-bold': differs(row.cell.result, row.stored, 'value') }">
+                      <td class="number-cell text-right value-cell">
                         {{ formatKpiValue(row.cell.result.value, row.cell.result.kpi_decimal_places) }}
                       </td>
                       <td>
                         <q-icon :name="alarmLevel(row.cell.result.alarm_level).icon" :color="alarmLevel(row.cell.result.alarm_level).color" size="xs" class="q-mr-xs" />
-                        <span :class="{ 'text-orange-9 text-weight-bold': differs(row.cell.result, row.stored, 'alarm') }">
-                          {{ alarmLevel(row.cell.result.alarm_level).label }}
-                        </span>
+                        {{ alarmLevel(row.cell.result.alarm_level).label }}
                       </td>
                     </template>
-                    <td class="number-cell text-right">{{ row.stored ? formatKpiValue(row.stored.kpi_value, typeDecimals(kpi.kpi_type)) : "" }}</td>
-                    <td>
-                      <template v-if="row.stored">
-                        <q-icon :name="alarmLevel(row.stored.alarm_level).icon" :color="alarmLevel(row.stored.alarm_level).color" size="xs" class="q-mr-xs" />
-                        {{ alarmLevel(row.stored.alarm_level).label }}
-                      </template>
-                      <span v-else class="text-grey-6">Not stored</span>
+                    <td></td>
+                    <td class="text-center">
+                      <q-icon v-if="storedIssue(kpi.kpi_type, row.cell, row.stored)" v-bind="issueIcon(kpi.kpi_type, row.cell, row.stored)" />
                     </td>
                   </tr>
                 </tbody>
@@ -248,13 +231,20 @@ import { KPI_ICON, kpiUnitColor, runStatus } from "../constants";
 import { alarmLevel, calculateKpi, defaultRunId, formatKpiValue, kpiNotes, kpiTiming, runWindow, sameKpiValue } from "../utils/kpi";
 import { toDateTimeString } from "../utils/format";
 
+// Whether a calculated value (or its alarm level) is not what the package stored.
+function differs(result, stored, what) {
+  if (!result || !stored) return false;
+  if (what === "value") return !sameKpiValue(result.value, stored.kpi_value);
+  return Number(result.alarm_level || 0) !== Number(stored.alarm_level || 0);
+}
+
 const CONCURRENCY = 2;
 const MAX_BACKTEST = 30;
 const RUN_LIMIT = 200;
 const SOURCE_LABELS = { draft: "as edited", saved: "saved", default: "type default" };
 
 // Calculates the KPIs of a control for one run, or for its latest runs, without storing anything (calculate-kpi),
-// and shows them next to what RACS_KPI_PKG stored. The editor opens it with its draft, Results with the saved
+// and flags where RACS_KPI_PKG stored something else. The editor opens it with its draft, Results with the saved
 // statements.
 export default {
   components: { KpiInlineResult },
@@ -438,11 +428,6 @@ export default {
     storedOf(kpiType, processId) {
       return (this.history[processId] || {})[kpiType] || null;
     },
-    differs(result, stored, what) {
-      if (!result || !stored) return false;
-      if (what === "value") return !sameKpiValue(result.value, stored.kpi_value);
-      return Number(result.alarm_level || 0) !== Number(stored.alarm_level || 0);
-    },
     levelCounts(kpiType) {
       const counts = {};
       for (const run of this.calculatedRuns) {
@@ -455,8 +440,27 @@ export default {
       return Object.values(counts).sort((a, b) => b.label.localeCompare(a.label));
     },
     toDateTimeString,
-    storedTitle(stored) {
-      return stored ? `Stored ${stored.status || ""} at ${toDateTimeString(stored.created)}` : "";
+    // What RACS_KPI_PKG stored for a calculated KPI of a run when it is not the calculation: nothing, an error, another
+    // value or alarm level (the warning at the end of the row, the text its tooltip), else null.
+    storedIssue(kpiType, cell, stored) {
+      if (!cell || cell.pending) return null;
+      if (!stored) return { color: "grey-6", title: "Not stored: RACS_KPI_PKG stored no value for this run" };
+      const when = `stored ${stored.status || ""} at ${toDateTimeString(stored.created)}`.replace("  ", " ");
+      if (stored.status == "ERROR") return { color: "red-7", title: `Stored with ERROR at ${toDateTimeString(stored.created)}: see the details` };
+      const result = cell.result;
+      const parts = [];
+      if (differs(result, stored, "value")) {
+        const decimals = result.kpi_decimal_places ?? this.typeDecimals(kpiType);
+        parts.push(`value ${formatKpiValue(stored.kpi_value, decimals)} (calculated ${formatKpiValue(result.value, decimals)})`);
+      }
+      if (differs(result, stored, "alarm")) {
+        parts.push(`${alarmLevel(stored.alarm_level).label} (calculated ${alarmLevel(result.alarm_level).label})`);
+      }
+      return parts.length ? { color: "orange-8", title: `Stored differs: ${parts.join(", ")} · ${when}` } : null;
+    },
+    issueIcon(kpiType, cell, stored) {
+      const issue = this.storedIssue(kpiType, cell, stored);
+      return { name: "fas fa-exclamation-triangle", size: "xs", color: issue.color, title: issue.title };
     },
     notes: kpiNotes,
     timing: kpiTiming,
@@ -525,17 +529,17 @@ export default {
   min-width: 320px
 .count-input
   width: 90px
-/* Code | description | calculated (KpiInlineResult) | stored | time | details: one template for the head and every row. */
+/* Code | description | calculated (KpiInlineResult) | time | details | stored warning: one template for the head and every row. */
 .kpi-grid
   display: grid
-  grid-template-columns: 6.5em minmax(80px, 1fr) 300px 190px 130px 32px
+  grid-template-columns: 6.5em minmax(80px, 1fr) 300px 130px 32px 20px
   align-items: center
   column-gap: 8px
   min-height: 40px
 /* Narrow dialogs drop the timing column (it is also in the value's tooltip). */
 @media (max-width: 1160px)
   .kpi-grid
-    grid-template-columns: 6.5em minmax(80px, 1fr) 300px 190px 32px
+    grid-template-columns: 6.5em minmax(80px, 1fr) 300px 32px 20px
   .kpi-time
     display: none
 .kpi-grid--head
@@ -548,8 +552,6 @@ export default {
   border-top: 1px solid var(--rapo-grid)
 .kpi-code
   min-width: 6em
-.stored-cell
-  min-width: 0
 .kpi-details
   margin-left: calc(6.5em + 8px)
 .sql-text, .error-text
@@ -574,6 +576,8 @@ export default {
     width: 120px
   .col-alarm
     width: 150px
+  .col-flag
+    width: 28px
   font-size: 13px
   th
     color: var(--rapo-label)
