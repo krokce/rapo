@@ -285,6 +285,16 @@ code, pre, kbd, samp
   &:hover
     text-decoration: underline
 
+// A number in a table that does something on click (Results' counts and PID, the file log's ID).
+.number-link:hover
+  color: var(--rapo-teal)
+  text-decoration: underline
+
+// A table cell holding a type, status or lane chip: Results' size (26px avatar, 13px text), no margin.
+.chip-cell .q-chip
+  margin: 0
+  font-size: 13px
+
 // A row of an inactive datasource.
 .row-inactive > td
   color: var(--rapo-muted)

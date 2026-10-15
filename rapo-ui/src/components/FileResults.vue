@@ -171,7 +171,7 @@
       class="list-table files-table"
       :style="{ '--table-width': tableWidth + 'px' }"
       :items="sortedRows"
-      :virtual-scroll-item-size="52"
+      :virtual-scroll-item-size="39"
       :virtual-scroll-sticky-size-start="28"
       :table-colspan="tableColumns.length">
       <template #before>
@@ -196,7 +196,7 @@
       </template>
       <template #default="{ item: row }">
         <tr :key="row.id" :class="{ 'row-inactive': row.isactive === 0 }">
-          <td v-for="column in tableColumns" :key="column.key" :class="['text-' + column.align, { 'number-cell': column.number, 'name-cell': column.key === 'sourcename' }]">
+          <td v-for="column in tableColumns" :key="column.key" :class="['text-' + column.align, { 'number-cell': column.number, 'name-cell': column.key === 'sourcename', 'chip-cell': column.key === 'isactive' }]">
             <template v-if="column.key === 'isactive'">
               <q-chip v-if="row.isactive !== null" clickable :title="lane(row.isactive).label" @click="selectLane(row.isactive)">
                 <q-avatar :icon="lane(row.isactive).icon" :color="lane(row.isactive).color" text-color="white" />
@@ -892,6 +892,13 @@ export default {
 }
 .files-table td {
   white-space: nowrap;
+}
+/* Rows, chips and names sized like Results; a row with issue chips under the name grows. */
+.files-table tbody td {
+  height: 39px;
+}
+.files-table .datasource-name {
+  font-size: inherit;
 }
 .status-count {
   color: inherit;

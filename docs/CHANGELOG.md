@@ -6,6 +6,14 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
+## v0.8.7 — unreleased
+
+No schema change.
+
+- Results and the Run log: a click on a run's process ID copies it to the clipboard.
+- File log: a File ID column; a click copies the ID.
+- Files and the file log: rows, chips and datasource names sized like Results.
+
 ## v0.8.6 — 2026-10-14
 
 New tables `rapo_viewer_config`, `rapo_file_summary` and `rapo_health_minute` (`migrations/v0.8.6/upgrade.sql`) and

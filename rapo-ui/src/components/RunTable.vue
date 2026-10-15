@@ -41,7 +41,7 @@
               </span>
               <template v-else>Ver</template>
             </th>
-            <th title="The process ID of the run" class="col-pid text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
+            <th title="The process ID of the run; click a value to copy it" class="col-pid text-center sortable" @click="toggleSort(sort, 'process_id')" v-keyboard :aria-sort="ariaSort(sort, 'process_id')">
               PID
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -179,7 +179,9 @@
               @click="openRuns && $emit('open-run', run)" />
             <span v-else class="run-ver" :style="versionStyle(1)" title="The only run of this period">1</span>
           </td>
-          <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ run.process_id }}</td>
+          <td class="text-center text-weight-bold text-blue-grey-7 number-cell">
+            <span class="cursor-pointer number-link" v-keyboard:button :title="`Copy process ID ${run.process_id}`" @click="copyProcessId(run)">{{ run.process_id }}</span>
+          </td>
           <td v-if="show.name" class="text-left text-weight-bold text-teal-8 ellipsis" :title="run.control_name">
             <q-btn
               v-if="filterable"
@@ -375,7 +377,7 @@ import RunDatasetMenu from "./RunDatasetMenu.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { ACTIVE_RUN_STATUSES, controlType, controlTypeColor, runStatus } from "../constants";
-import { cancelRun, reRun, revokeRun, sendEmail } from "../runActions";
+import { cancelRun, copyAndNotify, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { alarmLevel, compactKpiValue, formatKpiValue } from "../utils/kpi";
@@ -612,6 +614,9 @@ export default {
       const found = event.target.closest('button, a, input, .q-chip, .q-icon, .cursor-pointer, .run-ver--link, [role="button"], [tabindex]');
       const control = found && found !== event.currentTarget && event.currentTarget.contains(found);
       this.selected = this.selected === run.process_id && !control ? null : run.process_id;
+    },
+    copyProcessId(run) {
+      copyAndNotify(String(run.process_id), `Process ID ${run.process_id}`, "Failed to copy the process ID.");
     },
     onKeydown(event) {
       if (event.key !== "Escape" || this.selected === null || event.defaultPrevented) return;
@@ -895,10 +900,6 @@ a:visited {
 }
 .run-kpi--alarm {
   color: var(--rapo-on-strong);
-}
-.number-link:hover {
-  color: var(--rapo-teal);
-  text-decoration: underline;
 }
 
 /* Fixed columns, so rows swapped in while scrolling don't resize them. With Processname (Results) it takes the

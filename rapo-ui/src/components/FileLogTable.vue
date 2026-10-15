@@ -98,22 +98,23 @@
     <q-virtual-scroll
       ref="scroll"
       type="table"
+      dense
       class="list-table file-log-table"
       :class="{ 'file-log-table--selectable': selectable }"
       :style="{ maxHeight }"
       :items="sortedFiles"
-      :virtual-scroll-item-size="41"
+      :virtual-scroll-item-size="39"
       :virtual-scroll-sticky-size-start="28"
-      :table-colspan="selectable ? 11 : 10">
+      :table-colspan="columns.length + (selectable ? 1 : 0)">
       <template #before>
         <thead>
           <tr class="bg-blue-grey-2">
-            <th v-if="selectable" title="Select all the files shown" class="text-center">
+            <th v-if="selectable" title="Select all the files shown" class="text-center" style="width: 44px">
               <q-checkbox :model-value="allShownSelected" :indeterminate-value="null" :disable="!shownFiles.length" dense @update:model-value="toggleAllShown">
                 <q-tooltip>Select or unselect every file shown ({{ formatNumber(shownFiles.length) }})</q-tooltip>
               </q-checkbox>
             </th>
-            <th v-for="column in columns" :key="column.key" :title="column.title" :class="['text-' + column.align, 'sortable']" @click="toggleSort(sort, column.key)" v-keyboard :aria-sort="ariaSort(sort, column.key)">
+            <th v-for="column in columns" :key="column.key" :title="column.title" :class="['text-' + column.align, 'sortable']" :style="{ width: column.width }" @click="toggleSort(sort, column.key)" v-keyboard :aria-sort="ariaSort(sort, column.key)">
               {{ column.label }}
               <q-icon v-if="sort.key === column.key" :name="sortIcon(sort)" size="12px" />
             </th>
@@ -125,11 +126,14 @@
           <td v-if="selectable" class="text-center" @click.stop>
             <q-checkbox :model-value="selected.has(file.id)" dense @update:model-value="toggle(file.id)" />
           </td>
-          <td class="text-left" @click.stop>
-            <q-chip clickable class="q-my-none" @click="addStatus(file.filestatus)">
+          <td class="text-left chip-cell" @click.stop>
+            <q-chip clickable @click="addStatus(file.filestatus)">
               <q-avatar :icon="fileStatus(file.filestatus).icon" :color="fileStatus(file.filestatus).color" text-color="white" />
               {{ fileStatus(file.filestatus).label }}
             </q-chip>
+          </td>
+          <td class="text-center text-weight-bold text-blue-grey-7 number-cell" @click.stop>
+            <span class="cursor-pointer number-link" v-keyboard:button :title="`Copy file ID ${file.id}`" @click="copyFileId(file)">{{ file.id }}</span>
           </td>
           <td class="text-left text-mono file-name-cell" :title="file.inputfullfilename">
             <div class="row no-wrap items-center">
@@ -192,7 +196,7 @@
       <template #after>
         <tbody v-if="!shownFiles.length">
           <tr>
-            <td :colspan="selectable ? 11 : 10" class="text-center text-grey-7 q-pa-lg">
+            <td :colspan="columns.length + (selectable ? 1 : 0)" class="text-center text-grey-7 q-pa-lg">
               <!-- A file ID or name prefix searched for that is not on this day: the datasource's other days are looked up. -->
               <template v-if="!loading && otherDayKey">
                 <span v-if="!otherDayReady">Searching the other days of the file log...</span>
@@ -294,16 +298,17 @@ import persistFilters from "../mixins/persistFilters";
 // Embedded (the datasource editor, no header search) it has its own File name box, kept for the session.
 // The columns after the checkbox, sortable by their key (a file log column, or `status` by its label).
 const COLUMNS = [
-  { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log" },
+  { key: "status", label: "Status", align: "left", title: "The status of the file in PDI Core's file log", width: "140px" },
+  { key: "id", label: "ID", align: "center", title: "The file's ID in the file log; click a value to copy it", width: "96px" },
   { key: "inputfilename", label: "File", align: "left", title: "The input file's name; click a row for the log PDI Core wrote for it, the eye to view the archived file, the database icon for the records loaded from it" },
-  { key: "filesize", label: "Size", align: "right", title: "The size of the input file" },
-  { key: "filedate", label: "File date", align: "left", title: "The date of the input file" },
-  { key: "startloaddate", label: "Load start", align: "left", title: "When PDI Core started loading the file" },
-  { key: "runtime", label: "Runtime", align: "right", title: "How long loading the file took (h:mm:ss)" },
-  { key: "recordsread", label: "Read", align: "right", title: "Records read from the file" },
-  { key: "recordswrite", label: "Written", align: "right", title: "Records written to the tables of the datasource" },
-  { key: "recordsreject", label: "Rejected", align: "right", title: "Records rejected while loading" },
-  { key: "duplicate", label: "Duplicate", align: "center", title: "Whether PDI Core flagged the file as a duplicate" },
+  { key: "filesize", label: "Size", align: "right", title: "The size of the input file", width: "80px" },
+  { key: "filedate", label: "File date", align: "left", title: "The date of the input file", width: "170px" },
+  { key: "startloaddate", label: "Load start", align: "left", title: "When PDI Core started loading the file", width: "170px" },
+  { key: "runtime", label: "Runtime", align: "right", title: "How long loading the file took (h:mm:ss)", width: "80px" },
+  { key: "recordsread", label: "Read", align: "right", title: "Records read from the file", width: "110px" },
+  { key: "recordswrite", label: "Written", align: "right", title: "Records written to the tables of the datasource", width: "110px" },
+  { key: "recordsreject", label: "Rejected", align: "right", title: "Records rejected while loading", width: "90px" },
+  { key: "duplicate", label: "Duplicate", align: "center", title: "Whether PDI Core flagged the file as a duplicate", width: "80px" },
 ];
 
 // No column: the server's order, newest load first.
@@ -786,6 +791,9 @@ export default {
         this.logLoading = false;
       }
     },
+    copyFileId(file) {
+      copyAndNotify(String(file.id), `File ID ${file.id}`, "Failed to copy the file ID.");
+    },
     async copyLog() {
       await copyAndNotify(this.logText, "Log", "The log was not copied.");
     },
@@ -832,29 +840,12 @@ export default {
 }
 .file-log-table :deep(table) {
   table-layout: fixed;
-  min-width: 1200px;
+  min-width: 1300px;
 }
-.file-log-table th:nth-child(1) { width: 140px; }
-.file-log-table th:nth-child(3) { width: 80px; }
-.file-log-table th:nth-child(4) { width: 170px; }
-.file-log-table th:nth-child(5) { width: 170px; }
-.file-log-table th:nth-child(6) { width: 80px; }
-.file-log-table th:nth-child(7) { width: 110px; }
-.file-log-table th:nth-child(8) { width: 110px; }
-.file-log-table th:nth-child(9) { width: 90px; }
-.file-log-table th:nth-child(10) { width: 80px; }
-/* With the checkbox column first, every width moves one column to the right. */
-.file-log-table--selectable th:nth-child(1) { width: 44px; }
-.file-log-table--selectable th:nth-child(2) { width: 140px; }
-.file-log-table--selectable th:nth-child(3) { width: auto; }
-.file-log-table--selectable th:nth-child(4) { width: 80px; }
-.file-log-table--selectable th:nth-child(5) { width: 170px; }
-.file-log-table--selectable th:nth-child(6) { width: 170px; }
-.file-log-table--selectable th:nth-child(7) { width: 80px; }
-.file-log-table--selectable th:nth-child(8) { width: 110px; }
-.file-log-table--selectable th:nth-child(9) { width: 110px; }
-.file-log-table--selectable th:nth-child(10) { width: 90px; }
-.file-log-table--selectable th:nth-child(11) { width: 80px; }
+/* Rows sized like Results. */
+.file-log-table tbody td {
+  height: 39px;
+}
 .file-name-cell .view-btn {
   margin: -4px 0;
 }
