@@ -239,7 +239,7 @@
               <router-link
                 v-if="row.duplicates"
                 :to="logLink(row, { duplicate: 'Y' })"
-                class="status-count text-purple-6 text-weight-bold"
+                class="status-count text-weight-bold" :class="`text-${column.iconColor}`"
                 :title="`Show the ${formatNumber(row.duplicates)} duplicate file(s)`">
                 {{ formatNumber(row.duplicates) }}
               </router-link>
@@ -251,11 +251,12 @@
                 v-if="waitingOf(row) && datasources.has(row.id)"
                 href="#"
                 class="status-count text-weight-bold"
+                :class="`text-${column.iconColor}`"
                 title="Show the files waiting in the input directories"
                 @click.prevent="$refs.fileDialog.open(datasources.get(row.id), 'match')">
                 {{ formatNumber(waitingOf(row)) }}
               </a>
-              <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-7'">{{ formatNumber(waitingOf(row)) }}</span>
+              <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? `text-weight-bold text-${column.iconColor}` : 'text-grey-7'">{{ formatNumber(waitingOf(row)) }}</span>
             </template>
             <span v-else-if="column.key === 'read'" :class="{ 'text-grey-7': !row.read }">{{ formatNumber(row.read || 0) }}</span>
             <span v-else-if="column.key === 'written'" :class="{ 'text-grey-7': !row.written }">{{ formatNumber(row.written || 0) }}</span>
@@ -643,9 +644,9 @@ export default {
       const status = this.datasourceStatus && this.datasourceStatus.datasources ? this.datasourceStatus.datasources[String(row.id)] : null;
       return status && status.waiting !== undefined ? status.waiting : null;
     },
+    // A count other than zero is bold in its status icon's color.
     statusClass(status, count) {
-      if (!count) return "";
-      return status === "ERROR" ? "text-red-6 text-weight-bold" : ["RECYCLE", "RELOAD", "DELETE"].includes(status) ? "text-indigo-7 text-weight-bold" : "";
+      return count ? `text-${fileStatus(status).color} text-weight-bold` : "";
     },
     changeClass(change) {
       return change <= -0.5 ? "text-red-6 text-weight-bold" : change < 0 ? "text-orange-9" : "text-grey-8";

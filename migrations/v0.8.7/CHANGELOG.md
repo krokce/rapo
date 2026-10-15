@@ -11,4 +11,5 @@ No schema change. The upgrade steps are in the [migration instructions](README.m
 1. **Files and file log rows like Results.** Rows are as tall as in Results, the lane and status chips have Results'
    size, and the datasource names on Files are written at the size of Results' control names.
    Files shows a grey `0` in an empty count (a status, Duplicates, Read, Written, Rejected), as Incoming did; Runtime,
-   Last success and Trend stay empty without files.
+   Last success and Trend stay empty without files. A count other than zero is bold in its column icon's color (Success
+   green, Started blue, Waiting amber, Error orange, Incoming blue-grey, Duplicates purple, ...).
