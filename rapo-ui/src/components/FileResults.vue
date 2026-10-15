@@ -233,6 +233,7 @@
                 :title="`Show the ${formatNumber(row.statuses[column.status])} ${fileStatus(column.status).label} file(s)`">
                 {{ formatNumber(row.statuses[column.status]) }}
               </router-link>
+              <span v-else class="text-grey-7">0</span>
             </template>
             <template v-else-if="column.key === 'duplicates'">
               <router-link
@@ -242,6 +243,7 @@
                 :title="`Show the ${formatNumber(row.duplicates)} duplicate file(s)`">
                 {{ formatNumber(row.duplicates) }}
               </router-link>
+              <span v-else class="text-grey-7">0</span>
             </template>
             <!-- Incoming files are not in the file log yet: FileListDialog lists them from the input directories. -->
             <template v-else-if="column.key === 'waiting'">
@@ -255,9 +257,9 @@
               </a>
               <span v-else-if="waitingOf(row) !== null" :class="waitingOf(row) ? 'text-weight-bold' : 'text-grey-7'">{{ formatNumber(waitingOf(row)) }}</span>
             </template>
-            <span v-else-if="column.key === 'read'">{{ row.files ? formatNumber(row.read) : "" }}</span>
-            <span v-else-if="column.key === 'written'">{{ row.files ? formatNumber(row.written) : "" }}</span>
-            <span v-else-if="column.key === 'rejected'" :class="{ 'text-red-6 text-weight-bold': row.rejected }">{{ row.files ? formatNumber(row.rejected) : "" }}</span>
+            <span v-else-if="column.key === 'read'" :class="{ 'text-grey-7': !row.read }">{{ formatNumber(row.read || 0) }}</span>
+            <span v-else-if="column.key === 'written'" :class="{ 'text-grey-7': !row.written }">{{ formatNumber(row.written || 0) }}</span>
+            <span v-else-if="column.key === 'rejected'" :class="row.rejected ? 'text-red-6 text-weight-bold' : 'text-grey-7'">{{ formatNumber(row.rejected || 0) }}</span>
             <span v-else-if="column.key === 'runtime'">{{ row.files ? formatDuration(row.runtime) : "" }}</span>
             <span v-else-if="column.key === 'lastSuccess'">{{ toTimeString(row.lastSuccess) }}</span>
             <template v-else-if="column.key === 'change'">
@@ -519,7 +521,7 @@ export default {
         return this.rows;
       }
       const valueOf = key.startsWith("status:")
-        ? (row) => row.statuses[key.slice(7)] || null
+        ? (row) => row.statuses[key.slice(7)] || 0
         : { waiting: (row) => this.waitingOf(row) }[key] || ((row) => row[key]);
       return sortRows(this.rows, valueOf, this.sort.dir);
     },
@@ -527,7 +529,7 @@ export default {
     // filtering; the issue chips wrap under the name.
     nameColumnWidth() {
       const names = this.hasDay ? datasourceRows(this.fileDay, this.datasources, () => true, () => true, true).map((row) => row.sourcename) : [];
-      const width = textWidth(names, "bold 16px Roboto, sans-serif");
+      const width = textWidth(names, "bold 13px Roboto, sans-serif");
       return Math.max(width + 32, 200);
     },
     sortChip() {

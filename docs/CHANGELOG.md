@@ -12,7 +12,7 @@ No schema change.
 
 - Results and the Run log: a click on a run's process ID copies it to the clipboard.
 - File log: a File ID column; a click copies the ID.
-- Files and the file log: rows, chips and datasource names sized like Results.
+- Files and the file log: rows, chips and datasource names sized like Results; Files shows 0 for empty counts.
 
 ## v0.8.6 — 2026-10-14
 

@@ -10,3 +10,5 @@ No schema change. The upgrade steps are in the [migration instructions](README.m
    ID after its status; a click copies it to the clipboard, like a run's process ID.
 1. **Files and file log rows like Results.** Rows are as tall as in Results, the lane and status chips have Results'
    size, and the datasource names on Files are written at the size of Results' control names.
+   Files shows a grey `0` in an empty count (a status, Duplicates, Read, Written, Rejected), as Incoming did; Runtime,
+   Last success and Trend stay empty without files.
