@@ -34,12 +34,14 @@ export default {
   },
   // Instance details shown in the header and the "Instance details" dialog.
   // An unreadable rapo.ini is kept as the error of the changes, so the rest of the details still show.
+  // rapo.ini and its changes are read only by a token that may view the instance.
   async updateEnvironment(context) {
+    const instance = context.getters.can("instance", "view");
     const [version, info, parameters, changes] = await Promise.all([
       api("version"),
       api("info"),
-      api("parameters"),
-      api("get-config-changes").catch((error) => ({ changes: [], error: error.message })),
+      instance ? api("parameters") : null,
+      instance ? api("get-config-changes").catch((error) => ({ changes: [], error: error.message })) : null,
     ]);
     context.commit("updateEnvVersion", version);
     context.commit("updateEnvInfo", info);
@@ -92,8 +94,14 @@ export default {
     context.commit("updateSearch", payload);
   },
   // Uses the candidate token rather than the stored one, so it can't go through api().
+  // The signed-in token's scopes, read again after a reconnection; a revoked token answers 401, which signs out.
+  async refreshWhoami(context) {
+    context.commit("updateWhoami", await api("whoami", { loadingBar: false }));
+  },
+  // whoami also says what the token may do, which the menu, the router and the pages follow.
   async validateToken(context, token) {
-    const response = await fetch("/api/help", { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch("/api/whoami", { headers: { Authorization: `Bearer ${token}` } });
+    context.commit("updateWhoami", response.ok ? await response.json() : null);
     context.commit("updateTokenValue", response.ok ? token : "");
     return response.ok;
   },

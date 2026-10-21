@@ -5,7 +5,7 @@ import asyncio
 import socketio
 import sqlalchemy as sa
 
-from .auth import check_token
+from . import auth
 
 from ...database import db
 from ...logger import logger
@@ -13,6 +13,29 @@ from ...logger import logger
 
 INTERVAL = 2
 MAX_IDS = 500
+# Seconds between checks that the token of every connection is still valid.
+SWEEP_INTERVAL = 30
+
+# The rooms each event goes to: a connection is in the room of every area its
+# token may view (`area:<name>`), so it hears only of what it may look at.
+ROOMS = {
+    'runs:changed': ('runs', 'controls', 'kpis', 'dashboard'),
+    'controls:changed': ('controls', 'runs', 'kpis', 'scheduler',
+                         'dashboard'),
+    'scheduler:changed': ('scheduler', 'runs', 'dashboard'),
+    'datasources:changed': ('datasources', 'files', 'dashboard'),
+    'discrepancy:progress': ('data',),
+    'health:level': ('instance', 'dashboard'),
+}
+
+
+def rooms(event):
+    return [f'area:{area}' for area in ROOMS[event]]
+
+
+def owner_room(token_id):
+    """The room of the connections of one token (None: the master token)."""
+    return 'token:master' if token_id is None else f'token:{token_id}'
 
 # Origin check is off because the dev proxy rewrites Host but not Origin;
 # connections are guarded by the API token passed in the handshake instead.
@@ -35,6 +58,9 @@ class Watcher:
         self.states = {}
         self.scheduler_changed = False
         self.datasources = None
+        # The token and Caller of every connection, by sid.
+        self.callers = {}
+        self.swept = 0
         # Called when a client connects, e.g. to refresh what it will ask for.
         self.connect_listeners = []
         # Called with the kind of a change before it is emitted (runs,
@@ -79,21 +105,42 @@ class Watcher:
 
     async def check(self):
         """Emit events for tables changed since the previous check."""
+        await self.sweep()
         changed, self.scheduler_changed = self.scheduler_changed, False
         runs, controls, events = await asyncio.to_thread(self.read)
         for kind in await asyncio.to_thread(self.read_datasources):
             self.changed(kind)
-            await sio.emit('datasources:changed', {'kind': kind})
+            await sio.emit('datasources:changed', {'kind': kind},
+                           room=rooms('datasources:changed'))
         if runs:
             self.changed('runs')
-            await sio.emit('runs:changed', runs)
+            await sio.emit('runs:changed', runs, room=rooms('runs:changed'))
         if controls:
             self.changed('controls')
-            await sio.emit('controls:changed', controls)
+            await sio.emit('controls:changed', controls,
+                           room=rooms('controls:changed'))
         if events or changed:
             self.changed('scheduler')
             await sio.emit('scheduler:changed',
-                           {'event_ids': events['ids'] if events else []})
+                           {'event_ids': events['ids'] if events else []},
+                           room=rooms('scheduler:changed'))
+
+    async def sweep(self):
+        """Disconnect the connections whose token was revoked, expired or
+        changed since they connected; a changed one reconnects with its new
+        scopes, the others are refused."""
+        now = asyncio.get_running_loop().time()
+        if now - self.swept < SWEEP_INTERVAL:
+            return
+        self.swept = now
+        for sid, (token, caller) in list(self.callers.items()):
+            if caller.master:
+                continue
+            current = await asyncio.to_thread(auth.resolve, token)
+            if current != caller:
+                logger.info(f'Live connection of {caller.display} closed: '
+                            f'its token was changed or is no longer valid')
+                await sio.disconnect(sid)
 
     def changed(self, kind):
         """Tell the change listeners about a kind of change."""
@@ -206,10 +253,17 @@ main_loop = None
 
 
 @sio.event
-async def connect(sid, environ, auth):
-    token = auth.get('token') if isinstance(auth, dict) else None
-    if not check_token(token):
+async def connect(sid, environ, data):
+    token = data.get('token') if isinstance(data, dict) else None
+    address = environ.get('REMOTE_ADDR')
+    caller = await asyncio.to_thread(auth.resolve, token, address)
+    if caller is None:
         raise socketio.exceptions.ConnectionRefusedError('Unauthorized Access')
+    watcher.callers[sid] = (token, caller)
+    await sio.enter_room(sid, owner_room(caller.token_id))
+    for area in auth.scope_rules.AREAS:
+        if caller.allows(area, 'view'):
+            await sio.enter_room(sid, f'area:{area}')
     watcher.clients += 1
     watcher.start()
     for listener in watcher.connect_listeners:
@@ -218,6 +272,7 @@ async def connect(sid, environ, auth):
 
 @sio.event
 async def disconnect(sid, *args):
+    watcher.callers.pop(sid, None)
     watcher.clients = max(watcher.clients - 1, 0)
 
 
@@ -239,16 +294,19 @@ def bind(loop):
 
 
 def emit_analysis(payload):
-    """Push an analysis session's state to the clients, from any thread.
+    """Push an analysis session's state to the connections of its owner's
+    token, from any thread.
 
     Sessions are private to a page, which picks its own by `session_id`.
     """
     loop = main_loop
     if loop is None or watcher.clients <= 0:
         return
+    payload = dict(payload)
+    room = owner_room(payload.pop('owner', None))
     try:
         asyncio.run_coroutine_threadsafe(
-            sio.emit('analysis:progress', payload), loop)
+            sio.emit('analysis:progress', payload, room=room), loop)
     except RuntimeError:
         pass
 
@@ -262,7 +320,8 @@ def emit_discrepancy(payload):
         return
     try:
         asyncio.run_coroutine_threadsafe(
-            sio.emit('discrepancy:progress', payload), loop)
+            sio.emit('discrepancy:progress', payload,
+                     room=rooms('discrepancy:progress')), loop)
     except RuntimeError:
         pass
 
@@ -279,7 +338,8 @@ def emit_datasources(kind='status'):
         return
     try:
         asyncio.run_coroutine_threadsafe(
-            sio.emit('datasources:changed', {'kind': kind}), loop)
+            sio.emit('datasources:changed', {'kind': kind},
+                     room=rooms('datasources:changed')), loop)
     except RuntimeError:
         pass
 
@@ -289,8 +349,12 @@ HEALTH_ROOM = 'health'
 
 @sio.on('health:join')
 async def health_join(sid, *args):
-    """Send the instance health samples to this client, while it looks."""
-    await sio.enter_room(sid, HEALTH_ROOM)
+    """Send the instance health samples to this client, while it looks
+    (Instance details or the Dashboard)."""
+    _, caller = watcher.callers.get(sid, (None, None))
+    if caller and (caller.allows('instance', 'view')
+                   or caller.allows('dashboard', 'view')):
+        await sio.enter_room(sid, HEALTH_ROOM)
 
 
 @sio.on('health:leave')
@@ -308,7 +372,8 @@ def emit_health(kind, payload):
     if kind == 'sample':
         coroutine = sio.emit('health:sample', payload, room=HEALTH_ROOM)
     else:
-        coroutine = sio.emit('health:level', payload)
+        coroutine = sio.emit('health:level', payload,
+                             room=rooms('health:level'))
     try:
         asyncio.run_coroutine_threadsafe(coroutine, loop)
     except RuntimeError:

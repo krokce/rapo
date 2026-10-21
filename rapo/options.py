@@ -108,6 +108,9 @@ _add('API', 'port', 'int', 8080, 'Port of the web server, API and UI',
      minimum=1)
 _add('API', 'token', 'text', None,
      'Bearer token every /api request and the UI login need', secret=True)
+_add('API', 'token_cache_seconds', 'int', 30,
+     'Seconds a validated API token is trusted before it is read again; '
+     'other servers see a revocation after it', minimum=0)
 _add('API', 'docs', 'bool', False,
      'Serve Swagger at /api/docs and /api/openapi.json, without the token')
 

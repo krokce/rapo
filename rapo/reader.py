@@ -459,6 +459,10 @@ class Reader:
     def _control_runs_select(self, where):
         """Get the select of runs with their control, counters, trigger and
         superseding run, filtered by `where`, newest first."""
+        # Who asked for a manual run; the column comes with v0.8.7.
+        requested = ('max(requested_by)'
+                     if 'requested_by' in db.tables.scheduler_event.c
+                     else 'null')
         return f"""
                 select
                     c.control_name,
@@ -488,6 +492,7 @@ class Reader:
                     e.trigger_type,
                     e.trigger_message,
                     e.scheduled_time,
+                    e.requested_by,
                     {superseded_sql('l')} superseded_by,
                     {superseded_sql('l', 'nvl(n.start_date, n.added)')} superseded_on
                 from rapo_log l
@@ -497,7 +502,8 @@ class Reader:
                 left join (select process_id,
                                   max(trigger_type) trigger_type,
                                   max(message) trigger_message,
-                                  max(scheduled_time) scheduled_time
+                                  max(scheduled_time) scheduled_time,
+                                  {requested} requested_by
                              from rapo_scheduler_event
                             where process_id is not null
                             group by process_id) e on e.process_id = l.process_id

@@ -43,7 +43,7 @@
           <span v-for="fact in sectionFacts(section.id)" :key="fact.text" class="q-mr-md" :class="fact.class" :title="fact.title">{{ fact.text }}</span>
         </template>
         <template v-if="section.id === 'files' && summary" #actions>
-          <q-btn flat dense round size="sm" color="grey-7" icon="fas fa-sync" :loading="refreshingSummary || summary.refreshing" aria-label="Refresh the file summary" @click="refreshSummary">
+          <q-btn v-if="$can('files', 'operate')" flat dense round size="sm" color="grey-7" icon="fas fa-sync" :loading="refreshingSummary || summary.refreshing" aria-label="Refresh the file summary" @click="refreshSummary">
             <q-tooltip anchor="top middle" self="bottom middle" max-width="320px">
               Sum the file log's past days of this span again (the scheduler's maintenance does it for the last 7 days)
             </q-tooltip>

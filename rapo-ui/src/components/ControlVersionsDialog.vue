@@ -21,7 +21,7 @@
       </q-card-section>
 
       <template v-else>
-        <q-card-section class="row items-center q-gutter-sm q-py-sm">
+        <q-card-section v-if="$can('controls', 'edit')" class="row items-center q-gutter-sm q-py-sm">
           <span>Remove versions older than</span>
           <q-input v-model.number="olderThanDays" type="number" dense outlined :min="0" style="width: 80px" />
           <span>days, keeping the newest</span>
@@ -76,7 +76,7 @@
                     <q-btn aria-label="Load this version into the editor" flat round dense size="sm" icon="fas fa-file-import" color="primary" @click="load(row)">
                       <q-tooltip>Load this version into the editor</q-tooltip>
                     </q-btn>
-                    <q-btn aria-label="Delete this version" flat round dense size="sm" icon="fas fa-trash" color="negative" :disable="busy" @click="remove([row])">
+                    <q-btn v-if="$can('controls', 'edit')" aria-label="Delete this version" flat round dense size="sm" icon="fas fa-trash" color="negative" :disable="busy" @click="remove([row])">
                       <q-tooltip>Delete this version</q-tooltip>
                     </q-btn>
                   </template>
@@ -94,6 +94,7 @@
           <span class="text-grey-7 q-mr-auto q-pl-sm">Tick one version to compare it with the saved one, or two to compare them.</span>
           <q-btn flat color="primary" label="Compare" :disable="!canCompare" @click="compare" />
           <q-btn
+            v-if="$can('controls', 'edit')"
             flat
             color="negative"
             :label="`Delete selected (${selectedVersions.length})`"

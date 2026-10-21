@@ -46,11 +46,20 @@ def to_datetime(timestamp):
 
 
 def record(control_id, trigger_type, event_type, scheduled_time=None,
-           process_id=None, message=None, runner=None, start_time=None):
-    """Insert new event and get its ID."""
+           process_id=None, message=None, runner=None, start_time=None,
+           requested_by=None):
+    """Insert new event and get its ID.
+
+    `requested_by` names the API user who asked for a manual or catch-up run
+    (left out before migrations/v0.8.7/upgrade.sql added the column).
+    """
     table = db.tables.scheduler_event
     now = dt.datetime.now()
-    insert = table.insert().values(control_id=control_id,
+    extra = {}
+    if requested_by and 'requested_by' in table.c:
+        extra['requested_by'] = requested_by[:256]
+    insert = table.insert().values(**extra,
+                                   control_id=control_id,
                                    trigger_type=trigger_type,
                                    event_type=event_type,
                                    scheduled_time=scheduled_time,
@@ -103,6 +112,8 @@ def _events_select(limit):
                       event.c.process_id,
                       event.c.message,
                       event.c.runner,
+                      *([event.c.requested_by]
+                        if 'requested_by' in event.c else []),
                       log.c.status,
                       log.c.date_from,
                       log.c.date_to,

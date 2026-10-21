@@ -25,7 +25,7 @@
             <template #prepend><q-icon name="fas fa-search" size="14px" /></template>
           </q-input>
           <q-space />
-          <q-btn color="primary" icon="fas fa-plus" label="Add grammar" @click="$refs.editor.openAdd()" />
+          <q-btn v-if="$can('datasources', 'edit')" color="primary" icon="fas fa-plus" label="Add grammar" @click="$refs.editor.openAdd()" />
         </div>
 
         <q-virtual-scroll
@@ -100,22 +100,24 @@
     <q-menu v-if="menuTarget" ref="rowMenu" :target="menuTarget" no-parent-event>
       <q-list v-if="menuGrammar" dense class="text-no-wrap">
         <q-item clickable v-close-popup @click="$refs.editor.openEdit(menuGrammar.name)">
-          <q-item-section> Edit grammar </q-item-section>
+          <q-item-section> {{ $can("datasources", "edit") ? "Edit grammar" : "Open grammar" }} </q-item-section>
         </q-item>
-        <q-item clickable v-close-popup @click="$refs.editor.openDuplicate(menuGrammar.name)">
+        <q-item v-if="$can('datasources', 'edit')" clickable v-close-popup @click="$refs.editor.openDuplicate(menuGrammar.name)">
           <q-item-section> Duplicate </q-item-section>
         </q-item>
         <q-item clickable v-close-popup @click="download(menuGrammar)">
           <q-item-section> Download </q-item-section>
         </q-item>
-        <q-separator />
-        <q-item v-if="menuGrammar.used_by.length" dense disable>
-          <q-item-section> Delete grammar </q-item-section>
-          <q-tooltip anchor="top middle" self="bottom middle">Used by datasource {{ usedByText(menuGrammar.used_by, datasourceCatalogue) }}</q-tooltip>
-        </q-item>
-        <q-item v-else clickable v-close-popup @click="remove(menuGrammar)">
-          <q-item-section class="text-negative"> Delete grammar </q-item-section>
-        </q-item>
+        <template v-if="$can('datasources', 'edit')">
+          <q-separator />
+          <q-item v-if="menuGrammar.used_by.length" dense disable>
+            <q-item-section> Delete grammar </q-item-section>
+            <q-tooltip anchor="top middle" self="bottom middle">Used by datasource {{ usedByText(menuGrammar.used_by, datasourceCatalogue) }}</q-tooltip>
+          </q-item>
+          <q-item v-else clickable v-close-popup @click="remove(menuGrammar)">
+            <q-item-section class="text-negative"> Delete grammar </q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-menu>
     <grammar-edit-dialog ref="editor" :list-maximized="maximized" @saved="saved" />

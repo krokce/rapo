@@ -36,7 +36,7 @@
         </q-icon>
         <!-- Shown before the scheduler status is known (grey, Unknown). -->
         <q-btn aria-label="Scheduler"
-          v-if="getTokenIsValid"
+          v-if="getTokenIsValid && $can('scheduler')"
           round
           flat
           dense
@@ -49,13 +49,55 @@
         </q-btn>
         <!-- The color of the plug is the only sign of the connection: teal connected, red disconnected. -->
         <!-- A dot on it tells that a metric of the instance health reached its warning (amber) or critical (red) level. -->
-        <q-btn aria-label="Instance details" v-if="getTokenIsValid" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
+        <q-btn aria-label="Instance details" v-if="getTokenIsValid && $can('instance')" round flat dense size="sm" class="q-ml-sm" color="teal" icon="fas fa-plug fa-rotate-90" @click="showInstanceDialog">
           <span v-if="healthLevel" class="health-dot" :class="`health-dot-${healthLevel}`" />
           <q-tooltip>Connected &mdash; instance details{{ healthText }}</q-tooltip>
         </q-btn>
+        <q-icon v-else-if="getTokenIsValid" name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="teal">
+          <q-tooltip>Connected</q-tooltip>
+        </q-icon>
         <q-icon v-else name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="red">
           <q-tooltip>Disconnected</q-tooltip>
         </q-icon>
+        <!-- Who is signed in: the user of the token, or the master token of rapo.ini. -->
+        <q-btn v-if="getTokenIsValid && whoami" flat dense no-caps no-wrap size="sm" class="q-ml-sm user-btn" :icon="whoami.master ? 'fas fa-key' : 'fas fa-user-circle'" :label="$q.screen.gt.sm ? signedInName : undefined" aria-label="Signed in as">
+          <q-menu anchor="bottom right" self="top right">
+            <q-list dense style="min-width: 260px">
+              <q-item>
+                <q-item-section>
+                  <q-item-label class="text-weight-medium">{{ signedInName }}</q-item-label>
+                  <q-item-label caption v-if="!whoami.master">{{ whoami.user_email }}{{ whoami.label ? ` · ${whoami.label}` : "" }}</q-item-label>
+                  <q-item-label caption v-else>The token of rapo.ini: every page, and the API tokens of users</q-item-label>
+                </q-item-section>
+              </q-item>
+              <template v-if="!whoami.master">
+                <q-separator />
+                <q-item v-for="line in signedInScopes" :key="line">
+                  <q-item-section class="text-caption">{{ line }}</q-item-section>
+                </q-item>
+                <q-item v-if="!signedInScopes.length">
+                  <q-item-section class="text-caption text-grey-7">No area</q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section class="text-caption">Free SQL: {{ whoami.free_sql ? "yes" : "no" }}</q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section class="text-caption">Expires: {{ whoami.expires_at ? toDateTimeString(whoami.expires_at) : "never" }}</q-item-section>
+                </q-item>
+              </template>
+              <q-separator />
+              <!-- The API tokens of users are managed only with the master token, from its menu. -->
+              <q-item v-if="whoami.master" clickable v-close-popup :to="{ name: 'tokens' }" :active="$route.name === 'tokens'" active-class="menu-link--active">
+                <q-item-section avatar><q-icon name="fas fa-key" size="14px" /></q-item-section>
+                <q-item-section>API tokens</q-item-section>
+              </q-item>
+              <q-item clickable v-close-popup @click="disconnect">
+                <q-item-section avatar><q-icon name="fas fa-sign-out-alt" size="14px" /></q-item-section>
+                <q-item-section>Sign out</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -96,6 +138,12 @@
     <q-page-container>
       <q-page padding>
         <div class="q-ma-lg">
+          <q-banner v-if="expiryBanner" dense rounded class="q-mb-md bg-orange-1 text-orange-10">
+            <template #avatar>
+              <q-icon name="fas fa-hourglass-half" size="16px" />
+            </template>
+            {{ expiryBanner }}
+          </q-banner>
           <!-- The list pages are kept alive, so going back to them shows their rows, filters and scroll at once. -->
           <router-view v-slot="{ Component }">
             <keep-alive :include="['ControlCatalogue', 'ControlResults', 'DashboardPage', 'DataAnalysis', 'DatasourceCatalogue', 'DiscrepancyAnalysis', 'FileResults']">
@@ -156,8 +204,23 @@ import { DATASOURCE_ICON, FILES_ICON, schedulerState } from "./constants";
 import { liveRefetch } from "./socket";
 import { THEMES, applyTheme, readTheme, saveTheme } from "./utils/theme";
 import { HEALTH_TILES, LEVEL_TEXT, tileLevel } from "./utils/health";
+import { toDateTimeString } from "./utils/format";
+import { EXPIRY_WARNING_DAYS, LEVEL_LABELS, daysUntil, routeAllowed } from "./utils/scopes";
 import InstanceHealth from "./components/health/InstanceHealth.vue";
 import ConfigCatalogue from "./components/ConfigCatalogue.vue";
+
+// The titles of the scope areas (rapo/web/api/scopes.py AREAS), for the signed-in menu.
+const AREA_TITLES = {
+  dashboard: "Dashboard",
+  runs: "Runs",
+  data: "Data",
+  controls: "Controls",
+  kpis: "KPIs",
+  scheduler: "Scheduler",
+  datasources: "Datasources",
+  files: "Files",
+  instance: "Instance",
+};
 
 const THEME_INFO = {
   auto: { icon: "fas fa-adjust", label: "Automatic" },
@@ -209,6 +272,7 @@ export default {
       applyTheme(this.theme);
       saveTheme(this.theme);
     },
+    toDateTimeString,
     isActiveLink(link) {
       return link.routes.includes(this.$route.name);
     },
@@ -286,7 +350,26 @@ export default {
       "getEnvConfigChanges",
     ]),
     // get-instance-health without history: the worst level and the level of each rule, for the header dot.
-    ...mapState(["schedulerStatus", "instanceDialogRequest"]),
+    ...mapState(["schedulerStatus", "instanceDialogRequest", "whoami"]),
+    signedInName() {
+      return this.whoami.master ? "Master token" : this.whoami.user_name;
+    },
+    // The areas the token reaches, one line each.
+    signedInScopes() {
+      const scopes = this.whoami.scopes || {};
+      return Object.keys(scopes)
+        .filter((area) => scopes[area] !== "none")
+        .map((area) => `${AREA_TITLES[area] || area}: ${LEVEL_LABELS[scopes[area]]}`);
+    },
+    // A user token expiring within EXPIRY_WARNING_DAYS says so above every page.
+    expiryBanner() {
+      const days = this.whoami && !this.whoami.master ? daysUntil(this.whoami.expires_at) : null;
+      if (days === null || days > EXPIRY_WARNING_DAYS) {
+        return null;
+      }
+      const when = days < 1 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+      return `Your API token expires ${when} (${toDateTimeString(this.whoami.expires_at)}). Ask the Rapo administrator to extend it.`;
+    },
     ...mapState({ health: "instanceHealth" }),
     // KPI types are only manageable where the RACS KPI tables are deployed, the same condition that gives the
     // control editor its KPIs tab. routes are the route names in which a link shows as active.
@@ -305,7 +388,8 @@ export default {
         links.push({ icon: FILES_ICON, text: "Files", route: "/files", routes: ["files", "files-log", "file-analysis"], gap: true });
         links.push({ icon: DATASOURCE_ICON, text: "Datasources", route: "/datasources", routes: ["datasources", "edit-datasource"] });
       }
-      return links;
+      // A link shows only for a page the token may open.
+      return links.filter((link) => routeAllowed(this.whoami, this.$router.resolve(link.route)));
     },
     healthLevel() {
       return this.health && this.health.enabled ? this.health.level : null;
@@ -339,7 +423,7 @@ export default {
       const text = hot
         ? `rapo.ini changed on disk: ${hot} option(s) can be applied now` + (restart ? `, ${restart} need a restart` : "")
         : `rapo.ini changed on disk: ${restart} option(s) apply only after a restart`;
-      return { class: "bg-orange-1 text-orange-10", text, reload: hot > 0 };
+      return { class: "bg-orange-1 text-orange-10", text, reload: hot > 0 && this.$can("instance", "edit") };
     },
     // The browser tab names the instance, e.g. "RAPO - AUT Dev".
     documentTitle() {
@@ -382,8 +466,12 @@ export default {
       immediate: true,
       handler(valid) {
         if (valid) {
-          this.startSchedulerUpdates();
-          this.startHealthUpdates();
+          if (this.$can("scheduler") || this.$can("dashboard") || this.$can("runs") || this.$can("controls")) {
+            this.startSchedulerUpdates();
+          }
+          if (this.$can("instance") || this.$can("dashboard")) {
+            this.startHealthUpdates();
+          }
         } else {
           this.stopSchedulerUpdates();
           this.stopHealthUpdates();
@@ -403,7 +491,8 @@ export default {
 
   &__toolbar-input-container
     min-width: 100px
-    width: 55%
+    width: 45%
+    max-width: 640px
 
   &__toolbar-input-btn
     border-radius: 0
@@ -421,6 +510,19 @@ export default {
 
     &:hover
       color: #000
+// The signed-in user's name stays on the icon's line, cut with an ellipsis (the menu shows it whole).
+.user-btn
+  max-width: 180px
+
+  .q-btn__content
+    flex-wrap: nowrap
+
+  .q-btn__content .block
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+    min-width: 0
+
 .menu-link--active
   color: var(--rapo-teal)
   background: var(--rapo-teal-soft)

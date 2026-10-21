@@ -400,3 +400,16 @@ body.body--dark
     color: #42a5f5 !important
   .text-negative
     color: #ff6b6b !important
+
+// A read-only editor (a token that may view but not edit): the fields and buttons of its tabs do not react, code still
+// scrolls and copies (CodeBox is read only there); a tab or element marked .editor-panel-open (Run log, versions,
+// linked lists) stays usable, and so do what only shows more: inner tabs (one per KPI) and the email's folds, not the
+// buttons of their heads.
+.editor-readonly .q-tab-panel:not(.editor-panel-open)
+  pointer-events: none
+
+  .cm-scroller, .editor-panel-open, .q-tabs, .email-sheet__head, .email-evaluate__head
+    pointer-events: auto
+
+  .email-sheet__head .q-btn, .email-evaluate__head .q-btn
+    pointer-events: none

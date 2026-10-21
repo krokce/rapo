@@ -6,7 +6,9 @@ import FileResults from "./components/FileResults.vue";
 import KpiTypes from "./components/KpiTypes.vue";
 import SchedulerPage from "./components/SchedulerPage.vue";
 import TokenBox from "./components/TokenBox.vue";
+import { Cookies } from "quasar";
 import store from "./store";
+import { routeAllowed } from "./utils/scopes";
 
 // The editors and the file log are their own chunks (CodeMirror and the editor boxes leave the first load).
 const router = createRouter({
@@ -29,11 +31,12 @@ const router = createRouter({
       // Its own chunk, which loads ECharts (shared with the analysis pages) only once the page is open.
       name: "dashboard",
       path: "/dashboard",
-      meta: { hideSearch: true },
+      meta: { scope: ["dashboard", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "dashboard" */ "./components/dashboard/DashboardPage.vue"),
     },
     {
       name: "controls",
+      meta: { scope: ["controls", "view"] },
       path: "/controls",
       component: ControlCatalogue,
     },
@@ -41,39 +44,39 @@ const router = createRouter({
       name: "results",
       path: "/results",
       component: ControlResults,
-      meta: { searchPlaceholder: "Search control name or process ID" },
+      meta: { scope: ["runs", "view"], searchPlaceholder: "Search control name or process ID" },
     },
     {
       // The records a file of the PDI Core file log loaded into a table of its datasource (FILE_ID), on the same page.
       name: "file-analysis",
       path: "/analysis/file/:fileId/:table",
-      meta: { hideSearch: true },
+      meta: { scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
     },
     {
       // Its own chunk, so ECharts and the analysis components load only when a dataset is analysed.
       name: "data-analysis",
       path: "/analysis/:processId/:dataset",
-      meta: { hideSearch: true },
+      meta: { scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
     },
     {
       // What sets a run's discrepancies apart from its normal records; in the analysis chunk.
       name: "discrepancy-analysis",
       path: "/discrepancy-analysis/:processId/:side",
-      meta: { hideSearch: true },
+      meta: { scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DiscrepancyAnalysis.vue"),
     },
     {
       name: "scheduler",
       path: "/scheduler",
-      meta: { searchPlaceholder: "Search control name or process ID" },
+      meta: { scope: ["scheduler", "view"], searchPlaceholder: "Search control name or process ID" },
       component: SchedulerPage,
     },
     {
       name: "edit-control",
       path: "/edit-control/:controlId?",
-      meta: { hideSearch: true },
+      meta: { scope: ["controls", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "control-editor" */ "./components/ControlEdit.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -87,13 +90,13 @@ const router = createRouter({
     {
       name: "kpi-types",
       path: "/kpi-types",
-      meta: { searchPlaceholder: "Search KPI code or description" },
+      meta: { scope: ["kpis", "view"], searchPlaceholder: "Search KPI code or description" },
       component: KpiTypes,
     },
     {
       name: "edit-kpi-type",
       path: "/edit-kpi-type/:kpiCode?",
-      meta: { hideSearch: true },
+      meta: { scope: ["kpis", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "kpi-type-editor" */ "./components/EditKpiType.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -107,26 +110,26 @@ const router = createRouter({
     {
       name: "files",
       path: "/files",
-      meta: { searchPlaceholder: "Search datasource name or ID, ?file name, #file ID" },
+      meta: { scope: ["files", "view"], searchPlaceholder: "Search datasource name or ID, ?file name, #file ID" },
       component: FileResults,
     },
     {
       name: "files-log",
       path: "/files-log/:id",
-      meta: { searchPlaceholder: "Search file name, ?name prefix, #file ID" },
+      meta: { scope: ["files", "view"], searchPlaceholder: "Search file name, ?name prefix, #file ID" },
       component: () => import(/* webpackChunkName: "file-log" */ "./components/FileLogPage.vue"),
       props: true,
     },
     {
       name: "datasources",
       path: "/datasources",
-      meta: { searchPlaceholder: "Search datasource, directory or mask" },
+      meta: { scope: ["datasources", "view"], searchPlaceholder: "Search datasource, directory or mask" },
       component: DatasourceCatalogue,
     },
     {
       name: "edit-datasource",
       path: "/edit-datasource/:id?",
-      meta: { hideSearch: true },
+      meta: { scope: ["datasources", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "datasource-editor" */ "./components/EditDatasource.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -138,6 +141,13 @@ const router = createRouter({
       },
     },
     {
+      // The API tokens of users, for the master token only.
+      name: "tokens",
+      path: "/tokens",
+      meta: { master: true, searchPlaceholder: "Search name, email or label" },
+      component: () => import(/* webpackChunkName: "tokens" */ "./components/TokensPage.vue"),
+    },
+    {
       name: "token",
       path: "/token",
       meta: { hideSearch: true },
@@ -147,11 +157,27 @@ const router = createRouter({
   ],
 });
 
+// The pages in the order a token without the Dashboard is sent to the first it may open.
+const LANDING_PAGES = ["dashboard", "results", "controls", "kpi-types", "scheduler", "files", "datasources"];
+
 router.beforeEach(function (to, from, next) {
   if (!store.state.tokenIsValid && to.name !== "token") {
     next({ path: "/token", query: { redirect: to.fullPath } });
-  } else {
+    return;
+  }
+  const whoami = store.state.whoami;
+  if (to.name === "token" || routeAllowed(whoami, to)) {
     next();
+    return;
+  }
+  const landing = LANDING_PAGES.map((name) => router.resolve({ name })).find((route) => routeAllowed(whoami, route));
+  if (landing) {
+    next({ name: landing.name, replace: true });
+  } else {
+    // A token that opens no page at all: back to the token page, without signing in again by the remembered cookie.
+    Cookies.remove("rapo_token");
+    store.commit("updateTokenValue", "");
+    next({ path: "/token", query: { denied: "1" } });
   }
 });
 

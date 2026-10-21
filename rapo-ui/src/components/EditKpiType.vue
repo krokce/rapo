@@ -10,7 +10,7 @@
     <div v-else>
       <!-- The chip is colored by the unit as saved, not by the one being typed. -->
       <h2 class="row items-center q-gutter-x-lg q-mb-lg">
-        <div>{{ savedKpiType ? "Edit KPI type" : "New KPI type" }}</div>
+        <div>{{ !$can("kpis", "edit") ? "KPI type" : savedKpiType ? "Edit KPI type" : "New KPI type" }}</div>
         <div class="row items-center no-wrap text-grey-7 page-subject">
           <q-chip v-if="savedKpiType" size="lg" :title="savedKpiType.kpi_value_unit || 'No unit'">
             <q-avatar :icon="kpiIcon" :color="kpiUnitColor(savedKpiType.kpi_value_unit)" text-color="white" class="type-avatar" />
@@ -37,7 +37,11 @@
 
         <q-separator />
 
-        <q-form @submit="validateAndSave" @reset="cancel">
+        <q-banner v-if="!$can('kpis', 'edit')" dense class="bg-blue-grey-1 text-blue-grey-10">
+          <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
+          Read only: your token can view KPI types but not change them.
+        </q-banner>
+        <q-form @submit="$can('kpis', 'edit') && validateAndSave()" @reset="cancel" :class="{ 'editor-readonly': !$can('kpis', 'edit') }">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -78,13 +82,13 @@
                 </div>
 
                 <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" :loading="saving" />
+                  <q-btn v-if="$can('kpis', 'edit')" label="Save" type="submit" color="primary" :loading="saving" />
                   <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
                 </div>
               </div>
             </q-tab-panel>
 
-            <q-tab-panel name="controls">
+            <q-tab-panel name="controls" class="editor-panel-open">
               <div class="q-ma-lg q-gutter-y-md">
                 <q-markup-table flat dense>
                   <thead>
@@ -208,7 +212,7 @@
                 </q-markup-table>
 
                 <div class="row q-my-md q-gutter-md">
-                  <q-btn label="Save" type="submit" color="primary" :loading="saving" />
+                  <q-btn v-if="$can('kpis', 'edit')" label="Save" type="submit" color="primary" :loading="saving" />
                   <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
                 </div>
               </div>
@@ -272,6 +276,10 @@ function emptyKpiType() {
 // that use the type are moved over by the server, which is what the confirmation before saving is about.
 export default {
   components: { CodeBox, EditorSkeleton, ScheduleSummary },
+  // The statements of a token that may not edit KPI types are read only.
+  provide() {
+    return { editorReadonly: () => !this.$can("kpis", "edit") };
+  },
   props: ["kpiCode"],
   data() {
     return {
@@ -455,10 +463,13 @@ export default {
     try {
       // Forced, because this page is where the catalogue is edited and the store caches it for the session.
       // The control catalogue feeds the Controls tab and names the control a cascade follows.
-      this.loadNextFires();
+      const controls = this.$can("controls");
+      if (controls) {
+        this.loadNextFires();
+      }
       const [types, , usage] = await Promise.all([
         this.updateKpiTypes({ force: true }),
-        this.updateControlCatalogue(),
+        controls ? this.updateControlCatalogue() : null,
         api("get-kpi-type-usage", { loadingBar: false }),
       ]);
       this.usage = usage;

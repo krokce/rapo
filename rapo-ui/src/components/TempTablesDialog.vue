@@ -60,7 +60,7 @@
                 <td class="text-right number-cell" :title="run.tables.join('\n')">{{ run.tables.length }}</td>
                 <td class="text-right text-grey-8 number-cell">{{ formatNumber(run.mb, 1) }}</td>
                 <td class="text-right">
-                  <q-btn flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropRun(run)" />
+                  <q-btn v-if="$can('instance', 'operate')" flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropRun(run)" />
                 </td>
               </tr>
             </template>
@@ -76,7 +76,7 @@
                 <td class="text-grey-8">created {{ toDateTimeString(table.created) }}</td>
                 <td class="text-right text-grey-8 number-cell">{{ formatNumber(table.mb, 1) }} MB</td>
                 <td class="text-right" style="width: 80px">
-                  <q-btn flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropScratch(table)" />
+                  <q-btn v-if="$can('instance', 'operate')" flat dense no-caps size="sm" color="negative" label="Drop" :disable="dropping" @click="dropScratch(table)" />
                 </td>
               </tr>
             </tbody>
@@ -107,7 +107,7 @@
       <q-separator />
       <q-card-actions align="right">
         <q-checkbox v-if="debugRuns.length" v-model="includeDebug" dense :label="`Include debug runs (${debugRuns.length})`" class="q-mr-md" />
-        <q-btn v-if="allTargets.count" label="Drop all" color="negative" outline :loading="dropping" @click="dropAll" />
+        <q-btn v-if="allTargets.count && $can('instance', 'operate')" label="Drop all" color="negative" outline :loading="dropping" @click="dropAll" />
         <q-btn label="Close" flat color="primary" v-close-popup />
       </q-card-actions>
     </q-card>

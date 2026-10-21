@@ -15,8 +15,11 @@ import socketio
 from starlette.background import BackgroundTask
 import sqlalchemy as sa
 
+from . import auth
 from . import events
+from . import scopes
 from .auth import verify_token
+from .tokens import store as token_store, TokenError
 from .compression import ASSET_DIRS, IMMUTABLE, JsonGzipMiddleware
 from .compression import ui_response
 
@@ -211,12 +214,105 @@ def info():
         ),
         'config_path': CONFIG_PATH,
         'log_directory': LOG_DIR,
+        'tokens_available': token_store.available is not False,
         'kpi_available': kpi.available,
         'view_edit': views.enabled(),
         'view_preview_max_rows': options.get('VIEWS', 'preview_max_rows'),
         **datasource_capabilities()
     }
+    # What the page may offer follows the caller's scopes too.
+    caller = auth.current()
+    if not caller.allows('instance', 'view'):
+        for key in ('database_server', 'database_name', 'config_path',
+                    'log_directory'):
+            output_dict[key] = None
+    for key, allowed in (
+            ('datasources_writable', caller.allows('datasources', 'edit')),
+            ('datasources_deletable', caller.allows('datasources', 'edit')),
+            ('datasources_file_upload', caller.allows('files', 'operate')),
+            ('datasources_file_actions', caller.allows('files', 'operate')),
+            ('datasources_state_write', caller.allows('files', 'operate')),
+            ('datasources_state_delete', caller.allows('files', 'operate')),
+            ('datasources_file_download', caller.allows('data', 'view')),
+            ('view_edit', caller.allows('controls', 'edit')
+             and (caller.master or caller.free_sql))):
+        if not allowed and key in output_dict:
+            output_dict[key] = False
     return output_dict
+
+
+@api.get('/whoami')
+def whoami():
+    """Get the caller: the master token or a user token with its scopes."""
+    return auth.current().describe()
+
+
+def token_answer(call, *args):
+    """Run a token store call, answering its TokenError as HTTP error."""
+    try:
+        return call(*args)
+    except TokenError as error:
+        raise fastapi.HTTPException(status_code=error.status,
+                                    detail=str(error))
+
+
+@api.get('/get-api-tokens')
+def get_api_tokens():
+    """Get the API tokens of users (master token only), latest first,
+    with the areas, levels and presets the token editor offers."""
+    return {'tokens': token_answer(token_store.list),
+            'areas': [{'area': area, 'title': title, 'levels': levels,
+                       'descriptions': scopes.DESCRIPTIONS[area]}
+                      for area, (title, levels) in scopes.AREAS.items()],
+            'free_sql': {'title': scopes.FREE_SQL[0],
+                         'description': scopes.FREE_SQL[1]},
+            'presets': scopes.PRESETS,
+            'needs_free_sql': scopes.NEEDS_FREE_SQL}
+
+
+@api.post('/create-api-token')
+def create_api_token(data: dict = fastapi.Body(...)):
+    """Create an API token for a user (master token only).
+
+    The body is {user_name, user_email, label, duration (1m, 6m, 1y,
+    unlimited), scopes {area: level}, free_sql}. The answer carries the
+    token itself, which is never shown again.
+    """
+    row, token = token_answer(token_store.create, data)
+    return {**row, 'token': token}
+
+
+@api.post('/update-api-token')
+def update_api_token(id: int, data: dict = fastapi.Body(...)):
+    """Change the user, label, scopes and Free SQL of an API token."""
+    return token_answer(token_store.update, id, data)
+
+
+@api.post('/extend-api-token')
+def extend_api_token(id: int, duration: str):
+    """Set an API token to expire `duration` from now; it stays the same."""
+    return token_answer(token_store.extend, id, duration)
+
+
+@api.post('/regenerate-api-token')
+def regenerate_api_token(id: int):
+    """Give an API token a new secret; the old one stops working. The answer
+    carries the new token, which is never shown again."""
+    row, token = token_answer(token_store.regenerate, id)
+    return {**row, 'token': token}
+
+
+@api.post('/revoke-api-token')
+def revoke_api_token(id: int):
+    """Stop an API token from working; it stays listed."""
+    return token_answer(token_store.revoke, id)
+
+
+@api.delete('/delete-api-token')
+def delete_api_token(id: int):
+    """Delete a revoked or expired API token."""
+    token_answer(token_store.delete, id)
+    return {'status': 200}
 
 
 def datasource_capabilities():
@@ -392,7 +488,8 @@ def get_config_catalogue():
                 'minimum': option.minimum,
                 'restart': needs_restart(name, option.name),
                 'secret': hidden,
-                'editable': options.is_editable(option),
+                'editable': (options.is_editable(option) and
+                             auth.current().allows('instance', 'edit')),
                 'set': key is not None,
                 'value': None if hidden else value,
                 'loaded': None if hidden else loaded,
@@ -491,7 +588,8 @@ def run_control(name: str, date: str | None = None,
     try:
         runner.submit(name, journal.MANUAL, cascade=cascade,
                       iterations=iterations, date_from=date_from,
-                      date_to=date_to, date=date, debug_mode=debug_mode)
+                      date_to=date_to, date=date, debug_mode=debug_mode,
+                      requested_by=auth.current().requester)
     except Exception as error:
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     events.poke()
@@ -1026,6 +1124,8 @@ def reassign_orphan_kpi(processname: str, kpi_type: str, control_name: str):
 @api.post('/calculate-kpi')
 def calculate_kpi(data: dict = fastapi.Body(...)):
     """Calculate one KPI of one run without storing it."""
+    if not data.get('saved'):
+        auth.require_free_sql(auth.current())
     try:
         return kpi.calculate(data.get('process_id'), data.get('kpi_type'),
                              data.get('kpi_sql_statement'),
@@ -1981,7 +2081,8 @@ def run_missed(event_id: int):
     timestamp = event['scheduled_time'].timestamp()
     try:
         caught = runner.submit(name, journal.CATCHUP, timestamp=timestamp,
-                               cascade=True, iterations=True)
+                               cascade=True, iterations=True,
+                               requested_by=auth.current().requester)
     except Exception as error:
         raise fastapi.HTTPException(status_code=400, detail=str(error))
     journal.update(event_id, message=f'Run as event {caught}.')
@@ -2050,12 +2151,23 @@ def parse_json(name, value):
 
 
 def analysis_session(session_id):
-    """Get an open analysis session, or answer its error."""
+    """Get an open analysis session of the caller, or answer its error."""
     try:
-        return sessions.get(session_id)
+        session = sessions.get(session_id)
     except SessionError as error:
         raise fastapi.HTTPException(status_code=error.status,
                                     detail=str(error))
+    caller = auth.current()
+    if not caller.master and session.owner != caller.token_id:
+        raise auth.forbidden('The analysis session belongs to another token')
+    return session
+
+
+def check_pushdown(pushdown):
+    """Answer 403 for a raw SQL `where` beyond a plain filter of the
+    dataset's columns from a caller without Free SQL."""
+    if isinstance(pushdown, dict) and pushdown.get('where'):
+        auth.require_filter(auth.current(), pushdown['where'])
 
 
 def analysis_request(session, command, **arguments):
@@ -2095,8 +2207,10 @@ def analysis_start(process_id: int, dataset: str, random: bool = True,
     drawn at random (`sessions.sampling`) unless `random` is false (the
     first records then).
     """
+    check_pushdown(pushdown)
     try:
-        session = sessions.create(process_id, dataset, pushdown, random)
+        session = sessions.create(process_id, dataset, pushdown, random,
+                                  owner=auth.current().token_id)
     except SessionError as error:
         raise fastapi.HTTPException(status_code=error.status,
                                     detail=str(error))
@@ -2116,9 +2230,11 @@ def analysis_start_file(file_id: int, table: str, random: bool = False,
     if not (pdi.available and pdi.log_available):
         raise fastapi.HTTPException(status_code=403,
                                     detail='The file log is not available.')
+    check_pushdown(pushdown)
     try:
         session = sessions.create(None, table, pushdown, random,
-                                  file_id=file_id)
+                                  file_id=file_id,
+                                  owner=auth.current().token_id)
     except SessionError as error:
         raise fastapi.HTTPException(status_code=error.status,
                                     detail=str(error))
@@ -2149,6 +2265,11 @@ def analysis_cancel(session_id: str):
 @api.post('/analysis-close')
 def analysis_close(session_id: str):
     """Close an analysis session and free its memory."""
+    try:
+        analysis_session(session_id)
+    except fastapi.HTTPException as error:
+        if error.status_code != 404:
+            raise
     sessions.close(session_id)
     return {'status': 200}
 
@@ -2207,6 +2328,7 @@ def validate_analysis_where(process_id: int, dataset: str,
 
     The body is {where}. Answers like validate-sql.
     """
+    auth.require_filter(auth.current(), body.get('where'))
     return datasets.check_where(process_id, dataset, body.get('where'))
 
 
@@ -2335,6 +2457,7 @@ def remove_file(path):
         os.remove(path)
 
 
+scopes.check_routes(api)
 fastapi_app.include_router(api)
 
 

@@ -28,6 +28,8 @@ const store = createStore({
       serverClockOffset: 0,
       tokenIsValid: false,
       tokenValue: "",
+      // The signed-in token (whoami): master, user, scopes, free_sql, expires_at.
+      whoami: null,
       socketConnected: false,
       envVersion: null,
       envInfo: null,

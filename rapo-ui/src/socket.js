@@ -12,11 +12,24 @@ const socket = io({
 
 export function initSocket(store) {
   socket.store = store;
-  socket.on("connect", () => store.commit("updateSocketConnected", true));
-  socket.on("disconnect", () => store.commit("updateSocketConnected", false));
+  // On every (re)connection the token's scopes are read again: the server closes the connections of a token that was
+  // changed (they reconnect with the new scopes) or revoked (whoami answers 401, which signs out).
+  socket.on("connect", () => {
+    store.commit("updateSocketConnected", true);
+    store.dispatch("refreshWhoami").catch((error) => console.error("Token check failed:", error));
+  });
+  socket.on("disconnect", (reason) => {
+    store.commit("updateSocketConnected", false);
+    if (reason === "io server disconnect" && store.getters.getToken) {
+      socket.connect();
+    }
+  });
   socket.on("connect_error", (err) => {
     store.commit("updateSocketConnected", false);
     console.error("Live updates connection failed:", err.message);
+    if (err.message === "Unauthorized Access" && store.getters.getToken) {
+      store.dispatch("refreshWhoami").catch((error) => console.error("Token check failed:", error));
+    }
   });
   store.watch(
     (state) => state.tokenValue,

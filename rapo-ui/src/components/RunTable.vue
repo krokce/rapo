@@ -254,7 +254,7 @@
               :style="kpiCell(run, kpi).alarm_level > 0 ? { background: alarmColor(kpiCell(run, kpi).alarm_level) } : null"
               :title="kpiCellTitle(run, kpi)"
               v-keyboard:button
-              @click="$emit('calculate-kpis', run)">
+              @click="$can('kpis', 'operate') && $emit('calculate-kpis', run)">
               {{ compactKpiValue(kpiCell(run, kpi).value) }}
             </span>
           </td>
@@ -266,7 +266,7 @@
                 :style="kpi.alarm_level > 0 ? { background: alarmColor(kpi.alarm_level) } : null"
                 :title="summaryTitle(run, kpi)"
                 v-keyboard:button
-                @click="$emit('calculate-kpis', run)">
+                @click="$can('kpis', 'operate') && $emit('calculate-kpis', run)">
                 {{ compactKpiValue(kpi.value) }}
               </span>
             </template>
@@ -330,39 +330,41 @@
     <run-log-dialog ref="runLogDialog" />
     <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
       <q-list v-if="menuRow" dense class="text-no-wrap">
-        <q-item dense clickable :disable="!!runDisabled" @click="reRun(menuRow, refresh)" v-close-popup>
-          <q-item-section> Re-run </q-item-section>
-          <q-tooltip v-if="runDisabled">{{ runDisabled }}</q-tooltip>
-        </q-item>
-        <run-control-dialog v-if="!runDisabled" :control_name="menuRow.control_name" :hook="refresh">
-          <q-item dense clickable class="col items-center">
-            <q-item-section> Run </q-item-section>
+        <template v-if="$can('runs', 'operate')">
+          <q-item dense clickable :disable="!!runDisabled" @click="reRun(menuRow, refresh)" v-close-popup>
+            <q-item-section> Re-run </q-item-section>
+            <q-tooltip v-if="runDisabled">{{ runDisabled }}</q-tooltip>
           </q-item>
-        </run-control-dialog>
-        <q-item v-else dense disable>
-          <q-item-section> Run </q-item-section>
-          <q-tooltip>{{ runDisabled }}</q-tooltip>
-        </q-item>
-        <template v-if="editLink">
+          <run-control-dialog v-if="!runDisabled" :control_name="menuRow.control_name" :hook="refresh">
+            <q-item dense clickable class="col items-center">
+              <q-item-section> Run </q-item-section>
+            </q-item>
+          </run-control-dialog>
+          <q-item v-else dense disable>
+            <q-item-section> Run </q-item-section>
+            <q-tooltip>{{ runDisabled }}</q-tooltip>
+          </q-item>
+        </template>
+        <template v-if="editLink && $can('controls')">
           <q-separator />
           <q-item dense clickable :to="{ name: 'edit-control', params: { controlId: menuRow.control_id } }">
             <q-item-section> Edit control </q-item-section>
           </q-item>
         </template>
         <q-separator />
-        <q-item v-if="menuRow.status != 'X'" dense clickable class="col items-center" @click="revokeRun(menuRow, refresh)" v-close-popup>
+        <q-item v-if="menuRow.status != 'X' && $can('runs', 'operate')" dense clickable class="col items-center" @click="revokeRun(menuRow, refresh)" v-close-popup>
           <q-item-section> Revoke run </q-item-section>
         </q-item>
-        <q-item v-if="activeRunStatuses.includes(menuRow.status)" dense clickable class="col items-center" @click="cancelRun(menuRow, refresh)" v-close-popup>
+        <q-item v-if="activeRunStatuses.includes(menuRow.status) && $can('runs', 'operate')" dense clickable class="col items-center" @click="cancelRun(menuRow, refresh)" v-close-popup>
           <q-item-section> Cancel run </q-item-section>
         </q-item>
         <q-item dense clickable class="col items-center" @click="$refs.runLogDialog.open(menuRow)" v-close-popup>
           <q-item-section> Show full log </q-item-section>
         </q-item>
-        <q-item v-if="hasKpis && hasKpis(menuRow)" dense clickable class="col items-center" @click="$emit('calculate-kpis', menuRow)" v-close-popup>
+        <q-item v-if="hasKpis && hasKpis(menuRow) && $can('kpis', 'operate')" dense clickable class="col items-center" @click="$emit('calculate-kpis', menuRow)" v-close-popup>
           <q-item-section> Calculate KPIs </q-item-section>
         </q-item>
-        <q-item v-if="menuRow.status == 'D' && menuRowSendsEmail" dense clickable class="col items-center" @click="sendEmail(menuRow)" v-close-popup>
+        <q-item v-if="menuRow.status == 'D' && menuRowSendsEmail && $can('runs', 'operate')" dense clickable class="col items-center" @click="sendEmail(menuRow)" v-close-popup>
           <q-item-section> Send email </q-item-section>
         </q-item>
       </q-list>
@@ -766,8 +768,11 @@ export default {
     triggerKey,
     triggerOf,
     triggerTitle,
+    // The menu leads to the records behind the number, which need Data.
     openNumberMenu(event, row, dataset) {
-      this.$refs.numberMenu.open(event, row, dataset);
+      if (this.$can("data")) {
+        this.$refs.numberMenu.open(event, row, dataset);
+      }
     },
     openRowMenu(event, row) {
       this.menuTarget = event.currentTarget;

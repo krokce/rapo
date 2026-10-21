@@ -5,6 +5,7 @@ itself is built on; it is a published interface and may be called from reports, 
 outside this repository.
 
 * [Connection](#connection)
+  * [API tokens and scopes](#api-tokens-and-scopes)
 * [Conventions](#conventions)
 * [Reference](#reference)
   * [Runs](#runs)
@@ -15,21 +16,62 @@ outside this repository.
   * [Email](#email)
   * [Scheduler](#scheduler)
   * [Service](#service)
+  * [API tokens](#api-tokens)
 * [Live events](#live-events)
 * [Value reference](#value-reference)
 
 ## Connection
 
 The address comes from the `[API]` section of `rapo.ini` (`host` and `port`, `127.0.0.1:8080` by default). Every
-route lives under `/api` and requires the `token` of that section as a Bearer token:
+route lives under `/api` and requires a Bearer token: the **master token** (`token` of that section) or an **API
+token** the master token issued to a user (`rapo_` + 43 characters):
 
 ```bash
 curl -H "Authorization: Bearer $RAPO_TOKEN" http://rapo-host:7005/api/scheduler-status
 ```
 
-A request without a valid token is answered with `401 Unauthorized Access`, whatever the route. `GET /api/help`
-returns a short HTML page and is the cheapest way to check that a token works - it is what the UI validates
-against.
+A request without a valid token (missing, wrong, expired or revoked) is answered with `401 Unauthorized Access`,
+whatever the route. `GET /api/whoami` is the cheapest way to check a token and tells what it may do - it is what the
+UI validates against.
+
+### API tokens and scopes
+
+The master token may call every route; it alone manages the API tokens ([API tokens](#api-tokens), the UI's *Tokens*
+page). An API token belongs to a user (name, email, label), expires after 1 month, 6 months, 1 year or never, and
+reaches the routes its **scopes** allow; any other route answers `403` with `Requires <Area>: <Level>` (or `Requires
+Free SQL`, `Requires the master token`). Only the token's SHA-256 is stored, so it is shown once, when it is created
+or regenerated. A server trusts a validated token for `[API] token_cache_seconds` (30): another server on the same
+database sees a revocation after that time.
+
+A scope is a level per area; a level includes the ones below it (`none` < `view` < `operate` < `edit`):
+
+| Area          | Levels                    | View                                                         | Operate                                                    | Edit                                              |
+|---------------|---------------------------|--------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------|
+| `dashboard`   | view                      | `get-dashboard` (every panel), the health and scheduler state it shows |                                               |                                                   |
+| `runs`        | view, operate             | Run lists and logs: `get-control-runs`, `get-control-run(-log)`, `get-run-calendar`, `get-running-controls`, `get-control-trend` | `run-control`, `cancel-control`, `revoke-control-run`, `run-missed`, `send-control-email`, `iteration-preview` | |
+| `data`        | view                      | Records and file contents: `analysis-*`, discrepancy analysis, `get-run-dataset-sql`, `get-file-tables`/`-records`, the file viewer and ASN.1 routes, `download-ds-files` | | |
+| `controls`    | view, edit                | `get-all-controls`, `get-schema-drift`, `get-control-versions`, datasource and view reads, `schedule-preview`, `get-next-fires` | | `save-control`, `delete-control`, schema update/recreate/check, orphan and output table drops, version deletes, `send-test-email`, `compile-view` |
+| `kpis`        | view, operate, edit       | KPI types, a control's KPIs, KPI history and runs, orphan list | `calculate-kpi`, `reingest-kpis`                           | `save-kpi-type`, `delete-kpi-type`, orphan KPI deletes/reassigns |
+| `scheduler`   | view, operate             | `scheduler-status`, `-upcoming`, `-events`, `get-missed-fires` | `scheduler-stop`, `scheduler-start`                        |                                                   |
+| `datasources` | view, edit                | PDI Core datasources, directories, incoming files, archive, grammars, viewer settings |                       | Their saves and deletes, lanes (`set-ds-active`), directories, grammars, viewer settings |
+| `files`       | view, operate             | The file log: `get-files-day`, `get-ds-file-log(-text)`, `search-files`, `get-pdi-state` | `set-file-status`, lane locks, `check-ds-upload`, `upload-ds-file`, `refresh-file-summary` | |
+| `instance`    | view, operate, edit       | `parameters`, health and sessions, `get-config-catalogue`, `get-config-changes`, `get-temp-tables` | `drop-temp-tables`                | `set-config-option`, `reload-config`              |
+
+`help`, `status`, `session`, `version`, `info` and `whoami` are open to every token. A few reads are also open to the
+area whose page shows them (e.g. `get-all-controls` to `scheduler: view`, `get-ds-list` to `files: view`); the full
+rule is `ROUTES` and `ALSO` in `rapo/web/api/scopes.py`. A route without a scope there stops the server at start.
+
+**Free SQL** is a flag apart from the areas, needed by every route that takes SQL text: `validate-sql`,
+`validate-kpi-sql`, `check-view`, `preview-view`, `compile-view`, `check-control-schema`, `save-control`,
+`save-kpi-type` and `calculate-kpi` with a draft statement. `controls: edit` and `kpis: edit` need it (their SQL runs
+as the schema owner). Without it, a raw `where` of `analysis-start(-file)` and `validate-analysis-where` may only be a
+plain filter of the dataset's columns: no subquery, no `.`/`@`, no `;`, functions out of a short list (`to_char`,
+`substr`, `trunc`, `nvl`, `cast`, ...), as the discrepancy analysis' links write them.
+
+The changes an API token makes are recorded under its user: the server names the token's email as the session's
+`client_identifier`, which the `rapo_config` triggers write as `created_by`/`updated_by` and as the `audit_user` of
+the versions (the master token keeps the server's OS user), and a manual or catch-up run carries `requested_by`
+(`Name <email>`, or `master token`). An analysis session belongs to the token that started it (others get `403`).
 
 Swagger is **off by default**. Neither `/api/docs` nor `/api/openapi.json` can carry the Bearer token, so they
 would describe the whole API to anyone able to reach the port; they are served only with `docs=True` in the `[API]`
@@ -47,7 +89,8 @@ section and answer 404 otherwise. Redoc is disabled.
 
   | Code | Meaning                                                                            |
   |------|------------------------------------------------------------------------------------|
-  | 401  | Missing or wrong token.                                                             |
+  | 401  | Missing, wrong, expired or revoked token.                                           |
+  | 403  | The token's scopes do not reach the route (`Requires Runs: Operate`, `Requires Free SQL`, `Requires the master token`), or the analysis session belongs to another token. |
   | 400  | The request was understood but could not be performed (bad control, failed save).   |
   | 404  | No such run, control, record or log file.                                           |
   | 413  | An uploaded file over `[DATASOURCES] max_upload_mb`.                                |
@@ -160,7 +203,8 @@ Every run carries `control_name`, `control_id`, `control_type`, `process_id`, `a
 `error_level_a`/`_b`, the A column holding the single value of a one-sided control), `text_log`, `text_error`,
 `has_warning`, `prerequisite_value`, `duration_minutes`, and what started it from `rapo_scheduler_event`:
 `trigger_type` (`SCHEDULE`, `MANUAL`, `CATCHUP`, `ITERATION`, `CASCADE`, `UPSTREAM`), `trigger_message` (e.g. `For
-CHN_B [1000002993]` on an upstream run) and `scheduled_time`, all null for a run the run manager did not start.
+CHN_B [1000002993]` on an upstream run), `scheduled_time` and `requested_by` (the user of the API token that asked
+for a manual or catch-up run, `Name <email>`, or `master token`), all null for a run the run manager did not start.
 `has_warning` is `1` when the run's messages hold a
 `Warning: ` line (a key field that is not unique, `correlation_limit` reached, approximate matching over
 `max_candidates`, an `output_limit` that cut the saved rows), else `0`; the text is in `get-control-run-log`.
@@ -1314,7 +1358,8 @@ The run request history, latest first.
 | `limit`        | int  | 500     | Maximum number of rows, 1 .. 5000.             |
 
 Each event carries `event_id`, `control_id`, `control_name`, `control_type`, `trigger_type`, `event_type`,
-`scheduled_time`, `event_time`, `start_time`, `process_id`, `message`, `runner`, and the run's `status`,
+`scheduled_time`, `event_time`, `start_time`, `process_id`, `message`, `runner`, `requested_by` (who asked for a
+manual or catch-up run, see `get-control-runs`), and the run's `status`,
 `date_from`, `date_to`, `start_date` and `end_date` joined from `rapo_log`.
 
 #### `GET /api/get-missed-fires`
@@ -1348,7 +1393,15 @@ What this instance is: `instance_name`, `schema_name`, `database_server`, `datab
 and for the PDI Core datasources `datasources_available`, `datasources_writable`, `datasources_deletable`,
 `datasources_log` (the file log is readable), `datasources_file_actions` (files can be recycled, reloaded, deleted),
 `datasources_file_download` (files can be downloaded: the file log is readable and `[DATASOURCES] file_download` on),
-`datasources_state`, `datasources_state_write` and `datasources_state_delete` (the lane locks of `PDI_CORE_STATE`).
+`datasources_state`, `datasources_state_write` and `datasources_state_delete` (the lane locks of `PDI_CORE_STATE`),
+and `tokens_available` (`rapo_api_token` exists). The capabilities follow the caller's scopes too: without
+`datasources: edit` the datasources are not writable or deletable, without `files: operate` no file action, upload or
+lane lock, without `data: view` no download, without `controls: edit` and Free SQL no view edit; without
+`instance: view` the database and paths are `null`.
+
+#### `GET /api/whoami`
+The caller: `{master, token_id, user_name, user_email, label, scopes, free_sql, expires_at}`. The master token has
+`master: true`, every area at its highest level and no user. `401` for a token that is not valid.
 
 #### `GET /api/get-config-catalogue`
 Every option of `rapo.ini` rapo knows (`rapo/options.py`), in sections, for the Configuration tab:
@@ -1456,6 +1509,50 @@ The `rapo_web_api` record of the server that started last: `server`, `username`,
 A short HTML help page. Cheap, always available with a valid token, and therefore what the UI uses to validate
 one.
 
+### API tokens
+
+Master token only (`403 Requires the master token` otherwise). A token answers as `{token_id, token_prefix,
+user_name, user_email, label, scopes, free_sql, expires_at, revoked_at, last_used_at, last_used_ip, created_date,
+updated_date, state}`, `state` being `active`, `expired` or `revoked`; `last_used_*` is written at most once a
+minute. `503` while `rapo_api_token` is missing (run `migrations/v0.8.7/upgrade.sql`).
+
+#### `GET /api/get-api-tokens`
+`{tokens, areas, free_sql, presets, needs_free_sql}`: every token, latest first; the areas `[{area, title, levels,
+descriptions}]` (`descriptions`: what each level but `none` allows); `free_sql` `{title, description}`; the
+presets (`viewer`, `operator`, `editor`, `full`: `{scopes, free_sql}`) and the levels that need Free SQL
+(`{controls: "edit", kpis: "edit"}`).
+
+#### `POST /api/create-api-token`
+JSON body `{user_name, user_email, label, duration, scopes, free_sql}`: `duration` is `1m`, `6m`, `1y` (default) or
+`unlimited`, `scopes` `{area: level}` (an area left out is `none`). Answers the token row plus **`token`, shown only
+this once**. `400` for a missing name, an invalid email, an unknown area or level, or an edit level that needs Free
+SQL without it.
+
+```bash
+curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: application/json" \
+  -d '{"user_name": "Jane Doe", "user_email": "jane@example.com", "label": "billing sync", "duration": "6m",
+       "scopes": {"runs": "operate", "controls": "view"}}' \
+  http://rapo-host:7005/api/create-api-token
+```
+
+#### `POST /api/update-api-token`
+`id` and the JSON body of `create-api-token` without `duration`: changes the user, label, scopes and Free SQL. The
+token stays the same; open UI pages reconnect with the new scopes.
+
+#### `POST /api/extend-api-token`
+`id`, `duration`: the token expires `duration` from now (`unlimited`: never); it stays the same. `400` when revoked.
+
+#### `POST /api/regenerate-api-token`
+`id`: a new token with the same user, scopes and expiry; the old one stops working at once. Answers the row plus
+`token`, shown only this once. `400` when revoked.
+
+#### `POST /api/revoke-api-token`
+`id`: the token stops working (`revoked_at`); the row stays. Open UI pages of it are signed out within
+`token_cache_seconds` + 30 s.
+
+#### `DELETE /api/delete-api-token`
+`id`: deletes a revoked or expired token (`400` for an active one).
+
 ## Live events
 
 The server is a socket.io application wrapping the API, with the endpoint at `/api/socket.io`. The token goes in
@@ -1478,6 +1575,12 @@ Control runs write to the database, not to the server process, so a watcher comp
 | `health:level`     | `{level}`: the worst level of the instance health changed (`null`, `warn`, `crit`) |
 | `health:sample`    | `{group, point, minute, levels, level}`: a new `os` or `db` sample of `get-instance-health`, and `minute` the aggregate of the minute it closed (else `null`), sent only to clients that joined the room with `health:join` (and left with `health:leave`) |
 | `datasources:changed` | `{kind}`: `config` when `pdi_core_ds_config` or `pdi_core_ds_tables` changed, by anyone; `status` when a count of the waiting files differs from the one before; `state` when a lane lock of `pdi_core_state` changed; `files` when today's file log got files or finished loads; `summary` when days of `rapo_file_summary` were summed (maintenance, `refresh-file-summary`) |
+
+A connection hears only the events of the areas its token may view (`runs:changed`: runs, controls, KPIs or
+Dashboard; `scheduler:changed`: scheduler, runs or Dashboard; `datasources:changed`: datasources, files or Dashboard;
+`discrepancy:progress`: data; `health:level` and `health:join`: instance or Dashboard), and `analysis:progress` only
+of its own token's sessions. Every 30 s the server closes the connections whose token was changed (they may
+reconnect with the new scopes) or is no longer valid (the reconnection is refused).
 
 `resync` means the changed rows could not be named - a deletion, or more than 500 changes at once - and everything
 should be refetched. The events say *what*

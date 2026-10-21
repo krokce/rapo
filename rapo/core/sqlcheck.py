@@ -91,6 +91,45 @@ def code_only(statement):
     return re.sub(r"'(?:[^']|'')*'", "''", text)
 
 
+# What a filter on a dataset may call without Free SQL (`plain_filter`): the
+# functions the discrepancy analysis' filters and common predicates use.
+FILTER_FUNCTIONS = frozenset((
+    'abs', 'add_months', 'cast', 'ceil', 'coalesce', 'decode', 'extract',
+    'floor', 'greatest', 'instr', 'last_day', 'least', 'length', 'lnnvl',
+    'lower', 'ltrim', 'mod', 'months_between', 'nvl', 'nvl2', 'regexp_like',
+    'replace', 'round', 'rtrim', 'sign', 'substr', 'to_char', 'to_date',
+    'to_number', 'to_timestamp', 'trim', 'trunc', 'upper',
+    # Type names of a cast, and the keywords a parenthesis may follow.
+    'char', 'date', 'integer', 'number', 'nvarchar2', 'timestamp',
+    'varchar', 'varchar2', 'and', 'or', 'not', 'in', 'as', 'when', 'then',
+    'else', 'between', 'like', 'is'))
+FILTER_FORBIDDEN = re.compile(
+    r'\b(select|from|with|union|intersect|minus|except|insert|update|'
+    r'delete|merge|into|begin|declare|execute|call|table|lateral|model)\b',
+    flags=re.I)
+FILTER_CALL = re.compile(r'\b([a-z_][\w$#]*)\s*\(', flags=re.I)
+
+
+def plain_filter(where):
+    """Tell why a `where` on a dataset is more than a plain filter of its
+    columns (None when it is one): a subquery, another object (a `.` or
+    `@`), more than one statement, or a function outside FILTER_FUNCTIONS
+    could read or change what the dataset does not hold.
+    """
+    code = code_only(str(where or ''))
+    code = re.sub(r'"[^"]*"', 'x', code)
+    code = re.sub(r'\b\d+(\.\d+)?(e[+-]?\d+)?\b', '0', code, flags=re.I)
+    if re.search(r'[;@.]', code):
+        return 'Only the columns of the dataset may be named.'
+    found = FILTER_FORBIDDEN.search(code)
+    if found:
+        return f'{found.group(1).upper()} is not allowed in a filter.'
+    for call in FILTER_CALL.finditer(code):
+        if call.group(1).lower() not in FILTER_FUNCTIONS:
+            return f'Function {call.group(1).upper()} is not allowed.'
+    return None
+
+
 def guard_query(statement, not_query):
     """Tell why a statement may not be run as a read-only preview.
 

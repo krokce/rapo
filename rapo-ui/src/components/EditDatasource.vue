@@ -22,7 +22,7 @@
 
       <q-banner v-if="!writable" dense rounded class="bg-grey-3 q-mb-md">
         <template #avatar><q-icon name="fas fa-lock" size="16px" /></template>
-        This database user may read the datasources, but not change them.
+        {{ $can("datasources", "edit") ? "This database user may read the datasources, but not change them." : "Read only: your token can view datasources but not change them." }}
       </q-banner>
 
       <q-card>
@@ -44,7 +44,8 @@
 
         <q-separator />
 
-        <q-form @submit="persist('stay')" @reset="cancel" @validation-error="validationError">
+        <!-- Without write access the configuration does not react; what only shows more stays usable (editor-panel-open). -->
+        <q-form @submit="persist('stay')" @reset="cancel" @validation-error="validationError" :class="{ 'editor-readonly': !writable }">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -148,7 +149,7 @@
                           A regular expression the whole file name must match (like Java's matches() in PDI Core), e.g. ^U(?!.*FIN).*
                         </q-tooltip>
                       </q-input>
-                      <q-btn outline color="primary" icon="fas fa-spell-check" label="Check regex" class="field-button icon-button" @click="openMaskCheck('files_mask')">
+                      <q-btn outline color="primary" icon="fas fa-spell-check" label="Check regex" class="field-button icon-button editor-panel-open" @click="openMaskCheck('files_mask')">
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Check the pattern and try it on sample file names</q-tooltip>
                       </q-btn>
                     </div>
@@ -177,7 +178,7 @@
                         color="primary"
                         icon="fas fa-spell-check"
                         label="Check regex"
-                        class="field-button icon-button"
+                        class="field-button icon-button editor-panel-open"
                         :disable="!datasource.input_clean_files_mask"
                         @click="openMaskCheck('input_clean_files_mask')">
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Check the pattern and try it on sample file names</q-tooltip>
@@ -187,7 +188,7 @@
 
                     <template v-if="saved">
                       <q-separator />
-                      <div class="row q-gutter-sm">
+                      <div class="row q-gutter-sm editor-panel-open">
                         <q-btn outline color="primary" icon="fas fa-filter" label="Matching files" class="icon-button" @click="openFiles('match')">
                           <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
                             The files the file name pattern picks up in the saved directories, with the patterns as edited here
@@ -332,7 +333,7 @@
                     <q-item-label>File viewer</q-item-label>
                   </q-item-section>
                   <q-card-section>
-                    <viewer-settings-box v-if="saved" :datasource="saved" />
+                    <viewer-settings-box v-if="saved" class="editor-panel-open" :datasource="saved" />
                     <div v-else class="text-grey-7">Save the datasource to see its file viewer settings.</div>
                   </q-card-section>
                 </q-card>
@@ -392,20 +393,20 @@
                     <q-item-label>Explore</q-item-label>
                   </q-item-section>
                   <q-card-section>
-                    <archive-tree-box v-if="saved" :datasource="saved" />
+                    <archive-tree-box v-if="saved" class="editor-panel-open" :datasource="saved" />
                     <div v-else class="text-grey-7">Save the datasource to explore its directories.</div>
                   </q-card-section>
                 </q-card>
               </div>
             </q-tab-panel>
 
-            <q-tab-panel v-if="saved && logAvailable" name="log">
+            <q-tab-panel v-if="saved && logAvailable" name="log" class="editor-panel-open">
               <div class="q-ma-lg">
                 <file-log-table :datasource-id="saved.id" :tables="saved.links.map((link) => link.table_name)" selectable embedded />
               </div>
             </q-tab-panel>
 
-            <q-tab-panel v-if="attention.length" name="attention">
+            <q-tab-panel v-if="attention.length" name="attention" class="editor-panel-open">
               <div class="q-ma-lg q-gutter-y-md">
                 <div class="text-caption text-grey-7">As saved; unsaved changes show after Apply.</div>
                 <q-list bordered separator class="rounded-borders">
@@ -1048,8 +1049,8 @@ export default {
       this.$router.push({ name: "datasources" });
     },
     confirmLeave(to, next) {
-      // A first save moves to the datasource's own id, with nothing left unsaved.
-      if (!this.dirty || this.saving) {
+      // A first save moves to the datasource's own id, with nothing left unsaved; read only, nothing can be saved.
+      if (!this.dirty || this.saving || !this.writable) {
         next();
         return;
       }
@@ -1070,7 +1071,7 @@ export default {
       }
     },
     onBeforeUnload(event) {
-      if (this.dirty) {
+      if (this.dirty && this.writable) {
         event.preventDefault();
         event.returnValue = "";
       }

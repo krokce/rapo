@@ -70,8 +70,14 @@ export default {
   updateSocketConnected(state, payload) {
     state.socketConnected = payload;
   },
+  updateWhoami(state, payload) {
+    state.whoami = payload;
+  },
   updateTokenValue(state, payload) {
     state.tokenValue = payload;
     state.tokenIsValid = Boolean(payload);
+    if (!payload) {
+      state.whoami = null;
+    }
   },
 };

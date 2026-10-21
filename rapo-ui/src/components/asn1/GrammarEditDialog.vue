@@ -28,7 +28,8 @@
             :error="Boolean(nameError)"
             :error-message="nameError"
             hide-bottom-space
-            autofocus />
+            :readonly="readOnly"
+            :autofocus="!readOnly" />
           <q-chip class="kind-chip" :title="kindTitle">
             <q-avatar :icon="grammarIcon(kind)" color="blue-grey-6" text-color="white" />
             {{ kind === "tagmap" ? "Tag map" : "ASN.1 modules" }}
@@ -44,7 +45,7 @@
 
         <div class="row items-center no-wrap file-tabs">
           <q-tabs v-model="tab" dense no-caps inline-label align="left" active-color="primary" indicator-color="primary" class="text-grey-8 col-auto file-tabs__tabs" outside-arrows mobile-arrows>
-            <q-tab v-for="file in files" :key="file.key" :name="file.key" class="file-tab" @dblclick="startRename(file)">
+            <q-tab v-for="file in files" :key="file.key" :name="file.key" class="file-tab" @dblclick="!readOnly && startRename(file)">
               <div class="row items-center no-wrap">
                 <q-icon :name="file.text.trim() && looksLikeTagMap(file.text) ? 'fas fa-tags' : 'fas fa-file-code'" size="13px" class="q-mr-xs" />
                 <input
@@ -56,18 +57,18 @@
                   @keydown.esc.stop.prevent="renaming = null"
                   @blur="finishRename(file)"
                   @click.stop />
-                <span v-else class="text-mono file-tab__name" :title="'Double-click to rename'">{{ file.name }}</span>
+                <span v-else class="text-mono file-tab__name" :title="readOnly ? '' : 'Double-click to rename'">{{ file.name }}</span>
                 <span v-if="file.text !== file.loadedText" class="dirty-dot" title="Changed" />
-                <q-btn v-if="renaming !== file.key" flat round dense size="xs" icon="fas fa-pen" class="q-ml-xs tab-btn" aria-label="Rename the file" @click.stop="startRename(file)">
+                <q-btn v-if="renaming !== file.key && !readOnly" flat round dense size="xs" icon="fas fa-pen" class="q-ml-xs tab-btn" aria-label="Rename the file" @click.stop="startRename(file)">
                   <q-tooltip>Rename</q-tooltip>
                 </q-btn>
-                <q-btn v-if="files.length > 1" flat round dense size="xs" icon="fas fa-times" class="tab-btn" aria-label="Remove the file" @click.stop="removeFile(file)">
+                <q-btn v-if="files.length > 1 && !readOnly" flat round dense size="xs" icon="fas fa-times" class="tab-btn" aria-label="Remove the file" @click.stop="removeFile(file)">
                   <q-tooltip>Remove the file</q-tooltip>
                 </q-btn>
               </div>
             </q-tab>
           </q-tabs>
-          <q-btn flat dense no-caps color="primary" icon="fas fa-plus" label="File" class="q-ml-sm" aria-label="Add a file">
+          <q-btn v-if="!readOnly" flat dense no-caps color="primary" icon="fas fa-plus" label="File" class="q-ml-sm" aria-label="Add a file">
             <q-menu anchor="bottom left" self="top left" no-refocus>
               <q-list dense style="min-width: 220px">
                 <q-item clickable v-close-popup @click="$refs.input.click()">
@@ -81,12 +82,12 @@
               </q-list>
             </q-menu>
           </q-btn>
-          <input ref="input" type="file" multiple accept=".asn,.asn1,.txt,.ASN,.ASN1,.properties,.java" class="hidden" @change="picked" />
+          <input v-if="!readOnly" ref="input" type="file" multiple accept=".asn,.asn1,.txt,.ASN,.ASN1,.properties,.java" class="hidden" @change="picked" />
           <q-space />
-          <div class="text-caption text-grey-7 q-ml-sm text-no-wrap">Drop files on the text to add them</div>
+          <div v-if="!readOnly" class="text-caption text-grey-7 q-ml-sm text-no-wrap">Drop files on the text to add them</div>
         </div>
 
-        <div class="col relative-position editor-wrap" @dragenter.prevent="dragging = true" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="dropped">
+        <div class="col relative-position editor-wrap" @dragenter.prevent="dragging = !readOnly" @dragover.prevent="dragging = !readOnly" @dragleave.self="dragging = false" @drop.prevent="dropped">
           <grammar-code-box
             v-if="currentFile"
             ref="code"
@@ -94,6 +95,7 @@
             v-model="currentFile.text"
             :language="looksLikeTagMap(currentFile.text) ? 'plain' : 'asn1'"
             :autofocus="currentFile.key === focusKey"
+            :readonly="readOnly"
             placeholder-text="Paste ASN.1 modules or a tag map (props.put(&quot;82.0&quot;,&quot;recordType,integer,1&quot;); or 82.0=recordType,integer), or upload files" />
           <div v-if="dragging" class="drop-overlay absolute-full column flex-center">
             <q-icon name="fas fa-file-upload" size="40px" />
@@ -106,10 +108,12 @@
 
       <q-separator />
       <q-card-actions class="q-px-md q-py-sm">
-        <div class="text-caption text-grey-7">The text is checked when saved; Ctrl+S saves.</div>
+        <div class="text-caption text-grey-7">
+          {{ readOnly ? "Read only: your token can view grammars but not change them." : "The text is checked when saved; Ctrl+S saves." }}
+        </div>
         <q-space />
-        <q-btn flat color="primary" label="Cancel" @click="close" />
-        <q-btn color="primary" label="Save" :loading="saving" :disable="loading || !canSave" @click="save" />
+        <q-btn flat color="primary" :label="readOnly ? 'Close' : 'Cancel'" @click="close" />
+        <q-btn v-if="!readOnly" color="primary" label="Save" :loading="saving" :disable="loading || !canSave" @click="save" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -163,7 +167,14 @@ export default {
   },
   computed: {
     title() {
+      if (this.readOnly) {
+        return `Grammar ${this.oldName}`;
+      }
       return this.mode === "edit" ? `Edit grammar ${this.oldName}` : "Add ASN.1 grammar";
+    },
+    // A token that may not edit datasources sees the grammar only.
+    readOnly() {
+      return !this.$can("datasources", "edit");
     },
     currentFile() {
       return this.files.find((file) => file.key === this.tab) || null;
@@ -248,7 +259,7 @@ export default {
     keydown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (this.canSave && !this.saving) {
+        if (this.canSave && !this.saving && !this.readOnly) {
           this.save();
         }
       }
@@ -300,6 +311,9 @@ export default {
     },
     dropped(event) {
       this.dragging = false;
+      if (this.readOnly) {
+        return;
+      }
       this.addFiles(event.dataTransfer && event.dataTransfer.files);
     },
     startRename(file) {

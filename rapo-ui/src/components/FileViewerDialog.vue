@@ -98,7 +98,7 @@
               @update:model-value="typeLayout">
               <template #append>
                 <q-btn
-                  v-if="layoutUnsaved"
+                  v-if="layoutUnsaved && $can('datasources', 'edit')"
                   aria-label="Save the delimiter for the datasource"
                   flat
                   dense

@@ -220,7 +220,7 @@ class RunManager:
         logger.info('Run manager stopped')
 
     def submit(self, name, trigger_type, timestamp=None, cascade=False,
-               iterations=False, **params):
+               iterations=False, requested_by=None, **params):
         """Initiate control run and queue it for execution.
 
         The run process performs the cascade and the iterations of the run
@@ -238,7 +238,8 @@ class RunManager:
         scheduled_time = journal.to_datetime(timestamp)
         event_id = journal.record(control.id, trigger_type, journal.FIRED,
                                   scheduled_time=scheduled_time,
-                                  runner=self.name)
+                                  runner=self.name,
+                                  requested_by=requested_by)
         if not control._initiate() or not control.process_id:
             journal.update(event_id, event_type=journal.FAILED,
                            message='Control could not be initiated.')

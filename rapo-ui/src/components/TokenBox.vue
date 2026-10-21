@@ -16,6 +16,7 @@
         <q-toggle color="teal" v-model="rememberToken" label="Remember token" />
         <q-btn color="teal" label="Connect" @click="connect(token)" />
         <p class="text-red q-mt-md" v-if="connectError">Error connecting. Check token and try again!</p>
+        <p class="text-red q-mt-md" v-else-if="$route.query.denied">This token gives access to no page of Rapo.</p>
       </q-card-section>
     </q-card>
   </div>

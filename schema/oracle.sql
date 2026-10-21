@@ -125,7 +125,8 @@ create or replace trigger rapo_config_ins_trg
 before insert on rapo_config
 for each row
 begin
-  select sys_context('userenv', 'os_user') as created_by,
+  select coalesce(sys_context('userenv', 'client_identifier'),
+                  sys_context('userenv', 'os_user')) as created_by,
          sysdate as created_date
     into :new.created_by,
          :new.created_date
@@ -137,7 +138,8 @@ create or replace trigger rapo_config_upd_trg
 before update on rapo_config
 for each row
 begin
-  select sys_context('userenv', 'os_user') as updated_by,
+  select coalesce(sys_context('userenv', 'client_identifier'),
+                  sys_context('userenv', 'os_user')) as updated_by,
          sysdate as updated_date
     into :new.updated_by,
          :new.updated_date
@@ -155,7 +157,8 @@ after insert or update or delete on rapo_config
 for each row
 declare
   v_audit_action rapo_config_bak.audit_action%type;
-  v_audit_user   rapo_config_bak.audit_user%type  := sys_context('userenv', 'os_user');
+  v_audit_user   rapo_config_bak.audit_user%type  :=
+    coalesce(sys_context('userenv', 'client_identifier'), sys_context('userenv', 'os_user'));
   v_audit_date   rapo_config_bak.audit_date%type  := sysdate;
 begin
   if inserting then
@@ -376,6 +379,7 @@ create table rapo_scheduler_event (
   process_id     number(*, 0),
   message        varchar2(4000 char),
   runner         varchar2(255 char),
+  requested_by   varchar2(256 char),
   constraint rapo_scheduler_event_pk primary key (event_id)
 );
 
@@ -458,6 +462,36 @@ create table rapo_health_minute (
   minute       date not null,
   content      varchar2(4000 char) not null,
   constraint rapo_health_minute_pk primary key (server, sample_group, minute)
+);
+
+-- The API tokens the master token ([API] token) issued: a person (user_name,
+-- user_email, label), the SHA-256 of the token (the token itself is shown once),
+-- the scopes as JSON {area: level}, free_sql Y/N, expiry and revocation.
+-- The web server names the caller in client_identifier, so the triggers above
+-- record it as created_by/updated_by/audit_user.
+create sequence rapo_api_token_seq
+increment by 1
+start with 1
+nocache;
+
+create table rapo_api_token (
+  token_id       number default rapo_api_token_seq.nextval not null,
+  token_hash     varchar2(64 char) not null,
+  token_prefix   varchar2(16 char) not null,
+  user_name      varchar2(128 char) not null,
+  user_email     varchar2(256 char) not null,
+  label          varchar2(128 char),
+  scopes         varchar2(4000 char) not null,
+  free_sql       varchar2(1 char) default 'N' not null,
+  control_filter varchar2(4000 char),
+  expires_at     date,
+  revoked_at     date,
+  last_used_at   date,
+  last_used_ip   varchar2(64 char),
+  created_date   date default sysdate not null,
+  updated_date   date default sysdate not null,
+  constraint rapo_api_token_pk primary key (token_id),
+  constraint rapo_api_token_hash_uk unique (token_hash)
 );
 
 create or replace function rapo_prerun_control_hook (in_process_id number) return varchar2

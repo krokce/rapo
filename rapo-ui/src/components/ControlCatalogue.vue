@@ -20,7 +20,7 @@
             </q-tooltip>
           </q-chip>
         </div>
-        <div v-if="orphanTables.length">
+        <div v-if="orphanTables.length && $can('controls', 'edit')">
           <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
             {{ orphanTables.length }} orphaned result table{{ orphanTables.length > 1 ? "s" : "" }}
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
@@ -28,7 +28,7 @@
             </q-tooltip>
           </q-chip>
         </div>
-        <div v-if="orphanKpis.length">
+        <div v-if="orphanKpis.length && $can('kpis', 'edit')">
           <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanKpisDialog.open()">
             {{ orphanKpis.length }} orphaned KPI{{ orphanKpis.length > 1 ? "s" : "" }}
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
@@ -36,7 +36,7 @@
             </q-tooltip>
           </q-chip>
         </div>
-        <div v-if="tempTables.total_tables">
+        <div v-if="tempTables.total_tables && $can('instance', 'operate')">
           <q-chip clickable color="blue-grey" text-color="white" icon="fas fa-trash-alt" @click="$refs.tempDialog.open()">
             {{ tempTables.total_tables }} temporary table{{ tempTables.total_tables > 1 ? "s" : "" }} · {{ formatNumber(tempTables.total_mb, 1) }} MB
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Left by failed, canceled or debug runs: review and drop them</q-tooltip>
@@ -68,6 +68,7 @@
 
     <div class="row items-center q-mb-md">
       <q-btn
+        v-if="$can('controls', 'edit')"
         class="col-2 q-mb-md q-pa-sm"
         size="lg"
         color="primary"
@@ -436,21 +437,24 @@
     </q-virtual-scroll>
     <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
       <q-list v-if="menuRow" dense class="text-no-wrap">
-        <run-control-dialog :control_name="menuRow.control_name">
-          <q-item dense clickable class="col items-center">
-            <q-item-section> Run </q-item-section>
-          </q-item>
-        </run-control-dialog>
-        <q-separator />
+        <template v-if="$can('runs', 'operate')">
+          <run-control-dialog :control_name="menuRow.control_name">
+            <q-item dense clickable class="col items-center">
+              <q-item-section> Run </q-item-section>
+            </q-item>
+          </run-control-dialog>
+          <q-separator />
+        </template>
         <q-item
           clickable
           :to="{
             name: 'edit-control',
             params: { controlId: menuRow.control_id },
           }">
-          <q-item-section> Edit control </q-item-section>
+          <q-item-section> {{ $can("controls", "edit") ? "Edit control" : "Open control" }} </q-item-section>
         </q-item>
         <q-item
+          v-if="$can('controls', 'edit')"
           clickable
           :to="{
             name: 'edit-control',
@@ -460,13 +464,15 @@
           v-close-popup>
           <q-item-section> Clone control</q-item-section>
         </q-item>
-        <q-separator />
-        <q-item dense clickable v-close-popup @click="confirmRecreateSchema(menuRow.control_name)">
-          <q-item-section> Recreate schema </q-item-section>
-        </q-item>
-        <q-item dense clickable v-close-popup @click="deleteControl(menuRow)">
-          <q-item-section> Delete control </q-item-section>
-        </q-item>
+        <template v-if="$can('controls', 'edit')">
+          <q-separator />
+          <q-item dense clickable v-close-popup @click="confirmRecreateSchema(menuRow.control_name)">
+            <q-item-section> Recreate schema </q-item-section>
+          </q-item>
+          <q-item dense clickable v-close-popup @click="deleteControl(menuRow)">
+            <q-item-section> Delete control </q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-menu>
     <orphan-tables-dialog ref="orphanDialog" :tables="orphanTables" @changed="refreshSchemaDrift" />
@@ -685,6 +691,9 @@ export default {
     async refreshTempTables() {
       const request = ++this.tempTablesRequest;
       let data = {};
+      if (!this.$can("instance")) {
+        return;
+      }
       try {
         data = await api("get-temp-tables", { loadingBar: false });
       } catch {
@@ -706,7 +715,7 @@ export default {
       return this.kpiControlIds !== null && !this.kpiControlIds.has(control.control_id);
     },
     async refreshKpiControls() {
-      if (!(this.getEnvInfo && this.getEnvInfo.kpi_available)) {
+      if (!(this.getEnvInfo && this.getEnvInfo.kpi_available) || !this.$can("kpis")) {
         this.kpiControlIds = null;
         this.kpiUsage = [];
         this.orphanKpis = [];

@@ -215,7 +215,7 @@ export default {
   },
   computed: {
     canSave() {
-      return this.datasourceId !== null;
+      return this.datasourceId !== null && this.$can("datasources", "edit");
     },
     offsetError() {
       return parseOffset(this.startOffsetText) === null;

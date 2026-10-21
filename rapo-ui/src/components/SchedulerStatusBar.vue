@@ -88,7 +88,7 @@
       </span>
     </q-chip>
 
-    <scheduler-toggle-button class="q-ml-xs" />
+    <scheduler-toggle-button v-if="$can('scheduler', 'operate')" class="q-ml-xs" />
   </div>
   <div v-else class="row items-center q-gutter-sm">
     <q-skeleton v-for="index in 5" :key="index" type="QChip" width="110px" />

@@ -4,11 +4,11 @@
       <label>{{ label }}</label>
       <div class="row items-center no-wrap">
         <slot name="actions"></slot>
-        <q-btn v-if="check && !readonly" flat size="sm" label="Check" :disable="!code || !code.trim()" :loading="checking" @click="runCheck" />
-        <q-btn aria-label="Clear text" v-if="code && !readonly" flat size="xs" icon="fas fa-times" @click="clearCode">
+        <q-btn v-if="check && !isReadonly" flat size="sm" label="Check" :disable="!code || !code.trim()" :loading="checking" @click="runCheck" />
+        <q-btn aria-label="Clear text" v-if="code && !isReadonly" flat size="xs" icon="fas fa-times" @click="clearCode">
           <q-tooltip>Clear text</q-tooltip>
         </q-btn>
-        <q-btn v-if="!readonly && hasExamples" flat size="sm" label="Example" icon-right="fas fa-caret-down">
+        <q-btn v-if="!isReadonly && hasExamples" flat size="sm" label="Example" icon-right="fas fa-caret-down">
           <q-menu>
             <q-list dense class="code-examples">
               <q-item v-for="example in examples.items" :key="example.title" clickable v-close-popup @click="pickExample(example)">
@@ -45,14 +45,14 @@
     <codemirror
       ref="editor"
       class="cm-wrapper"
-      :class="{ 'cm-readonly': readonly }"
+      :class="{ 'cm-readonly': isReadonly }"
       v-model="code"
       :indent-with-tab="true"
       :smart-indent="true"
       :tab-size="4"
       :extensions="extensions"
       @ready="onReady" />
-    <div v-if="variableList.length && !readonly" class="row items-center q-gutter-xs q-mt-xs text-caption text-grey-7">
+    <div v-if="variableList.length && !isReadonly" class="row items-center q-gutter-xs q-mt-xs text-caption text-grey-7">
       <span>{{ templateVariables.length ? "Variables:" : "Binds:" }}</span>
       <span v-for="variable in variableList" :key="variable.name" class="code-variable" v-keyboard:button @mousedown.prevent @click="insertText(variable.token)">
         {{ variable.token }}
@@ -157,6 +157,8 @@ function templateVariableCompletionSource(variables) {
 }
 
 export default {
+  // A read-only editor (a token that may view but not edit) makes every box of it read only.
+  inject: { editorReadonly: { default: () => () => false } },
   props: {
     modelValue: String,
     label: String,
@@ -185,6 +187,9 @@ export default {
     };
   },
   computed: {
+    isReadonly() {
+      return Boolean(this.readonly || this.editorReadonly());
+    },
     extensions() {
       const config = { dialect: PLSQL };
       const tableNames = this.tables && Object.keys(this.tables);
@@ -208,7 +213,7 @@ export default {
       extensions.push(
         PLSQL.extension,
         PLSQL.language.data.of({ autocomplete: (context) => (context.matchBefore(/\.[\w$#]*$/) ? null : keywords(context)) }),
-        EditorState.readOnly.of(Boolean(this.readonly)),
+        EditorState.readOnly.of(this.isReadonly),
       );
       if (config.schema) {
         extensions.push(PLSQL.language.data.of({ autocomplete: schemaCompletionSource(config) }));

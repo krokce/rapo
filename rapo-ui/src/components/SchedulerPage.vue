@@ -290,7 +290,7 @@
                     <th title="The control; click it to open its schedule" class="text-left">Control</th>
                     <th title="The start of the run's data window" class="text-left">Run from</th>
                     <th title="The end of the run's data window" class="text-left">Run to</th>
-                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or chain; click to filter by it" class="text-left">Trigger</th>
+                    <th title="What started the run: schedule, manual, catch-up, iteration, cascade or chain (hover: the user who asked for a manual or catch-up run); click to filter by it" class="text-left">Trigger</th>
                     <th title="What happened: queued, started, missed, failed or canceled; click to filter by it" class="text-left">Event</th>
                     <th title="The status of the run the event started; click to filter by it" class="text-left">Run</th>
                     <th title="Details, such as why a fire was missed or failed" class="text-left">Message</th>
@@ -331,7 +331,7 @@
                     {{ toDateString(event.date_to) }}
                   </td>
                   <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <span class="cursor-pointer" @click="toggleTrigger(filter, event.trigger_type)">
+                    <span class="cursor-pointer" :title="event.requested_by ? `Asked for by ${event.requested_by}` : ''" @click="toggleTrigger(filter, event.trigger_type)">
                       <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
                     </span>
                   </td>
@@ -349,7 +349,7 @@
                   </td>
                   <td class="text-grey-8 message" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">{{ event.message }}</td>
                   <td :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <q-btn aria-label="Run for this moment" v-if="event.event_type === 'MISSED' && event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
+                    <q-btn aria-label="Run for this moment" v-if="event.event_type === 'MISSED' && event.control_name && $can('runs', 'operate')" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
                       <q-tooltip>Run for this moment</q-tooltip>
                     </q-btn>
                   </td>
@@ -407,7 +407,7 @@
                 <td><date-time-text :value="event.event_time" /></td>
                 <td class="text-grey-8 message">{{ event.message }}</td>
                 <td>
-                  <q-btn aria-label="Run for this moment" v-if="event.control_name" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
+                  <q-btn aria-label="Run for this moment" v-if="event.control_name && $can('runs', 'operate')" size="sm" color="teal" round flat icon="fas fa-play" @click="runMissed(event)">
                     <q-tooltip>Run for this moment</q-tooltip>
                   </q-btn>
                 </td>

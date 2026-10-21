@@ -25,6 +25,7 @@ export function triggerTitle(run) {
   }
   const details = [
     run.scheduled_time && (run.trigger_type === "SCHEDULE" || run.trigger_type === "CATCHUP") ? `scheduled for ${toDateTimeString(run.scheduled_time)}` : null,
+    run.requested_by ? `by ${run.requested_by}` : null,
     run.trigger_message,
   ].filter(Boolean);
   return `Started by: ${triggerOf(run).label}${details.length ? ` (${details.join("; ")})` : ""}`;

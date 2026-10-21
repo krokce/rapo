@@ -59,9 +59,12 @@ class SessionError(Exception):
 class Session:
     """Represents one analysis session and its worker process."""
 
-    def __init__(self, manager, meta, sql, settings):
+    def __init__(self, manager, meta, sql, settings, owner=None):
         self.manager = manager
         self.id = uuid.uuid4().hex
+        # The API token that started it (None: the master token); only its
+        # own connections hear of it and only it may use it.
+        self.owner = owner
         self.meta = meta
         self.sql = sql
         self.settings = settings
@@ -188,7 +191,7 @@ class SessionManager:
             session.close()
 
     def create(self, process_id, dataset, pushdown=None, random=True,
-               file_id=None):
+               file_id=None, owner=None):
         """Resolve the dataset and start a session on it.
 
         `pushdown` ({filters, search, where}) is applied by the database, so
@@ -239,7 +242,7 @@ class SessionManager:
             raise SessionError(str(error), 404)
         except Exception as error:
             raise SessionError(f'Dataset can not be read: {error}', 400)
-        session = Session(self, meta, sql, settings)
+        session = Session(self, meta, sql, settings, owner)
         with self.lock:
             self.sessions[session.id] = session
         logger.info(f"Analysis session {session.id[:8]} started on "
@@ -274,7 +277,8 @@ class SessionManager:
 
     def notify(self, session):
         """Pass a state change to the listeners (the live events)."""
-        payload = {'session_id': session.id, 'state': session.state}
+        payload = {'session_id': session.id, 'state': session.state,
+                   'owner': session.owner}
         for listener in self.listeners:
             try:
                 listener(payload)

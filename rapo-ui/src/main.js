@@ -16,6 +16,8 @@ app.use(Quasar, quasarUserOptions);
 app.use(router);
 app.use(store);
 app.directive("keyboard", keyboard);
+// $can(area, level): whether the signed-in token reaches that level, for the v-if of actions (utils/scopes.js).
+app.config.globalProperties.$can = (area, level = "view") => store.getters.can(area, level);
 applyTheme(readTheme());
 
 initSocket(store);

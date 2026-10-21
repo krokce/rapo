@@ -9,7 +9,7 @@
     </div>
     <div v-else>
       <h2 class="row items-center q-gutter-x-lg q-mb-lg">
-        <div>{{ control.control_id && !$route.query.clone ? "Edit control" : "New control" }}</div>
+        <div>{{ readOnly ? "Control" : control.control_id && !$route.query.clone ? "Edit control" : "New control" }}</div>
         <div class="row items-center no-wrap text-grey-7 page-subject">
           <q-chip size="lg" :title="controlType(control.control_type).label">
             <q-avatar :icon="controlType(control.control_type).icon" :color="controlType(control.control_type).color" text-color="white" class="type-avatar" />
@@ -18,7 +18,7 @@
           <span class="q-ml-xs">{{ control.control_name }}</span>
         </div>
         <q-space />
-        <template v-if="control.control_id">
+        <template v-if="control.control_id && $can('runs', 'operate')">
           <run-control-dialog v-if="!dirty" :control_name="control.control_name" :hook="runStarted">
             <q-btn color="primary" icon="fas fa-play" label="Run" />
           </run-control-dialog>
@@ -45,14 +45,18 @@
           <q-tab name="sql" label="SQL Scripts" icon="fas fa-code" />
           <q-tab v-if="control.control_type !== 'REP' && control.control_type !== 'REC'" name="case" label="Case definition" icon="fas fa-tag" />
           <q-tab name="scheduler" label="Scheduler" icon="fas fa-clock" />
-          <q-tab v-if="kpiAvailable" name="kpi" label="KPIs" icon="fas fa-calculator" :alert="kpiRenameShown ? 'blue' : false" />
+          <q-tab v-if="kpiAvailable && $can('kpis')" name="kpi" label="KPIs" icon="fas fa-calculator" :alert="kpiRenameShown ? 'blue' : false" />
           <q-tab v-if="emailEnabled" name="email" label="Email" icon="fas fa-envelope" />
-          <q-tab v-if="control.control_id" name="log" label="Run log" icon="fas fa-file-medical-alt" />
+          <q-tab v-if="control.control_id && $can('runs')" name="log" label="Run log" icon="fas fa-file-medical-alt" />
         </q-tabs>
 
         <q-separator />
 
-        <q-form @submit="persist('stay')" @reset="cancel">
+        <q-form @submit="persist('stay')" @reset="cancel" :class="{ 'editor-readonly': readOnly }">
+          <q-banner v-if="readOnly" dense class="bg-blue-grey-1 text-blue-grey-10">
+            <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
+            Read only: your token can view controls but not change them.
+          </q-banner>
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -98,7 +102,7 @@
                         size="sm"
                         @click="$refs.versionsDialog.open()"
                         @click.stop.prevent
-                        class="cursor-pointer"
+                        class="cursor-pointer editor-panel-open"
                         :class="{ 'text-deep-orange-4': versionChanges.length }">
                         <q-badge rounded size="xs" v-if="versionChanges.length" color="green" floating>{{ versionChanges.length }}</q-badge>
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Manage versions</q-tooltip>
@@ -918,7 +922,7 @@
                 </email-config-box>
               </div>
             </q-tab-panel>
-            <q-tab-panel name="log">
+            <q-tab-panel name="log" class="editor-panel-open">
               <div class="q-mt-md">
                 <!-- One row: the periods loaded (the latest first, older ones as the table scrolls), the totals of the runs
                      loaded and the sort chip on the left, the status chips on the right. -->
@@ -956,7 +960,10 @@
             </q-tab-panel>
           </q-tab-panels>
 
-          <div class="editor-actions row items-center q-gutter-sm q-px-lg q-py-sm">
+          <div v-if="readOnly" class="editor-actions row items-center q-gutter-sm q-px-lg q-py-sm">
+            <q-btn label="Close" color="primary" flat @click="$router.push({ name: 'controls' })" />
+          </div>
+          <div v-else class="editor-actions row items-center q-gutter-sm q-px-lg q-py-sm">
             <q-btn label="Save" color="primary" :loading="saving" @click="persist('close')">
               <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Save and return to the controls</q-tooltip>
             </q-btn>
@@ -1148,6 +1155,10 @@ export default {
       type: String,
       default: "new",
     },
+  },
+  // The boxes of a read-only editor (CodeBox) are read only too.
+  provide() {
+    return { editorReadonly: () => this.readOnly };
   },
   data() {
     return {
@@ -1412,7 +1423,11 @@ export default {
     },
     // A saved control has result tables to compare; a new one or a clone gets them on its first run.
     schemaEnabled() {
-      return this.ready && Boolean(this.control.control_id) && !this.$route.query.clone;
+      return this.ready && Boolean(this.control.control_id) && !this.$route.query.clone && !this.readOnly;
+    },
+    // A token that may view controls but not edit them: the form is shown, but nothing in it reacts and nothing saves.
+    readOnly() {
+      return !this.$can("controls", "edit");
     },
     // The fields the result table schema depends on, as they would be saved. A change re-checks it.
     schemaKey() {
@@ -1479,7 +1494,7 @@ export default {
     // parameter is dropped, so a reload does not jump again.
     async takeRouteRun() {
       const processId = Number(this.$route.query.run);
-      if (!Number.isInteger(processId) || processId <= 0) return;
+      if (!Number.isInteger(processId) || processId <= 0 || !this.$can("runs")) return;
       const query = { ...this.$route.query };
       delete query.run;
       this.$router.replace({ query });
@@ -1541,7 +1556,7 @@ export default {
     async loadControlKpis(controlName) {
       this.kpiConfigObject = [];
       this.savedKpiJson = null;
-      if (!this.kpiAvailable || !controlName) {
+      if (!this.kpiAvailable || !controlName || !this.$can("kpis")) {
         return;
       }
       try {
@@ -1790,6 +1805,9 @@ export default {
     // The latest periods' runs: at least LOG_PERIODS, down to the oldest period loaded so far (a refresh keeps what was
     // scrolled to) or a ?run= link's period, all of them under a sort other than the latest period first.
     getControlLogs() {
+      if (!this.$can("runs")) {
+        return Promise.resolve();
+      }
       return this.queueLogs(async (controlId) => {
         const through = this.logPeriods.oldest || this.logThrough;
         const params = { control_name: this.savedControlName, periods: LOG_PERIODS, all: this.logSortsByPeriod ? null : true };
@@ -2445,13 +2463,13 @@ export default {
         if (this.$refs.viewDialog && this.$refs.viewDialog.visible) {
           return;
         }
-        if (this.ready) {
+        if (this.ready && !this.readOnly) {
           this.persist("stay");
         }
       }
     },
     onBeforeUnload(event) {
-      if (this.dirty) {
+      if (this.dirty && !this.readOnly) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -2848,7 +2866,7 @@ export default {
   // Leaving with unsaved changes (Cancel, the side menu, back) asks first: save, discard or keep editing. A save that
   // fails (validation, conflict, error) keeps the editor open.
   beforeRouteLeave(to, from, next) {
-    if (!this.dirty || this.saving) {
+    if (!this.dirty || this.saving || this.readOnly) {
       next();
       return;
     }

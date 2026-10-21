@@ -14,7 +14,7 @@ import { darkExtensions } from "../../utils/codeTheme";
 
 const ASN1 = StreamLanguage.define(asn1({}));
 
-// An editable CodeMirror of one grammar file: ASN.1 highlighting (`language` asn1) or none (plain, a tag map). The
+// A CodeMirror of one grammar file (read only for a token that may not edit grammars): ASN.1 highlighting (`language` asn1) or none (plain, a tag map). The
 // view is built once and lives outside Vue's reactivity; a new `modelValue` from outside (another file) replaces the
 // document, typing emits it.
 export default {
@@ -25,6 +25,8 @@ export default {
     placeholderText: { type: String, default: "" },
     // Focus the editor once built (a new, empty file to paste into).
     autofocus: { type: Boolean, default: false },
+    // Shown, scrolled and copied, never changed.
+    readonly: { type: Boolean, default: false },
   },
   emits: ["update:modelValue"],
   watch: {
@@ -48,7 +50,9 @@ export default {
       highlightSelectionMatches(),
       history(),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
-      placeholder(this.placeholderText),
+      placeholder(this.readonly ? "" : this.placeholderText),
+      EditorState.readOnly.of(this.readonly),
+      EditorView.editable.of(!this.readonly),
       this.languageSlot.of(this.languageExtension()),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {

@@ -1,5 +1,6 @@
 """Contains database instance with application schema."""
 
+import contextvars
 import os
 import sys
 import threading as th
@@ -20,6 +21,11 @@ from .utils import utils
 # version it checks is the cx_Oracle API level that oracledb provides.
 oracle.version = '8.3.0'
 sys.modules['cx_Oracle'] = oracle
+
+# The user an API request is made by (the email of its token), recorded by
+# the database as client_identifier; None outside requests and for the
+# master token.
+CLIENT = contextvars.ContextVar('rapo_client', default=None)
 
 # Oracle sessions of rapo carry this module, and the control a run process
 # performs as their action, for the instance health and the DBA's tools.
@@ -210,13 +216,21 @@ class Database:
         # Sent with the next round trip, so tagging costs no call of its own.
         dbapi_connection.module = MODULE
         dbapi_connection.action = ''
+        dbapi_connection.client_identifier = ''
         record.info['action'] = None
+        record.info['client'] = ''
 
     def _tag_checkout(self, dbapi_connection, record, proxy):
         action = (self.action or '')[:32]
         if record.info.get('action') != action:
             dbapi_connection.action = action
             record.info['action'] = action
+        # The API caller of this request, '' outside requests, so a pooled
+        # connection never keeps the name of an earlier caller.
+        client = (CLIENT.get() or '')[:64]
+        if record.info.get('client') != client:
+            dbapi_connection.client_identifier = client
+            record.info['client'] = client
 
     def load(self):
         """Read database objects into memory."""

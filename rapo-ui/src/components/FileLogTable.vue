@@ -737,7 +737,7 @@ export default {
     },
     // Records PDI Core wrote or rejected, in the tables of the datasource.
     hasRecords(file) {
-      return this.logAvailable && this.tables.length > 0 && (file.recordswrite > 0 || file.recordsreject > 0);
+      return this.logAvailable && this.$can("data") && this.tables.length > 0 && (file.recordswrite > 0 || file.recordsreject > 0);
     },
     openViewer(file, layout) {
       this.$refs.viewer.open(file, { datasourceId: this.datasourceId, layout, viewable: this.canView(file), hasTables: this.tables.length > 0 });

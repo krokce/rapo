@@ -1,6 +1,11 @@
+import { allows, hasFreeSql } from "../utils/scopes";
 export default {
   getToken: (state) => state.tokenValue,
   getTokenIsValid: (state) => state.tokenIsValid,
+  // can(area, level): whether the signed-in token reaches that level (utils/scopes.js).
+  can: (state) => (area, level) => allows(state.whoami, area, level),
+  canFreeSql: (state) => hasFreeSql(state.whoami),
+  isMaster: (state) => Boolean(state.whoami && state.whoami.master),
   getSocketConnected: (state) => state.socketConnected,
   getSearch: (state) => state.search,
   getEnvVersion: (state) => state.envVersion,
