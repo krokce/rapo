@@ -85,8 +85,11 @@ def _iso(moment):
 class Job:
     """Represents one analysis of one side of a run."""
 
-    def __init__(self, key):
+    def __init__(self, key, owner=None):
         self.key = key
+        # The API token that queued it (None: the master token); only it (or
+        # the master token) may stop it. Its report is shared.
+        self.owner = owner
         self.state = 'queued'
         self.progress = None
         self.error = None
@@ -100,7 +103,8 @@ class Job:
         """Get the job as the API answers it."""
         process_id, side, result_type = self.key
         result = {'process_id': process_id, 'side': side,
-                  'result_type': result_type, 'state': self.state,
+                  'result_type': result_type, 'owner': self.owner,
+                  'state': self.state,
                   'progress': self.progress, 'error': self.error,
                   'queued': _iso(self.queued), 'started': _iso(self.started),
                   'finished': _iso(self.finished),
@@ -140,7 +144,8 @@ class Explainer:
         if process is not None and process.is_alive():
             process.kill()
 
-    def submit(self, process_id, side, result_type=None, recompute=False):
+    def submit(self, process_id, side, result_type=None, recompute=False,
+               owner=None):
         """Get the job of a side of a run, queueing one when needed."""
         if not self.active:
             raise explain.ExplainError('Discrepancy analysis is not '
@@ -151,7 +156,7 @@ class Explainer:
             if job and (not recompute or job.state in ('queued', 'running')):
                 self.jobs.move_to_end(key)
                 return job
-            job = Job(key)
+            job = Job(key, owner)
             self.jobs[key] = job
             self.jobs.move_to_end(key)
             self.queue.append(job)

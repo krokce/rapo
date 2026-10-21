@@ -93,14 +93,18 @@ export default {
   updateSearch(context, payload) {
     context.commit("updateSearch", payload);
   },
-  // Uses the candidate token rather than the stored one, so it can't go through api().
   // The signed-in token's scopes, read again after a reconnection; a revoked token answers 401, which signs out.
   async refreshWhoami(context) {
     context.commit("updateWhoami", await api("whoami", { loadingBar: false }));
   },
+  // Uses the candidate token rather than the stored one, so it can't go through api().
   // whoami also says what the token may do, which the menu, the router and the pages follow.
+  // A server error (the database failed to check a user token: 503) throws: the token was not rejected.
   async validateToken(context, token) {
     const response = await fetch("/api/whoami", { headers: { Authorization: `Bearer ${token}` } });
+    if (response.status >= 500) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
     context.commit("updateWhoami", response.ok ? await response.json() : null);
     context.commit("updateTokenValue", response.ok ? token : "");
     return response.ok;

@@ -136,8 +136,10 @@ class Store:
     def lookup(self, token):
         """Get the valid (not revoked, not expired) row of a token, or None.
 
-        A database failure is logged and treated as no token, so the master
-        token still works when the table is missing.
+        A missing table means no user token (the master token still works).
+        Another database failure keeps a token validated before trusted and
+        raises TokenError (503) for others, so a database hiccup never
+        answers 401, which signs the UI out.
         """
         if not isinstance(token, str) or not token.startswith(PREFIX):
             return None
@@ -148,10 +150,16 @@ class Store:
         if cached and now - cached[1] < self.cache_seconds:
             row = cached[0]
         else:
-            row = self._fetch(key)
-            if row is not None:
-                with self.lock:
-                    self.cache[key] = (row, now)
+            try:
+                row = self._fetch(key)
+            except TokenError:
+                if not cached:
+                    raise
+                row = cached[0]
+            else:
+                if row is not None:
+                    with self.lock:
+                        self.cache[key] = (row, now)
         if row is None or row.get('revoked_at'):
             return None
         if row.get('expires_at') and row['expires_at'] <= dt.datetime.now():
@@ -167,7 +175,10 @@ class Store:
             if self.available is not False:
                 logger.warning(f'API tokens can not be read: {error}')
             self.available = False
-            return None
+            if 'ORA-00942' in str(error):
+                return None
+            raise TokenError('API tokens can not be checked now: the '
+                             'database failed.', 503)
         self.available = True
         return _read(row) if row else None
 
@@ -285,7 +296,10 @@ class Store:
         return describe(self.get(token_id))
 
     def update(self, token_id, data):
-        """Change the person, label, scopes and Free SQL of a token."""
+        """Change the person, label, scopes and Free SQL of a token that is
+        not revoked."""
+        if self.get(token_id).get('revoked_at'):
+            raise TokenError('A revoked token can not be changed.')
         return self._update(token_id, self._identity(data), 'changed')
 
     def extend(self, token_id, duration):
@@ -302,6 +316,9 @@ class Store:
         row = self.get(token_id)
         if row.get('revoked_at'):
             raise TokenError('A revoked token can not be regenerated.')
+        if describe(row)['state'] == 'expired':
+            raise TokenError('An expired token can not be regenerated: '
+                             'extend it first.')
         token = generate()
         result = self._update(token_id, {'token_hash': digest(token),
                                          'token_prefix': token[:PREFIX_SHOWN]},

@@ -52,7 +52,7 @@
 
         <q-separator />
 
-        <q-form @submit="persist('stay')" @reset="cancel" :class="{ 'editor-readonly': readOnly }">
+        <q-form v-readonly-guard @submit="persist('stay')" @reset="cancel" :class="{ 'editor-readonly': readOnly }">
           <q-banner v-if="readOnly" dense class="bg-blue-grey-1 text-blue-grey-10">
             <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
             Read only: your token can view controls but not change them.

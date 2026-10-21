@@ -31,7 +31,7 @@ curl -H "Authorization: Bearer $RAPO_TOKEN" http://rapo-host:7005/api/scheduler-
 ```
 
 A request without a valid token (missing, wrong, expired or revoked) is answered with `401 Unauthorized Access`,
-whatever the route. `GET /api/whoami` is the cheapest way to check a token and tells what it may do - it is what the
+whatever the route; `503` when the database fails to check an API token not validated before. `GET /api/whoami` is the cheapest way to check a token and tells what it may do - it is what the
 UI validates against.
 
 ### API tokens and scopes
@@ -57,7 +57,8 @@ A scope is a level per area; a level includes the ones below it (`none` < `view`
 | `files`       | view, operate             | The file log: `get-files-day`, `get-ds-file-log(-text)`, `search-files`, `get-pdi-state` | `set-file-status`, lane locks, `check-ds-upload`, `upload-ds-file`, `refresh-file-summary` | |
 | `instance`    | view, operate, edit       | `parameters`, health and sessions, `get-config-catalogue`, `get-config-changes`, `get-temp-tables` | `drop-temp-tables`                | `set-config-option`, `reload-config`              |
 
-`help`, `status`, `session`, `version`, `info` and `whoami` are open to every token. A few reads are also open to the
+`help`, `status`, `session`, `version`, `info` and `whoami` are open to every token; without `instance: view`, `status`
+and `session` answer `server`, `username`, `pid` and `url` as null, as `info` does with the paths. A few reads are also open to the
 area whose page shows them (e.g. `get-all-controls` to `scheduler: view`, `get-ds-list` to `files: view`); the full
 rule is `ROUTES` and `ALSO` in `rapo/web/api/scopes.py`. A route without a scope there stops the server at start.
 
@@ -65,7 +66,7 @@ rule is `ROUTES` and `ALSO` in `rapo/web/api/scopes.py`. A route without a scope
 `validate-kpi-sql`, `check-view`, `preview-view`, `compile-view`, `check-control-schema`, `save-control`,
 `save-kpi-type` and `calculate-kpi` with a draft statement. `controls: edit` and `kpis: edit` need it (their SQL runs
 as the schema owner). Without it, a raw `where` of `analysis-start(-file)` and `validate-analysis-where` may only be a
-plain filter of the dataset's columns: no subquery, no `.`/`@`, no `;`, functions out of a short list (`to_char`,
+plain filter of the dataset's columns: no subquery, no `.`/`@`, no `;`, no comments or q-quoted literals, functions out of a short list (`to_char`,
 `substr`, `trunc`, `nvl`, `cast`, ...), as the discrepancy analysis' links write them.
 
 The changes an API token makes are recorded under its user: the server names the token's email as the session's
@@ -1023,7 +1024,8 @@ The **report**:
 
 #### `POST /api/stop-discrepancy-analysis`
 `process_id`, `side`, optional `result_type`. Stops the job: a queued one ends `error`, a refining one ends `done`
-with its preliminary report (`meta.stopped`). 404 when there is none.
+with its preliminary report (`meta.stopped`). 404 when there is none; 403 for a job another API token started (a
+job's `owner` is the token ID that started it, null for the master token, which may stop any).
 
 #### `GET /api/get-discrepancy-analysis`
 `process_id`, `side`, optional `result_type`. Answers the job as `start-discrepancy-analysis` does; 404 when none
@@ -1537,14 +1539,14 @@ curl -X POST -H "Authorization: Bearer $RAPO_TOKEN" -H "Content-Type: applicatio
 
 #### `POST /api/update-api-token`
 `id` and the JSON body of `create-api-token` without `duration`: changes the user, label, scopes and Free SQL. The
-token stays the same; open UI pages reconnect with the new scopes.
+token stays the same; open UI pages reconnect with the new scopes. `400` when revoked.
 
 #### `POST /api/extend-api-token`
 `id`, `duration`: the token expires `duration` from now (`unlimited`: never); it stays the same. `400` when revoked.
 
 #### `POST /api/regenerate-api-token`
 `id`: a new token with the same user, scopes and expiry; the old one stops working at once. Answers the row plus
-`token`, shown only this once. `400` when revoked.
+`token`, shown only this once. `400` when revoked or expired (extend it first).
 
 #### `POST /api/revoke-api-token`
 `id`: the token stops working (`revoked_at`); the row stays. Open UI pages of it are signed out within

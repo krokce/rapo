@@ -169,7 +169,7 @@ def status():
         'stop_date': input_dict['stop_date'],
         'status': input_dict['status']
     }
-    return output_dict
+    return hide_host(output_dict)
 
 
 @api.get('/session')
@@ -189,6 +189,16 @@ def session():
         'stop_date': input_dict['stop_date'],
         'status': input_dict['status']
     }
+    return hide_host(output_dict)
+
+
+def hide_host(output_dict):
+    """Leave out where the server runs (host, OS user, PID, URL) for a
+    caller that may not view the instance, as `info` does."""
+    if not auth.current().allows('instance', 'view'):
+        for key in ('server', 'username', 'pid', 'url'):
+            if key in output_dict:
+                output_dict[key] = None
     return output_dict
 
 
@@ -2421,7 +2431,8 @@ def start_discrepancy_analysis(process_id: int, side: str,
     """
     discrepancy_key(process_id, side, result_type)
     try:
-        job = explainer.submit(process_id, side, result_type, recompute)
+        job = explainer.submit(process_id, side, result_type, recompute,
+                               owner=auth.current().token_id)
     except explain.ExplainError as error:
         raise fastapi.HTTPException(status_code=503, detail=str(error))
     return job.describe()
@@ -2432,6 +2443,11 @@ def stop_discrepancy_analysis(process_id: int, side: str,
                               result_type: str | None = None):
     """Stop a discrepancy analysis job; a refining one keeps its preliminary
     report. 404 when there is none."""
+    caller = auth.current()
+    job = explainer.get(process_id, side, result_type)
+    if job is not None and not caller.master and job.owner != caller.token_id:
+        raise auth.forbidden('The discrepancy analysis was started by another '
+                             'token')
     job = explainer.stop_job(process_id, side, result_type)
     if job is None:
         raise fastapi.HTTPException(

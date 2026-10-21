@@ -88,7 +88,7 @@
     <q-menu ref="rowMenu" :target="menuTarget" no-parent-event>
       <q-list v-if="menuRow" dense class="text-no-wrap">
         <q-item clickable v-close-popup @click="$refs.editDialog.open(menuRow)">
-          <q-item-section>Edit</q-item-section>
+          <q-item-section>{{ menuRow.state === "revoked" ? "View" : "Edit" }}</q-item-section>
         </q-item>
         <template v-if="menuRow.state !== 'revoked'">
           <q-item clickable>
@@ -102,7 +102,8 @@
               </q-list>
             </q-menu>
           </q-item>
-          <q-item clickable v-close-popup @click="confirmRegenerate(menuRow)">
+          <!-- An expired token is extended first: a new secret would not work either. -->
+          <q-item v-if="menuRow.state === 'active'" clickable v-close-popup @click="confirmRegenerate(menuRow)">
             <q-item-section>Regenerate</q-item-section>
           </q-item>
           <q-separator />
@@ -131,16 +132,9 @@ import { api, notifyError } from "../api";
 import { searchFilter, valueFilter } from "../utils/filters";
 import { toDateString, toDateTimeString } from "../utils/format";
 import { fillViewportToBottom } from "../utils/layout";
-import { EXPIRY_WARNING_DAYS, daysUntil, scopeSummary } from "../utils/scopes";
+import { EXPIRY_WARNING_DAYS, TOKEN_DURATIONS, daysUntil, scopeSummary } from "../utils/scopes";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import persistFilters from "../mixins/persistFilters";
-
-const DURATIONS = [
-  { value: "1m", label: "1 month" },
-  { value: "6m", label: "6 months" },
-  { value: "1y", label: "1 year" },
-  { value: "unlimited", label: "Unlimited" },
-];
 
 const STATES = [
   { value: "active", label: "Active", icon: "fas fa-check", color: "positive" },
@@ -149,7 +143,7 @@ const STATES = [
 ];
 
 const COLUMNS = [
-  { key: "user_name", label: "User", title: "The person the token belongs to, and whether the token is active, expired or revoked; click a row to edit it", sortable: true },
+  { key: "user_name", label: "User", title: "The person the token belongs to, and whether the token is active, expired or revoked; click a row to edit it (a revoked one opens read only)", sortable: true },
   { key: "user_email", label: "Email", title: "The user's email address; what the database records as the user of the changes made with the token", sortable: true },
   { key: "label", label: "Label", title: "What the token is for, e.g. UI or the name of a script", sortable: true },
   { key: "token_prefix", label: "Token", title: "The first characters of the token, to tell it apart; the whole token is shown only when it is created or regenerated" },
@@ -169,7 +163,7 @@ export default {
     return {
       STATES,
       COLUMNS,
-      DURATIONS,
+      DURATIONS: TOKEN_DURATIONS,
       loaded: false,
       loadError: null,
       tokens: [],

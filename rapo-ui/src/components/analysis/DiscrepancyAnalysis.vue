@@ -34,7 +34,7 @@
       <div class="text-grey-8 ellipsis" :title="stepText">{{ stepText }}</div>
       <q-linear-progress v-if="progressValue !== null" class="col progress" rounded size="6px" :value="progressValue" color="primary" />
       <q-space v-else />
-      <q-btn v-if="busy && report" flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Stop refining" @click="stop">
+      <q-btn v-if="busy && report && canStop" flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Stop refining" @click="stop">
         <q-tooltip anchor="top middle" self="bottom middle">Keep the preliminary results and free the database</q-tooltip>
       </q-btn>
     </div>
@@ -130,6 +130,11 @@ export default {
     },
     busy() {
       return Boolean(this.job) && ["queued", "running"].includes(this.job.state);
+    },
+    // Only the token that started the job (or the master token) may stop it; others share its report.
+    canStop() {
+      const whoami = this.$store.state.whoami || {};
+      return Boolean(whoami.master) || this.job.owner === whoami.token_id;
     },
     subject() {
       return `Discrepancies ${(this.$route.params.side || "").toUpperCase()}`;

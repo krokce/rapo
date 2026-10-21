@@ -44,16 +44,20 @@ export default {
     async connect(token) {
       this.tokenValidationInProgress = true;
       let validated = false;
+      let rejected = false;
       try {
         validated = await this.validateToken(token);
+        rejected = !validated;
       } catch (error) {
-        // Network failure: show the form again instead of spinning forever.
+        // Network or server failure: show the form again instead of spinning forever, keeping a remembered token.
         console.error("Token validation failed:", error);
       }
 
       if (!validated) {
         this.connectError = true;
-        this.$q.cookies.remove("rapo_token");
+        if (rejected) {
+          this.$q.cookies.remove("rapo_token");
+        }
       } else {
         this.updateEnvironment().catch((error) => console.error("Failed to load instance details:", error));
         if (this.rememberToken) {

@@ -20,7 +20,7 @@ from ...config import config
 from ...database import CLIENT
 
 from . import scopes as scope_rules
-from .tokens import store as token_store, PREFIX
+from .tokens import store as token_store, PREFIX, TokenError
 
 
 bearer = fastapi.security.HTTPBearer(auto_error=False)
@@ -90,9 +90,11 @@ def check_master(token):
     return secrets.compare_digest(token, TOKEN)
 
 
-def resolve(token, address=None):
+def resolve(token, address=None, touch=True):
     """Get the Caller of a token, or None when it is not valid. Blocking:
-    a user token not in the cache is read from the database."""
+    a user token not in the cache is read from the database, which raises
+    TokenError (503) when it fails. `touch` notes the use (from `address`).
+    """
     if check_master(token):
         return MASTER
     if not isinstance(token, str) or not token.startswith(PREFIX):
@@ -100,16 +102,12 @@ def resolve(token, address=None):
     row = token_store.lookup(token)
     if row is None:
         return None
-    token_store.touch(row, address)
+    if touch:
+        token_store.touch(row, address)
     return Caller(master=False, token_id=row['token_id'],
                   user_name=row['user_name'], user_email=row['user_email'],
                   label=row['label'], scopes=row['scopes'],
                   free_sql=row['free_sql'], expires_at=row['expires_at'])
-
-
-def check_token(token):
-    """Check that given token is the master token or a valid user token."""
-    return resolve(token) is not None
 
 
 def _unauthorized():
@@ -139,7 +137,11 @@ async def verify_token(request: fastapi.Request,
     if check_master(token):
         caller = MASTER
     else:
-        caller = await asyncio.to_thread(resolve, token, address)
+        try:
+            caller = await asyncio.to_thread(resolve, token, address)
+        except TokenError as error:
+            raise fastapi.HTTPException(status_code=error.status,
+                                        detail=str(error))
     if caller is None:
         raise _unauthorized()
     name = scope_rules.route_name(request.scope.get('path') or '')

@@ -84,11 +84,62 @@ def strip_query(statement):
     return statement
 
 
+# Where a literal (q-quoted too), a quoted name or a comment starts. They are
+# read left to right as Oracle reads them (`tokens`), so a quote inside a
+# comment or a comment mark inside a literal starts nothing.
+TOKEN_START = re.compile(r"(?P<q>(?<![\w$#])n?q'(?P<open>.))|(?P<quote>')"
+                         r'|(?P<name>")|(?P<line>--)|(?P<block>/\*)',
+                         flags=re.I | re.S)
+LITERAL_REST = re.compile(r"(?:[^']|'')*'")
+Q_CLOSE = {'[': ']', '{': '}', '(': ')', '<': '>'}
+
+
+def tokens(statement):
+    """Yield (kind, start, end, closed) of every literal, q-quoted literal,
+    quoted name and comment of a statement (kind `literal`, `q_literal`,
+    `name` or `comment`); one not closed runs to the end of the text."""
+    text, position = statement, 0
+    while True:
+        found = TOKEN_START.search(text, position)
+        if not found:
+            return
+        if found.group('q'):
+            kind = 'q_literal'
+            close = Q_CLOSE.get(found.group('open'), found.group('open'))
+            end = text.find(close + "'", found.end())
+            end = end + 2 if end >= 0 else -1
+        elif found.group('quote'):
+            kind = 'literal'
+            rest = LITERAL_REST.match(text, found.end())
+            end = rest.end() if rest else -1
+        elif found.group('name'):
+            kind = 'name'
+            end = text.find('"', found.end())
+            end = end + 1 if end >= 0 else -1
+        elif found.group('line'):
+            kind = 'comment'
+            end = text.find('\n', found.end())
+            end = end if end >= 0 else len(text)
+        else:
+            kind = 'comment'
+            end = text.find('*/', found.end())
+            end = end + 2 if end >= 0 else -1
+        closed = end >= 0
+        end = end if closed else len(text)
+        yield kind, found.start(), end, closed
+        position = end
+
+
 def code_only(statement):
-    """Drop comments and string literals, which may hold any word."""
-    text = re.sub(r'/\*.*?\*/', ' ', statement, flags=re.S)
-    text = re.sub(r'--[^\n]*', ' ', text)
-    return re.sub(r"'(?:[^']|'')*'", "''", text)
+    """Drop comments, string literals and quoted names, which may hold any
+    word (a name is left as "")."""
+    parts, position = [], 0
+    for kind, start, end, _ in tokens(statement):
+        parts.append(statement[position:start])
+        parts.append({'comment': ' ', 'name': '""'}.get(kind, "''"))
+        position = end
+    parts.append(statement[position:])
+    return ''.join(parts)
 
 
 # What a filter on a dataset may call without Free SQL (`plain_filter`): the
@@ -108,6 +159,24 @@ FILTER_FORBIDDEN = re.compile(
     r'delete|merge|into|begin|declare|execute|call|table|lateral|model)\b',
     flags=re.I)
 FILTER_CALL = re.compile(r'\b([a-z_][\w$#]*)\s*\(', flags=re.I)
+def _filter_code(where):
+    """Get a filter with its literals as '' and quoted names as x, or the
+    reason it can not be read so: a comment, a q-quoted literal or an
+    unclosed quote."""
+    text = str(where or '')
+    parts, position = [], 0
+    for kind, start, end, closed in tokens(text):
+        if kind == 'comment':
+            return None, 'Comments are not allowed in a filter.'
+        if not closed:
+            return None, 'A quote of the filter is not closed.'
+        if kind == 'q_literal':
+            return None, 'Q-quoted literals are not allowed in a filter.'
+        parts.append(text[position:start])
+        parts.append("''" if kind == 'literal' else 'x')
+        position = end
+    parts.append(text[position:])
+    return ''.join(parts), None
 
 
 def plain_filter(where):
@@ -116,8 +185,9 @@ def plain_filter(where):
     `@`), more than one statement, or a function outside FILTER_FUNCTIONS
     could read or change what the dataset does not hold.
     """
-    code = code_only(str(where or ''))
-    code = re.sub(r'"[^"]*"', 'x', code)
+    code, problem = _filter_code(where)
+    if problem:
+        return problem
     code = re.sub(r'\b\d+(\.\d+)?(e[+-]?\d+)?\b', '0', code, flags=re.I)
     if re.search(r'[;@.]', code):
         return 'Only the columns of the dataset may be named.'

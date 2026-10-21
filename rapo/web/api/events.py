@@ -19,10 +19,10 @@ SWEEP_INTERVAL = 30
 # The rooms each event goes to: a connection is in the room of every area its
 # token may view (`area:<name>`), so it hears only of what it may look at.
 ROOMS = {
-    'runs:changed': ('runs', 'controls', 'kpis', 'dashboard'),
+    'runs:changed': ('runs', 'controls', 'kpis', 'scheduler', 'dashboard'),
     'controls:changed': ('controls', 'runs', 'kpis', 'scheduler',
                          'dashboard'),
-    'scheduler:changed': ('scheduler', 'runs', 'dashboard'),
+    'scheduler:changed': ('scheduler', 'runs', 'controls', 'dashboard'),
     'datasources:changed': ('datasources', 'files', 'dashboard'),
     'discrepancy:progress': ('data',),
     'health:level': ('instance', 'dashboard'),
@@ -136,7 +136,12 @@ class Watcher:
         for sid, (token, caller) in list(self.callers.items()):
             if caller.master:
                 continue
-            current = await asyncio.to_thread(auth.resolve, token)
+            try:
+                current = await asyncio.to_thread(auth.resolve, token,
+                                                  touch=False)
+            except auth.TokenError:
+                # The database failed: check again at the next sweep.
+                continue
             if current != caller:
                 logger.info(f'Live connection of {caller.display} closed: '
                             f'its token was changed or is no longer valid')
@@ -256,7 +261,10 @@ main_loop = None
 async def connect(sid, environ, data):
     token = data.get('token') if isinstance(data, dict) else None
     address = environ.get('REMOTE_ADDR')
-    caller = await asyncio.to_thread(auth.resolve, token, address)
+    try:
+        caller = await asyncio.to_thread(auth.resolve, token, address)
+    except auth.TokenError as error:
+        raise socketio.exceptions.ConnectionRefusedError(str(error))
     if caller is None:
         raise socketio.exceptions.ConnectionRefusedError('Unauthorized Access')
     watcher.callers[sid] = (token, caller)

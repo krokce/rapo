@@ -45,7 +45,7 @@
         <q-separator />
 
         <!-- Without write access the configuration does not react; what only shows more stays usable (editor-panel-open). -->
-        <q-form @submit="persist('stay')" @reset="cancel" @validation-error="validationError" :class="{ 'editor-readonly': !writable }">
+        <q-form v-readonly-guard @submit="persist('stay')" @reset="cancel" @validation-error="validationError" :class="{ 'editor-readonly': !writable }">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">

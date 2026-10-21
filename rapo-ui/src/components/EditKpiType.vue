@@ -41,7 +41,7 @@
           <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
           Read only: your token can view KPI types but not change them.
         </q-banner>
-        <q-form @submit="$can('kpis', 'edit') && validateAndSave()" @reset="cancel" :class="{ 'editor-readonly': !$can('kpis', 'edit') }">
+        <q-form v-readonly-guard @submit="$can('kpis', 'edit') && validateAndSave()" @reset="cancel" :class="{ 'editor-readonly': !$can('kpis', 'edit') }">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">

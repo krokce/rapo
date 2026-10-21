@@ -26,7 +26,7 @@ function runLabel(run) {
 // The chain configuration lives in the catalogue, and this action is also reachable from the editor,
 // where it may not be loaded yet.
 async function chainOfRun(controlName) {
-  if (!store.state.controlCatalogue.length) {
+  if (!store.state.controlCatalogue.length && store.getters.can("controls", "view")) {
     try {
       await store.dispatch("updateControlCatalogue");
     } catch (error) {

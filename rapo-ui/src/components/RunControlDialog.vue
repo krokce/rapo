@@ -194,9 +194,10 @@ export default {
   },
   watch: {
     // The catalogue holds the control list and the chain configuration. It is loaded when the dialog
-    // is opened, not on mount, because the results table mounts one of these per row.
+    // is opened, not on mount, because the results table mounts one of these per row. A token that may not view
+    // controls runs the control alone (no cascade or iteration options).
     visible(opened) {
-      if (opened && !this.controlCatalogue.length) {
+      if (opened && !this.controlCatalogue.length && this.$can("controls")) {
         this.updateControlCatalogue().catch((error) => notifyError("Failed to load controls.", error));
       }
     },

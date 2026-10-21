@@ -2,17 +2,18 @@
   <q-dialog v-model="shown" persistent>
     <q-card style="width: 1100px; max-width: 95vw">
       <q-card-section class="q-pb-sm">
-        <div class="text-h6">{{ tokenId ? "Edit API token" : "New API token" }}</div>
+        <div class="text-h6">{{ readOnly ? "Revoked API token" : tokenId ? "Edit API token" : "New API token" }}</div>
         <div v-if="tokenId" class="text-caption text-grey-7">
-          <span class="text-mono">{{ prefix }}…</span> · changes apply to the next request; open pages reconnect with them.
+          <span class="text-mono">{{ prefix }}…</span>
+          · {{ readOnly ? "it no longer works and can not be changed; delete it from the row menu." : "changes apply to the next request; open pages reconnect with them." }}
         </div>
       </q-card-section>
 
       <q-card-section class="q-pt-none scroll" style="max-height: 70vh">
         <div class="row q-col-gutter-sm">
-          <q-input class="col-12 col-sm-4" outlined dense v-model="form.user_name" label="User name" maxlength="128" autofocus />
-          <q-input class="col-12 col-sm-4" outlined dense v-model="form.user_email" label="Email" type="email" maxlength="256" />
-          <q-input class="col-12 col-sm-4" outlined dense v-model="form.label" label="Label (optional)" maxlength="128" title="What the token is for, e.g. UI or billing-sync script" />
+          <q-input class="col-12 col-sm-4" outlined dense v-model="form.user_name" label="User name" maxlength="128" :readonly="readOnly" :autofocus="!readOnly" />
+          <q-input class="col-12 col-sm-4" outlined dense v-model="form.user_email" label="Email" type="email" maxlength="256" :readonly="readOnly" />
+          <q-input class="col-12 col-sm-4" outlined dense v-model="form.label" label="Label (optional)" maxlength="128" :readonly="readOnly" title="What the token is for, e.g. UI or billing-sync script" />
         </div>
 
         <!-- The validity and the presets on one line, each label beside its chips. -->
@@ -23,12 +24,15 @@
               {{ duration.label }}
             </q-chip>
           </template>
+          <span v-else-if="readOnly">Revoked {{ toDateTimeString(revoked) }}</span>
           <span v-else>{{ expires ? toDateTimeString(expires) : "never" }} <span class="text-grey-7">· Extend from the row menu</span></span>
           <q-space />
-          <span class="text-grey-7 q-mr-sm">Preset</span>
-          <q-chip v-for="(preset, name) in presets" :key="name" dense clickable :class="{ 'chip-selected': matchesPreset(preset) }" @click="applyPreset(preset)">
-            {{ PRESET_LABELS[name] || name }}
-          </q-chip>
+          <template v-if="!readOnly">
+            <span class="text-grey-7 q-mr-sm">Preset</span>
+            <q-chip v-for="(preset, name) in presets" :key="name" dense clickable :class="{ 'chip-selected': matchesPreset(preset) }" @click="applyPreset(preset)">
+              {{ PRESET_LABELS[name] || name }}
+            </q-chip>
+          </template>
         </div>
 
         <div class="config-section-title config-section-separated">Access</div>
@@ -55,6 +59,7 @@
                   size="sm"
                   v-model="form.scopes[area.area]"
                   :val="level"
+                  :disable="readOnly"
                   :title="level === 'none' ? 'No access' : area.descriptions[level]"
                   :aria-label="`${area.title}: ${LEVEL_LABELS[level]}`" />
               </td>
@@ -63,10 +68,10 @@
             <!-- Free SQL is a flag beside the areas: off (None) or on (Edit, the strongest grant). -->
             <tr class="token-free-sql">
               <td class="config-name">{{ freeSql.title }}</td>
-              <td class="text-center"><q-radio dense size="sm" v-model="form.free_sql" :val="false" title="No SQL text" :aria-label="`${freeSql.title}: None`" /></td>
+              <td class="text-center"><q-radio dense size="sm" v-model="form.free_sql" :val="false" :disable="readOnly" title="No SQL text" :aria-label="`${freeSql.title}: None`" /></td>
               <td></td>
               <td></td>
-              <td class="text-center"><q-radio dense size="sm" v-model="form.free_sql" :val="true" :title="freeSql.description" :aria-label="`${freeSql.title}: Allowed`" /></td>
+              <td class="text-center"><q-radio dense size="sm" v-model="form.free_sql" :val="true" :disable="readOnly" :title="freeSql.description" :aria-label="`${freeSql.title}: Allowed`" /></td>
               <td :class="freeSqlClass">{{ freeSqlText }}</td>
             </tr>
           </tbody>
@@ -74,8 +79,8 @@
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" v-close-popup />
-        <q-btn color="primary" :label="tokenId ? 'Save' : 'Create token'" :loading="saving" :disable="!!problem" @click="save">
+        <q-btn flat :label="readOnly ? 'Close' : 'Cancel'" v-close-popup />
+        <q-btn v-if="!readOnly" color="primary" :label="tokenId ? 'Save' : 'Create token'" :loading="saving" :disable="!!problem" @click="save">
           <q-tooltip v-if="problem">{{ problem }}</q-tooltip>
         </q-btn>
       </q-card-actions>
@@ -86,7 +91,7 @@
 <script>
 import { api, notifyError } from "../api";
 import { toDateTimeString } from "../utils/format";
-import { LEVELS, LEVEL_LABELS } from "../utils/scopes";
+import { LEVELS, LEVEL_LABELS, TOKEN_DURATIONS } from "../utils/scopes";
 
 const PRESET_LABELS = { viewer: "Viewer", operator: "Operator", editor: "Editor", full: "Full" };
 
@@ -113,17 +118,13 @@ export default {
       LEVEL_LABELS,
       LEVEL_TITLES,
       PRESET_LABELS,
-      durations: [
-        { value: "1m", label: "1 month" },
-        { value: "6m", label: "6 months" },
-        { value: "1y", label: "1 year" },
-        { value: "unlimited", label: "Unlimited" },
-      ],
+      durations: TOKEN_DURATIONS,
       shown: false,
       saving: false,
       tokenId: null,
       prefix: "",
       expires: null,
+      revoked: null,
       form: this.emptyForm(),
     };
   },
@@ -132,11 +133,12 @@ export default {
     emptyForm() {
       return { user_name: "", user_email: "", label: "", duration: "6m", scopes: {}, free_sql: false };
     },
-    // A new token (null) starts as a viewer; an existing one with its own scopes.
+    // A new token (null) starts as a viewer; an existing one with its own scopes, read only once revoked.
     open(token) {
       this.tokenId = token ? token.token_id : null;
       this.prefix = token ? token.token_prefix : "";
       this.expires = token ? token.expires_at : null;
+      this.revoked = token ? token.revoked_at : null;
       const form = this.emptyForm();
       if (token) {
         Object.assign(form, { user_name: token.user_name, user_email: token.user_email, label: token.label || "", scopes: { ...token.scopes }, free_sql: token.free_sql });
@@ -179,6 +181,9 @@ export default {
     },
   },
   computed: {
+    readOnly() {
+      return Boolean(this.revoked);
+    },
     // Edit levels that save SQL text need Free SQL (the server refuses them without it).
     missingFreeSql() {
       return Object.entries(this.needsFreeSql)
