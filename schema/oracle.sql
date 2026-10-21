@@ -483,7 +483,6 @@ create table rapo_api_token (
   label          varchar2(128 char),
   scopes         varchar2(4000 char) not null,
   free_sql       varchar2(1 char) default 'N' not null,
-  control_filter varchar2(4000 char),
   expires_at     date,
   revoked_at     date,
   last_used_at   date,

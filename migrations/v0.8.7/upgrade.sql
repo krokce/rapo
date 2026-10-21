@@ -25,7 +25,6 @@ begin
         label          varchar2(128 char),
         scopes         varchar2(4000 char) not null,
         free_sql       varchar2(1 char) default 'N' not null,
-        control_filter varchar2(4000 char),
         expires_at     date,
         revoked_at     date,
         last_used_at   date,
@@ -35,6 +34,12 @@ begin
         constraint rapo_api_token_pk primary key (token_id),
         constraint rapo_api_token_hash_uk unique (token_hash)
       )]';
+  end if;
+  -- An early build of this upgrade added an unused column.
+  select count(*) into v_count from user_tab_columns
+   where table_name = 'RAPO_API_TOKEN' and column_name = 'CONTROL_FILTER';
+  if v_count > 0 then
+    execute immediate 'alter table rapo_api_token drop column control_filter';
   end if;
 end;
 /
