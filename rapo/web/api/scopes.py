@@ -70,10 +70,9 @@ DESCRIPTIONS = {
                 'them'},
 }
 
-FREE_SQL = ('Free SQL', 'Send SQL text the database runs as the schema owner '
-            '(Check and Preview, raw filters in Data analysis, draft KPI '
-            'statements, view SQL): it can read any table of the schema; '
-            'needed by Controls and KPIs: Edit')
+FREE_SQL = ('Free SQL', 'Send SQL that runs as the schema owner and can '
+            'read any table: Check, Preview, Data analysis filters, draft '
+            'KPIs, view SQL')
 
 # Levels that save SQL text, which runs as the schema owner later.
 NEEDS_FREE_SQL = {'controls': 'edit', 'kpis': 'edit'}

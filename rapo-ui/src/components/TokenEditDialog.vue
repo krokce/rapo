@@ -195,15 +195,13 @@ export default {
         return this.freeSql.description;
       }
       if (this.missingFreeSql.length) {
-        return `Needed: ${this.missingFreeSql.join(" and ")}: Edit saves SQL text`;
+        return `Needed by ${this.missingFreeSql.join(" and ")}: Edit`;
       }
-      return "No SQL text: Data analysis filters only on the dataset's columns";
+      return "No SQL; Data analysis filters on the dataset's columns only";
     },
+    // Like the areas' descriptions: grey when off and not needed (Save's tooltip says when it is missing).
     freeSqlClass() {
-      if (this.form.free_sql) {
-        return "text-orange-10";
-      }
-      return this.missingFreeSql.length ? "text-red-10" : "text-grey-6";
+      return this.form.free_sql || this.missingFreeSql.length ? "config-description" : "text-grey-6";
     },
     problem() {
       if (!this.form.user_name.trim()) {
@@ -227,6 +225,10 @@ export default {
 }
 .token-scope-table td {
   vertical-align: middle;
+}
+/* Over the radios: the shared .config-table th is left-aligned. */
+.token-scope-table th.text-center {
+  text-align: center;
 }
 .token-scope-table tr.token-free-sql td {
   border-top: 1px solid var(--rapo-panel-border);
