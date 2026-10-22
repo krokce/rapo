@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-md' : 'q-mb-lg'">
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Datasources</div>
         <div v-else>{{ countTitle }}</div>
@@ -15,7 +15,8 @@
         </div>
         <!-- The filters with many values (no chip shows them all), in one menu; the header search covers text. -->
         <div>
-          <q-btn outline color="primary" icon="fas fa-filter" label="Filter" aria-label="Filter the list">
+          <q-btn outline color="primary" icon="fas fa-filter" aria-label="Filter the list">
+            <q-tooltip>Filter the list</q-tooltip>
             <q-badge v-if="activeFilters.length" color="orange-10" floating rounded>{{ activeFilters.length }}</q-badge>
             <q-menu anchor="bottom left" self="top left">
               <div class="column q-gutter-y-sm q-pa-md filter-menu">

@@ -124,7 +124,7 @@
         <tr
           :key="run.process_id"
           :class="{
-            'new-day-separator': separatorRows && !grouping.folded.has(run.process_id) && startsNewDay(shownRuns, index, separatorKey),
+            'run-row--group-edge': groupEdge(index),
             'run-row--superseded': run.superseded_by,
             'run-row--folded': grouping.folded.has(run.process_id),
             'run-row--focus': run.process_id === selected,
@@ -391,7 +391,7 @@ import { formatNumber, round, toDateString, toDateTimeString, toTimeString } fro
 import { alarmLevel, compactKpiValue, formatKpiValue } from "../utils/kpi";
 import { paletteColor } from "../utils/palette";
 import { textWidth } from "../utils/layout";
-import { KPI_ALARM_SORT, KPI_SORT_PREFIX, groupRuns, summaryKpis, runSortValue, startsNewDay, supersededTitle, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
+import { KPI_ALARM_SORT, KPI_SORT_PREFIX, groupRuns, summaryKpis, runSortValue, supersededTitle, triggerKey, triggerOf, triggerTitle } from "../utils/runs";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 
 // A table of runs (get-control-runs rows), shared by the Results page and the editor's Run log: sortable columns,
@@ -446,8 +446,6 @@ export default {
     editLink: { type: Boolean, default: true },
     // Type and status chips and the name's magnifier emit filter ({ type } / { status } / { control_name }).
     filterable: { type: Boolean, default: false },
-    // A day separator line while the runs are sorted by time.
-    separators: { type: Boolean, default: false },
     // Why Re-run and Run are not offered now (e.g. unsaved changes), or null.
     runDisabled: { type: String, default: null },
     // Called after a run action changed a run.
@@ -524,12 +522,6 @@ export default {
       if (!this.show.name) return 0;
       const left = this.width ? this.width - this.minWidth(this.show) : this.nameColumnWidth;
       return Math.max(NAME_MIN, Math.min(this.nameColumnWidth, left));
-    },
-    separatorRows() {
-      return this.separators && ["start_date", "process_id", "date_from"].includes(this.sort.key);
-    },
-    separatorKey() {
-      return this.sort.key === "date_from" ? "date_from" : "start_date";
     },
     colspan() {
       return 10 + (this.compact ? 0 : 1) + ["type", "name"].filter((column) => this.show[column]).length + (this.showB ? 3 : 0) + this.kpiColumns.length + (this.kpiSummary.length ? 1 : 0);
@@ -685,6 +677,16 @@ export default {
       const index = Math.min(count, VERSION_COLORS.length) - 1;
       return { background: paletteColor(VERSION_COLORS[index]), color: index >= 3 ? "var(--rapo-on-strong)" : "var(--rapo-header-text)" };
     },
+    // An expanded period stands apart: a line above its latest run and below its last earlier run; other rows keep the
+    // table's thin lines.
+    groupEdge(index) {
+      if (index === 0) return false;
+      const run = this.shownRuns[index];
+      const previous = this.shownRuns[index - 1];
+      const startsGroup = this.grouping.earlier.has(run.process_id) && this.isExpanded(run.process_id);
+      const endsGroup = this.grouping.folded.has(previous.process_id) && !this.grouping.folded.has(run.process_id);
+      return startsGroup || endsGroup;
+    },
     isExpanded(processId) {
       return Boolean(this.expandAll) !== Boolean(this.toggled[processId]);
     },
@@ -767,7 +769,6 @@ export default {
     runStatus,
     sendEmail,
     sortIcon,
-    startsNewDay,
     toDateString,
     toTimeString,
     toggleSort,
@@ -814,6 +815,9 @@ a:visited {
 }
 .run-row--superseded:hover > td {
   opacity: 1;
+}
+.run-row--group-edge > td {
+  border-top: 2px solid var(--rapo-header);
 }
 .run-row--folded > td:first-child {
   box-shadow: inset 3px 0 0 var(--rapo-grid);

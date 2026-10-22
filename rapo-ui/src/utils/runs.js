@@ -150,12 +150,6 @@ export function runSortValue(run, key) {
   return value ?? null;
 }
 
-// Whether a run is on another day (of `key`: its start, or the start of its data window) than the run before it, for
-// the separator line of a list sorted by time.
-export function startsNewDay(runs, index, key = "start_date") {
-  return index > 0 && toDateString(runs[index - 1][key]) !== toDateString(runs[index][key]);
-}
-
 // The runs of a table with the superseded ones (a later run of their period, any status: `superseded_by`, see
 // reader.superseded_sql) folded under that run when it is among them, newest first, right under it whatever the sort;
 // a superseded run whose newer run is not listed (another day, filtered out) stays in place. `expanded(processId)`

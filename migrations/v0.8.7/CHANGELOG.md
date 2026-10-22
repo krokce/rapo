@@ -125,9 +125,14 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
 1. **Data analysis:** the columns not profiled are listed one per line in a grid (were one long paragraph). The
    Dashboard's *As of* time is darker.
 1. **Filter menus.** Controls, KPI types and Datasources filter like Results and Scheduler: the row of filter fields is
-   gone; a *Filter* button beside the title opens their selects (type, group, system, scheduler status, attributes;
+   gone; a filter button (funnel icon) beside the title opens their selects (type, group, system, scheduler status, attributes;
    unit, usage; lanes, issues), with a badge counting the active filters. Text is searched with the header search; the
    filter chips under the title show and clear every filter as before.
+1. **Even page headers and run tables.** The filter chips start at the same distance under the title on every list
+   page (they nearly touched the day selector on Results, Files and the file log), and the day selector is centred on
+   the title (it sat 5px low). In Results and the Run log a thick line now frames only an expanded period (its latest
+   run and its earlier runs); the Run log's line above every new day is gone, so other rows have the thin lines. The
+   Run log's selected row is a paler yellow.
 1. **New control checklist.** A control not saved yet shows under the tabs what Save still needs (name, datasource(s),
    date columns of a reconciliation, period), each ticked when done and opening its tab on a click.
 1. **Changing a control's type asks first.** When the change clears something set (datasources, filters, output

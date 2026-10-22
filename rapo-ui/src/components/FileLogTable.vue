@@ -3,7 +3,7 @@
     <!-- Laid out like Results and Files: the title with the day navigator, the day's status chips (filters, toggled) and
          Upload on the right with the day's totals under them, then the active filters (led by the Filter badge). The page
          searches with the header search; the datasource editor, which has none, with its own File name box. -->
-    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : embedded ? 'q-mb-md' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-md' : embedded ? 'q-mb-md' : 'q-mb-lg'">
       <component :is="embedded ? 'div' : 'h2'" class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none" :class="{ 'text-h6': embedded }">
         <slot name="title" />
         <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>

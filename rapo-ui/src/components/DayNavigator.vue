@@ -144,9 +144,6 @@ export default {
   font-size: 20px;
   line-height: 1;
   letter-spacing: normal;
-  /* Lower than centered on the title's tall line, nearer its baseline. */
-  position: relative;
-  top: 5px;
 }
 .day-nav__day {
   display: flex;

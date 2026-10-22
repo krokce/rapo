@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-md'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-md' : 'q-mb-md'">
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div>Files</div>
         <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>

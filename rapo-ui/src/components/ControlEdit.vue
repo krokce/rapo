@@ -960,7 +960,6 @@
                     :focus-run="logFocus"
                     selectable
                     :edit-link="false"
-                    separators
                     :run-disabled="dirty ? 'Apply your changes first: a run uses the saved configuration' : null"
                     :refresh="refreshLogs"
                     :loading="!logsLoaded"

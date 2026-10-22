@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
+    <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-md' : 'q-mb-lg'">
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">API tokens</div>
         <div v-else>{{ countTitle }}</div>

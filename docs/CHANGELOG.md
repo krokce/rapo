@@ -34,10 +34,11 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - Compact page titles, unshouted buttons, *New …* beside the title, one tab-bar color; Files is titled *Files*.
 - Control editor Main tab in three boxes with field hints; Recreate schema only on drift; quieter Lock all lanes.
 - Colors keep one meaning: canceled brown, file errors deep orange, Dashboard *Idle* datasources, neutral rankings.
-- *Filter* menus replace the filter-field rows of Controls, KPI types and Datasources.
+- Filter menus (funnel button) replace the filter-field rows of Controls, KPI types and Datasources.
 - New control checklist; a type change that clears fields asks first and can be undone.
 - Files: lane chips filter, a separate lock button locks; Discrepancy analysis can be stopped at any stage, with grey/amber/red end banners.
 - No overlapping table columns down to 1024 px.
+- Even gap under page titles, day selector centred on the title; run tables frame only an expanded period with a thick line.
 - Keyboard: hour heatmaps are one Tab stop with arrow keys; the ASN.1 tree has tree roles and Home/End/Page keys; split bars move by keys and touch.
 - Datasource editor: Undo per unsaved change, Discard all.
 
