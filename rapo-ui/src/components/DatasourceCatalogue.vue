@@ -13,6 +13,41 @@
         <div v-if="writable">
           <q-btn unelevated color="primary" icon="fas fa-plus" label="New datasource" :to="{ name: 'edit-datasource', params: { id: 'new' } }" />
         </div>
+        <!-- The filters with many values (no chip shows them all), in one menu; the header search covers text. -->
+        <div>
+          <q-btn outline color="primary" icon="fas fa-filter" label="Filter" aria-label="Filter the list">
+            <q-badge v-if="activeFilters.length" color="orange-10" floating rounded>{{ activeFilters.length }}</q-badge>
+            <q-menu anchor="bottom left" self="top left">
+              <div class="column q-gutter-y-sm q-pa-md filter-menu">
+              <q-select
+                dense
+                v-model="filter.lanes"
+                outlined
+                options-dense
+                emit-value
+                map-options
+                multiple
+                use-chips
+                :options="laneOptions"
+                label="Scheduler lane">
+              </q-select>
+
+              <q-select
+                dense
+                v-model="filter.issues"
+                outlined
+                options-dense
+                emit-value
+                map-options
+                multiple
+                use-chips
+                :options="issueOptions"
+                label="Issues">
+              </q-select>
+              </div>
+            </q-menu>
+          </q-btn>
+        </div>
       </h2>
       <q-space />
 
@@ -45,35 +80,6 @@
     </div>
     <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
-    <div class="row items-center q-mb-md">
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.text" label="Name, directory or mask" maxlength="100" />
-
-      <q-select
-        v-model="filter.lanes"
-        class="col-2 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="laneOptions"
-        label="Scheduler lane">
-      </q-select>
-
-      <q-select
-        v-model="filter.issues"
-        class="col-3 q-mb-md q-pa-sm"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="issueOptions"
-        label="Issues">
-      </q-select>
-    </div>
 
     <q-virtual-scroll
       type="table"

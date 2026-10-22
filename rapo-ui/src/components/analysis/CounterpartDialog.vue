@@ -37,7 +37,7 @@
             <template v-if="group.key === 'pair'">
               <div class="row items-center q-gutter-sm q-mb-sm">
                 <span class="text-subtitle1 text-blue-grey-9">Matched record</span>
-                <q-chip dense color="orange-1" text-color="brown-10">
+                <q-chip dense square class="value-badge--warn">
                   <code class="q-mr-xs">{{ result.pair.key_field || "?" }}</code> = <strong class="q-ml-xs">{{ result.pair.value }}</strong>
                 </q-chip>
                 <span class="text-caption text-grey-7">the record of side {{ result.other_side }} this row was matched with (RAPO_DISCREPANCY_ID)</span>

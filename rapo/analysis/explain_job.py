@@ -98,6 +98,8 @@ class Job:
         self.started = None
         self.finished = None
         self.stop_requested = False
+        # How a job ended without a result: 'stopped' (asked for), 'timeout' or 'error'.
+        self.end = None
 
     def describe(self, report=True):
         """Get the job as the API answers it."""
@@ -106,6 +108,7 @@ class Job:
                   'result_type': result_type, 'owner': self.owner,
                   'state': self.state,
                   'progress': self.progress, 'error': self.error,
+                  'end': self.end,
                   'queued': _iso(self.queued), 'started': _iso(self.started),
                   'finished': _iso(self.finished),
                   'has_report': self.report is not None,
@@ -177,6 +180,7 @@ class Explainer:
                 if job in self.queue:
                     self.queue.remove(job)
                 job.state, job.error = 'error', 'Stopped before it started'
+                job.end = 'stopped'
                 job.finished = dt.datetime.now()
             elif job.state == 'running':
                 job.stop_requested = True
@@ -215,6 +219,7 @@ class Explainer:
                 self._perform(job)
             except Exception as error:
                 job.state, job.error = 'error', str(error)
+                job.end = 'error'
                 logger.error(f'Discrepancy analysis {job.key} failed: {error}')
             job.finished = dt.datetime.now()
             self.notify(job)
@@ -243,7 +248,7 @@ class Explainer:
                     _settle(job, 'refine_error', (
                         'The analysis took longer than '
                         f"{settings['discrepancy_timeout_minutes']} minutes "
-                        'and was stopped'))
+                        'and was stopped'), end='timeout')
                     break
                 if job.stop_requested:
                     process.kill()
@@ -288,10 +293,12 @@ class Explainer:
                     + (f': {job.error}' if job.error else ''))
 
 
-def _settle(job, reason, message):
+def _settle(job, reason, message, end=None):
     """End a job that did not finish: `done` with its preliminary report,
-    noting why (`stopped` or `refine_error`), else `error`.
+    noting why (`stopped` or `refine_error`), else `error`. `end` says how
+    (`stopped`, `timeout`, `error`; by default from `reason`).
     """
+    job.end = end or ('stopped' if reason == 'stopped' else 'error')
     if job.report is not None:
         job.state = 'done'
         job.report = {**job.report,

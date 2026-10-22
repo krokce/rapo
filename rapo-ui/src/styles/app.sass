@@ -446,3 +446,20 @@ body.body--dark
 // Button labels as written ("Save", "New control"), as the analysis pages and dialogs always had them.
 .q-btn
   text-transform: none
+
+// Value badges: a measured value (an over-represented bin with its lift, a counterpart's key), square and tinted from
+// the tokens, so the dark theme follows. Never round: a round chip with an avatar is a type or a status.
+.q-chip.value-badge--crit
+  background: var(--rapo-crit-soft) !important
+  color: var(--rapo-crit) !important
+
+.q-chip.value-badge--warn
+  background: var(--rapo-warn-soft) !important
+  color: var(--rapo-warn) !important
+
+// The Filter menu of a list page's title row: its selects one under another.
+.filter-menu
+  width: 340px
+  max-width: 90vw
+  font-size: 14px
+  letter-spacing: normal

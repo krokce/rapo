@@ -8,41 +8,46 @@
         <div v-if="$can('kpis', 'edit')">
           <q-btn unelevated color="primary" icon="fas fa-plus" label="New KPI type" :to="{ name: 'edit-kpi-type', params: { kpiCode: 'new' } }" />
         </div>
+        <!-- The filters with many values (no chip shows them all), in one menu; the header search covers text. -->
+        <div>
+          <q-btn outline color="primary" icon="fas fa-filter" label="Filter" aria-label="Filter the list">
+            <q-badge v-if="activeFilters.length" color="orange-10" floating rounded>{{ activeFilters.length }}</q-badge>
+            <q-menu anchor="bottom left" self="top left">
+              <div class="column q-gutter-y-sm q-pa-md filter-menu">
+              <q-select
+                dense
+                v-model="filter.unit"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="unitOptions"
+                label="Unit">
+              </q-select>
+
+              <q-select
+                dense
+                v-model="filter.used"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="[
+                  { label: 'Used by controls', value: 'Y' },
+                  { label: 'Not used', value: 'N' },
+                ]"
+                label="Usage">
+              </q-select>
+              </div>
+            </q-menu>
+          </q-btn>
+        </div>
       </h2>
     </div>
     <filter-chips v-if="loaded" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
-    <div class="row items-center q-mb-md">
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.text" label="Code or description" maxlength="45" />
-
-      <q-select
-        v-model="filter.unit"
-        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="unitOptions"
-        label="Unit">
-      </q-select>
-
-      <q-select
-        v-model="filter.used"
-        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="[
-          { label: 'Used by controls', value: 'Y' },
-          { label: 'Not used', value: 'N' },
-        ]"
-        label="Usage">
-      </q-select>
-
-    </div>
 
     <q-virtual-scroll
       type="table"
@@ -317,7 +322,12 @@ export default {
 /* Fixed columns, so rows swapped in while scrolling don't resize them; Description takes the rest. */
 .kpi-table :deep(table) {
   table-layout: fixed;
-  min-width: 860px;
+  /* The fixed columns (822px) and at least 240px of Description; narrower, the list scrolls sideways. */
+  min-width: 1062px;
+}
+.kpi-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kpi-table th:nth-child(1) { width: 190px; }
 .kpi-table th:nth-child(3) { width: 80px; }

@@ -96,42 +96,51 @@
     <!-- The lanes (core_load schedulers) of PDI Core, as PDI_CORE_STATE says, and the lock of all of them. -->
     <div v-if="stateAvailable" class="row items-center q-gutter-x-sm q-mb-sm">
       <span class="text-blue-grey-8 q-mr-xs">Lanes</span>
-      <!-- The icon locks or unlocks the lane, the text shows only its datasources (a second click shows all again). -->
+      <!-- A chip shows only its lane's datasources (a second click shows all again); its lock button opens the lock or
+           unlock of the lane, a separate target so that a filter click never starts it. -->
       <q-chip
         v-for="lane in laneStates"
         :key="lane.value"
+        clickable
         :outline="!lane.running && !laneSelected(lane.value)"
         :class="{ 'chip-selected': laneSelected(lane.value) }"
         :color="lane.stale ? 'red-1' : undefined"
-        :text-color="lane.stale ? 'red-9' : lane.running ? undefined : 'grey-7'">
-        <q-avatar
-          :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'"
-          text-color="white"
-          class="lane-avatar"
-          :class="laneAction(lane) ? ['lane-avatar--action', lane.running ? 'lane-avatar--unlock' : 'lane-avatar--lock'] : []"
-          v-keyboard:button="Boolean(laneAction(lane))"
-          @click="laneAction(lane) && laneAction(lane)()">
-          <q-icon :name="lane.running ? 'fas fa-sync' : lane.icon" class="lane-avatar__icon" />
-          <q-icon v-if="laneAction(lane)" :name="lane.running ? 'fas fa-lock-open' : 'fas fa-lock'" class="lane-avatar__hover" />
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
-            <template v-if="lane.running">
-              Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
-              <span v-if="stateDelete">Click to remove its lock (LOAD_{{ lane.value }}).</span>
-            </template>
-            <template v-else>
-              No core_load run holds LOAD_{{ lane.value }}.
-              <span v-if="stateWrite">Click to lock the lane, so that no core_load run of it starts.</span>
-            </template>
-          </q-tooltip>
+        :text-color="lane.stale ? 'red-9' : lane.running ? undefined : 'grey-7'"
+        :aria-label="laneSelected(lane.value) ? 'Show the datasources of every lane' : `Show only the datasources of ${lane.label}`"
+        @click="selectLane(lane.value)">
+        <q-avatar :color="lane.running ? (lane.stale ? 'red-6' : lane.color) : 'grey-4'" text-color="white">
+          <q-icon :name="lane.running ? 'fas fa-sync' : lane.icon" size="14px" />
         </q-avatar>
-        <span class="lane-text cursor-pointer" v-keyboard:button @click="selectLane(lane.value)">
-          <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
-          <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
-          <span v-else class="text-grey-7">idle</span>
-          <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
-            {{ laneSelected(lane.value) ? "Show the datasources of every lane" : `Show only the datasources of ${lane.label}` }}
-          </q-tooltip>
-        </span>
+        <span class="text-weight-bold q-mr-xs">{{ lane.label }}</span>
+        <span v-if="lane.running">({{ formatAge(lane.age) }})</span>
+        <span v-else class="text-grey-7">idle</span>
+        <q-btn
+          v-if="laneAction(lane)"
+          flat
+          round
+          dense
+          size="xs"
+          class="q-ml-xs"
+          :icon="lane.running ? 'fas fa-lock-open' : 'fas fa-lock'"
+          :aria-label="lane.running ? `Remove the lock of ${lane.label}` : `Lock ${lane.label}`"
+          @click.stop>
+          <q-menu>
+            <q-list dense>
+              <q-item clickable v-close-popup @click="laneAction(lane)()">
+                <q-item-section>
+                  {{ lane.running ? `Remove the lock of ${lane.label} (LOAD_${lane.value}), held ${formatAge(lane.age)}` : `Lock ${lane.label} (LOAD_${lane.value})` }}
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
+        <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">
+          <template v-if="lane.running">
+            Active since {{ toDateTimeString(lane.since) }}{{ lane.stale ? `, longer than ${staleMinutes} minutes: the lock may be stale` : "" }}.
+          </template>
+          <template v-else>No core_load run holds LOAD_{{ lane.value }}.</template>
+          {{ laneSelected(lane.value) ? "Click to show the datasources of every lane." : `Click to show only the datasources of ${lane.label}.` }}
+        </q-tooltip>
       </q-chip>
       <q-space />
       <q-btn v-if="!globalLock && stateWrite" flat dense no-caps color="grey-8" icon="fas fa-lock" label="Lock all lanes" padding="4px 10px" @click="setGlobalLock(true)">
@@ -909,29 +918,6 @@ export default {
   text-decoration: underline;
 }
 .files-table td.name-cell { white-space: normal; }
-.lane-avatar__hover {
-  display: none;
-}
-.lane-avatar--action {
-  cursor: pointer;
-}
-.lane-avatar--action:hover .lane-avatar__icon,
-.lane-avatar--action:focus-visible .lane-avatar__icon {
-  display: none;
-}
-/* On hover the icon says what a click does: lock (red) or unlock (green). */
-.lane-avatar--lock:hover :deep(.q-avatar__content),
-.lane-avatar--lock:focus-visible :deep(.q-avatar__content) {
-  background: var(--q-negative) !important;
-}
-.lane-avatar--unlock:hover :deep(.q-avatar__content),
-.lane-avatar--unlock:focus-visible :deep(.q-avatar__content) {
-  background: var(--q-positive) !important;
-}
-.lane-avatar--action:hover .lane-avatar__hover,
-.lane-avatar--action:focus-visible .lane-avatar__hover {
-  display: inline-flex;
-}
 .file-search-link {
   text-decoration: none;
 }

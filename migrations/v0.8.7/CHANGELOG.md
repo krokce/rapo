@@ -117,3 +117,22 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
    of the control already open (`?tab=`) now switches to it.
 1. **Data analysis:** the columns not profiled are listed one per line in a grid (were one long paragraph). The
    Dashboard's *As of* time is darker.
+1. **Filter menus.** Controls, KPI types and Datasources filter like Results and Scheduler: the row of filter fields is
+   gone; a *Filter* button beside the title opens their selects (type, group, system, scheduler status, attributes;
+   unit, usage; lanes, issues), with a badge counting the active filters. Text is searched with the header search; the
+   filter chips under the title show and clear every filter as before.
+1. **New control checklist.** A control not saved yet shows under the tabs what Save still needs (name, datasource(s),
+   date columns of a reconciliation, period), each ticked when done and opening its tab on a click.
+1. **Changing a control's type asks first.** When the change clears something set (datasources, filters, output
+   columns, rules or criteria, email, case definition), a confirmation names it; after the change, *Undo* in the
+   notification puts the form back as it was.
+1. **Files: lane chips filter, a lock button locks.** A lane chip shows only its lane's datasources on a click; its
+   small lock button opens the lock or unlock of the lane (then the confirmation as before), so a filter click never
+   starts a lock.
+1. **Discrepancy analysis: Stop at any stage.** *Stop* is offered also before the quick look (nothing is kept); a job
+   that ended without a result says how: stopped (grey), timed out (amber) or failed (red), each with *Start again*.
+   The job carries `end` (`stopped`, `timeout`, `error`).
+1. **Value badges.** The over-represented bins of Discrepancy analysis and the keys of the counterpart dialog are
+   square tinted badges that follow the dark theme.
+1. **Down to 1024 px.** KPI types and the Scheduler's Upcoming and Running tables cut long text with an ellipsis and
+   scroll sideways when too narrow, instead of writing columns over each other.

@@ -13,6 +13,93 @@
         <div v-if="$can('controls', 'edit')">
           <q-btn unelevated color="primary" icon="fas fa-plus" label="New control" :to="{ name: 'edit-control', params: { controlId: 'new' } }" />
         </div>
+        <!-- The filters with many values (no chip shows them all), in one menu; the header search covers text. -->
+        <div>
+          <q-btn outline color="primary" icon="fas fa-filter" label="Filter" aria-label="Filter the list">
+            <q-badge v-if="activeFilters.length" color="orange-10" floating rounded>{{ activeFilters.length }}</q-badge>
+            <q-menu anchor="bottom left" self="top left">
+              <div class="column q-gutter-y-sm q-pa-md filter-menu">
+              <q-select
+                dense
+                v-model="filter.type"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="controlTypeOptions"
+                label="Control type">
+              </q-select>
+
+
+              <q-select
+                dense
+                v-model="filter.group"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="groupFilterOptions"
+                label="Control group">
+              </q-select>
+
+              <q-select
+                dense
+                :model-value="filter.system"
+                clearable
+                outlined
+                options-dense
+                use-input
+                hide-selected
+                fill-input
+                input-debounce="0"
+                maxlength="90"
+                :options="systemOptions"
+                label="System"
+                @filter="filterSystems"
+                @input-value="(value) => (filter.system = value || null)"
+                @update:model-value="(value) => (filter.system = value || null)">
+              </q-select>
+
+              <q-select
+                dense
+                v-model="filter.status"
+                clearable
+                outlined
+                options-dense
+                emit-value
+                map-options
+                :options="[
+                  { label: 'Active', value: 'Y' },
+                  { label: 'Inactive', value: 'N' },
+                ]"
+                label="Scheduler status">
+              </q-select>
+
+              <q-select
+                dense
+                v-model="filter.other_attributes"
+                outlined
+                options-dense
+                emit-value
+                map-options
+                multiple
+                use-chips
+                :options="attributeOptions"
+                label="Control attributes">
+                <!-- The attributes in groups: a group's name is a caption, not an option. -->
+                <template #option="scope">
+                  <q-item-label v-if="scope.opt.header" header class="q-pt-sm q-pb-xs text-weight-bold">{{ scope.opt.label }}</q-item-label>
+                  <q-item v-else v-bind="scope.itemProps">
+                    <q-item-section class="q-pl-sm">{{ scope.opt.label }}</q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+              </div>
+            </q-menu>
+          </q-btn>
+        </div>
       </h2>
       <q-space />
       <div class="row items-center justify-end q-gutter-x-md">
@@ -74,91 +161,6 @@
     </div>
     <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
-    <div class="row items-center q-mb-md">
-      <q-select
-        v-model="filter.type"
-        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="controlTypeOptions"
-        label="Control type">
-      </q-select>
-
-      <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.control_name" label="Control name" maxlength="45" style="min-width: 150px" />
-
-      <q-select
-        v-model="filter.group"
-        class="col q-mb-md q-pa-sm"
-        style="min-width: 180px"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="groupFilterOptions"
-        label="Control group">
-      </q-select>
-
-      <q-select
-        :model-value="filter.system"
-        class="col q-mb-md q-pa-sm"
-        style="min-width: 150px"
-        clearable
-        outlined
-        options-dense
-        use-input
-        hide-selected
-        fill-input
-        input-debounce="0"
-        maxlength="90"
-        :options="systemOptions"
-        label="System"
-        @filter="filterSystems"
-        @input-value="(value) => (filter.system = value || null)"
-        @update:model-value="(value) => (filter.system = value || null)">
-      </q-select>
-
-      <q-select
-        v-model="filter.status"
-        class="col q-mb-md q-pa-sm"
-        style="min-width: 170px"
-        clearable
-        outlined
-        options-dense
-        emit-value
-        map-options
-        :options="[
-          { label: 'Active', value: 'Y' },
-          { label: 'Inactive', value: 'N' },
-        ]"
-        label="Scheduler status">
-      </q-select>
-
-      <q-select
-        v-model="filter.other_attributes"
-        class="col q-mb-md q-pa-sm"
-        style="min-width: 220px"
-        outlined
-        options-dense
-        emit-value
-        map-options
-        multiple
-        use-chips
-        :options="attributeOptions"
-        label="Control attributes">
-        <!-- The attributes in groups: a group's name is a caption, not an option. -->
-        <template #option="scope">
-          <q-item-label v-if="scope.opt.header" header class="q-pt-sm q-pb-xs text-weight-bold">{{ scope.opt.label }}</q-item-label>
-          <q-item v-else v-bind="scope.itemProps">
-            <q-item-section class="q-pl-sm">{{ scope.opt.label }}</q-item-section>
-          </q-item>
-        </template>
-      </q-select>
-
-    </div>
 
     <q-virtual-scroll
       type="table"

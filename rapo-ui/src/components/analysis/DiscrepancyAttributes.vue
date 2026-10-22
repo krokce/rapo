@@ -27,7 +27,7 @@
           <span class="score-text text-right">{{ formatPct(entry.best.score * 100) }}</span>
         </div>
         <div class="attr-over row no-wrap items-center">
-          <q-chip v-for="bin in overBins(entry.best)" :key="String(bin.code)" dense square size="12px" color="red-1" text-color="red-9" class="over-chip" :title="bin.label">
+          <q-chip v-for="bin in overBins(entry.best)" :key="String(bin.code)" dense square size="12px" class="over-chip value-badge--crit" :title="bin.label">
             <span class="ellipsis">{{ bin.label }}</span><span class="text-weight-bold q-ml-xs">{{ liftText(bin.lift, "only") }}</span>
           </q-chip>
         </div>

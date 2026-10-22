@@ -56,6 +56,20 @@
             <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
             Read only: your token can view controls but not change them.
           </q-banner>
+          <!-- A control not saved yet: what Save still needs, each a link to its tab. -->
+          <div v-if="newChecklist" class="row items-center q-gutter-x-sm q-px-lg q-py-xs bg-blue-grey-1 text-blue-grey-9 new-checklist">
+            <span class="text-weight-medium">To save:</span>
+            <span
+              v-for="item in newChecklist"
+              :key="item.label"
+              class="cursor-pointer"
+              :class="item.done ? 'text-positive' : 'text-orange-10'"
+              v-keyboard:button
+              :aria-label="`${item.label}: ${item.done ? 'done' : 'missing'}, open its tab`"
+              @click="tab = item.tab">
+              <q-icon :name="item.done ? 'fas fa-check' : 'fas fa-times'" size="11px" class="q-mr-xs" />{{ item.label }}
+            </span>
+          </div>
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <!-- Three boxes, as the datasource editor's Main tab; what a field does is its hint, always shown. -->
@@ -138,10 +152,10 @@
                         outlined
                         emit-value
                         map-options
-                        v-model="control.control_type"
+                        :model-value="control.control_type"
                         :options="controlTypeOptions"
                         label="Control type"
-                        @update:model-value="controlTypeChanged" />
+                        @update:model-value="requestTypeChange" />
 
                       <q-select
                         class="col-12 col-sm-6 col-md"
@@ -1443,6 +1457,25 @@ export default {
     editorNoun() {
       return "Control";
     },
+    // The fields Save requires (the rules of validate()), for a control not saved yet: none once it is.
+    newChecklist() {
+      if (this.readOnly || (this.control.control_id && !this.$route.query.clone)) {
+        return null;
+      }
+      const control = this.control;
+      const twoSides = control.control_type === "REC" || control.control_type === "CMP";
+      const items = [{ label: "Name", tab: "main", done: Boolean(control.control_name) }];
+      if (twoSides) {
+        items.push({ label: "Datasources A and B", tab: "data", done: Boolean(control.source_name_a && control.source_name_b) });
+      } else {
+        items.push({ label: "Datasource", tab: "data", done: Boolean(control.source_name) });
+      }
+      if (control.control_type === "REC") {
+        items.push({ label: "Date columns", tab: "data", done: Boolean(control.source_date_field_a && control.source_date_field_b) });
+      }
+      items.push({ label: "Period", tab: "scheduler", done: !this.isBlank(control.period_back) && !this.isBlank(control.period_number) });
+      return items;
+    },
     // The fields the result table schema depends on, as they would be saved. A change re-checks it.
     schemaKey() {
       if (!this.schemaEnabled) {
@@ -1734,6 +1767,60 @@ export default {
       return (columns || []).map((column) =>
         Object.fromEntries(Object.entries(column).filter(([, value]) => value != null).map(([key, value]) => [key, String(value).toUpperCase()]))
       );
+    },
+    // What a change of the type would clear, as words for the confirmation; empty when nothing set is lost.
+    typeChangeLosses() {
+      const control = this.control;
+      const set = (value) => value !== null && value !== undefined && value !== "" && !(Array.isArray(value) && !value.length);
+      const losses = [];
+      if ([control.source_name, control.source_name_a, control.source_name_b].some(set)) losses.push("the datasources");
+      if ([control.source_filter, control.source_filter_a, control.source_filter_b].some(set)) losses.push("the filters");
+      if ([control.output_table_columns, control.output_table_a_columns, control.output_table_b_columns, this.cmpOutputTable].some(set)) {
+        losses.push("the output columns");
+      }
+      const rules = this.ruleConfigObject || {};
+      if (control.control_type === "CMP" && (set(rules) || set(this.ruleErrorObject))) {
+        losses.push("the match and mismatch criteria");
+      } else if (control.control_type === "REC") {
+        const { email, ...rest } = rules; // eslint-disable-line no-unused-vars
+        if (JSON.stringify(rest) !== JSON.stringify(this.defaultReconciliationRuleConfig())) losses.push("the reconciliation rules");
+      }
+      if (rules.email) losses.push("the email settings");
+      if (set(this.caseConfigObject)) losses.push("the case definition");
+      return losses;
+    },
+    // A change of the type clears what only the old type uses: asked first when something set would be lost, and
+    // undone from the notification (the form as it was, put back like a discard).
+    requestTypeChange(newType) {
+      if (newType === this.control.control_type) {
+        return;
+      }
+      const losses = this.typeChangeLosses();
+      const before = this.buildControlPayload();
+      const change = () => {
+        this.control.control_type = newType;
+        this.controlTypeChanged(newType);
+        if (losses.length) {
+          this.$q.notify({
+            color: "grey-8",
+            message: `Changed to ${newType}: ${losses.join(", ")} cleared.`,
+            actions: [{ label: "Undo", color: "white", handler: () => this.applyPayload(before) }],
+          });
+        }
+      };
+      if (!losses.length) {
+        change();
+        return;
+      }
+      this.$q
+        .dialog({
+          title: `Change the type to ${newType}?`,
+          message: `This clears ${losses.join(", ")}: they belong to the ${this.control.control_type} type. Undo stays possible right after.`,
+          cancel: { label: "Keep " + this.control.control_type, flat: true },
+          ok: { label: "Change to " + newType, color: "primary" },
+          persistent: true,
+        })
+        .onOk(change);
     },
     controlTypeChanged(newValue) {
       // The PL-SQL engine only implements reconciliation.

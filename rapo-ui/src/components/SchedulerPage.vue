@@ -862,6 +862,15 @@ a:hover {
 .history-table :deep(table) {
   table-layout: fixed;
 }
+/* The fixed columns (834px) and at least 200px of Control; narrower, the list scrolls sideways, never overlaps. */
+.upcoming-table :deep(table) {
+  min-width: 1034px;
+}
+.upcoming-table td,
+.running-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .upcoming-table th:nth-child(1) { width: 84px; }
 .upcoming-table th:nth-child(2) { width: 170px; }
 .upcoming-table th:nth-child(3) { width: 130px; }

@@ -20,11 +20,12 @@
       </template>
     </q-banner>
 
-    <q-banner v-if="job && job.state === 'error'" class="bg-amber-1 text-brown-9 q-mb-md" rounded>
-      <template #avatar><q-icon name="fas fa-hourglass-end" color="amber-9" /></template>
-      The discrepancies could not be analysed: {{ job.error }}
+    <!-- How a job ended without a result: stopped on request (neutral), timed out (amber), failed (red). -->
+    <q-banner v-if="job && job.state === 'error'" :class="endBanner.class" class="q-mb-md" rounded>
+      <template #avatar><q-icon :name="endBanner.icon" :color="endBanner.iconColor" /></template>
+      {{ endBanner.text }}
       <template #action>
-        <q-btn flat color="brown-9" label="Start again" @click="start(true)" />
+        <q-btn flat :color="endBanner.button" label="Start again" @click="start(true)" />
       </template>
     </q-banner>
 
@@ -34,8 +35,10 @@
       <div class="text-grey-8 ellipsis" :title="stepText">{{ stepText }}</div>
       <q-linear-progress v-if="progressValue !== null" class="col progress" rounded size="6px" :value="progressValue" color="primary" />
       <q-space v-else />
-      <q-btn v-if="busy && report && canStop" flat dense no-caps color="red-7" icon="fas fa-stop-circle" label="Stop refining" @click="stop">
-        <q-tooltip anchor="top middle" self="bottom middle">Keep the preliminary results and free the database</q-tooltip>
+      <q-btn v-if="busy && job && canStop" flat dense no-caps color="red-7" icon="fas fa-stop-circle" :label="report ? 'Stop refining' : 'Stop'" @click="stop">
+        <q-tooltip anchor="top middle" self="bottom middle">
+          {{ report ? "Keep the preliminary results and free the database" : "Stop the analysis and free the database; nothing is kept" }}
+        </q-tooltip>
       </q-btn>
     </div>
 
@@ -130,6 +133,16 @@ export default {
     },
     busy() {
       return Boolean(this.job) && ["queued", "running"].includes(this.job.state);
+    },
+    endBanner() {
+      const end = this.job.end || "error";
+      if (end === "stopped") {
+        return { class: "bg-grey-2 text-grey-9", icon: "fas fa-stop-circle", iconColor: "grey-7", button: "primary", text: "Stopped before a result." };
+      }
+      if (end === "timeout") {
+        return { class: "bg-amber-1 text-brown-9", icon: "fas fa-hourglass-end", iconColor: "amber-9", button: "brown-9", text: `The discrepancies could not be analysed: ${this.job.error}` };
+      }
+      return { class: "bg-red-1 text-red-9", icon: "fas fa-exclamation-triangle", iconColor: "red-7", button: "red-9", text: `The discrepancies could not be analysed: ${this.job.error}` };
     },
     // Only the token that started the job (or the master token) may stop it; others share its report.
     canStop() {
