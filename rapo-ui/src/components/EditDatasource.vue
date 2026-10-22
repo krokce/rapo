@@ -448,7 +448,7 @@
             </template>
             <q-btn :label="writable ? 'Cancel' : 'Close'" type="reset" color="primary" flat />
             <q-space />
-            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap cursor-pointer" v-keyboard:button @click="diffVisible = true">
+            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap cursor-pointer" v-keyboard:button @click="$refs.diffDialog.open()">
               <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
               Unsaved changes
               <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Show what Apply will change</q-tooltip>
@@ -458,19 +458,8 @@
       </q-card>
     </div>
 
-    <q-dialog v-model="diffVisible">
-      <q-card style="width: 1000px; max-width: 95vw">
-        <q-card-section class="row items-center q-py-sm">
-          <div class="text-h6">Unsaved changes ({{ unsavedChanges.length }})</div>
-          <q-space />
-          <q-btn aria-label="Close" flat round icon="fas fa-times" v-close-popup />
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="scroll" style="max-height: 70vh">
-          <diff-table :rows="unsavedChanges" empty-text="No changes." />
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <!-- The control editor's dialog: a row's Undo puts its field (or its whole table link) back, Discard all every one. -->
+    <control-diff-dialog ref="diffDialog" :diff="() => unsavedChanges" :busy="saving" @apply="persist('stay')" @undo="undoChange" @discard="discardAll" />
 
     <file-list-dialog ref="fileDialog" />
     <file-upload-dialog ref="uploadDialog" @uploaded="refreshStatus" />
@@ -482,7 +471,7 @@
 import { mapActions, mapGetters, mapState } from "vuex";
 import ArchiveTreeBox from "./ArchiveTreeBox.vue";
 import DatasourceTablesBox from "./DatasourceTablesBox.vue";
-import DiffTable from "./DiffTable.vue";
+import ControlDiffDialog from "./ControlDiffDialog.vue";
 import DirectoryListBox from "./DirectoryListBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
 import LoadErrorNotice from "./LoadErrorNotice.vue";
@@ -520,7 +509,7 @@ const YES_NO_NUMBER_OPTIONS = [
 export default {
   name: "EditDatasource",
   mixins: [editorGuard],
-  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, LoadErrorNotice, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
+  components: { ArchiveTreeBox, ControlDiffDialog, DatasourceTablesBox, DirectoryListBox, EditorSkeleton, FileListDialog, LoadErrorNotice, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
   props: ["id"],
   data() {
     return {
@@ -534,7 +523,6 @@ export default {
       directoryStates: [],
       tableNames: [],
       saving: false,
-      diffVisible: false,
       cloneNotice: null,
       maskCheck: null,
       maskChecking: false,
@@ -1031,6 +1019,34 @@ export default {
         await this.$router.replace({ name: "edit-datasource", params: { id: String(result.datasource.id) } });
       }
       return true;
+    },
+    // The saved datasource as the form holds one (a new one: the empty form).
+    savedForm() {
+      return { ...emptyDatasource(), ...JSON.parse(JSON.stringify(this.saved || {})) };
+    },
+    // One row of the Unsaved changes dialog back to the saved value: a field, or for a table link (links.<TABLE>...)
+    // the whole link, re-added or removed as saved.
+    undoChange(row) {
+      const [key, table] = row.path.split(".");
+      const saved = this.savedForm();
+      if (key !== "links") {
+        this.datasource[key] = saved[key];
+        return;
+      }
+      const name = (link) => String(link.table_name || "").trim().toUpperCase();
+      const savedLink = (saved.links || []).find((link) => name(link) === table);
+      const index = this.datasource.links.findIndex((link) => name(link) === table);
+      if (savedLink && index >= 0) {
+        this.datasource.links.splice(index, 1, savedLink);
+      } else if (savedLink) {
+        this.datasource.links.push(savedLink);
+      } else if (index >= 0) {
+        this.datasource.links.splice(index, 1);
+      }
+    },
+    discardAll() {
+      this.datasource = this.savedForm();
+      this.$q.notify({ type: "warning", message: "Changes discarded" });
     },
     // A conflict's Reload (mixins/editorGuard): the datasource as saved meanwhile.
     async reloadSaved() {

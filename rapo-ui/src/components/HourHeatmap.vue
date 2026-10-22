@@ -31,7 +31,9 @@
           {{ String(slot.hour).padStart(2, "0") }}
         </div>
       </div>
-      <div v-for="row in rows" :key="row.key" class="hour-heatmap__row">
+      <!-- One Tab stop for the whole grid (the picked hour's cell, else the first); arrows move between cells, Enter or
+           Space picks, Home/End go to the row's first/last hour. -->
+      <div v-for="(row, rowIndex) in rows" :key="row.key" class="hour-heatmap__row" role="row">
         <div class="hour-heatmap__label ellipsis" :class="{ 'text-weight-bold': row.key === 'total' }">
           <q-icon v-if="row.color" name="fas fa-circle" :color="row.color" size="9px" class="q-mr-xs" />{{ row.label }}
         </div>
@@ -47,9 +49,13 @@
             'hour-heatmap__cell--dim': selected !== null && selected !== hour,
           }"
           :style="{ background: color(cell.count, row.key === 'total') }"
-          v-keyboard:button
+          role="button"
+          :tabindex="tabStop(rowIndex, hour) ? 0 : -1"
+          :data-cell="`${rowIndex}-${hour}`"
           :aria-pressed="selected === hour"
           :aria-label="`${columns[hour].title}, ${cell.count} ${unit}${cell.errors ? ', with errors' : ''}${cell.warnings ? ', with warnings' : ''}`"
+          @keydown="onKeydown($event, rowIndex, hour)"
+          @focus="focusCell = `${rowIndex}-${hour}`"
           @click="$emit('select', selected === hour ? null : hour)">
           <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 6]">
             {{ columns[hour].title }}, {{ row.label }}: {{ cell.count.toLocaleString() }} {{ unit }}<span v-if="cell.breakdown"> &middot; {{ cell.breakdown }}</span
@@ -92,6 +98,14 @@ export default {
   },
   emits: ["select"],
   computed: {
+    // The cell Tab reaches: the last focused one while it still exists, else the picked hour's in the first row.
+    tabCell() {
+      const [row, hour] = (this.focusCell || "").split("-").map(Number);
+      if (this.focusCell && row < this.rows.length && hour < this.columns.length) {
+        return this.focusCell;
+      }
+      return `0-${this.selected === null ? 0 : this.selected}`;
+    },
     columns() {
       return (this.slots || Array.from({ length: 24 }, (_, hour) => ({ hour }))).map((slot) => ({ ...slot, title: slot.title || hourRange(slot.hour) }));
     },
@@ -102,7 +116,38 @@ export default {
       return { groups: Math.max(1, ...groups), total: Math.max(1, ...total) };
     },
   },
+  data() {
+    return { focusCell: null };
+  },
   methods: {
+    tabStop(rowIndex, hour) {
+      return this.tabCell === `${rowIndex}-${hour}`;
+    },
+    onKeydown(event, rowIndex, hour) {
+      const last = this.columns.length - 1;
+      const moves = {
+        ArrowLeft: [rowIndex, Math.max(hour - 1, 0)],
+        ArrowRight: [rowIndex, Math.min(hour + 1, last)],
+        ArrowUp: [Math.max(rowIndex - 1, 0), hour],
+        ArrowDown: [Math.min(rowIndex + 1, this.rows.length - 1), hour],
+        Home: [rowIndex, 0],
+        End: [rowIndex, last],
+      };
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.$emit("select", this.selected === hour ? null : hour);
+        return;
+      }
+      const target = moves[event.key];
+      if (!target) {
+        return;
+      }
+      event.preventDefault();
+      const cell = this.$el.querySelector(`[data-cell="${target[0]}-${target[1]}"]`);
+      if (cell) {
+        cell.focus();
+      }
+    },
     color(count, total = false) {
       if (!count) {
         return "var(--rapo-grid)";

@@ -94,7 +94,18 @@
         <div v-if="rootError" class="q-pa-md text-red-7">{{ rootError }}</div>
         <asn1-tree ref="tree" class="col" :file-ref="fileRef" :decoding="decoding" :selected-offset="selected ? selected.offset : null" @select="select" @meta="gotMeta" />
       </div>
-      <div class="viewer-split-handle viewer-split-handle--v" title="Drag to resize" @mousedown.prevent="startDrag" />
+      <div
+        class="viewer-split-handle viewer-split-handle--v"
+        title="Drag to resize (or the arrow keys)"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the tree and bytes panes"
+        :aria-valuenow="Math.round(ratio)"
+        aria-valuemin="15"
+        aria-valuemax="85"
+        tabindex="0"
+        @pointerdown.prevent="startDrag"
+        @keydown="nudgeSplit" />
       <div class="col column no-wrap data-side">
         <!-- What the right side shows of the selected node, above it: its bytes, or its subtree as XML or text. -->
         <div class="row items-center no-wrap tab-bar">
@@ -467,17 +478,30 @@ export default {
         this.ratio = Math.min(Math.max(((moved.clientX - box.left) / box.width) * 100, 15), 85);
       };
       const stop = () => {
-        window.removeEventListener("mousemove", move);
-        window.removeEventListener("mouseup", stop);
-        try {
-          localStorage.setItem(RATIO_KEY, String(Math.round(this.ratio)));
-        } catch {
-          // Storage off: not remembered.
-        }
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", stop);
+        this.saveRatio();
       };
       move(event);
-      window.addEventListener("mousemove", move);
-      window.addEventListener("mouseup", stop);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", stop);
+    },
+    // The arrow keys on the bar move it by 5%.
+    nudgeSplit(event) {
+      const step = { ArrowLeft: -5, ArrowRight: 5 }[event.key];
+      if (!step) {
+        return;
+      }
+      event.preventDefault();
+      this.ratio = Math.min(Math.max(this.ratio + step, 15), 85);
+      this.saveRatio();
+    },
+    saveRatio() {
+      try {
+        localStorage.setItem(RATIO_KEY, String(Math.round(this.ratio)));
+      } catch {
+        // Storage off: not remembered.
+      }
     },
   },
 };

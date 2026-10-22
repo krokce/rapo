@@ -3,6 +3,9 @@
 ## Annotation
 New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recreated `rapo_config` triggers
 (`migrations/v0.8.7/upgrade.sql`); new option `[API] token_cache_seconds`. The upgrade steps are in the [migration instructions](README.md).
+Besides per-user API tokens, the release reworks the UI after a full review: editor safeguards (no silent overwrites,
+unsaved-changes guards in every editor, confirmed type changes), dark theme, contrast and keyboard access, one chip and
+color language, compact page chrome with filter menus, and clearer Discrepancy analysis results.
 
 1. **API tokens of users.** Signed in with the master token (`[API] token`), its header menu (*Master token*) opens
    *API tokens* (`/tokens`, master only): create a token for a user (name, email, label) valid 1 month, 6 months, 1 year
@@ -136,3 +139,12 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
    square tinted badges that follow the dark theme.
 1. **Down to 1024 px.** KPI types and the Scheduler's Upcoming and Running tables cut long text with an ellipsis and
    scroll sideways when too narrow, instead of writing columns over each other.
+1. **Keyboard: hour heatmaps, the ASN.1 tree, split bars.** An hour heatmap (Results, Files, the file log, Scheduler)
+   is one Tab stop: arrows move between its cells, Home/End to a row's ends, Enter or Space picks the hour (every cell
+   was a Tab stop). The ASN.1 tree is announced as a tree (levels, open, selected); Home/End and PageUp/PageDown jump,
+   Enter opens a node, and the arrows reach the *more*/*earlier* rows, which Enter loads. The bars between the file
+   viewer's panes and between the ASN.1 tree and its bytes move with the arrow keys (5%) and with touch.
+1. **Datasource editor: Undo per change.** *Unsaved changes* opens the control editor's dialog: each row has Undo (a
+   table link is put back whole), and *Discard all changes* and *Apply* are there too.
+1. **Faster lists.** KPI types counts each type's controls once per load, and Controls reads each control's iterations
+   once per catalogue, instead of again for every row on every refresh.

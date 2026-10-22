@@ -37,6 +37,8 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - New control checklist; a type change that clears fields asks first and can be undone.
 - Files: lane chips filter, a separate lock button locks; Discrepancy analysis can be stopped at any stage, with grey/amber/red end banners.
 - No overlapping table columns down to 1024 px.
+- Keyboard: hour heatmaps are one Tab stop with arrow keys; the ASN.1 tree has tree roles and Home/End/Page keys; split bars move by keys and touch.
+- Datasource editor: Undo per unsaved change, Discard all.
 
 ## v0.8.6 — 2026-10-14
 

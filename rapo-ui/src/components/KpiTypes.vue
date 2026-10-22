@@ -111,7 +111,7 @@
             <q-chip v-if="kpiType.default_alarm_sql_statement" size="12px" color="blue-grey-2" icon="fas fa-bell"> Alarm </q-chip>
           </td>
           <td class="text-center">
-            <span v-if="usageOf(kpiType.kpi_type).length">{{ usageOf(kpiType.kpi_type).length }}</span>
+            <span v-if="usageCount(kpiType.kpi_type)">{{ usageCount(kpiType.kpi_type) }}</span>
             <span v-else class="text-grey-7">&ndash;</span>
           </td>
           <td @click.stop>
@@ -143,9 +143,9 @@
         <template v-if="$can('kpis', 'edit')">
           <q-separator />
           <!-- racs_kpi_config references the code, so a used type cannot be deleted. -->
-          <q-item v-if="usageOf(menuRow.kpi_type).length" dense disable>
+          <q-item v-if="usageCount(menuRow.kpi_type)" dense disable>
             <q-item-section> Delete KPI type </q-item-section>
-            <q-tooltip anchor="top middle" self="bottom middle"> Used by {{ usageOf(menuRow.kpi_type).length }} control(s) </q-tooltip>
+            <q-tooltip anchor="top middle" self="bottom middle"> Used by {{ usageCount(menuRow.kpi_type) }} control(s) </q-tooltip>
           </q-item>
           <q-item v-else dense clickable v-close-popup @click="confirmDeleteKpiType(menuRow.kpi_type)">
             <q-item-section> Delete KPI type </q-item-section>
@@ -210,8 +210,8 @@ export default {
       this.menuKpiType = row.kpi_type;
       this.$nextTick(() => this.$refs.rowMenu.show());
     },
-    usageOf(kpiType) {
-      return this.usage.filter((item) => item.kpi_type === kpiType);
+    usageCount(kpiType) {
+      return this.usageCounts.get(kpiType) || 0;
     },
     // Every filter and the header search; the sort stays.
     clearFilters() {
@@ -255,6 +255,12 @@ export default {
     },
   },
   computed: {
+    // The number of controls per KPI type, counted once per usage load (rows, sort and filter read it).
+    usageCounts() {
+      const counts = new Map();
+      this.usage.forEach((item) => counts.set(item.kpi_type, (counts.get(item.kpi_type) || 0) + 1));
+      return counts;
+    },
     ...mapState(["kpiTypes"]),
     ...mapGetters(["getSearch"]),
     // "12 KPI types", or "3 of 25 KPI types" while filtered.
@@ -288,7 +294,7 @@ export default {
       if (!key) {
         return this.filteredKpiTypes;
       }
-      const valueOf = key === "usage_count" ? (item) => this.usageOf(item.kpi_type).length : (item) => item[key];
+      const valueOf = key === "usage_count" ? (item) => this.usageCount(item.kpi_type) : (item) => item[key];
       return sortRows(this.filteredKpiTypes, valueOf, this.sort.dir);
     },
     filteredKpiTypes() {
@@ -300,7 +306,7 @@ export default {
           const matchesSearch = s ? text.includes(s.toUpperCase()) : true;
           const matchesText = this.filter.text ? text.includes(this.filter.text.toUpperCase()) : true;
           const matchesUnit = this.filter.unit ? item.kpi_value_unit === this.filter.unit : true;
-          const matchesUsed = this.filter.used ? (this.usageOf(item.kpi_type).length > 0) === (this.filter.used === "Y") : true;
+          const matchesUsed = this.filter.used ? (this.usageCount(item.kpi_type) > 0) === (this.filter.used === "Y") : true;
 
           return matchesSearch && matchesText && matchesUnit && matchesUsed;
         });

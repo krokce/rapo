@@ -721,12 +721,7 @@ export default {
       }
     },
     iterationCount(control) {
-      // A malformed iteration_config must not break rendering of the whole catalogue.
-      try {
-        return control.iteration_config ? JSON.parse(control.iteration_config).length || 0 : 0;
-      } catch (err) {
-        return 0;
-      }
+      return this.iterationCounts.get(control.control_id) || 0;
     },
     sendsEmail,
     // Filters a link put in the query (the Dashboard: ?type=REC&status=Y&name=&attr=Schema drift) replace the page's
@@ -806,6 +801,19 @@ export default {
     },
   },
   computed: {
+    // The iterations of each control, parsed once per catalogue (rows and the attribute filter read them); a
+    // malformed iteration_config counts none rather than breaking the catalogue.
+    iterationCounts() {
+      const counts = new Map();
+      this.controlCatalogue.forEach((control) => {
+        try {
+          counts.set(control.control_id, control.iteration_config ? JSON.parse(control.iteration_config).length || 0 : 0);
+        } catch (err) {
+          counts.set(control.control_id, 0);
+        }
+      });
+      return counts;
+    },
     // Every result table no run writes (get-schema-drift), reviewed in OrphanTablesDialog: those of a control whose
     // configuration no longer writes them, by control name, then those of no control.
     orphanTables() {

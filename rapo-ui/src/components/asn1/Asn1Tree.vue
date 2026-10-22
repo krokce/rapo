@@ -1,8 +1,18 @@
 <template>
-  <div class="asn1-tree column no-wrap" tabindex="0" @keydown="keydown">
+  <!-- Keys: arrows move and open/close, Home/End and PageUp/PageDown jump, Enter opens a node or loads more. -->
+  <div class="asn1-tree column no-wrap" tabindex="0" role="tree" aria-label="ASN.1 structure" @keydown="keydown">
     <q-virtual-scroll ref="scroll" class="col asn1-tree-body" :items="rows" :virtual-scroll-item-size="ROW_HEIGHT" @virtual-scroll="scrolledTo">
       <template #default="{ item, index }">
-        <div :key="item.key" class="asn1-row row no-wrap items-center" :class="{ 'asn1-row--selected': item.node && item.node.offset === selectedOffset }" :data-index="index" @click="clickRow(item)">
+        <div
+          :key="item.key"
+          class="asn1-row row no-wrap items-center"
+          :class="{ 'asn1-row--selected': item.node && item.node.offset === selectedOffset, 'asn1-row--cursor': item.key === cursorKey }"
+          :data-index="index"
+          role="treeitem"
+          :aria-level="item.depth + 1"
+          :aria-selected="Boolean(item.node && item.node.offset === selectedOffset)"
+          :aria-expanded="item.kind === 'node' && item.node.has_children ? Boolean(expanded[item.node.offset]) : undefined"
+          @click="clickRow(item)">
           <div class="row no-wrap items-center ellipsis col" :style="{ paddingLeft: item.depth * 16 + 4 + 'px' }">
             <q-icon
               v-if="item.kind === 'node' && item.node.has_children"
@@ -48,10 +58,13 @@ const ROW_HEIGHT = 22;
 // Children read at once, and before a node revealed out of the read ones.
 const PAGE = 500;
 const BEFORE = 50;
+// The rows PageUp/PageDown move by.
+const PAGE_ROWS = 20;
 
 // The ASN.1 nodes of a file as a tree (get-ds-file-asn1): the root's TLVs, the children of a node read when it is first
 // opened, a page at a time (more as the end of a level is scrolled to). The rows shown are flattened into one virtual-
-// scroll list (Quasar's tree renders every node). Arrow keys move the selection and open or close a node.
+// scroll list (Quasar's tree renders every node). Arrow keys move the selection and open or close a node; they also
+// reach the "more"/"earlier" rows, which Enter loads.
 export default {
   name: "Asn1Tree",
   props: {
@@ -68,6 +81,8 @@ export default {
       // By parent key: {nodes, first (the ordinal of nodes[0]), eof, loading, error}.
       levels: {},
       expanded: {},
+      // A "more"/"earlier" row the arrow keys are on (Enter loads it), else null: the selected node is the keyboard's.
+      cursorKey: null,
     };
   },
   computed: {
@@ -219,6 +234,7 @@ export default {
       }
     },
     clickRow(item) {
+      this.cursorKey = null;
       if (item.kind === "node") {
         this.$emit("select", item.node);
       } else if (item.kind === "more") {
@@ -290,17 +306,35 @@ export default {
       }
     },
     keydown(event) {
-      const index = this.rows.findIndex((row) => row.node && row.node.offset === this.selectedOffset);
+      // The keyboard's row: a "more"/"earlier" row the arrows moved onto (cursorKey), else the selected node.
+      const cursorAt = this.cursorKey ? this.rows.findIndex((item) => item.key === this.cursorKey) : -1;
+      const index = cursorAt >= 0 ? cursorAt : this.rows.findIndex((item) => item.node && item.node.offset === this.selectedOffset);
       const row = this.rows[index];
+      const reachable = (item) => item.kind === "node" || item.kind === "more" || item.kind === "earlier";
+      const jumps = { ArrowDown: 1, ArrowUp: -1, PageDown: PAGE_ROWS, PageUp: -PAGE_ROWS };
       let next = null;
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        const step = event.key === "ArrowDown" ? 1 : -1;
+      if (event.key in jumps) {
+        const step = Math.sign(jumps[event.key]);
+        let left = Math.abs(jumps[event.key]);
         for (let at = index + step; at >= 0 && at < this.rows.length; at += step) {
-          if (this.rows[at].kind === "node") {
+          if (reachable(this.rows[at])) {
             next = this.rows[at];
-            break;
+            left -= 1;
+            if (!left) break;
           }
         }
+      } else if (event.key === "Home" || event.key === "End") {
+        const nodes = this.rows.filter(reachable);
+        next = event.key === "Home" ? nodes[0] : nodes[nodes.length - 1];
+      } else if (event.key === "Enter" && row) {
+        if (row.kind === "node" && row.node.has_children) {
+          this.toggle(row.node);
+        } else if (row.kind !== "node") {
+          this.cursorKey = null;
+          this.clickRow(row);
+        }
+      } else if (row && row.kind !== "node") {
+        return;
       } else if (event.key === "ArrowRight" && row && row.node.has_children) {
         if (!this.expanded[row.node.offset]) {
           this.toggle(row.node);
@@ -316,7 +350,12 @@ export default {
       }
       event.preventDefault();
       if (next) {
-        this.$emit("select", next.node);
+        if (next.kind === "node") {
+          this.cursorKey = null;
+          this.$emit("select", next.node);
+        } else {
+          this.cursorKey = next.key;
+        }
         this.$nextTick(() => {
           const at = this.rows.indexOf(next);
           if (at >= 0) {
@@ -354,6 +393,10 @@ export default {
 .asn1-row--selected,
 .asn1-row--selected:hover {
   background: var(--rapo-selected);
+}
+.asn1-row--cursor {
+  outline: 2px solid var(--rapo-teal);
+  outline-offset: -2px;
 }
 .chevron {
   width: 14px;

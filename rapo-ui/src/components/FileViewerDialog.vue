@@ -191,7 +191,19 @@
           </div>
 
         </div>
-        <div v-if="layout === 'split'" class="viewer-split-handle" title="Drag to resize" @mousedown.prevent="startDrag" />
+        <div
+          v-if="layout === 'split'"
+          class="viewer-split-handle"
+          title="Drag to resize (or the arrow keys)"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the file and records panes"
+          :aria-valuenow="Math.round(ratio)"
+          aria-valuemin="15"
+          aria-valuemax="85"
+          tabindex="0"
+          @pointerdown.prevent="startDrag"
+          @keydown="nudgeSplit" />
         <div v-if="recordsShown" v-show="layout !== 'file'" class="col q-px-md q-pt-sm q-pb-md records-wrap">
           <file-records-pane :file-id="file.id" />
         </div>
@@ -600,16 +612,29 @@ export default {
         this.ratio = Math.min(Math.max(((moved.clientY - box.top) / box.height) * 100, 15), 85);
       };
       const stop = () => {
-        window.removeEventListener("mousemove", move);
-        window.removeEventListener("mouseup", stop);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", stop);
         writeStorage(SPLIT_KEY, { ratio: Math.round(this.ratio) });
         if (this.view) {
           this.view.requestMeasure();
         }
       };
       move(event);
-      window.addEventListener("mousemove", move);
-      window.addEventListener("mouseup", stop);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", stop);
+    },
+    // The arrow keys on the bar move it by 5%.
+    nudgeSplit(event) {
+      const step = { ArrowUp: -5, ArrowDown: 5 }[event.key];
+      if (!step) {
+        return;
+      }
+      event.preventDefault();
+      this.ratio = Math.min(Math.max(this.ratio + step, 15), 85);
+      writeStorage(SPLIT_KEY, { ratio: Math.round(this.ratio) });
+      if (this.view) {
+        this.view.requestMeasure();
+      }
     },
     // The Delimiter field as typed; Save keeps it for the datasource.
     typeLayout(value) {
