@@ -22,8 +22,12 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
 1. **The UI follows the token.** Menu items, pages and actions the token may not use are hidden; the control, KPI
    type and datasource editors and the ASN.1 grammars open read only (fields and code do not change; the KPIs of a
    control, the email's folds, file lists, the archive, the file log stay browsable; keys and paste do not reach their
-   fields either); the header names the user (scopes, expiry, Sign out) and a banner warns
-   14 days before the token expires. A revoked token signs its open pages out within about 30 s, a changed one
+   fields either); the header names the user and a banner warns
+   14 days before the token expires. The user menu shows the user, the token's label, its level per area (areas
+   without access on one line), the expiry (amber within 14 days, also a dot on the header avatar) and Free SQL.
+   *Reset my token* gives the signed-in user token a new secret with the same scopes and expiry
+   (`reset-my-token`): the browser switches to it and shows it once; other browsers and scripts using the old one are
+   signed out. The master token is changed only in rapo.ini. A revoked token signs its open pages out within about 30 s, a changed one
    reconnects with its new scopes. Live events go only to the areas a token may view; an analysis session belongs to
    its token; only the token that started a discrepancy analysis (or the master token) may stop it.
 1. **Who did it.** Changes made with a user token are recorded under its email (`rapo_config.created_by/updated_by`,

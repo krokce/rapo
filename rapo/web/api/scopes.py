@@ -100,8 +100,9 @@ PRESETS = {
              'free_sql': True},
 }
 
-# Open to every valid token.
-PUBLIC = {'help', 'status', 'session', 'version', 'info', 'whoami'}
+# Open to every valid token (reset-my-token acts only on the caller's own).
+PUBLIC = {'help', 'status', 'session', 'version', 'info', 'whoami',
+          'reset-my-token'}
 
 # Only the master token ([API] token of rapo.ini).
 MASTER = {'get-api-tokens', 'create-api-token', 'update-api-token',

@@ -57,7 +57,7 @@ A scope is a level per area; a level includes the ones below it (`none` < `view`
 | `files`       | view, operate             | The file log: `get-files-day`, `get-ds-file-log(-text)`, `search-files`, `get-pdi-state` | `set-file-status`, lane locks, `check-ds-upload`, `upload-ds-file`, `refresh-file-summary` | |
 | `instance`    | view, operate, edit       | `parameters`, health and sessions, `get-config-catalogue`, `get-config-changes`, `get-temp-tables` | `drop-temp-tables`                | `set-config-option`, `reload-config`              |
 
-`help`, `status`, `session`, `version`, `info` and `whoami` are open to every token; without `instance: view`, `status`
+`help`, `status`, `session`, `version`, `info`, `whoami` and `reset-my-token` are open to every token; without `instance: view`, `status`
 and `session` answer `server`, `username`, `pid` and `url` as null, as `info` does with the paths. A few reads are also open to the
 area whose page shows them (e.g. `get-all-controls` to `scheduler: view`, `get-ds-list` to `files: view`); the full
 rule is `ROUTES` and `ALSO` in `rapo/web/api/scopes.py`. A route without a scope there stops the server at start.
@@ -1404,6 +1404,11 @@ lane lock, without `data: view` no download, without `controls: edit` and Free S
 #### `GET /api/whoami`
 The caller: `{master, token_id, user_name, user_email, label, scopes, free_sql, expires_at}`. The master token has
 `master: true`, every area at its highest level and no user. `401` for a token that is not valid.
+
+#### `POST /api/reset-my-token`
+No parameters: the caller's own user token gets a new secret with the same user, scopes and expiry; the old one stops
+working at once (open UI pages and live connections of it are signed out). Answers the row plus `token`, shown only
+this once. `400` for the master token (it is set in rapo.ini).
 
 #### `GET /api/get-config-catalogue`
 Every option of `rapo.ini` rapo knows (`rapo/options.py`), in sections, for the Configuration tab:

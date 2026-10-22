@@ -59,37 +59,71 @@
         <q-icon v-else name="fas fa-plug fa-rotate-90" size="18px" class="q-ml-sm" color="red">
           <q-tooltip>Disconnected</q-tooltip>
         </q-icon>
-        <!-- Who is signed in: the user of the token, or the master token of rapo.ini. -->
-        <q-btn v-if="getTokenIsValid && whoami" flat dense no-caps no-wrap size="sm" class="q-ml-sm user-btn" :icon="whoami.master ? 'fas fa-key' : 'fas fa-user-circle'" :label="$q.screen.gt.sm ? signedInName : undefined" aria-label="Signed in as">
-          <q-menu anchor="bottom right" self="top right">
-            <q-list dense style="min-width: 260px">
-              <q-item>
-                <q-item-section>
-                  <q-item-label class="text-weight-medium">{{ signedInName }}</q-item-label>
-                  <q-item-label caption v-if="!whoami.master">{{ whoami.user_email }}{{ whoami.label ? ` · ${whoami.label}` : "" }}</q-item-label>
-                  <q-item-label caption v-else>The token of rapo.ini: every page, and the API tokens of users</q-item-label>
-                </q-item-section>
-              </q-item>
-              <template v-if="!whoami.master">
-                <q-separator />
-                <q-item v-for="line in signedInScopes" :key="line">
-                  <q-item-section class="text-caption">{{ line }}</q-item-section>
-                </q-item>
-                <q-item v-if="!signedInScopes.length">
-                  <q-item-section class="text-caption text-grey-7">No area</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section class="text-caption">Free SQL: {{ whoami.free_sql ? "yes" : "no" }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section class="text-caption">Expires: {{ whoami.expires_at ? toDateTimeString(whoami.expires_at) : "never" }}</q-item-section>
-                </q-item>
+        <!-- Who is signed in: the user of the token, or the master token of rapo.ini. An amber dot: the token expires soon. -->
+        <q-btn v-if="getTokenIsValid && whoami" flat dense no-caps no-wrap class="q-ml-sm user-btn" aria-label="Signed in as">
+          <q-avatar size="24px" color="blue-grey-6" text-color="white" class="user-avatar">
+            <q-icon v-if="whoami.master" name="fas fa-key" size="11px" />
+            <span v-else>{{ initials }}</span>
+            <span v-if="expiresSoon" class="health-dot health-dot-warn" />
+          </q-avatar>
+          <span v-if="$q.screen.gt.sm" class="user-btn__name q-ml-sm">{{ signedInName }}</span>
+          <q-menu anchor="bottom right" self="top right" class="user-menu">
+            <div class="user-menu__head row no-wrap items-center">
+              <q-avatar size="40px" color="blue-grey-6" text-color="white">
+                <q-icon v-if="whoami.master" name="fas fa-key" size="18px" />
+                <span v-else>{{ initials }}</span>
+              </q-avatar>
+              <div class="q-ml-md user-menu__who">
+                <div class="user-menu__name">{{ signedInName }}</div>
+                <template v-if="!whoami.master">
+                  <div class="user-menu__caption ellipsis" :title="whoami.user_email">{{ whoami.user_email }}</div>
+                  <div v-if="whoami.label" class="user-menu__token-label ellipsis" :title="whoami.label">{{ whoami.label }}</div>
+                </template>
+                <div v-else class="user-menu__caption">Set in rapo.ini</div>
+              </div>
+            </div>
+            <q-separator />
+            <div class="user-menu__section">
+              <div class="user-menu__section-title">Access</div>
+              <div v-if="whoami.master" class="user-menu__line">Everything, including Free SQL</div>
+              <template v-else>
+                <div v-if="signedInAccess.rows.length" class="user-menu__grid">
+                  <template v-for="row in signedInAccess.rows" :key="row.area">
+                    <span>{{ row.title }}</span>
+                    <span class="level-pill" :class="`level-pill--${row.level}`">{{ row.label }}</span>
+                  </template>
+                </div>
+                <div v-if="signedInAccess.none.length" class="user-menu__muted q-mt-xs">No access: {{ signedInAccess.none.join(", ") }}</div>
               </template>
-              <q-separator />
+            </div>
+            <q-separator />
+            <div class="user-menu__section">
+              <div class="user-menu__section-title">Token</div>
+              <div v-if="whoami.master" class="user-menu__line">
+                <q-icon name="fas fa-infinity" size="12px" class="user-menu__icon" />Never expires &middot; changed only in rapo.ini
+              </div>
+              <template v-else>
+                <div class="user-menu__line" :class="{ 'user-menu__line--warn': expiresSoon }">
+                  <q-icon name="fas fa-hourglass-half" size="12px" class="user-menu__icon" />
+                  <span>{{ expiryText }}</span>
+                  <span v-if="whoami.expires_at" class="user-menu__muted q-ml-auto q-pl-md">{{ toDateTimeString(whoami.expires_at) }}</span>
+                </div>
+                <div v-if="whoami.free_sql" class="user-menu__line text-orange-10">
+                  <q-icon name="fas fa-code" size="12px" class="user-menu__icon" />Free SQL allowed
+                </div>
+              </template>
+            </div>
+            <q-separator />
+            <q-list dense class="q-py-xs">
               <!-- The API tokens of users are managed only with the master token, from its menu. -->
               <q-item v-if="whoami.master" clickable v-close-popup :to="{ name: 'tokens' }" :active="$route.name === 'tokens'" active-class="menu-link--active">
                 <q-item-section avatar><q-icon name="fas fa-key" size="14px" /></q-item-section>
                 <q-item-section>API tokens</q-item-section>
+              </q-item>
+              <!-- A user resets only the own token; the master token is changed in rapo.ini. -->
+              <q-item v-else clickable v-close-popup @click="confirmResetToken">
+                <q-item-section avatar><q-icon name="fas fa-sync-alt" size="14px" /></q-item-section>
+                <q-item-section>Reset my token&hellip;</q-item-section>
               </q-item>
               <q-item clickable v-close-popup @click="disconnect">
                 <q-item-section avatar><q-icon name="fas fa-sign-out-alt" size="14px" /></q-item-section>
@@ -195,6 +229,7 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+    <TokenRevealDialog ref="tokenReveal" />
   </q-layout>
 </template>
 
@@ -209,6 +244,7 @@ import { toDateTimeString } from "./utils/format";
 import { EXPIRY_WARNING_DAYS, LEVEL_LABELS, daysUntil, routeAllowed } from "./utils/scopes";
 import InstanceHealth from "./components/health/InstanceHealth.vue";
 import ConfigCatalogue from "./components/ConfigCatalogue.vue";
+import TokenRevealDialog from "./components/TokenRevealDialog.vue";
 
 // The titles of the scope areas (rapo/web/api/scopes.py AREAS), for the signed-in menu.
 const AREA_TITLES = {
@@ -241,7 +277,7 @@ function readMiniDrawer() {
 }
 
 export default {
-  components: { ConfigCatalogue, InstanceHealth },
+  components: { ConfigCatalogue, InstanceHealth, TokenRevealDialog },
   data() {
     return {
       leftDrawerOpen: false,
@@ -334,6 +370,35 @@ export default {
     disconnect() {
       signOut();
     },
+    // A new secret for the signed-in user token, scopes and expiry unchanged. This browser switches to it (the cookie
+    // too, when the token was remembered; the socket reconnects with it), then it is shown once for scripts and other
+    // browsers, which the old one signs out.
+    confirmResetToken() {
+      const until = this.whoami.expires_at ? `until ${toDateTimeString(this.whoami.expires_at)}` : "without end";
+      this.$q
+        .dialog({
+          title: "Reset your API token?",
+          message:
+            `You get a new token with the same areas, valid ${until} as now. The current token stops working at once: ` +
+            "other browsers and scripts using it are signed out and need the new one. This browser switches over by itself.",
+          persistent: true,
+          focus: "cancel",
+          cancel: { flat: true, label: "Cancel" },
+          ok: { unelevated: true, color: "negative", label: "Reset token" },
+        })
+        .onOk(async () => {
+          try {
+            const result = await api("reset-my-token", { method: "POST" });
+            if (this.$q.cookies.has("rapo_token")) {
+              this.$q.cookies.set("rapo_token", result.token, { sameSite: "Strict", expires: "365d" });
+            }
+            this.$store.commit("updateTokenValue", result.token);
+            this.$refs.tokenReveal.open({ ...result, self: true });
+          } catch (error) {
+            notifyError("Token was not reset.", error);
+          }
+        });
+    },
   },
   computed: {
     themeInfo() {
@@ -355,17 +420,41 @@ export default {
     signedInName() {
       return this.whoami.master ? "Master token" : this.whoami.user_name;
     },
-    // The areas the token reaches, one line each.
-    signedInScopes() {
+    initials() {
+      const words = (this.whoami.user_name || this.whoami.user_email || "?").split(/[\s@._-]+/).filter(Boolean);
+      return words
+        .slice(0, 2)
+        .map((word) => word[0].toUpperCase())
+        .join("");
+    },
+    // The areas the token reaches with their level, and the titles of those it does not reach.
+    signedInAccess() {
       const scopes = this.whoami.scopes || {};
-      return Object.keys(scopes)
-        .filter((area) => scopes[area] !== "none")
-        .map((area) => `${AREA_TITLES[area] || area}: ${LEVEL_LABELS[scopes[area]]}`);
+      const areas = Object.keys(AREA_TITLES);
+      return {
+        rows: areas
+          .filter((area) => scopes[area] && scopes[area] !== "none")
+          .map((area) => ({ area, title: AREA_TITLES[area], level: scopes[area], label: LEVEL_LABELS[scopes[area]] })),
+        none: areas.filter((area) => !scopes[area] || scopes[area] === "none").map((area) => AREA_TITLES[area]),
+      };
+    },
+    expiryDays() {
+      return this.whoami && !this.whoami.master ? daysUntil(this.whoami.expires_at) : null;
+    },
+    expiresSoon() {
+      return this.expiryDays !== null && this.expiryDays <= EXPIRY_WARNING_DAYS;
+    },
+    expiryText() {
+      const days = this.expiryDays;
+      if (days === null) {
+        return "Never expires";
+      }
+      return days < 1 ? "Expires today" : days === 1 ? "Expires tomorrow" : `Expires in ${days} days`;
     },
     // A user token expiring within EXPIRY_WARNING_DAYS says so above every page.
     expiryBanner() {
-      const days = this.whoami && !this.whoami.master ? daysUntil(this.whoami.expires_at) : null;
-      if (days === null || days > EXPIRY_WARNING_DAYS) {
+      const days = this.expiryDays;
+      if (!this.expiresSoon) {
         return null;
       }
       const when = days < 1 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
@@ -505,18 +594,118 @@ export default {
     max-width: 30px
     width: 100%
 
-// The signed-in user's name stays on the icon's line, cut with an ellipsis (the menu shows it whole).
+// The signed-in user's name stays on the avatar's line, cut with an ellipsis (the menu shows it whole).
 .user-btn
-  max-width: 180px
+  max-width: 200px
 
   .q-btn__content
     flex-wrap: nowrap
 
-  .q-btn__content .block
-    overflow: hidden
-    text-overflow: ellipsis
-    white-space: nowrap
-    min-width: 0
+.user-btn__name
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  min-width: 0
+  font-size: 13px
+
+.user-avatar
+  font-size: 11px
+  font-weight: 500
+
+.user-menu
+  width: 300px
+  max-width: 95vw
+
+.user-menu__head
+  padding: 16px
+
+.user-menu .q-item
+  padding: 0 16px
+
+.user-menu .q-item__section--avatar
+  min-width: 30px
+
+.user-menu__who
+  min-width: 0
+
+.user-menu__name
+  font-size: 15px
+  font-weight: 500
+
+.user-menu__caption
+  font-size: 12px
+  color: var(--rapo-muted)
+
+.user-menu__token-label
+  display: inline-block
+  max-width: 100%
+  margin-top: 4px
+  padding: 0 8px
+  border-radius: 10px
+  font-size: 11px
+  line-height: 18px
+  color: var(--rapo-strong)
+  background: var(--rapo-surface-alt)
+  border: 1px solid var(--rapo-border-soft)
+
+.user-menu__section
+  padding: 10px 16px 12px
+
+.user-menu__section-title
+  margin-bottom: 6px
+  font-size: 11px
+  font-weight: 600
+  letter-spacing: 0.05em
+  text-transform: uppercase
+  color: var(--rapo-label)
+
+.user-menu__grid
+  display: grid
+  grid-template-columns: 1fr auto
+  gap: 4px 12px
+  align-items: center
+  font-size: 13px
+
+.user-menu__line
+  display: flex
+  align-items: center
+  font-size: 13px
+  line-height: 22px
+
+  &--warn
+    color: var(--rapo-warn)
+
+.user-menu__icon
+  width: 14px
+  margin-right: 8px
+  color: var(--rapo-label)
+
+.user-menu__line--warn .user-menu__icon
+  color: inherit
+
+.user-menu__muted
+  font-size: 12px
+  color: var(--rapo-muted)
+
+// A token's level in an area: one teal scale, darker the more it allows.
+.level-pill
+  min-width: 64px
+  padding: 0 8px
+  border-radius: 10px
+  font-size: 11px
+  font-weight: 500
+  line-height: 18px
+  text-align: center
+
+  &--view
+    color: var(--rapo-teal)
+    background: var(--rapo-teal-soft)
+  &--operate
+    color: var(--rapo-level-operate-text)
+    background: var(--rapo-level-operate)
+  &--edit
+    color: var(--rapo-on-strong)
+    background: var(--rapo-level-edit)
 
 .menu-link--active
   color: var(--rapo-teal)
@@ -525,6 +714,7 @@ export default {
 
 .health-dot
   position: absolute
+  z-index: 1
   top: 0
   right: 0
   width: 8px

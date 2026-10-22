@@ -3,7 +3,8 @@
   <q-dialog v-model="shown" persistent @hide="result = null">
     <q-card v-if="result" style="width: 720px; max-width: 95vw">
       <q-card-section>
-        <div class="text-h6">Token of {{ result.user_name }}</div>
+        <!-- self: the signed-in user reset the own token (App.vue's user menu). -->
+        <div class="text-h6">{{ result.self ? "Your new token" : `Token of ${result.user_name}` }}</div>
         <div class="text-caption text-grey-7">
           {{ result.user_email }}{{ result.label ? ` · ${result.label}` : "" }} · expires {{ result.expires_at ? toDateTimeString(result.expires_at) : "never" }}
         </div>
@@ -11,7 +12,10 @@
       <q-card-section class="q-pt-none">
         <q-banner dense rounded class="bg-orange-1 text-orange-10 q-mb-md">
           <template #avatar><q-icon name="fas fa-eye-slash" size="16px" /></template>
-          Copy the token now: it is shown only this once. Rapo keeps only a fingerprint of it; a lost token is regenerated.
+          <template v-if="result.self">
+            Copy the token now: it is shown only this once. This browser already uses it; update your scripts and other browsers, the old token no longer works.
+          </template>
+          <template v-else>Copy the token now: it is shown only this once. Rapo keeps only a fingerprint of it; a lost token is regenerated.</template>
         </q-banner>
         <q-input outlined readonly :model-value="result.token" input-class="text-mono">
           <template #append>
@@ -30,7 +34,7 @@
       </q-card-section>
       <q-card-actions align="right">
         <!-- The instructions only: the token is handed over by the administrator, never by mail. -->
-        <q-btn flat no-caps icon="fas fa-envelope" label="Email instructions" :href="mailto" target="_blank">
+        <q-btn v-if="!result.self" flat no-caps icon="fas fa-envelope" label="Email instructions" :href="mailto" target="_blank">
           <q-tooltip>Opens a mail to the user with the address of Rapo, without the token</q-tooltip>
         </q-btn>
         <q-space />

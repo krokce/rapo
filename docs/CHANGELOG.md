@@ -13,6 +13,7 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 
 - **API tokens**: the master token manages per-user tokens (*Master token* menu → *API tokens*): user, expiry, area × level scopes with descriptions, Free SQL; shown once, stored hashed; 403 beyond the scopes.
 - The UI hides what a token may not use (read-only editors and grammars, expiry banner, user menu); revoked tokens are signed out, a database failure never signs out.
+- User menu: access per area, expiry and Free SQL at a glance; *Reset my token* gives a user token a new secret with the same scopes and expiry.
 - Without Free SQL, Data analysis filters are plain filters of the dataset's columns (no subquery, comment or q-quoted literal).
 - Changes and manual runs are attributed to the token's user (`updated_by`, versions, `requested_by`).
 - Results and the Run log: a click on a run's process ID copies it to the clipboard.

@@ -311,8 +311,9 @@ class Store:
         return self._update(token_id, {'expires_at': expires_at},
                             f'extended to {expires_at or "never"}')
 
-    def regenerate(self, token_id):
-        """Give a token a new secret; get its row and the new token."""
+    def regenerate(self, token_id, by_owner=False):
+        """Give a token a new secret, its expiry unchanged; get its row and
+        the new token. `by_owner`: the token's own user reset it."""
         row = self.get(token_id)
         if row.get('revoked_at'):
             raise TokenError('A revoked token can not be regenerated.')
@@ -322,7 +323,8 @@ class Store:
         token = generate()
         result = self._update(token_id, {'token_hash': digest(token),
                                          'token_prefix': token[:PREFIX_SHOWN]},
-                              'regenerated')
+                              'reset by its owner' if by_owner
+                              else 'regenerated')
         return result, token
 
     def revoke(self, token_id):

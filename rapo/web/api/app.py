@@ -312,6 +312,20 @@ def regenerate_api_token(id: int):
     return {**row, 'token': token}
 
 
+@api.post('/reset-my-token')
+def reset_my_token():
+    """Give the caller's own user token a new secret, its scopes and expiry
+    unchanged; the old one stops working. The answer carries the new token,
+    which is never shown again. The master token is changed in rapo.ini."""
+    caller = auth.current()
+    if caller.master:
+        raise fastapi.HTTPException(
+            status_code=400, detail='The master token is set in rapo.ini '
+                                    'and can not be reset here.')
+    row, token = token_answer(token_store.regenerate, caller.token_id, True)
+    return {**row, 'token': token}
+
+
 @api.post('/revoke-api-token')
 def revoke_api_token(id: int):
     """Stop an API token from working; it stays listed."""
