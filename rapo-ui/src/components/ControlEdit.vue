@@ -1083,7 +1083,7 @@ import ComparisonCriteriaBox from "./ComparisonCriteriaBox.vue";
 import ComparisonOutputTableBox from "./ComparisonOutputTableBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import { diffControl, diffKpis, revertControlPath, revertKpiPath } from "../utils/controlDiff";
-import UnsavedChangesDialog from "./UnsavedChangesDialog.vue";
+import editorGuard from "../mixins/editorGuard";
 import { escapeHtml, toDateTimeString } from "../utils/format";
 import FilterChips from "./FilterChips.vue";
 import { KPI_SORT_PREFIX, RUN_SORT_LABELS } from "../utils/runs";
@@ -1130,6 +1130,7 @@ function mergeKpiTypes(types, more) {
 }
 
 export default {
+  mixins: [editorGuard],
   components: {
     CodeBox,
     EditorSkeleton,
@@ -1253,8 +1254,6 @@ export default {
   created() {
     // Pending/finished get-datasource-columns requests by datasource name (see getDatasourceColumns).
     this.columnRequests = {};
-    window.addEventListener("keydown", this.onKeydown);
-    window.addEventListener("beforeunload", this.onBeforeUnload);
     window.addEventListener("resize", this.sizeLogTable);
   },
   computed: {
@@ -1434,6 +1433,13 @@ export default {
     // A token that may view controls but not edit them: the form is shown, but nothing in it reacts and nothing saves.
     readOnly() {
       return !this.$can("controls", "edit");
+    },
+    // For mixins/editorGuard.
+    editorWritable() {
+      return !this.readOnly;
+    },
+    editorNoun() {
+      return "Control";
     },
     // The fields the result table schema depends on, as they would be saved. A change re-checks it.
     schemaKey() {
@@ -2350,10 +2356,7 @@ export default {
         return;
       }
       if (!this.dirty) {
-        this.$q.notify({ color: "grey-7", message: "No changes" });
-        if (mode === "close") {
-          this.$router.push({ name: "controls" });
-        }
+        this.noChanges(mode, "controls");
         return;
       }
       if (this.validate()) {
@@ -2441,62 +2444,29 @@ export default {
         }
       }
     },
-    resolveConflict(mode, message) {
-      this.$q
-        .dialog({
-          title: "Control changed meanwhile",
-          message: `${message} Overwrite it with your version, or reload it and lose your changes?`,
-          cancel: { label: "Keep editing", flat: true },
-          persistent: true,
-          options: {
-            type: "radio",
-            model: "reload",
-            items: [
-              { label: "Reload the saved version (discard my changes)", value: "reload" },
-              { label: "Overwrite it with my version", value: "overwrite" },
-            ],
-          },
-        })
-        .onOk(async (choice) => {
-          if (choice === "overwrite") {
-            // A save on leaving was refused and the navigation canceled: the editor stays.
-            await this.submit(mode === "leave" ? "stay" : mode, false);
-            return;
-          }
-          try {
-            await this.updateControlCatalogue();
-          } catch (error) {
-            notifyError("Failed to reload controls.", error);
-            return;
-          }
-          const latest = this.controlCatalogueById(this.control.control_id);
-          if (latest) {
-            this.reloadControl(latest);
-          }
-        });
+    // A conflict's Reload (mixins/editorGuard): the control as saved meanwhile.
+    async reloadSaved() {
+      try {
+        await this.updateControlCatalogue();
+      } catch (error) {
+        notifyError("Failed to reload controls.", error);
+        return;
+      }
+      const latest = this.controlCatalogueById(this.control.control_id);
+      if (latest) {
+        this.reloadControl(latest);
+      }
+    },
+    saveBeforeLeave() {
+      return this.validate() && this.submit("leave", true);
     },
     cancel() {
       // The route guard asks first when there are unsaved changes.
       this.$router.push({ name: "controls" });
     },
-    // Ctrl+S / Cmd+S is Apply anywhere in the editor, and never the browser's "Save page as".
-    onKeydown(event) {
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "s" || event.key === "S")) {
-        event.preventDefault();
-        // The view dialog does not save the control.
-        if (this.$refs.viewDialog && this.$refs.viewDialog.visible) {
-          return;
-        }
-        if (this.ready && !this.readOnly) {
-          this.persist("stay");
-        }
-      }
-    },
-    onBeforeUnload(event) {
-      if (this.dirty && !this.readOnly) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
+    // The view dialog does not save the control.
+    editorShortcutBlocked() {
+      return Boolean(this.$refs.viewDialog && this.$refs.viewDialog.visible);
     },
     // After a run started from the header: its progress shows in the run log.
     runStarted() {
@@ -2871,8 +2841,6 @@ export default {
   },
   unmounted() {
     clearTimeout(this.kpiRenameTimer);
-    window.removeEventListener("keydown", this.onKeydown);
-    window.removeEventListener("beforeunload", this.onBeforeUnload);
     window.removeEventListener("resize", this.sizeLogTable);
     clearTimeout(this.schemaTimer);
     if (this.stopLiveUpdates) {
@@ -2888,25 +2856,9 @@ export default {
     }
     this.$options.beforeRouteLeave.call(this, to, from, next);
   },
-  // Leaving with unsaved changes (Cancel, the side menu, back) asks first: save, discard or keep editing. A save that
-  // fails (validation, conflict, error) keeps the editor open.
+  // Leaving with unsaved changes (Cancel, the side menu, back) asks first: save, discard or keep editing.
   beforeRouteLeave(to, from, next) {
-    if (!this.dirty || this.saving || this.readOnly) {
-      next();
-      return;
-    }
-    this.$q
-      .dialog({ component: UnsavedChangesDialog })
-      .onOk(async (choice) => {
-        if (choice === "save") {
-          const saved = this.validate() && (await this.submit("leave", true));
-          next(saved ? undefined : false);
-          return;
-        }
-        this.$q.notify({ type: "warning", message: "Changes discarded" });
-        next();
-      })
-      .onCancel(() => next(false));
+    this.confirmLeave(next);
   },
 };
 </script>

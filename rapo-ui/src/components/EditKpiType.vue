@@ -42,7 +42,7 @@
           <template #avatar><q-icon name="fas fa-eye" size="16px" /></template>
           Read only: your token can view KPI types but not change them.
         </q-banner>
-        <q-form v-readonly-guard @submit="$can('kpis', 'edit') && validateAndSave()" @reset="cancel" :class="{ 'editor-readonly': !$can('kpis', 'edit') }">
+        <q-form v-readonly-guard @submit="editorWritable && persist('stay')" @reset="cancel" :class="{ 'editor-readonly': !$can('kpis', 'edit') }">
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
               <div class="q-ma-lg q-gutter-y-md">
@@ -82,10 +82,6 @@
                   </div>
                 </div>
 
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn v-if="$can('kpis', 'edit')" label="Save" type="submit" color="primary" :loading="saving" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
 
@@ -213,13 +209,26 @@
                   </tbody>
                 </q-markup-table>
 
-                <div class="row q-my-md q-gutter-md">
-                  <q-btn v-if="$can('kpis', 'edit')" label="Save" type="submit" color="primary" :loading="saving" />
-                  <q-btn label="Cancel" type="reset" color="primary" flat class="q-ml-sm" />
-                </div>
               </div>
             </q-tab-panel>
           </q-tab-panels>
+
+          <div class="editor-actions row items-center q-gutter-sm q-px-lg q-py-sm">
+            <template v-if="editorWritable">
+              <q-btn label="Save" color="primary" :loading="saving" @click="persist('close')">
+                <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Save and return to the KPI types</q-tooltip>
+              </q-btn>
+              <q-btn label="Apply" color="primary" outline :disable="!dirty || saving" @click="persist('stay')">
+                <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">Save and keep editing (Ctrl+S)</q-tooltip>
+              </q-btn>
+            </template>
+            <q-btn :label="editorWritable ? 'Cancel' : 'Close'" type="reset" color="primary" flat />
+            <q-space />
+            <div v-if="dirty" class="text-orange-9 text-weight-medium row items-center no-wrap">
+              <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
+              Unsaved changes
+            </div>
+          </div>
         </q-form>
       </q-card>
     </div>
@@ -239,6 +248,7 @@ import { toDateTimeString, toMillis } from "../utils/format";
 import { scheduleUnits } from "../utils/schedule";
 import { checkKpiStatement } from "../utils/kpi";
 import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
+import editorGuard from "../mixins/editorGuard";
 
 // The two statements RACS_KPI_PKG falls back to when a control leaves its own column NULL: the KPI value for a
 // run, then the alarm level for that value.
@@ -278,6 +288,7 @@ function emptyKpiType() {
 // One row of racs_kpi_type. The code is the primary key, so an edit that changes it is a rename: the controls
 // that use the type are moved over by the server, which is what the confirmation before saving is about.
 export default {
+  mixins: [editorGuard],
   components: { CodeBox, EditorSkeleton, LoadErrorNotice, ScheduleSummary },
   // The statements of a token that may not edit KPI types are read only.
   provide() {
@@ -292,6 +303,8 @@ export default {
       ready: this.kpiCode === "new",
       loadError: null,
       kpiType: emptyKpiType(),
+      // The form as loaded or last saved, for dirty: nothing unchanged is written, and leaving with changes asks.
+      savedJson: JSON.stringify(emptyKpiType()),
       previousKpiType: null,
       kpiIcon: KPI_ICON,
       usage: [],
@@ -307,6 +320,16 @@ export default {
   },
   computed: {
     ...mapState(["kpiTypes", "controlCatalogue"]),
+    // For mixins/editorGuard.
+    editorWritable() {
+      return this.$can("kpis", "edit");
+    },
+    editorNoun() {
+      return "KPI type";
+    },
+    dirty() {
+      return JSON.stringify(this.kpiType) !== this.savedJson;
+    },
     savedKpiType() {
       return this.previousKpiType ? this.kpiTypes.find((item) => item.kpi_type === this.previousKpiType) || null : null;
     },
@@ -403,9 +426,47 @@ export default {
         this.kpiType[statement.field] = this.kpiType[statement.field] || "";
       }
       this.previousKpiType = data.kpi_type;
+      this.savedJson = JSON.stringify(this.kpiType);
     },
-    // Every validated field lives on the Main tab, so a complaint about one switches back to it.
-    validateAndSave() {
+    // Save ("close": back to the list) or Apply ("stay"); a rename asks first.
+    async persist(mode) {
+      if (this.saving || !this.editorWritable) {
+        return;
+      }
+      if (!this.dirty) {
+        this.noChanges(mode, "kpi-types");
+        return;
+      }
+      if (!this.validate()) {
+        return;
+      }
+      if (this.previousKpiType && this.previousKpiType !== this.kpiType.kpi_type) {
+        this.confirmRename(mode);
+      } else {
+        await this.submit(mode);
+      }
+    },
+    // On leaving: the checks of Save; a rename is confirmed with Save itself (its dialog names the controls moved).
+    async saveBeforeLeave() {
+      if (!this.validate()) {
+        return false;
+      }
+      if (this.previousKpiType && this.previousKpiType !== this.kpiType.kpi_type) {
+        this.$q.notify({ type: "warning", message: "The KPI type is renamed: use Save to confirm the rename." });
+        return false;
+      }
+      return this.submit("leave");
+    },
+    // Nothing locks racs_kpi_type rows, so no save conflicts; for the mixin, the type as last read.
+    reloadSaved() {
+      const saved = this.kpiTypes.find((item) => item.kpi_type === this.previousKpiType);
+      if (saved) {
+        this.loadKpiType(saved);
+      }
+    },
+    // Every validated field lives on the Main tab, so a complaint about one switches back to it. Normalizes the code
+    // and unit in the form when they pass.
+    validate() {
       const code = (this.kpiType.kpi_type || "").trim().toUpperCase();
       const unit = (this.kpiType.kpi_value_unit || "").trim();
       // The unit column holds 10 bytes, not 10 characters, and units like the euro sign take three of them.
@@ -431,20 +492,15 @@ export default {
       if (error) {
         this.$q.notify({ type: "negative", message: error });
         this.tab = "main";
-        return;
+        return false;
       }
 
       this.kpiType.kpi_type = code;
       this.kpiType.kpi_value_unit = unit;
-
-      if (this.previousKpiType && this.previousKpiType !== code) {
-        this.confirmRename();
-      } else {
-        this.save();
-      }
+      return true;
     },
     // A rename moves the racs_kpi_config rows of the controls along with the type, so it is worth naming them.
-    confirmRename() {
+    confirmRename(mode) {
       const names = this.usedByControls;
       const message = names.length
         ? names.length + " control(s) use " + this.previousKpiType + " and will be moved to " + this.kpiType.kpi_type + ": " + names.join(", ") + "."
@@ -456,9 +512,10 @@ export default {
           cancel: true,
           persistent: true,
         })
-        .onOk(() => this.save());
+        .onOk(() => this.submit(mode));
     },
-    async save() {
+    // The write; true when saved. "leave": saved on leaving, the route guard goes on to where it was going.
+    async submit(mode) {
       this.saving = true;
       try {
         await api("save-kpi-type", { method: "POST", body: { ...this.kpiType, previous_kpi_type: this.previousKpiType } });
@@ -466,15 +523,38 @@ export default {
         // Stay on the page so unsaved edits are not lost.
         this.saving = false;
         notifyError("KPI type was not saved.", error);
-        return;
+        return false;
       }
+      const code = this.kpiType.kpi_type;
+      const moved = code !== this.kpiCode;
+      this.savedJson = JSON.stringify(this.kpiType);
       // Nothing watches racs_kpi_type, so the catalogue in the store is reloaded here.
-      await this.updateKpiTypes({ force: true }).catch((error) => notifyError("Failed to reload KPI types.", error));
-      this.$q.notify({ type: "positive", message: "KPI type " + this.kpiType.kpi_type + " was saved successfully." });
-      this.$router.push({ name: "kpi-types" });
+      const types = await this.updateKpiTypes({ force: true }).catch((error) => notifyError("Failed to reload KPI types.", error));
+      this.saving = false;
+      if (mode === "close" || mode === "leave") {
+        this.$q.notify({ type: "positive", message: "KPI type " + code + " was saved successfully." });
+        if (mode === "close") {
+          this.$router.push({ name: "kpi-types" });
+        }
+        return true;
+      }
+      const saved = (types || this.kpiTypes).find((item) => item.kpi_type === code);
+      if (saved) {
+        this.loadKpiType(saved);
+      }
+      // A rename moved the controls' rows to the new code.
+      if (moved) {
+        this.usage = await api("get-kpi-type-usage", { loadingBar: false }).catch(() => this.usage);
+      }
+      this.$q.notify({ type: "positive", message: "KPI type " + code + " was saved." });
+      // A new or renamed type moves to its own URL (the form already holds it).
+      if (moved) {
+        await this.$router.replace({ name: "edit-kpi-type", params: { kpiCode: code } });
+      }
+      return true;
     },
     cancel() {
-      this.$q.notify({ type: "warning", message: "Changes discarded" });
+      // The route guard asks first when there are unsaved changes.
       this.$router.push({ name: "kpi-types" });
     },
     // Examples by the family of the code being edited, e.g. monetary ones for MVA.
@@ -499,6 +579,13 @@ export default {
   },
   mounted() {
     return this.initialLoad();
+  },
+  // Leaving with unsaved changes (Cancel, the side menu, back) asks first: save, discard or keep editing.
+  beforeRouteUpdate(to, from, next) {
+    this.confirmLeave(next);
+  },
+  beforeRouteLeave(to, from, next) {
+    this.confirmLeave(next);
   },
 };
 </script>

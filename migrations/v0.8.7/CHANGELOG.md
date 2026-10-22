@@ -71,3 +71,10 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
    extra Tab stops.
 1. **Page titles.** The browser tab names the page (`Results · RAPO - <instance>`), so tabs and history tell pages
    apart.
+1. **KPI type editor like the others.** The KPI type editor has the sticky Save / Apply / Cancel bar of the control
+   and datasource editors, an *Unsaved changes* marker, Ctrl+S for Apply, and asks before leaving with unsaved changes
+   (it discarded them without asking); Save without changes writes nothing. Apply of a new or renamed type moves to its
+   own address.
+1. **Datasource editor: Save on leaving.** Leaving the datasource editor with unsaved changes now offers Keep editing,
+   Discard or Save, as the control editor does (it offered only Discard). A renamed datasource is saved with Save,
+   whose dialog says what else to rename.

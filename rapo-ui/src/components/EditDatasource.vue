@@ -497,6 +497,7 @@ import { diffControl } from "../utils/controlDiff";
 import { datasourcePayload, diffShape, emptyDatasource, issuesOf } from "../utils/datasources";
 import { liveRefetch } from "../socket";
 import { escapeHtml, formatNumber } from "../utils/format";
+import editorGuard from "../mixins/editorGuard";
 
 const TABS = ["main", "retention", "log"];
 // Tabs merged into others, which links may still name.
@@ -518,6 +519,7 @@ const YES_NO_NUMBER_OPTIONS = [
 // saved datasource, which is also the lock of a save: a datasource changed meanwhile, by anyone, is not overwritten.
 export default {
   name: "EditDatasource",
+  mixins: [editorGuard],
   components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, LoadErrorNotice, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
   props: ["id"],
   data() {
@@ -547,6 +549,13 @@ export default {
     ...mapGetters(["getEnvInfo"]),
     writable() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_writable);
+    },
+    // For mixins/editorGuard.
+    editorWritable() {
+      return this.writable;
+    },
+    editorNoun() {
+      return "Datasource";
     },
     deletable() {
       return Boolean(this.getEnvInfo && this.getEnvInfo.datasources_deletable);
@@ -694,16 +703,10 @@ export default {
       }
     },
   },
-  created() {
-    window.addEventListener("keydown", this.onKeydown);
-    window.addEventListener("beforeunload", this.onBeforeUnload);
-  },
   unmounted() {
     if (this.stopLiveUpdates) {
       this.stopLiveUpdates();
     }
-    window.removeEventListener("keydown", this.onKeydown);
-    window.removeEventListener("beforeunload", this.onBeforeUnload);
     clearTimeout(this.maskTimer);
   },
   mounted() {
@@ -920,10 +923,7 @@ export default {
         return;
       }
       if (!this.dirty) {
-        this.$q.notify({ color: "grey-7", message: "No changes" });
-        if (mode === "close") {
-          this.$router.push({ name: "datasources" });
-        }
+        this.noChanges(mode, "datasources");
         return;
       }
       const problem = this.validate();
@@ -1005,10 +1005,10 @@ export default {
         this.saving = false;
         if (error.status === 409) {
           this.resolveConflict(mode, error.message);
-          return;
+          return false;
         }
         notifyError("Datasource was not saved.", error);
-        return;
+        return false;
       }
       const tab = this.tab;
       this.takeSaved(result.datasource);
@@ -1016,10 +1016,13 @@ export default {
       this.saving = false;
       this.updateDatasourceCatalogue().catch(() => null);
       this.refreshStatus();
-      if (mode === "close") {
+      // "leave": saved on leaving with unsaved changes, the route guard goes on to where it was going.
+      if (mode === "close" || mode === "leave") {
         this.$q.notify({ type: "positive", message: `Datasource ${result.datasource.sourcename} was saved successfully.` });
-        this.$router.push({ name: "datasources" });
-        return;
+        if (mode === "close") {
+          this.$router.push({ name: "datasources" });
+        }
+        return true;
       }
       this.$q.notify({ type: "positive", message: `Datasource ${result.datasource.sourcename} was saved.` });
       this.maskCheck = null;
@@ -1027,73 +1030,40 @@ export default {
       if (firstSave) {
         await this.$router.replace({ name: "edit-datasource", params: { id: String(result.datasource.id) } });
       }
+      return true;
     },
-    resolveConflict(mode, message) {
-      this.$q
-        .dialog({
-          title: "Datasource changed meanwhile",
-          message: `${message} Overwrite it with your version, or reload it and lose your changes?`,
-          cancel: { label: "Keep editing", flat: true },
-          persistent: true,
-          options: {
-            type: "radio",
-            model: "reload",
-            items: [
-              { label: "Reload the saved version (discard my changes)", value: "reload" },
-              { label: "Overwrite it with my version", value: "overwrite" },
-            ],
-          },
-        })
-        .onOk(async (choice) => {
-          if (choice === "overwrite") {
-            await this.submit(mode, false);
-            return;
-          }
-          try {
-            this.takeSaved(await api("get-ds-config", { params: { id: this.saved.id } }));
-          } catch (error) {
-            notifyError("Failed to reload the datasource.", error);
-          }
-        });
+    // A conflict's Reload (mixins/editorGuard): the datasource as saved meanwhile.
+    async reloadSaved() {
+      try {
+        this.takeSaved(await api("get-ds-config", { params: { id: this.saved.id } }));
+      } catch (error) {
+        notifyError("Failed to reload the datasource.", error);
+      }
+    },
+    // On leaving: the checks of Save; a rename is confirmed with Save itself (its dialog says what else to rename).
+    async saveBeforeLeave() {
+      const problem = this.validate();
+      if (problem) {
+        this.tab = problem.tab;
+        this.$q.notify({ type: "negative", message: problem.message });
+        return false;
+      }
+      if (this.saved && this.saved.sourcename !== this.datasource.sourcename) {
+        this.$q.notify({ type: "warning", message: "The datasource is renamed: use Save to confirm the rename." });
+        return false;
+      }
+      return this.submit("leave", true);
     },
     cancel() {
       this.$router.push({ name: "datasources" });
     },
-    confirmLeave(to, next) {
-      // A first save moves to the datasource's own id, with nothing left unsaved; read only, nothing can be saved.
-      if (!this.dirty || this.saving || !this.writable) {
-        next();
-        return;
-      }
-      this.$q
-        .dialog({ title: "Unsaved changes", message: "Discard your unsaved changes?", ok: { label: "Discard", color: "negative" }, cancel: { label: "Keep editing", flat: true }, persistent: true })
-        .onOk(() => {
-          this.$q.notify({ type: "warning", message: "Changes discarded" });
-          next();
-        })
-        .onCancel(() => next(false));
-    },
-    onKeydown(event) {
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "s" || event.key === "S")) {
-        event.preventDefault();
-        if (this.ready) {
-          this.persist("stay");
-        }
-      }
-    },
-    onBeforeUnload(event) {
-      if (this.dirty && this.writable) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    },
   },
   // Another datasource, or leaving, with unsaved changes (Cancel, the side menu, back) asks first.
   beforeRouteUpdate(to, from, next) {
-    this.confirmLeave(to, next);
+    this.confirmLeave(next);
   },
   beforeRouteLeave(to, from, next) {
-    this.confirmLeave(to, next);
+    this.confirmLeave(next);
   },
 };
 </script>

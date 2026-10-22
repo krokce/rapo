@@ -25,6 +25,7 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - Dark theme and contrast: remaining light-only colors follow the theme; CMP names readable on white; heat-strip counts pick their text color by contrast.
 - Keyboard: clickable rows, marks, folds and editor icons are reachable by Tab and Enter; focus rings in the ASN.1 tree and file viewer; disabled-button reasons show on hover.
 - The browser tab names the page.
+- KPI type editor: Save/Apply/Cancel bar, Ctrl+S, unsaved-changes guard; the datasource editor offers Save when leaving with changes.
 
 ## v0.8.6 — 2026-10-14
 
