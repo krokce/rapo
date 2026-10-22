@@ -32,6 +32,7 @@
           :key="String(item.key)"
           class="q-ml-xs q-mr-xs text-no-wrap"
           :class="{ 'cursor-pointer': clickable }"
+          v-keyboard:button="clickable"
           @click="clickable && $emit('filter-trigger', triggerKey({ trigger_type: item.key }))">
           <q-icon :name="triggerOf({ trigger_type: item.key }).icon" size="11px" :class="item.key ? 'text-blue-grey-5' : 'text-grey-5'" />
           {{ item.count }}

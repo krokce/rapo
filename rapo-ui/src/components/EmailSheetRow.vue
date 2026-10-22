@@ -8,7 +8,7 @@
     @dragover="onDragOver"
     @dragleave="over = false"
     @drop="onDrop">
-    <div class="email-sheet__head row no-wrap items-center q-gutter-x-sm" @click="$emit('toggle')">
+    <div class="email-sheet__head row no-wrap items-center q-gutter-x-sm" v-keyboard:button :aria-expanded="String(open)" @click="$emit('toggle')">
       <q-icon
         name="fas fa-grip-vertical"
         size="11px"

@@ -31,12 +31,12 @@ const router = createRouter({
       // Its own chunk, which loads ECharts (shared with the analysis pages) only once the page is open.
       name: "dashboard",
       path: "/dashboard",
-      meta: { scope: ["dashboard", "view"], hideSearch: true },
+      meta: { title: "Dashboard", scope: ["dashboard", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "dashboard" */ "./components/dashboard/DashboardPage.vue"),
     },
     {
       name: "controls",
-      meta: { scope: ["controls", "view"] },
+      meta: { title: "Controls", scope: ["controls", "view"] },
       path: "/controls",
       component: ControlCatalogue,
     },
@@ -44,39 +44,39 @@ const router = createRouter({
       name: "results",
       path: "/results",
       component: ControlResults,
-      meta: { scope: ["runs", "view"], searchPlaceholder: "Search control name or process ID" },
+      meta: { title: "Results", scope: ["runs", "view"], searchPlaceholder: "Search control name or process ID" },
     },
     {
       // The records a file of the PDI Core file log loaded into a table of its datasource (FILE_ID), on the same page.
       name: "file-analysis",
       path: "/analysis/file/:fileId/:table",
-      meta: { scope: ["data", "view"], hideSearch: true },
+      meta: { title: "Data analysis", scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
     },
     {
       // Its own chunk, so ECharts and the analysis components load only when a dataset is analysed.
       name: "data-analysis",
       path: "/analysis/:processId/:dataset",
-      meta: { scope: ["data", "view"], hideSearch: true },
+      meta: { title: "Data analysis", scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DataAnalysis.vue"),
     },
     {
       // What sets a run's discrepancies apart from its normal records; in the analysis chunk.
       name: "discrepancy-analysis",
       path: "/discrepancy-analysis/:processId/:side",
-      meta: { scope: ["data", "view"], hideSearch: true },
+      meta: { title: "Discrepancy analysis", scope: ["data", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "analysis" */ "./components/analysis/DiscrepancyAnalysis.vue"),
     },
     {
       name: "scheduler",
       path: "/scheduler",
-      meta: { scope: ["scheduler", "view"], searchPlaceholder: "Search control name or process ID" },
+      meta: { title: "Scheduler", scope: ["scheduler", "view"], searchPlaceholder: "Search control name or process ID" },
       component: SchedulerPage,
     },
     {
       name: "edit-control",
       path: "/edit-control/:controlId?",
-      meta: { scope: ["controls", "view"], hideSearch: true },
+      meta: { title: "Control", scope: ["controls", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "control-editor" */ "./components/ControlEdit.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -90,13 +90,13 @@ const router = createRouter({
     {
       name: "kpi-types",
       path: "/kpi-types",
-      meta: { scope: ["kpis", "view"], searchPlaceholder: "Search KPI code or description" },
+      meta: { title: "KPI types", scope: ["kpis", "view"], searchPlaceholder: "Search KPI code or description" },
       component: KpiTypes,
     },
     {
       name: "edit-kpi-type",
       path: "/edit-kpi-type/:kpiCode?",
-      meta: { scope: ["kpis", "view"], hideSearch: true },
+      meta: { title: "KPI type", scope: ["kpis", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "kpi-type-editor" */ "./components/EditKpiType.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -110,26 +110,26 @@ const router = createRouter({
     {
       name: "files",
       path: "/files",
-      meta: { scope: ["files", "view"], searchPlaceholder: "Search datasource name or ID, ?file name, #file ID" },
+      meta: { title: "Files", scope: ["files", "view"], searchPlaceholder: "Search datasource name or ID, ?file name, #file ID" },
       component: FileResults,
     },
     {
       name: "files-log",
       path: "/files-log/:id",
-      meta: { scope: ["files", "view"], searchPlaceholder: "Search file name, ?name prefix, #file ID" },
+      meta: { title: "File log", scope: ["files", "view"], searchPlaceholder: "Search file name, ?name prefix, #file ID" },
       component: () => import(/* webpackChunkName: "file-log" */ "./components/FileLogPage.vue"),
       props: true,
     },
     {
       name: "datasources",
       path: "/datasources",
-      meta: { scope: ["datasources", "view"], searchPlaceholder: "Search datasource, directory or mask" },
+      meta: { title: "Datasources", scope: ["datasources", "view"], searchPlaceholder: "Search datasource, directory or mask" },
       component: DatasourceCatalogue,
     },
     {
       name: "edit-datasource",
       path: "/edit-datasource/:id?",
-      meta: { scope: ["datasources", "view"], hideSearch: true },
+      meta: { title: "Datasource", scope: ["datasources", "view"], hideSearch: true },
       component: () => import(/* webpackChunkName: "datasource-editor" */ "./components/EditDatasource.vue"),
       props: true,
       beforeEnter: (to, from, next) => {
@@ -144,13 +144,13 @@ const router = createRouter({
       // The API tokens of users, for the master token only.
       name: "tokens",
       path: "/tokens",
-      meta: { master: true, searchPlaceholder: "Search name, email or label" },
+      meta: { title: "API tokens", master: true, searchPlaceholder: "Search name, email or label" },
       component: () => import(/* webpackChunkName: "tokens" */ "./components/TokensPage.vue"),
     },
     {
       name: "token",
       path: "/token",
-      meta: { hideSearch: true },
+      meta: { title: "Sign in", hideSearch: true },
       component: TokenBox,
     },
     { path: "/:notfound(.*)", redirect: "/dashboard" },

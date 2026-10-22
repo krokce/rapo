@@ -22,6 +22,9 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - File log: files hidden by the filters are no longer acted on; Runtime as `h:mm:ss`.
 - Failed loads show the error with Retry (KPI types, Scheduler, Run log, KPI type and datasource editors, file log, grammars).
 - Keyboard Enter works in the schedule and KPI example menus; smaller fixes to the Run dialog, KPI type permissions and Scheduler refetching.
+- Dark theme and contrast: remaining light-only colors follow the theme; CMP names readable on white; heat-strip counts pick their text color by contrast.
+- Keyboard: clickable rows, marks, folds and editor icons are reachable by Tab and Enter; focus rings in the ASN.1 tree and file viewer; disabled-button reasons show on hover.
+- The browser tab names the page.
 
 ## v0.8.6 — 2026-10-14
 

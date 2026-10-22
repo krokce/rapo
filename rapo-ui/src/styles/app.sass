@@ -17,6 +17,8 @@
   --rapo-drawer: #f5f5f5
   --rapo-surface: #ffffff
   --rapo-surface-alt: #f5f7f8
+  // A surface raised from the page (Quasar's grey-3).
+  --rapo-surface-raised: #eeeeee
   --rapo-muted: #757575
   --rapo-border-soft: rgba(0, 0, 0, 0.12)
   --rapo-highlight: #fff8e1
@@ -92,6 +94,7 @@ body.body--dark
   --rapo-drawer: #181818
   --rapo-surface: #1d1d1d
   --rapo-surface-alt: #242a2d
+  --rapo-surface-raised: #2a2a2a
   --rapo-muted: #a3a3a3
   --rapo-border-soft: rgba(255, 255, 255, 0.14)
   --rapo-highlight: rgba(255, 193, 7, 0.16)
@@ -328,10 +331,10 @@ code, pre, kbd, samp
   color: var(--rapo-muted)
   .q-icon
     font-size: 28px
-    color: #90a4ae
+    color: var(--rapo-label)
 
 .state-notice--error .q-icon
-  color: #e53935
+  color: var(--rapo-heat-error)
 
 // Every table header is compact, as Quasar's dense tables (Results): 28px, 4px above and below. The rows keep their
 // own size; a virtual scroll's virtual-scroll-sticky-size-start is this height.
@@ -359,7 +362,13 @@ body.body--dark
   .bg-grey-2
     background: var(--rapo-drawer) !important
   .bg-grey-3
-    background: #2a2a2a !important
+    background: var(--rapo-surface-raised) !important
+  .bg-blue-1
+    background: rgba(66, 165, 245, 0.16) !important
+  .bg-indigo-2
+    background: #3f4a8a !important
+  .bg-indigo-3
+    background: #4f5bb0 !important
   .bg-blue-grey-1
     background: var(--rapo-grid) !important
   .bg-blue-grey-2
@@ -382,7 +391,7 @@ body.body--dark
     color: #cfd8dc !important
   .text-red-4, .text-red-5, .text-red-6, .text-red-8, .text-red-9, .text-red-10
     color: #ef9a9a !important
-  .text-orange-9, .text-orange-10, .text-deep-orange-9, .text-deep-orange-4, .text-amber-9, .text-amber-10, .text-brown-9
+  .text-orange-9, .text-orange-10, .text-deep-orange, .text-deep-orange-9, .text-deep-orange-4, .text-amber-8, .text-amber-9, .text-amber-10, .text-brown-9
     color: #ffb74d !important
   .text-teal-8, .text-teal-9, .text-teal-10
     color: #4db6ac !important
@@ -390,14 +399,16 @@ body.body--dark
     color: #81c784 !important
   .text-pink-8
     color: #f48fb1 !important
-  .text-lime-8
+  .text-lime-8, .text-lime-10
     color: #dce775 !important
   .text-indigo-4, .text-indigo-6, .text-indigo-7
     color: #9fa8da !important
   .text-purple-6, .text-purple-8
     color: #ce93d8 !important
-  .text-primary
+  .text-primary, .text-blue
     color: #42a5f5 !important
+  .text-blue-10
+    color: #90caf9 !important
   .text-negative
     color: #ff6b6b !important
 

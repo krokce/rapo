@@ -146,6 +146,8 @@
                 size="11px"
                 :class="[run.trigger_type ? 'text-blue-grey-4' : 'text-grey-4', { 'cursor-pointer': filterable }]"
                 :title="filterable ? `${triggerTitle(run)}; click to filter by it` : triggerTitle(run)"
+                v-keyboard:button="filterable"
+                :aria-label="filterable ? `Filter by ${triggerTitle(run)}` : undefined"
                 @click="filterable && $emit('filter', { trigger_type: triggerKey(run) })" />
             </div>
           </td>
@@ -176,6 +178,8 @@
               color="blue-grey-5"
               :class="{ 'cursor-pointer': openRuns }"
               :title="openRuns ? `${supersededTitle(run)}; click to open the run log on this run` : supersededTitle(run)"
+              v-keyboard:button="openRuns"
+              :aria-label="openRuns ? 'Open the run log on this run' : undefined"
               @click="openRuns && $emit('open-run', run)" />
             <span v-else class="run-ver" :style="versionStyle(1)" title="The only run of this period">1</span>
           </td>
@@ -194,7 +198,7 @@
               icon="fas fa-search"
               @click.stop="$emit('filter', { control_name: run.control_name })" />
             <router-link :to="controlLink(run)" :title="openRuns ? `${run.control_name}: open its Run log on this run` : run.control_name">
-              <span class="col cursor-pointer" style="font-size: 13px" :class="'text-' + controlTypeColor(run.control_type)">
+              <span class="col cursor-pointer" style="font-size: 13px" :class="'text-' + controlTypeTextColor(run.control_type)">
                 {{ run.control_name }}
               </span>
             </router-link>
@@ -282,6 +286,8 @@
                   color="amber-9"
                   class="run-warning cursor-pointer"
                   title="Finished with warnings: click for the run details"
+                  aria-label="Finished with warnings: open the run details"
+                  v-keyboard:button
                   @click.stop="$refs.runLogDialog.open(run)">
                   <q-icon name="fas fa-exclamation" size="7px" />
                 </q-badge>
@@ -378,7 +384,7 @@ import RunControlDialog from "./RunControlDialog.vue";
 import RunDatasetMenu from "./RunDatasetMenu.vue";
 import RunLogDialog from "./RunLogDialog.vue";
 import SkeletonRows from "./SkeletonRows.vue";
-import { ACTIVE_RUN_STATUSES, controlType, controlTypeColor, runStatus } from "../constants";
+import { ACTIVE_RUN_STATUSES, controlType, controlTypeTextColor, runStatus } from "../constants";
 import { cancelRun, copyAndNotify, reRun, revokeRun, sendEmail } from "../runActions";
 import { EMAIL_CONTROL_TYPES, sendsEmail } from "../utils/email";
 import { formatNumber, round, toDateString, toDateTimeString, toTimeString } from "../utils/format";
@@ -753,7 +759,7 @@ export default {
     ariaSort,
     cancelRun,
     controlType,
-    controlTypeColor,
+    controlTypeTextColor,
     formatNumber,
     reRun,
     revokeRun,

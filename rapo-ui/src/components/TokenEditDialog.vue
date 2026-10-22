@@ -80,9 +80,11 @@
 
       <q-card-actions align="right">
         <q-btn flat :label="readOnly ? 'Close' : 'Cancel'" v-close-popup />
-        <q-btn v-if="!readOnly" color="primary" :label="tokenId ? 'Save' : 'Create token'" :loading="saving" :disable="!!problem" @click="save">
+        <!-- On a wrapper: a disabled button gets no hover, so the reason would never show. -->
+        <span v-if="!readOnly" class="inline-block">
+          <q-btn color="primary" :label="tokenId ? 'Save' : 'Create token'" :loading="saving" :disable="!!problem" @click="save" />
           <q-tooltip v-if="problem">{{ problem }}</q-tooltip>
-        </q-btn>
+        </span>
       </q-card-actions>
     </q-card>
   </q-dialog>

@@ -317,7 +317,7 @@ export default {
   overflow: auto;
   border: 1px solid var(--rapo-panel-border);
   border-radius: 4px;
-  background: white;
+  background: var(--rapo-surface);
 }
 
 .groups-table {
@@ -362,7 +362,7 @@ export default {
 .share-bar {
   height: 10px;
   max-width: 120px;
-  background: #90a4ae;
+  background: var(--rapo-bar);
   border-radius: 2px;
 }
 </style>

@@ -210,6 +210,8 @@
                 name: 'edit-control',
                 params: { controlId: control.control_id },
               }"
+              tabindex="-1"
+              aria-hidden="true"
               style="text-decoration: none">
               <div>
                 <small class="text-indigo-4"> v.{{ toDateTimeString(control.updated_date) }} </small>

@@ -87,8 +87,8 @@
                   <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ job.process_id }}</td>
                   <!-- The run the job performs now: a chain source or a cascade child runs in the job of another control. -->
                   <td class="control-cell">
-                    <router-link v-if="controlIds.has(job.control_name)" :to="editLink(job.control_name)" class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</router-link>
-                    <span v-else class="text-weight-bold" :class="'text-' + controlTypeColor(job.control_type)">{{ job.control_name }}</span>
+                    <router-link v-if="controlIds.has(job.control_name)" :to="editLink(job.control_name)" class="text-weight-bold" :class="'text-' + controlTypeTextColor(job.control_type)">{{ job.control_name }}</router-link>
+                    <span v-else class="text-weight-bold" :class="'text-' + controlTypeTextColor(job.control_type)">{{ job.control_name }}</span>
                     <span v-if="job.job_control_name && job.job_control_name !== job.control_name" class="text-grey-7 q-ml-sm">
                       for
                       <router-link v-if="controlIds.has(job.job_control_name)" :to="editLink(job.job_control_name)" class="control-ref">{{ job.job_control_name }}</router-link>
@@ -201,12 +201,12 @@
                     {{ fromNow(fire.scheduled_time) }}
                   </td>
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id }, query: { tab: 'scheduler' } }" :class="'text-' + controlTypeColor(fire.control_type)">
+                    <router-link :to="{ name: 'edit-control', params: { controlId: fire.control_id }, query: { tab: 'scheduler' } }" :class="'text-' + controlTypeTextColor(fire.control_type)">
                       {{ fire.control_name }}
                     </router-link>
                   </td>
                   <td class="text-no-wrap ellipsis" :class="{ 'new-day-separator': newDay(filteredUpcoming, index, 'scheduled_time') }">
-                    <span class="cursor-pointer" @click="toggleTrigger(upcomingFilter, fire.trigger_type)">
+                    <span class="cursor-pointer" v-keyboard:button @click="toggleTrigger(upcomingFilter, fire.trigger_type)">
                       <q-icon :name="triggerType(fire.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(fire.trigger_type).label }}
                     </span>
                     <span v-if="fire.via" class="text-grey-6 q-ml-xs" :title="viaTitle(fire)"
@@ -324,7 +324,7 @@
                     <router-link
                       v-if="event.control_name"
                       :to="{ name: 'edit-control', params: { controlId: event.control_id }, query: { tab: 'scheduler' } }"
-                      :class="'text-' + controlTypeColor(event.control_type)">
+                      :class="'text-' + controlTypeTextColor(event.control_type)">
                       {{ event.control_name }}
                     </router-link>
                     <span v-else class="text-grey-7">Deleted control {{ event.control_id }}</span>
@@ -336,7 +336,7 @@
                     {{ toDateString(event.date_to) }}
                   </td>
                   <td class="text-no-wrap" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    <span class="cursor-pointer" :title="event.requested_by ? `Asked for by ${event.requested_by}` : ''" @click="toggleTrigger(filter, event.trigger_type)">
+                    <span class="cursor-pointer" :title="event.requested_by ? `Asked for by ${event.requested_by}` : ''" v-keyboard:button @click="toggleTrigger(filter, event.trigger_type)">
                       <q-icon :name="triggerType(event.trigger_type).icon" color="blue-grey-5" class="q-mr-xs" /> {{ triggerType(event.trigger_type).label }}
                     </span>
                   </td>
@@ -410,7 +410,7 @@
                   </q-chip>
                 </td>
                 <td class="text-weight-bold">
-                  <span v-if="event.control_name" :class="'text-' + controlTypeColor(event.control_type)">{{ event.control_name }}</span>
+                  <span v-if="event.control_name" :class="'text-' + controlTypeTextColor(event.control_type)">{{ event.control_name }}</span>
                   <span v-else class="text-grey-7">Deleted control {{ event.control_id }}</span>
                 </td>
                 <td><date-time-text :value="event.scheduled_time" /></td>
@@ -439,7 +439,7 @@ import SchedulerStatusBar from "./SchedulerStatusBar.vue";
 import LoadErrorNotice from "./LoadErrorNotice.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
-import { TRIGGER_TYPES, controlType, controlTypeColor, runStatus, schedulerEventType } from "../constants";
+import { TRIGGER_TYPES, controlType, controlTypeTextColor, runStatus, schedulerEventType } from "../constants";
 import { cancelRun } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toMillis } from "../utils/format";
@@ -619,7 +619,7 @@ export default {
       return { name: "edit-control", params: { controlId: this.controlIds.get(controlName) }, query: { tab: "scheduler" } };
     },
     controlType,
-    controlTypeColor,
+    controlTypeTextColor,
     runStatus,
     schedulerEventType,
     toDateString,

@@ -49,7 +49,7 @@
         </thead>
       </template>
       <template #default="{ item: token }">
-        <tr :key="token.token_id" class="clickable-row" :class="{ 'text-grey-6': token.state !== 'active' }" @click="$refs.editDialog.open(token)">
+        <tr :key="token.token_id" class="clickable-row" :class="{ 'text-grey-6': token.state !== 'active' }" v-keyboard @click="$refs.editDialog.open(token)">
           <td class="chip-cell">
             <q-chip :title="stateInfo(token.state).label">
               <q-avatar :icon="stateInfo(token.state).icon" :color="stateInfo(token.state).color" text-color="white" />

@@ -77,10 +77,10 @@
               @keyup.enter="startSearch">
               <template #prepend><q-icon name="fas fa-search" size="16px" /></template>
               <template #append>
-                <q-btn aria-label="Match case" flat dense no-caps class="viewer-toggle" :color="matchCase ? 'primary' : 'grey-8'" :class="{ 'viewer-toggle--on': matchCase }" label="Aa" @click="matchCase = !matchCase">
+                <q-btn aria-label="Match case" :aria-pressed="String(matchCase)" flat dense no-caps class="viewer-toggle" :color="matchCase ? 'primary' : 'grey-8'" :class="{ 'viewer-toggle--on': matchCase }" label="Aa" @click="matchCase = !matchCase">
                   <q-tooltip>Match case</q-tooltip>
                 </q-btn>
-                <q-btn aria-label="Regular expression" flat dense no-caps class="viewer-toggle" :color="regex ? 'primary' : 'grey-8'" :class="{ 'viewer-toggle--on': regex }" label=".*" @click="regex = !regex">
+                <q-btn aria-label="Regular expression" :aria-pressed="String(regex)" flat dense no-caps class="viewer-toggle" :color="regex ? 'primary' : 'grey-8'" :class="{ 'viewer-toggle--on': regex }" label=".*" @click="regex = !regex">
                   <q-tooltip>Regular expression (Python's re)</q-tooltip>
                 </q-btn>
               </template>
@@ -914,6 +914,11 @@ export default {
 }
 .file-viewer :deep(.cm-editor.cm-focused) {
   outline: none;
+}
+/* A ring only for a keyboard focus (Tab), as everywhere else; a click into the text shows none. */
+.file-viewer :deep(.cm-editor:has(.cm-content:focus-visible)) {
+  outline: 2px solid var(--rapo-teal);
+  outline-offset: -2px;
 }
 .file-viewer :deep(.cm-cursor) {
   display: none !important;

@@ -427,8 +427,10 @@ export default {
     },
     // The browser tab names the instance, e.g. "RAPO - AUT Dev".
     documentTitle() {
+      // The page first (route meta.title), so tabs and history tell pages apart.
       const name = this.getTokenIsValid && this.getEnvInfo && this.getEnvInfo.instance_name;
-      return name ? `RAPO - ${name}` : "RAPO";
+      const app = name ? `RAPO - ${name}` : "RAPO";
+      return this.$route.meta.title ? `${this.$route.meta.title} · ${app}` : app;
     },
     // Pages without a global search (editor, token page) set meta.hideSearch on their route, and a page that
     // searches something else than controls sets meta.searchPlaceholder.
@@ -498,18 +500,10 @@ export default {
     border-radius: 0
     border-style: solid
     border-width: 1px 1px 1px 0
-    border-color: rgba(0,0,0,.24)
+    border-color: var(--rapo-border-soft)
     max-width: 30px
     width: 100%
 
-  &__drawer-footer-link
-    color: inherit
-    text-decoration: none
-    font-weight: 500
-    font-size: .75rem
-
-    &:hover
-      color: #000
 // The signed-in user's name stays on the icon's line, cut with an ellipsis (the menu shows it whole).
 .user-btn
   max-width: 180px

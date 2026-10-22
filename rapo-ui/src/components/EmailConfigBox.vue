@@ -39,7 +39,7 @@
           </q-toggle>
         </div>
         <div v-if="email.send_when === 'evaluate_sql'" class="email-evaluate" :class="{ 'email-evaluate--open': evaluateOpen }">
-          <div class="email-evaluate__head row no-wrap items-center q-gutter-x-sm" @click="evaluateOpen = !evaluateOpen">
+          <div class="email-evaluate__head row no-wrap items-center q-gutter-x-sm" v-keyboard:button :aria-expanded="String(evaluateOpen)" @click="evaluateOpen = !evaluateOpen">
             <q-chip class="email-evaluate__kind" title="The email is sent only when this query returns a number above 0">
               <q-avatar icon="fas fa-calculator" color="deep-orange-6" text-color="white" />
               Evaluate SQL

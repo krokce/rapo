@@ -1,20 +1,21 @@
 <template>
-  <q-btn
-    v-if="status"
-    :color="stopped ? 'green' : 'deep-orange'"
-    :icon="stopped ? 'fas fa-play' : 'fas fa-stop'"
-    :label="stopped ? 'Start scheduler' : 'Stop scheduler'"
-    :disable="status.state === 'off' || busy"
-    :loading="busy"
-    rounded
-    no-caps
-    unelevated
-    padding="0 12px"
-    class="toggle-button"
-    @click="toggle">
+  <!-- The tooltips sit on a wrapper: a disabled button gets no hover, so its reason would never show. -->
+  <span v-if="status" class="inline-block">
+    <q-btn
+      :color="stopped ? 'green' : 'deep-orange'"
+      :icon="stopped ? 'fas fa-play' : 'fas fa-stop'"
+      :label="stopped ? 'Start scheduler' : 'Stop scheduler'"
+      :disable="status.state === 'off' || busy"
+      :loading="busy"
+      rounded
+      no-caps
+      unelevated
+      padding="0 12px"
+      class="toggle-button"
+      @click="toggle" />
     <q-tooltip v-if="status.state === 'off'">The scheduler is disabled for this server in rapo.ini or in development mode.</q-tooltip>
     <q-tooltip v-else>{{ stopped ? "Scheduled controls run again from now on" : "No scheduled control runs on any server until started again" }}</q-tooltip>
-  </q-btn>
+  </span>
 </template>
 
 <script>

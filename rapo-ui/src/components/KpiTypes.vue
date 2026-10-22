@@ -90,7 +90,7 @@
       </template>
       <!-- The row opens the editor; what reacts on its own (the unit chip, the menu) stops the click. -->
       <template #default="{ item: kpiType }">
-        <tr :key="kpiType.kpi_type" class="clickable-row" @click="$router.push({ name: 'edit-kpi-type', params: { kpiCode: kpiType.kpi_type } })">
+        <tr :key="kpiType.kpi_type" class="clickable-row" v-keyboard @click="$router.push({ name: 'edit-kpi-type', params: { kpiCode: kpiType.kpi_type } })">
           <td class="text-left">
             <q-chip :title="kpiType.kpi_value_unit || 'No unit'">
               <q-avatar :icon="kpiIcon" :color="kpiUnitColor(kpiType.kpi_value_unit)" text-color="white" />

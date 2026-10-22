@@ -1,6 +1,7 @@
 <template>
   <div class="schedule-summary row no-wrap items-center" :class="{ compact }" :title="title">
-    <router-link :to="editLink" class="summary-link row no-wrap items-center">
+    <!-- A second way to the same place for the mouse; the text link below is the one Tab reaches. -->
+    <router-link :to="editLink" class="summary-link row no-wrap items-center" tabindex="-1" aria-hidden="true">
       <q-avatar :size="compact ? '22px' : '28px'" :color="avatarColor" text-color="white" :icon="avatarIcon" class="summary-avatar" />
     </router-link>
     <div class="col summary-lines">

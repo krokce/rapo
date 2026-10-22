@@ -343,8 +343,8 @@ export default {
 }
 
 .cm-editor.cm-focused {
-  border: 1px solid #027be3;
-  outline: 1px solid #027be3;
+  border: 1px solid var(--q-primary);
+  outline: 1px solid var(--q-primary);
 }
 
 .cm-activeLine {
@@ -352,7 +352,7 @@ export default {
 }
 
 .cm-focused .cm-activeLine {
-  background: rgba(100, 100, 100, 0.1) !important;
+  background: var(--rapo-row-hover) !important;
 }
 
 .cm-activeLineGutter {
@@ -404,7 +404,7 @@ export default {
 }
 
 .cm-focused .cm-activeLineGutter {
-  background: rgba(100, 100, 100, 0.1) !important;
+  background: var(--rapo-row-hover) !important;
 }
 
 /* Table-name completions (CodeMirror's SQL schema completion gives them type "type") get the same "database"

@@ -56,7 +56,7 @@
                 <i v-if="option.restart" class="config-dot config-dot-restart" title="Read at start: a change applies after a restart, and is made in rapo.ini on the server" />
                 <i v-if="option.unknown" class="config-dot config-dot-unknown" title="Set in rapo.ini, but no option rapo reads: a typo or a removed option" />
               </td>
-              <td class="config-value" :class="{ 'config-editable': option.editable }" @click="option.editable && openEditor($event, section, option)">
+              <td class="config-value" :class="{ 'config-editable': option.editable }" v-keyboard:button="option.editable" :aria-label="option.editable ? `Edit ${option.name}` : undefined" @click="option.editable && openEditor($event, section, option)">
                 <template v-if="option.secret">
                   <q-icon name="fas fa-lock" size="10px" class="q-mr-xs text-grey-6" />
                   <span class="config-muted">{{ option.set ? "set (hidden)" : "not set" }}</span>
@@ -379,7 +379,7 @@ export default {
   color: var(--rapo-teal)
   visibility: hidden
 
-tr:hover .config-pencil
+tr:hover .config-pencil, td:focus-visible .config-pencil
   visibility: visible
 
 .config-set

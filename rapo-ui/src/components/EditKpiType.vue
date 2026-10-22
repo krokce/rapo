@@ -122,6 +122,7 @@
                       v-for="row in sortedUsedControls"
                       :key="row.control.control_name"
                       :class="{ 'clickable-row': !row.missing }"
+                      v-keyboard="!row.missing"
                       @click="!row.missing && $router.push({ name: 'edit-control', params: { controlId: row.control.control_id }, query: { tab: 'kpi' } })">
                       <td>
                         <q-chip v-if="!row.missing" size="12px" :title="controlType(row.control.control_type).label">

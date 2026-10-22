@@ -55,3 +55,19 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
    the Scheduler page reloads the control catalogue only when controls change (not each time a fire passes); the
    Dashboard notices a new hour and day by the browser's local clock (it used UTC); the incoming files list keeps the
    kind picked last when an older listing answers late.
+1. **Dark theme and contrast.** The Group by table, the share bars, the run trend chart, the code editors' focus ring
+   and active line, the empty/error notices and the run log's level colors follow the theme (some stayed light-theme
+   colors in dark mode); the version bubbles of the Run log and Results keep readable numbers in dark mode. Comparison
+   (CMP) control names are written in a darker lime that reads on white (the chip keeps its color). The counts in the
+   Dashboard's heat strips pick white or dark text by the cell's actual color, so light hues (Waiting, Missed) stay
+   readable.
+1. **Keyboard access.** Tab reaches and Enter opens: the rows of KPI types, API tokens, a KPI type's Controls tab and
+   the ASN.1 grammars; the editable `rapo.ini` values of Instance details (the pencil shows on focus); the trigger,
+   history (⟲) and warning marks of Results, the Run log and the Scheduler; the email's Evaluate SQL and sheet folds
+   (announced as expanded or not); the control editor's *Manage versions*, *Get all columns*, schema notice and
+   *Unsaved changes*. The ASN.1 tree and the file viewer's text show a focus ring; the viewer's Aa/.*/= toggles say
+   whether they are on; the schedule fields' example buttons are named *Examples*. The reason a Stop scheduler or Save
+   token button is disabled now shows on hover. The schedule column and the version line of Controls are no longer
+   extra Tab stops.
+1. **Page titles.** The browser tab names the page (`Results · RAPO - <instance>`), so tabs and history tell pages
+   apart.

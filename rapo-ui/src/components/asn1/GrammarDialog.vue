@@ -49,7 +49,7 @@
             </thead>
           </template>
           <template #default="{ item: grammar }">
-            <tr :key="grammar.name" class="clickable-row" @click="$refs.editor.openEdit(grammar.name)">
+            <tr :key="grammar.name" class="clickable-row" v-keyboard @click="$refs.editor.openEdit(grammar.name)">
               <td class="text-left text-weight-bold">{{ grammar.name }}</td>
               <td class="text-left">
                 <q-chip :title="grammar.kind === 'tagmap' ? 'Tag map of a Pentaho ASN.1 decoder' : 'ASN.1 modules'">

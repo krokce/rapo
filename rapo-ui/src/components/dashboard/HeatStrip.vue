@@ -42,7 +42,7 @@
 
 <script>
 import { compactNumber, formatNumber } from "../../utils/format";
-import { paletteColor } from "../../utils/palette";
+import { paletteColor, prefersStrongText } from "../../utils/palette";
 
 // Counts over time as a strip per category: a row per status (or type, or control), a cell per hour or day, colored in
 // the row's chip color, stronger the more it counts (square root of its share of the row's busiest cell, or of the whole
@@ -103,9 +103,9 @@ export default {
     alpha(row, cell) {
       return 0.18 + 0.82 * Math.min(Math.sqrt(cell.count / this.maxima[row.key]), 1);
     },
-    // Whether a cell is strong enough for white text.
+    // Whether white text reads better than dark on the cell's blended color.
     strong(row, cell) {
-      return Boolean(cell && cell.count) && this.alpha(row, cell) >= 0.55;
+      return Boolean(cell && cell.count) && prefersStrongText(this.color(row.color || "blue-6"), this.alpha(row, cell));
     },
     rowColor(row) {
       return this.color(row.color);

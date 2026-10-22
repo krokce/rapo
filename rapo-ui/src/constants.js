@@ -2,11 +2,12 @@
 // SVG icons.
 import { fasCodeCompare, fasFileCircleCheck } from "@quasar/extras/fontawesome-v6";
 
-// Control types (rapo_ref_types) with the icon and Quasar color used for their chips, tabs and names.
+// Control types (rapo_ref_types) with the icon and Quasar color used for their chips and tabs; `text` is the color of
+// their names where the chip color is too light for 13px text on white (lime-8 is about 2:1, lime-10 4.5:1).
 export const CONTROL_TYPES = {
   ANL: { label: "Analysis", icon: "fas fa-microscope", color: "pink-8" },
   REC: { label: "Reconciliation", icon: fasCodeCompare, color: "teal-8" },
-  CMP: { label: "Comparison", icon: "fas fa-not-equal", color: "lime-8" },
+  CMP: { label: "Comparison", icon: "fas fa-not-equal", color: "lime-8", text: "lime-10" },
   REP: { label: "Report", icon: "fas fa-file-alt", color: "indigo-6" },
 };
 
@@ -14,6 +15,11 @@ export const CONTROL_TYPE_OPTIONS = Object.entries(CONTROL_TYPES).map(([value, t
 
 export function controlTypeColor(type) {
   return CONTROL_TYPES[type] ? CONTROL_TYPES[type].color : "grey-6";
+}
+
+// The color of a control's name in a table (text, so a readable shade of the type's color).
+export function controlTypeTextColor(type) {
+  return CONTROL_TYPES[type] ? CONTROL_TYPES[type].text || CONTROL_TYPES[type].color : "grey-7";
 }
 
 export function controlType(type) {

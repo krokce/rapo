@@ -19,7 +19,8 @@
 
       <q-input class="col" outlined v-model="scheduleObject.mday" label="Month" v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
+          <q-btn aria-label="Examples" round dense flat icon="fas fa-plus">
+            <q-tooltip>Examples</q-tooltip>
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.mday" :key="menu.menuText" @click="scheduleObject.mday = menu.exampleText">
@@ -36,7 +37,8 @@
 
       <q-input class="col" outlined v-model="scheduleObject.wday" label="Week" v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
+          <q-btn aria-label="Examples" round dense flat icon="fas fa-plus">
+            <q-tooltip>Examples</q-tooltip>
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.wday" :key="menu.menuText" @click="scheduleObject.wday = menu.exampleText">
@@ -162,7 +164,8 @@
         label="Hour"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
+          <q-btn aria-label="Examples" round dense flat icon="fas fa-plus">
+            <q-tooltip>Examples</q-tooltip>
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.hour" :key="menu.menuText" @click="scheduleObject.hour = menu.exampleText">
@@ -185,7 +188,8 @@
         label="Minute"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
+          <q-btn aria-label="Examples" round dense flat icon="fas fa-plus">
+            <q-tooltip>Examples</q-tooltip>
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.min" :key="menu.menuText" @click="scheduleObject.min = menu.exampleText">
@@ -208,7 +212,8 @@
         label="Second"
         v-if="scheduleType === 'X'">
         <template v-slot:append>
-          <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
+          <q-btn aria-label="Examples" round dense flat icon="fas fa-plus">
+            <q-tooltip>Examples</q-tooltip>
             <q-menu>
               <q-list dense class="text-no-wrap">
                 <q-item clickable v-close-popup v-for="menu in examples.sec" :key="menu.menuText" @click="scheduleObject.sec = menu.exampleText">

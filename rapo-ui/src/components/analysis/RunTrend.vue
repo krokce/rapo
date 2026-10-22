@@ -24,10 +24,10 @@
 </template>
 
 <script>
-import { Dark } from "quasar";
 import EChart from "./EChart.vue";
 import { api, notifyError } from "../../api";
 import { formatNumber, toDateTimeString } from "../../utils/format";
+import { tokenColor } from "../../utils/palette";
 import { baseOption, formatPct, valueAxis } from "../../utils/analysis";
 
 const DAYS = 30;
@@ -74,13 +74,13 @@ export default {
       return this.discrepancyTarget ? "var(--rapo-strong)" : "var(--rapo-disc)";
     },
     option() {
-      const dark = Dark.isActive;
-      const disc = dark ? "#ef5350" : "#e53935";
-      const normal = dark ? "#78909c" : "#90a4ae";
-      const strong = dark ? "#cfd8dc" : "#455a64";
+      // The tokens of the legend swatches above, read for the current theme.
+      const disc = tokenColor("rapo-disc");
+      const normal = tokenColor("rapo-normal");
+      const strong = tokenColor("rapo-strong");
       const runs = this.trend.runs;
       const current = runs.findIndex((run) => run.process_id === this.processId);
-      const mark = (value, index, color) => (index === current ? { value, itemStyle: { color, borderColor: dark ? "#eceff1" : "#263238", borderWidth: 2 } } : value);
+      const mark = (value, index, color) => (index === current ? { value, itemStyle: { color, borderColor: tokenColor("rapo-header-text"), borderWidth: 2 } } : value);
       const rate = (run) => (run.fetched ? Math.round(((run.discrepancies || 0) * 10000) / run.fetched) / 100 : null);
       const series = this.discrepancyTarget
         ? [

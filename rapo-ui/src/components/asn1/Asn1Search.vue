@@ -25,7 +25,7 @@
         </q-input>
         <q-input v-model="value" class="col search-value" dense outlined clearable :label="matchExact ? 'Value equals' : 'Value contains'" input-class="text-mono" hide-bottom-space @keyup.enter="start">
           <template #append>
-            <q-btn aria-label="Whole value" flat dense no-caps class="viewer-toggle" :class="{ 'viewer-toggle--on': matchExact }" :color="matchExact ? 'primary' : 'grey-8'" label="=" @click="matchExact = !matchExact">
+            <q-btn aria-label="Whole value" :aria-pressed="String(matchExact)" flat dense no-caps class="viewer-toggle" :class="{ 'viewer-toggle--on': matchExact }" :color="matchExact ? 'primary' : 'grey-8'" label="=" @click="matchExact = !matchExact">
               <q-tooltip>The whole value (else a part of it); any case, any reading or the hex</q-tooltip>
             </q-btn>
           </template>

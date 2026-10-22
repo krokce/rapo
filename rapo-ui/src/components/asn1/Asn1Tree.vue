@@ -334,6 +334,11 @@ export default {
   height: 100%;
   outline: none;
 }
+/* The tree takes the keys (arrows), so a keyboard focus shows on it, not only the selected row. */
+.asn1-tree:focus-visible {
+  outline: 2px solid var(--rapo-teal);
+  outline-offset: -2px;
+}
 .asn1-tree-body {
   min-height: 0;
 }

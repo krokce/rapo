@@ -100,6 +100,8 @@
                       <q-icon
                         name="fas fa-tag"
                         size="sm"
+                        v-keyboard:button
+                        aria-label="Manage versions"
                         @click="$refs.versionsDialog.open()"
                         @click.stop.prevent
                         class="cursor-pointer editor-panel-open"
@@ -460,7 +462,7 @@
                     stack-label
                     label="Select output (leave empty for all columns)">
                     <template v-slot:prepend>
-                      <q-icon name="fas fa-columns" @click.stop.prevent="populateColumns()">
+                      <q-icon name="fas fa-columns" class="cursor-pointer" v-keyboard:button aria-label="Get all columns" @click.stop.prevent="populateColumns()">
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Get all columns </q-tooltip>
                       </q-icon>
                     </template>
@@ -517,7 +519,7 @@
                     stack-label
                     label="Select output A-side (leave empty for all columns)">
                     <template v-slot:prepend>
-                      <q-icon name="fas fa-columns" @click.stop.prevent="populateColumns('A')">
+                      <q-icon name="fas fa-columns" class="cursor-pointer" v-keyboard:button aria-label="Get all columns" @click.stop.prevent="populateColumns('A')">
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Get all columns </q-tooltip>
                       </q-icon>
                     </template>
@@ -535,7 +537,7 @@
                     stack-label
                     label="Select output B-side (leave empty for all columns)">
                     <template v-slot:prepend>
-                      <q-icon name="fas fa-columns" @click.stop.prevent="populateColumns('B')">
+                      <q-icon name="fas fa-columns" class="cursor-pointer" v-keyboard:button aria-label="Get all columns" @click.stop.prevent="populateColumns('B')">
                         <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Get all columns </q-tooltip>
                       </q-icon>
                     </template>
@@ -983,6 +985,7 @@
               v-else-if="schemaNotice"
               class="schema-notice text-weight-medium row items-center no-wrap cursor-pointer"
               :class="schemaNotice.class"
+              v-keyboard:button
               @click="$refs.schemaDialog.open()">
               <q-icon :name="schemaNotice.icon" size="12px" class="q-mr-sm" />
               {{ schemaNotice.label }}
@@ -992,6 +995,7 @@
               v-if="dirty"
               class="text-orange-9 text-weight-medium row items-center no-wrap"
               :class="{ 'cursor-pointer': savedControlJson !== null }"
+              v-keyboard:button="savedControlJson !== null"
               @click="savedControlJson !== null && $refs.controlDiffDialog.open()">
               <q-icon name="fas fa-circle" size="8px" class="q-mr-sm" />
               Unsaved changes
