@@ -9,6 +9,10 @@
             <q-icon name="fas fa-sync fa-spin" />
           </q-avatar>
         </div>
+        <!-- The page's one primary action, on the title row as on every list page. -->
+        <div v-if="$can('controls', 'edit')">
+          <q-btn unelevated color="primary" icon="fas fa-plus" label="New control" :to="{ name: 'edit-control', params: { controlId: 'new' } }" />
+        </div>
       </h2>
       <q-space />
       <div class="row items-center justify-end q-gutter-x-md">
@@ -71,15 +75,6 @@
     <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
-      <q-btn
-        v-if="$can('controls', 'edit')"
-        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
-        size="lg"
-        color="primary"
-        icon="fas fa-plus-circle"
-        label="New control"
-        :to="{ name: 'edit-control', params: { controlId: 'new' } }" />
-
       <q-select
         v-model="filter.type"
         class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"

@@ -202,17 +202,16 @@ import StatTiles from "./StatTiles.vue";
 const SPAN_PARTS = ["timeline", "runs", "files", "kpis"];
 const FIRST_PARTS = ["tiles", "timeline"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// The statuses of a request done, all grey on the Files page, told apart side by side.
-const DONE_STATUS_COLORS = { RECYCLED: "blue-grey-4", RELOADED: "grey-6", DELETED: "blue-grey-7" };
 // The slices of the top datasources (one each, the rest as Others).
 const TOP_SLICES = 7;
-// By datasource, the same in both donuts of Top datasources: enough for two different top lists.
-const TOP_COLORS = ["teal-6", "blue-6", "indigo-4", "purple-4", "amber-8", "cyan-7", "light-green-7", "orange-7", "pink-4", "brown-4", "deep-purple-3", "lime-8", "green-9", "light-blue-8"];
+// By datasource, the same in both donuts of Top datasources: enough for two different top lists. Only hues no status
+// means (green done, deep-orange error, amber waiting, purple duplicate, brown canceled), alternating light and dark.
+const TOP_COLORS = ["teal-6", "blue-8", "pink-4", "indigo-4", "cyan-8", "deep-purple-3", "light-blue-5", "blue-grey-7", "pink-8", "teal-9", "indigo-8", "cyan-5", "deep-purple-6", "blue-grey-4"];
 // The datasources by state, each in one (rapo/dashboard/files.py _lanes).
 const DATASOURCE_STATES = [
   { key: "stalled", label: "Stalled", color: "red-5", icon: "fas fa-hourglass-end", title: "Active datasources whose oldest waiting file waits too long (the last scan)" },
   { key: "delivering", label: "Delivering", color: "green", icon: "fas fa-check-circle", title: "Active datasources with files in the span" },
-  { key: "silent", label: "Silent", color: "blue-grey-4", icon: "fas fa-moon", title: "Active datasources without any file in the span" },
+  { key: "silent", label: "Idle", color: "blue-grey-4", icon: "fas fa-moon", title: "Active datasources without any file in the span (Files flags as Silent one that had files a week earlier)" },
   { key: "disabled", label: "Disabled", color: "grey-5", icon: "fas fa-ban", title: "Datasources on lane 0, which PDI Core does not load" },
 ];
 
@@ -315,14 +314,15 @@ export default {
         });
     },
     slowestParts() {
-      return [{ key: "avg", label: "Average run", color: "indigo-4" }];
+      return [{ key: "avg", label: "Average run", color: "blue-grey-5" }];
     },
     slowestRows() {
       return this.parts.runs.slowest.map((row) => ({
         key: row.control_id,
         label: row.control_name,
         segments: [row.avg_minutes],
-        colors: [controlType(row.control_type).color],
+        // One neutral color: a type color read as a status (the lime of CMP as a warning).
+        colors: ["blue-grey-5"],
         text: formatDuration(row.avg_minutes * 60),
         title: `Longest ${formatDuration(row.max_minutes * 60)} · ${row.runs} runs done`,
       }));
@@ -664,7 +664,7 @@ export default {
     // A file status as its chip shows it, the statuses of a request done told apart.
     fileStatusInfo(code) {
       const info = FILE_STATUSES[code] || { label: code, color: "grey-6" };
-      return { label: info.label, color: DONE_STATUS_COLORS[code] || info.color, icon: info.icon ? info.icon.replace(" fa-spin", "") : null, title: info.hint || info.label };
+      return { label: info.label, color: info.color, icon: info.icon ? info.icon.replace(" fa-spin", "") : null, title: info.hint || info.label };
     },
     timelineColumns(part) {
       return bucketColumns(part.buckets, part.unit);
@@ -740,7 +740,7 @@ export default {
 <style scoped>
 .dashboard__asof {
   font-size: var(--rapo-dash-tick);
-  color: var(--rapo-label);
+  color: var(--rapo-muted);
   white-space: nowrap;
 }
 

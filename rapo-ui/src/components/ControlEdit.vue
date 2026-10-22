@@ -20,10 +20,10 @@
         <q-space />
         <template v-if="control.control_id && $can('runs', 'operate')">
           <run-control-dialog v-if="!dirty" :control_name="control.control_name" :hook="runStarted">
-            <q-btn color="primary" icon="fas fa-play" label="Run" />
+            <q-btn unelevated color="primary" icon="fas fa-play" label="Run" />
           </run-control-dialog>
           <span v-else>
-            <q-btn color="primary" icon="fas fa-play" label="Run" disable />
+            <q-btn unelevated color="primary" icon="fas fa-play" label="Run" disable />
             <q-tooltip anchor="bottom right" self="top right" :offset="[0, 5]">Apply your changes first: a run uses the saved configuration</q-tooltip>
           </span>
         </template>
@@ -32,11 +32,10 @@
       <q-card>
         <q-tabs
           v-model="tab"
-          class="text-white"
-          :class="'bg-' + controlTypeColor(control.control_type)"
+          class="text-white bg-blue-grey-7"
           active-color="light-blue-1"
           indicator-color="light-blue-1"
-          align="justify"
+          align="left"
           inline-label
           narrow-indicator
           no-caps>
@@ -59,20 +58,27 @@
           </q-banner>
           <q-tab-panels v-model="tab" animated keep-alive>
             <q-tab-panel name="main">
+              <!-- Three boxes, as the datasource editor's Main tab; what a field does is its hint, always shown. -->
               <div class="q-ma-lg q-gutter-y-md">
-                <div class="row q-gutter-md">
-                  <q-input
-                    class="col"
-                    outlined
-                    v-model="control.control_name"
-                    label="Control name"
-                    maxlength="45"
-                    @keyup="control && control.control_name && (control.control_name = control.control_name.toUpperCase())" />
+                <q-card class="q-pa-sm" flat bordered>
+                  <q-item-section class="q-ma-xs">
+                    <q-item-label class="text-weight-medium">General</q-item-label>
+                  </q-item-section>
+                  <q-card-section class="q-pt-sm">
+                    <div class="row q-col-gutter-md">
+                      <q-input
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        v-model="control.control_name"
+                        label="Control name *"
+                        maxlength="45"
+                        hint="Upper case; names the result tables"
+                        @update:model-value="(value) => (control.control_name = value ? String(value).toUpperCase() : value)" />
 
-                  <q-input class="col" outlined v-model="control.control_alias" label="Control alias" />
+                      <q-input class="col-12 col-sm-6 col-md" outlined v-model="control.control_alias" label="Control alias" />
 
                   <q-select
-                    class="col"
+                    class="col-12 col-sm-6 col-md"
                     outlined
                     label="Control group"
                     :model-value="control.control_group"
@@ -90,7 +96,7 @@
 
                   <q-select
                     v-if="control.control_id"
-                    class="col-2"
+                    class="col-12 col-sm-6 col-md-3"
                     outlined
                     v-model="controlVersion"
                     label="Version"
@@ -116,135 +122,128 @@
                       </q-item>
                     </template>
                   </q-select>
-                </div>
+                    </div>
+                    <q-input class="q-mt-md" v-model="control.control_description" label="Control description" maxlength="500" outlined autogrow />
+                  </q-card-section>
+                </q-card>
 
-                <div class="row q-gutter-md">
-                  <q-input class="col" v-model="control.control_description" label="Control description" maxlength="500" outlined autogrow />
-                </div>
+                <q-card class="q-pa-sm" flat bordered>
+                  <q-item-section class="q-ma-xs">
+                    <q-item-label class="text-weight-medium">Execution</q-item-label>
+                  </q-item-section>
+                  <q-card-section class="q-pt-sm">
+                    <div class="row q-col-gutter-md">
+                      <q-select
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="control.control_type"
+                        :options="controlTypeOptions"
+                        label="Control type"
+                        @update:model-value="controlTypeChanged" />
 
-                <div class="row q-gutter-md">
-                  <q-select
-                    class="col"
-                    outlined
-                    emit-value
-                    map-options
-                    v-model="control.control_type"
-                    :options="controlTypeOptions"
-                    label="Control type"
-                    @update:model-value="controlTypeChanged" />
+                      <q-select
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        :readonly="control.control_type !== 'REC'"
+                        emit-value
+                        map-options
+                        v-model="control.control_engine"
+                        :options="controlEngineOptions"
+                        label="Control engine"
+                        :hint="control.control_type === 'REC' ? 'Same results either way' : 'Database SQL for this type'" />
 
-                  <q-select
-                    class="col"
-                    outlined
-                    :readonly="control.control_type !== 'REC'"
-                    emit-value
-                    map-options
-                    v-model="control.control_engine"
-                    :options="controlEngineOptions"
-                    label="Control engine">
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Reconciliation can run its SQL from Python ('Database SQL') or inside Oracle <br />
-                      ('PL-SQL procedure', RAPO_USAGE_RULE). Both produce the same results.
-                    </q-tooltip>
-                  </q-select>
+                      <q-input
+                        class="col-12 col-sm-4 col-md-2"
+                        v-model.number="control.parallelism"
+                        type="number"
+                        outlined
+                        label="Parallelism"
+                        :min="1"
+                        :step="1"
+                        hint="PARALLEL hint, up to 4" />
 
-                  <q-select
-                    class="col"
-                    outlined
-                    emit-value
-                    map-options
-                    v-model="control.need_prerun_hook"
-                    :options="yesNoOptions"
-                    label="Pre-run hook">
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      If 'Yes' is selected pre-run hook will be executed before the control is started. <br />
-                      function RAPO_PRERUN_CONTROL_HOOK (in_process_id number) return varchar2
-                    </q-tooltip>
-                  </q-select>
+                      <q-input
+                        class="col-12 col-sm-4 col-md-2"
+                        v-model.number="control.instance_limit"
+                        type="number"
+                        :min="1"
+                        :step="1"
+                        outlined
+                        label="Instance limit *"
+                        hint="Runs at once" />
 
-                  <q-select
-                    class="col"
-                    outlined
-                    emit-value
-                    map-options
-                    v-model="control.need_postrun_hook"
-                    :options="yesNoOptions"
-                    label="Post-run hook">
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      If 'Yes' is selected post-run hook will be executed after control execution completes. <br />
-                      procedure RAPO_POSTRUN_CONTROL_HOOK
-                    </q-tooltip>
-                  </q-select>
+                      <q-input class="col-12 col-sm-4 col-md-2" v-model.number="control.timeout" type="number" outlined label="Timeout (seconds)" hint="Empty: no timeout" />
+                    </div>
+                  </q-card-section>
+                </q-card>
 
-                  <q-select v-if="emailSupported" class="col" outlined emit-value map-options v-model="sendEmail" :options="yesNoOptions" label="Send email">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-envelope" @click.stop.prevent />
-                    </template>
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      If 'Yes' is selected the results are sent per email when a run finishes. <br />
-                      Recipients, condition and attachment are set in the Email tab.
-                    </q-tooltip>
-                  </q-select>
-                </div>
+                <q-card class="q-pa-sm" flat bordered>
+                  <q-item-section class="q-ma-xs">
+                    <q-item-label class="text-weight-medium">Hooks and results</q-item-label>
+                  </q-item-section>
+                  <q-card-section class="q-pt-sm">
+                    <div class="row q-col-gutter-md">
+                      <q-select
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="control.need_prerun_hook"
+                        :options="yesNoOptions"
+                        label="Pre-run hook"
+                        hint="Called before the run"
+                        title="Calls RAPO_PRERUN_CONTROL_HOOK (in_process_id) before the run" />
 
-                <div class="row q-my-md q-gutter-md">
-                  <q-input class="col" v-model.number="control.parallelism" type="number" outlined label="Parallelism" :min="1" :step="1">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-microchip" @click.stop.prevent />
-                    </template>
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Execute in parallel mode (oracle /*PARALLEL*/ hint). <br />Recommended maximum is 4.
-                    </q-tooltip>
-                  </q-input>
+                      <q-select
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="control.need_postrun_hook"
+                        :options="yesNoOptions"
+                        label="Post-run hook"
+                        title="Calls RAPO_POSTRUN_CONTROL_HOOK after the run; the KPIs are calculated by it"
+                        hint="KPIs need it" />
 
-                  <q-input class="col" v-model.number="control.instance_limit" type="number" :min="1" :step="1" outlined label="Instance limit">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-stream" @click.stop.prevent />
-                    </template>
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]"> Number of control instances allowed to run in parallel. </q-tooltip>
-                  </q-input>
+                      <q-select
+                        v-if="emailSupported"
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="sendEmail"
+                        :options="yesNoOptions"
+                        label="Send email"
+                        hint="Set up in the Email tab" />
 
-                  <q-input class="col" v-model.number="control.timeout" type="number" outlined label="Timeout (sec.)">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-stopwatch" @click.stop.prevent />
-                    </template>
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Stop process if runs longer than defined timeout. <br />Leave empty for no timeout.
-                    </q-tooltip>
-                  </q-input>
+                      <q-select
+                        class="col-12 col-sm-6 col-md"
+                        outlined
+                        emit-value
+                        map-options
+                        v-model="withDeletionDrop"
+                        :options="[
+                          { label: 'Yes', value: 'N' },
+                          { label: 'No, delete on each run', value: 'deletion' },
+                          { label: 'No, drop on each run', value: 'drop' },
+                        ]"
+                        label="Keep past results"
+                        hint="Else emptied on each run"
+                        @update:model-value="deletionDropChanged" />
 
-                  <q-select
-                    class="col"
-                    outlined
-                    emit-value
-                    map-options
-                    v-model="withDeletionDrop"
-                    :options="[
-                      { label: 'Yes', value: 'N' },
-                      { label: 'No, delete on each run', value: 'deletion' },
-                      { label: 'No, drop on each run', value: 'drop' },
-                    ]"
-                    label="Keep past results"
-                    @update:model-value="deletionDropChanged">
-                    <q-tooltip anchor="top left" self="bottom left" :offset="[0, 5]">
-                      Results retention policy<br />If 'Yes' is selected define the retention period in the next field.<br />If 'No' is selected the results
-                      will be deleted or dropped on each run.
-                    </q-tooltip>
-                  </q-select>
-
-                  <q-input
-                    class="col"
-                    v-model.number="control.days_retention"
-                    v-if="withDeletionDrop === 'N'"
-                    type="number"
-                    outlined
-                    label="Retention period (days)">
-                    <template v-slot:prepend>
-                      <q-icon name="fas fa-trash-alt" @click.stop.prevent />
-                    </template>
-                  </q-input>
-                </div>
-
+                      <q-input
+                        v-if="withDeletionDrop === 'N'"
+                        class="col-12 col-sm-6 col-md-2"
+                        v-model.number="control.days_retention"
+                        type="number"
+                        outlined
+                        label="Retention (days) *"
+                        hint="Days results are kept" />
+                    </div>
+                  </q-card-section>
+                </q-card>
               </div>
             </q-tab-panel>
 
@@ -1007,7 +1006,9 @@
               <q-btn v-if="schemaSummary.safe" label="Update schema" color="primary" outline :disable="saving || schemaBusy" @click="applySchema('update')">
                 <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Add and widen columns of the result tables, keeping their data</q-tooltip>
               </q-btn>
+              <!-- Only while the tables differ from the configuration; otherwise the Controls list's row menu has it. -->
               <q-btn
+                v-if="schemaNotice"
                 label="Recreate schema"
                 color="negative"
                 :flat="!schemaRecreateSuggested"
@@ -1057,7 +1058,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import { api, notifyError } from "../api";
-import { CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType, controlTypeColor } from "../constants";
+import { CONTROL_ENGINE_OPTIONS, CONTROL_TYPE_OPTIONS, PERIOD_TYPE_OPTIONS, YES_NO_OPTIONS, controlType } from "../constants";
 import { liveRefetch } from "../socket";
 import CodeBox from "./CodeBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
@@ -1551,7 +1552,6 @@ export default {
     },
     ...mapActions(["updateControlCatalogue", "updateKpiTypes"]),
     controlType,
-    controlTypeColor,
     filterDatasourceList(val, update) {
       update(() => {
         const needle = val.toLowerCase();
@@ -2744,6 +2744,12 @@ export default {
     },
   },
   watch: {
+    // A link to another tab of the control already open (the same component, only the query changes).
+    "$route.query.tab"(tab) {
+      if (tab && this.ready) {
+        this.openRouteTab();
+      }
+    },
     // The id always changes with that replace ("new" or the cloned control's id to the saved one), so it ends here.
     controlId() {
       if (this.replacingRoute) {

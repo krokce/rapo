@@ -2,7 +2,7 @@
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-md'">
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
-        <div>File processing</div>
+        <div>Files</div>
         <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
           <q-avatar size="lg" color="grey-5">
@@ -134,7 +134,7 @@
         </span>
       </q-chip>
       <q-space />
-      <q-btn v-if="!globalLock && stateWrite" outline dense no-caps color="negative" icon="fas fa-lock" label="Lock all lanes" padding="4px 10px" @click="setGlobalLock(true)">
+      <q-btn v-if="!globalLock && stateWrite" flat dense no-caps color="grey-8" icon="fas fa-lock" label="Lock all lanes" padding="4px 10px" @click="setGlobalLock(true)">
         <q-tooltip>Insert the LOCK record of PDI_CORE_STATE: no core_load run starts while it exists</q-tooltip>
       </q-btn>
       <q-btn v-if="globalLock && stateDelete" outline dense no-caps color="positive" icon="fas fa-lock-open" label="Unlock all lanes" padding="4px 10px" @click="setGlobalLock(false)">

@@ -4,20 +4,15 @@
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">KPI types</div>
         <div v-else>{{ countTitle }}</div>
+        <!-- The page's one primary action, on the title row as on every list page. -->
+        <div v-if="$can('kpis', 'edit')">
+          <q-btn unelevated color="primary" icon="fas fa-plus" label="New KPI type" :to="{ name: 'edit-kpi-type', params: { kpiCode: 'new' } }" />
+        </div>
       </h2>
     </div>
     <filter-chips v-if="loaded" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
-      <q-btn
-        v-if="$can('kpis', 'edit')"
-        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
-        size="lg"
-        color="primary"
-        icon="fas fa-plus-circle"
-        label="New KPI type"
-        :to="{ name: 'edit-kpi-type', params: { kpiCode: 'new' } }" />
-
       <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.text" label="Code or description" maxlength="45" />
 
       <q-select

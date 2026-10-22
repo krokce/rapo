@@ -4,6 +4,10 @@
       <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">API tokens</div>
         <div v-else>{{ countTitle }}</div>
+        <!-- The page's one primary action, on the title row as on every list page. -->
+        <div>
+          <q-btn unelevated color="primary" icon="fas fa-plus" label="New token" @click="$refs.editDialog.open(null)" />
+        </div>
       </h2>
       <q-space />
       <div class="row q-gutter-xs q-mb-sm" v-if="loaded">
@@ -21,8 +25,7 @@
     <filter-chips v-if="loaded" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
-      <q-btn class="q-mb-md q-pa-sm" size="lg" color="primary" icon="fas fa-plus-circle" label="New token" @click="$refs.editDialog.open(null)" />
-      <div class="col q-ml-md text-grey-7">
+      <div class="col text-grey-7">
         Tokens sign users in to the UI and give scripts access to the API, each up to its scopes. Only the master token of
         rapo.ini manages them.
       </div>

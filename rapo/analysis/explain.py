@@ -170,6 +170,7 @@ def _quick(source, quick_rows, step):
                                 fetched)
     found['factor'] = _factor(found_raw[1], meta['disc_logged'], found)
     meta.update({'stage': 'quick', 'sample_method': fetched['method'],
+                 'min_support': MIN_SUPPORT,
                  'result_sample_method': found['method'],
                  'sample_rows': fetched_raw[1],
                  'weights': [_weight(found), _weight(fetched)]})
@@ -230,6 +231,7 @@ def _refine(source, quick, exact_rows, parallel, step):
     fetched_counts = _scaled(fetched_raw, fetched['factor'])
     found_counts = _scaled(found_raw, found['factor'])
     meta.update({'stage': 'final', 'sample_method': fetched['method'],
+                 'min_support': MIN_SUPPORT,
                  'result_sample_method': found['method'],
                  'sample': fetched.get('share')
                  if fetched['method'] != 'none' else None,

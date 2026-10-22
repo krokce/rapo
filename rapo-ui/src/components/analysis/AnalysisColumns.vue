@@ -12,11 +12,14 @@
       </div>
     </div>
     <div v-if="search && !shown.length" class="state-notice"><q-icon name="fas fa-search" /><div>No column matches.</div></div>
+    <!-- One column per line in a grid, so a long list scans down instead of running on as a paragraph. -->
     <div v-if="unusable.length" class="text-caption text-grey-7 q-mt-md">
-      <q-icon name="fas fa-eye-slash" class="q-mr-xs" />Not profiled:
-      <span v-for="(column, index) in unusable" :key="column.name">
-        <span class="text-weight-medium text-blue-grey-8">{{ column.name.toUpperCase() }}</span> {{ unusableText(column) }}<span v-if="index < unusable.length - 1"> · </span>
-      </span>
+      <div class="q-mb-xs"><q-icon name="fas fa-eye-slash" class="q-mr-xs" />Not profiled ({{ unusable.length }})</div>
+      <div class="unusable-grid">
+        <div v-for="column in unusable" :key="column.name" class="ellipsis" :title="`${column.name.toUpperCase()} ${unusableText(column)}`">
+          <span class="text-weight-medium text-blue-grey-8">{{ column.name.toUpperCase() }}</span> {{ unusableText(column) }}
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -81,5 +84,10 @@ export default {
 <style scoped>
 .column-search {
   width: 260px;
+}
+.unusable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2px 24px;
 }
 </style>

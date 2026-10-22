@@ -138,6 +138,12 @@ export default {
       if (!this.meta.normal) {
         return "Every fetched record is a discrepancy, so there are no normal records to contrast them with.";
       }
+      // A finding needs a bin with at least min_support discrepancies (explain.MIN_SUPPORT): with fewer in all, the
+      // Explained scores below are only indications.
+      const minSupport = this.meta.min_support || 10;
+      if (!this.report.findings.length && this.meta.discrepancies < minSupport) {
+        return `Too few discrepancies to tell what sets them apart: a pattern needs at least ${minSupport} in one bin. The scores below are only indications.`;
+      }
       if (!this.report.findings.length) {
         return "No column sets these discrepancies apart: they are spread like the normal records. The cause is likely elsewhere, e.g. the other side, the matching rules or the timing of the load.";
       }

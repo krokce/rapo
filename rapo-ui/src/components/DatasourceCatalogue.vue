@@ -9,6 +9,10 @@
             <q-icon name="fas fa-sync fa-spin" />
           </q-avatar>
         </div>
+        <!-- The page's one primary action, on the title row as on every list page. -->
+        <div v-if="writable">
+          <q-btn unelevated color="primary" icon="fas fa-plus" label="New datasource" :to="{ name: 'edit-datasource', params: { id: 'new' } }" />
+        </div>
       </h2>
       <q-space />
 
@@ -42,15 +46,6 @@
     <filter-chips v-if="!showSkeleton" :filters="activeFilters" :sort="sortChip" class="q-mb-md" @clear="clearFilters" />
 
     <div class="row items-center q-mb-md">
-      <q-btn
-        v-if="writable"
-        class="col-2 q-mb-md q-pa-sm"
-        size="lg"
-        color="primary"
-        icon="fas fa-plus-circle"
-        label="New datasource"
-        :to="{ name: 'edit-datasource', params: { id: 'new' } }" />
-
       <q-input clearable class="col q-mb-md q-pa-sm" outlined v-model="filter.text" label="Name, directory or mask" maxlength="100" />
 
       <q-select

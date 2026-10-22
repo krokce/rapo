@@ -95,3 +95,25 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
 1. **Consistency.** The column of the control's name is called *Control* in Results, the Run log and the orphaned KPIs
    (it was *Processname*/*Process name*); a process ID on the Scheduler's Running and History tabs copies on click, as
    in Results; the log text of a file in the file log is in the monospace font.
+1. **Discrepancy analysis tells thin evidence apart.** With too few discrepancies for any finding (a pattern needs at
+   least 10 in one bin), the summary says so instead of "No column sets these discrepancies apart", and the
+   *Explained* bars are grey whenever no finding backs them (they were red at e.g. 88% under a summary denying any
+   cause). The report carries `meta.min_support`.
+1. **Compact page chrome.** Page titles are 34px (were 60px), so tables start about 100px higher; buttons are written
+   as labelled (no capitals); *New control*, *New KPI type*, *New datasource* and *New token* are normal buttons beside
+   the title; the control editor's tab bar is blue-grey like the other pages' (it took the control type's color) and
+   all editor tabs sit left; *File processing* is titled *Files*, like its menu entry.
+1. **Quieter destructive actions.** The control editor shows *Recreate schema* only while the result tables differ
+   from the configuration (the Controls row menu always has it); *Lock all lanes* on Files is a flat button; *Run* is
+   flat-colored.
+1. **One meaning per color.** Canceled runs and scheduler events are brown (purple means duplicate); the Files issue
+   *Errors* is deep orange like the ERROR status and *Silent* amber; the Dashboard calls datasources without files in
+   the span *Idle* (Files' *Silent* is the issue of missing files a week later); recycled, reloaded and deleted files
+   have the same distinct greys on the Files page and the Dashboard; the Dashboard's datasource colors avoid status
+   hues; *Slowest controls* bars are one neutral color; correlation strengths are shades of teal (were red/orange).
+1. **Control editor: Main tab in boxes.** General (name, alias, group, version, description), Execution (type, engine,
+   parallelism, instance limit, timeout) and Hooks and results, with a short hint under each field instead of hover
+   tooltips; required fields are marked `*`; the control name is upper-cased also when pasted. A link to another tab
+   of the control already open (`?tab=`) now switches to it.
+1. **Data analysis:** the columns not profiled are listed one per line in a grid (were one long paragraph). The
+   Dashboard's *As of* time is darker.

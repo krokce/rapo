@@ -29,6 +29,10 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - One chip style: attribute, issue and level chips are grey chips with a colored icon; choices are ringed chips instead of button groups.
 - Narrower windows: titles, filters and the file viewer wrap or fit; Dashboard panels share one type scale.
 - *Control* instead of *Processname*; Scheduler process IDs copy on click.
+- Discrepancy analysis: thin evidence (under 10 discrepancies per bin) is said so, and unbacked scores are grey.
+- Compact page titles, unshouted buttons, *New …* beside the title, one tab-bar color; Files is titled *Files*.
+- Control editor Main tab in three boxes with field hints; Recreate schema only on drift; quieter Lock all lanes.
+- Colors keep one meaning: canceled brown, file errors deep orange, Dashboard *Idle* datasources, neutral rankings.
 
 ## v0.8.6 — 2026-10-14
 

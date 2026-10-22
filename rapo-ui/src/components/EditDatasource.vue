@@ -33,7 +33,7 @@
           :class="'bg-' + (datasource.isactive ? 'blue-grey-7' : 'grey-7')"
           active-color="light-blue-1"
           indicator-color="light-blue-1"
-          align="justify"
+          align="left"
           inline-label
           narrow-indicator
           no-caps>

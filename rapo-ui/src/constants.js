@@ -71,7 +71,7 @@ export const RUN_STATUSES = {
   F: { label: "Finishing", icon: "fas fa-circle-notch fa-spin", color: "blue" },
   D: { label: "Done", icon: "fas fa-check-circle", color: "green" },
   E: { label: "Error", icon: "fas fa-exclamation-circle", color: "deep-orange" },
-  C: { label: "Canceled", icon: "fas fa-times-circle", color: "purple-3" },
+  C: { label: "Canceled", icon: "fas fa-times-circle", color: "brown-4" },
   X: { label: "Revoked", icon: "fas fa-times-circle", color: "grey" },
 };
 
@@ -82,7 +82,7 @@ export const ACTIVE_RUN_STATUSES = ["I", "W", "S", "P", "F"];
 
 export function runStatus(status) {
   if (!status) {
-    return { label: "Void", icon: "fas fa-times-circle", color: "deep-purple-3" };
+    return { label: "Void", icon: "fas fa-times-circle", color: "brown-3" };
   }
   return RUN_STATUSES[status] || { label: "Unknown", icon: "fas fa-question-circle", color: "grey" };
 }
@@ -104,7 +104,7 @@ export const SCHEDULER_EVENT_TYPES = {
   STARTED: { label: "Started", icon: "fas fa-play-circle", color: "blue" },
   MISSED: { label: "Missed", icon: "fas fa-exclamation-triangle", color: "amber-8" },
   FAILED: { label: "Failed", icon: "fas fa-exclamation-circle", color: "deep-orange" },
-  CANCELED: { label: "Canceled", icon: "fas fa-times-circle", color: "purple-3" },
+  CANCELED: { label: "Canceled", icon: "fas fa-times-circle", color: "brown-4" },
 };
 
 export const SCHEDULER_EVENT_TYPE_OPTIONS = Object.entries(SCHEDULER_EVENT_TYPES).map(([value, type]) => ({ label: type.label, value }));
@@ -195,7 +195,7 @@ export const DUP_HANDLING_OPTIONS = [
 ];
 
 // File statuses of the PDI Core file log (pdi_core_file_log.filestatus). RECYCLE, RELOAD and DELETE are asked for from
-// the Files page and wait for PDI Core, which then marks them done.
+// the Files page and wait for PDI Core, which then marks them done (greys, told apart side by side).
 export const FILE_STATUSES = {
   WAITING: { label: "Waiting", icon: "fas fa-pause-circle", color: "amber-7", hint: "Files in the file log waiting to be loaded" },
   PROCESSING: { label: "Processing", icon: "fas fa-sync fa-spin", color: "blue", hint: "Files PDI Core is loading" },
@@ -206,9 +206,9 @@ export const FILE_STATUSES = {
   RECYCLE: { label: "Recycle", icon: "fas fa-recycle", color: "indigo", hint: "Files waiting to be recycled: their records deleted, the file loaded again as a new file" },
   RELOAD: { label: "Reload", icon: "fas fa-redo", color: "indigo-4", hint: "Files waiting to be reloaded: loaded again as a new file, their records kept" },
   DELETE: { label: "Delete", icon: "fas fa-trash-alt", color: "red", hint: "Files waiting for their records to be deleted" },
-  RECYCLED: { label: "Recycled", icon: "fas fa-recycle", color: "grey-6", hint: "Files recycled: their records deleted and the file loaded again as a new file" },
+  RECYCLED: { label: "Recycled", icon: "fas fa-recycle", color: "blue-grey-4", hint: "Files recycled: their records deleted and the file loaded again as a new file" },
   RELOADED: { label: "Reloaded", icon: "fas fa-redo", color: "grey-6", hint: "Files reloaded as a new file" },
-  DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "grey-6", hint: "Files whose records were deleted" },
+  DELETED: { label: "Deleted", icon: "fas fa-trash-alt", color: "blue-grey-7", hint: "Files whose records were deleted" },
 };
 
 // What can be asked of a file (set-file-status). PDI Core does the work. `from`: the statuses a file may have (null: any);

@@ -57,7 +57,7 @@ export function datasetAvatar(meta) {
 // The avatar color of a relation's strength (|r| or Cramér's V).
 export function strengthColor(value) {
   const strength = Math.abs(value);
-  return strength >= 0.9 ? "red-7" : strength >= 0.7 ? "orange-8" : "amber-8";
+  return strength >= 0.9 ? "teal-9" : strength >= 0.7 ? "teal-7" : "teal-5";
 }
 
 export function kindInfo(column) {

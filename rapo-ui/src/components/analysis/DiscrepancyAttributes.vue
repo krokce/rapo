@@ -23,7 +23,7 @@
           <span v-if="binningShown(entry.best)" class="text-grey-7"> · {{ entry.best.feature_label.toLowerCase() }}</span>
         </div>
         <div class="col attr-score row no-wrap items-center">
-          <div class="col score-track"><div class="score-bar" :style="{ width: scoreWidth(entry.best.score) }" /></div>
+          <div class="col score-track"><div class="score-bar" :class="{ 'score-bar--weak': !confident }" :style="{ width: scoreWidth(entry.best.score) }" /></div>
           <span class="score-text text-right">{{ formatPct(entry.best.score * 100) }}</span>
         </div>
         <div class="attr-over row no-wrap items-center">
@@ -140,6 +140,11 @@ export default {
       }
       const unrelated = new Set(this.report.unrelated || []);
       return this.columns.filter((entry) => !unrelated.has(entry.column) || entry.column === this.openColumn);
+    },
+    // Whether any finding backs the scores: without one (too few discrepancies, nothing significant) the bars are grey,
+    // so a high score does not read as a cause the summary denies.
+    confident() {
+      return Boolean(this.report.findings && this.report.findings.length);
     },
     topScore() {
       return Math.max(0.0001, ...this.columns.map((entry) => entry.best.score || 0));
@@ -263,6 +268,9 @@ export default {
   height: 100%;
   border-radius: 2px;
   background: var(--rapo-disc);
+}
+.score-bar--weak {
+  background: var(--rapo-normal);
 }
 
 .score-text {
