@@ -44,7 +44,7 @@
       </div>
 
       <q-card-section class="q-gutter-xs">
-        <div class="row no-wrap q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
+        <div class="row q-gutter-xs items-center" v-for="(item, index) in kpiConfigObject" v-bind:key="item.kpi_type">
           <div class="col-auto">
             <q-chip size="18px" class="kpi-code" clickable :title="`Show the statements of ${item.kpi_type} below`" @click="kpiTab = item.kpi_type">
               <q-avatar :icon="kpiIcon" :color="kpiUnitColor(typeUnit(item.kpi_type))" text-color="white" />

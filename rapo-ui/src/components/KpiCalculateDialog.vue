@@ -16,17 +16,18 @@
         <!-- What to calculate: one run, or the latest runs ended D. -->
         <q-card flat bordered class="q-pa-sm">
           <div class="row items-center q-gutter-sm">
-            <q-btn-toggle
-              v-model="mode"
-              no-caps
-              unelevated
-              toggle-color="primary"
-              color="grey-3"
-              text-color="grey-9"
-              :options="[
+            <q-chip
+              v-for="option in [
                 { label: 'This run', value: 'run' },
                 { label: 'Last runs', value: 'backtest' },
-              ]" />
+              ]"
+              :key="option.value"
+              clickable
+              :class="{ 'chip-selected': mode === option.value }"
+              :aria-pressed="String(mode === option.value)"
+              @click="mode = option.value">
+              {{ option.label }}
+            </q-chip>
             <q-select
               v-if="mode == 'run'"
               v-model="processId"

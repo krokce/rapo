@@ -1,6 +1,6 @@
 <template>
   <div class="absolute-center" v-if="!tokenValidationInProgress">
-    <q-card class="my-card">
+    <q-card>
       <q-card-section class="column">
         <div class="text-overline">Please enter a valid token to connect to backend API</div>
         <q-input v-model="token" outlined :type="isPwd ? 'password' : 'text'" hint="RAPO token" @keyup.enter="connect(token)" autofocus>

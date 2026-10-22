@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="showSkeleton">Controls</div>
         <div v-else>{{ countTitle }}</div>
         <div v-if="refreshing && !showSkeleton">
@@ -13,7 +13,8 @@
       <q-space />
       <div class="row items-center justify-end q-gutter-x-md">
         <div v-if="schemaDriftError">
-          <q-chip color="amber-8" text-color="grey-10" icon="fas fa-exclamation-triangle">
+          <q-chip>
+            <q-avatar icon="fas fa-exclamation-triangle" color="amber-8" text-color="white" />
             Schema check failed
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]" max-width="500px">
               Schema drift and orphaned tables cannot be shown: {{ schemaDriftError }}. The server log has the details.
@@ -21,7 +22,8 @@
           </q-chip>
         </div>
         <div v-if="orphanTables.length && $can('controls', 'edit')">
-          <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanDialog.open()">
+          <q-chip clickable @click="$refs.orphanDialog.open()">
+            <q-avatar icon="fas fa-trash-alt" color="red-4" text-color="white" />
             {{ orphanTables.length }} orphaned result table{{ orphanTables.length > 1 ? "s" : "" }}
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
               Result tables no run writes any more: review and drop them
@@ -29,7 +31,8 @@
           </q-chip>
         </div>
         <div v-if="orphanKpis.length && $can('kpis', 'edit')">
-          <q-chip clickable color="red-4" text-color="white" icon="fas fa-trash-alt" @click="$refs.orphanKpisDialog.open()">
+          <q-chip clickable @click="$refs.orphanKpisDialog.open()">
+            <q-avatar icon="fas fa-trash-alt" color="red-4" text-color="white" />
             {{ orphanKpis.length }} orphaned KPI{{ orphanKpis.length > 1 ? "s" : "" }}
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">
               KPIs configured for a name no control has, so never calculated: review, assign or delete them
@@ -37,7 +40,8 @@
           </q-chip>
         </div>
         <div v-if="tempTables.total_tables && $can('instance', 'operate')">
-          <q-chip clickable color="blue-grey" text-color="white" icon="fas fa-trash-alt" @click="$refs.tempDialog.open()">
+          <q-chip clickable @click="$refs.tempDialog.open()">
+            <q-avatar icon="fas fa-trash-alt" color="blue-grey" text-color="white" />
             {{ tempTables.total_tables }} temporary table{{ tempTables.total_tables > 1 ? "s" : "" }} · {{ formatNumber(tempTables.total_mb, 1) }} MB
             <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 5]">Left by failed, canceled or debug runs: review and drop them</q-tooltip>
           </q-chip>
@@ -69,7 +73,7 @@
     <div class="row items-center q-mb-md">
       <q-btn
         v-if="$can('controls', 'edit')"
-        class="col-2 q-mb-md q-pa-sm"
+        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
         size="lg"
         color="primary"
         icon="fas fa-plus-circle"
@@ -78,7 +82,7 @@
 
       <q-select
         v-model="filter.type"
-        class="col-2 q-mb-md q-pa-sm"
+        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
         clearable
         outlined
         options-dense
@@ -229,14 +233,13 @@
                 v-if="control.control_group"
                 clickable
                 size="sm"
-                color="blue-grey-5"
-                text-color="white"
-                icon="fas fa-folder"
                 @click="filter.group = control.control_group.trim()">
+                <q-avatar icon="fas fa-folder" color="blue-grey-5" text-color="white" />
                 {{ control.control_group }}
               </q-chip>
 
-              <q-chip v-if="control.status !== 'Y'" clickable size="sm" color="red-4" text-color="white" icon="fas fa-clock" @click="filter.status = 'N'">
+              <q-chip v-if="control.status !== 'Y'" clickable size="sm" @click="filter.status = 'N'">
+                <q-avatar icon="fas fa-clock" color="red-4" text-color="white" />
                 Scheduler inactive
               </q-chip>
 
@@ -244,10 +247,8 @@
                 clickable
                 v-if="control.need_postrun_hook != 'Y'"
                 size="sm"
-                color="red-4"
-                text-color="white"
-                icon="fas fa-bolt"
                 @click="addAttributeFilter('No Post-run hook')">
+                <q-avatar icon="fas fa-bolt" color="red-4" text-color="white" />
                 No Post-run hook
               </q-chip>
 
@@ -255,15 +256,14 @@
                 clickable
                 v-if="engineOf(control)"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-cogs"
                 :title="engineTitle(control)"
                 @click="addAttributeFilter(`${engineOf(control)} engine`)">
+                <q-avatar icon="fas fa-cogs" color="indigo-4" text-color="white" />
                 {{ engineOf(control) }} engine
               </q-chip>
 
-              <q-chip clickable v-if="lacksKpi(control)" size="sm" color="red-4" text-color="white" :icon="kpiIcon" @click="addAttributeFilter('No KPI')">
+              <q-chip clickable v-if="lacksKpi(control)" size="sm" @click="addAttributeFilter('No KPI')">
+                <q-avatar :icon="kpiIcon" color="red-4" text-color="white" />
                 No KPI
               </q-chip>
 
@@ -271,11 +271,9 @@
                 clickable
                 v-if="driftOf(control)"
                 size="sm"
-                :color="driftColor(driftOf(control))"
-                text-color="white"
-                icon="fas fa-table"
                 :title="driftTitle(driftOf(control))"
                 @click="addAttributeFilter('Schema drift')">
+                <q-avatar icon="fas fa-table" :color="driftColor(driftOf(control))" text-color="white" />
                 Schema drift
               </q-chip>
 
@@ -283,11 +281,9 @@
                 clickable
                 v-if="sourceMissingOf(control)"
                 size="sm"
-                color="negative"
-                text-color="white"
-                icon="fas fa-unlink"
                 :title="`${sourceMissingOf(control).reason}. Runs of this control fail. Open the control to fix it.`"
                 @click="addAttributeFilter('Datasource missing')">
+                <q-avatar icon="fas fa-unlink" color="negative" text-color="white" />
                 Datasource missing
               </q-chip>
 
@@ -295,10 +291,8 @@
                 clickable
                 v-if="control.prerequisite_sql"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-database"
                 @click="addAttributeFilter('Prerequisite SQL')">
+                <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                 Prerequisite SQL
               </q-chip>
 
@@ -306,10 +300,8 @@
                 clickable
                 v-if="control.preparation_sql"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-database"
                 @click="addAttributeFilter('Preparation SQL')">
+                <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                 Preparation SQL
               </q-chip>
 
@@ -317,10 +309,8 @@
                 clickable
                 v-if="control.completion_sql"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-database"
                 @click="addAttributeFilter('Completion SQL')">
+                <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                 Completion SQL
               </q-chip>
 
@@ -328,10 +318,8 @@
                 clickable
                 v-if="sendsEmail(control)"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-envelope"
                 @click="addAttributeFilter('Email')">
+                <q-avatar icon="fas fa-envelope" color="indigo-4" text-color="white" />
                 Email
               </q-chip>
 
@@ -339,10 +327,8 @@
                 clickable
                 v-if="control.need_prerun_hook === 'Y'"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-bolt"
                 @click="addAttributeFilter('Pre-run hook')">
+                <q-avatar icon="fas fa-bolt" color="indigo-4" text-color="white" />
                 Pre-run hook
               </q-chip>
 
@@ -350,10 +336,8 @@
                 clickable
                 v-if="control.case_config"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-tag"
                 @click="addAttributeFilter('Case definition')">
+                <q-avatar icon="fas fa-tag" color="indigo-4" text-color="white" />
                 Case definition
               </q-chip>
 
@@ -361,10 +345,8 @@
                 clickable
                 v-if="iterationCount(control) > 0"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-history"
                 @click="addAttributeFilter('Iterations')">
+                <q-avatar icon="fas fa-history" color="indigo-4" text-color="white" />
                 +{{ iterationCount(control) }} Iteration{{ iterationCount(control) > 1 ? "s" : "" }}
               </q-chip>
 
@@ -372,35 +354,29 @@
                 clickable
                 v-if="chains.has(control.control_name)"
                 size="sm"
-                color="indigo-4"
-                text-color="white"
-                icon="fas fa-link"
                 :title="chainTitle(control)"
                 @click="addAttributeFilter('Chain')">
+                <q-avatar icon="fas fa-link" color="indigo-4" text-color="white" />
                 Chain
               </q-chip>
 
               <q-chip
                 v-if="control.source_type_a"
                 clickable
-                color="green-8"
-                text-color="white"
                 size="sm"
-                icon-right="fas fa-plug fa-rotate-270"
                 @click="filter.system = control.source_type_a.trim()"
                 style="align-items: center">
+                <q-avatar icon="fas fa-plug fa-rotate-270" color="green-8" text-color="white" />
                 {{ control.source_type_a }}
               </q-chip>
               <q-icon v-if="control.source_type_a && control.source_type_b" name="fas fa-wave-square" size="9px" color="green-8" />
               <q-chip
                 v-if="control.source_type_b"
                 clickable
-                color="green-8"
-                text-color="white"
                 size="sm"
-                icon="fas fa-plug fa-rotate-90"
                 @click="filter.system = control.source_type_b.trim()"
                 style="align-items: center">
+                <q-avatar icon="fas fa-plug fa-rotate-90" color="green-8" text-color="white" />
                 {{ control.source_type_b }}
               </q-chip>
               

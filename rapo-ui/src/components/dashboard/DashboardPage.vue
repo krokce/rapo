@@ -60,7 +60,6 @@
             :loading="isLoading(panel)"
             :error="panelError(panel)"
             :empty="panelEmpty(panel)"
-            :empty-icon="panelEmptyIcon(panel)"
             :skeleton-height="panel.height ? panel.height - 52 : 130"
             @move="(delta) => move(panel.id, delta)"
             @hide="hide(panel.id)"
@@ -579,9 +578,6 @@ export default {
           return null;
       }
     },
-    panelEmptyIcon() {
-      return "fas fa-info-circle";
-    },
     // The facts beside a section's title.
     sectionFacts(section) {
       const facts = [];
@@ -743,7 +739,7 @@ export default {
 
 <style scoped>
 .dashboard__asof {
-  font-size: 11px;
+  font-size: var(--rapo-dash-tick);
   color: var(--rapo-label);
   white-space: nowrap;
 }
@@ -792,7 +788,7 @@ export default {
 }
 
 .dashboard__list-title {
-  font-size: 12px;
+  font-size: var(--rapo-dash-note);
   font-weight: 600;
   color: var(--rapo-strong);
   margin-bottom: 2px;

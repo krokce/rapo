@@ -17,7 +17,10 @@
             <q-avatar :icon="kpiIcon" :color="kpiUnitColor(savedKpiType.kpi_value_unit)" text-color="white" class="type-avatar" />
             {{ savedKpiType.kpi_type }}
           </q-chip>
-          <q-chip v-else size="lg" text-color="white" class="bg-blue-grey-7 text-weight-bold"> KPI </q-chip>
+          <q-chip v-else size="lg">
+            <q-avatar :icon="kpiIcon" color="blue-grey-7" text-color="white" class="type-avatar" />
+            KPI
+          </q-chip>
           <span class="q-ml-xs">{{ savedKpiType ? savedKpiType.kpi_type_desc : "" }}</span>
         </div>
       </h2>
@@ -144,53 +147,57 @@
                         </div>
 
                         <div class="row justify-start items-center">
-                          <q-chip v-if="!row.missing && row.control.status !== 'Y'" size="sm" color="red-4" text-color="white" icon="fas fa-clock">
+                          <q-chip v-if="!row.missing && row.control.status !== 'Y'" size="sm">
+                            <q-avatar icon="fas fa-clock" color="red-4" text-color="white" />
                             Scheduler inactive
                           </q-chip>
 
-                          <q-chip v-if="!row.missing && row.control.need_postrun_hook != 'Y'" size="sm" color="red-4" text-color="white" icon="fas fa-bolt">
+                          <q-chip v-if="!row.missing && row.control.need_postrun_hook != 'Y'" size="sm">
+                            <q-avatar icon="fas fa-bolt" color="red-4" text-color="white" />
                             No Post-run hook
                           </q-chip>
 
-                          <q-chip v-if="row.control.prerequisite_sql" size="sm" color="indigo-4" text-color="white" icon="fas fa-database">
+                          <q-chip v-if="row.control.prerequisite_sql" size="sm">
+                            <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                             Prerequisite SQL
                           </q-chip>
 
-                          <q-chip v-if="row.control.preparation_sql" size="sm" color="indigo-4" text-color="white" icon="fas fa-database">
+                          <q-chip v-if="row.control.preparation_sql" size="sm">
+                            <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                             Preparation SQL
                           </q-chip>
 
-                          <q-chip v-if="row.control.completion_sql" size="sm" color="indigo-4" text-color="white" icon="fas fa-database">
+                          <q-chip v-if="row.control.completion_sql" size="sm">
+                            <q-avatar icon="fas fa-database" color="indigo-4" text-color="white" />
                             Completion SQL
                           </q-chip>
 
-                          <q-chip v-if="row.control.need_prerun_hook === 'Y'" size="sm" color="indigo-4" text-color="white" icon="fas fa-bolt">
+                          <q-chip v-if="row.control.need_prerun_hook === 'Y'" size="sm">
+                            <q-avatar icon="fas fa-bolt" color="indigo-4" text-color="white" />
                             Pre-run hook
                           </q-chip>
 
-                          <q-chip v-if="row.control.case_config" size="sm" color="indigo-4" text-color="white" icon="fas fa-tag"> Case definition </q-chip>
+                          <q-chip v-if="row.control.case_config" size="sm">
+                            <q-avatar icon="fas fa-tag" color="indigo-4" text-color="white" /> Case definition </q-chip>
 
-                          <q-chip v-if="iterationCount(row.control) > 0" size="sm" color="indigo-4" text-color="white" icon="fas fa-history">
+                          <q-chip v-if="iterationCount(row.control) > 0" size="sm">
+                            <q-avatar icon="fas fa-history" color="indigo-4" text-color="white" />
                             +{{ iterationCount(row.control) }} Iteration{{ iterationCount(row.control) > 1 ? "s" : "" }}
                           </q-chip>
 
                           <q-chip
                             v-if="row.control.source_type_a"
-                            color="green-8"
-                            text-color="white"
                             size="sm"
-                            icon-right="fas fa-plug fa-rotate-270"
                             style="align-items: center">
+                            <q-avatar icon="fas fa-plug fa-rotate-270" color="green-8" text-color="white" />
                             {{ row.control.source_type_a }}
                           </q-chip>
                           <q-icon v-if="row.control.source_type_a && row.control.source_type_b" name="fas fa-wave-square" size="9px" color="green-8" />
                           <q-chip
                             v-if="row.control.source_type_b"
-                            color="green-8"
-                            text-color="white"
                             size="sm"
-                            icon="fas fa-plug fa-rotate-90"
                             style="align-items: center">
+                            <q-avatar icon="fas fa-plug fa-rotate-90" color="green-8" text-color="white" />
                             {{ row.control.source_type_b }}
                           </q-chip>
                         </div>

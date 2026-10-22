@@ -2,7 +2,7 @@
   <div class="files-loading">
     <mini-trend :buckets="data.buckets" :unit="data.unit" :series="recordSeries" :headline="compactNumber(loaded)" caption="records loaded" :legend="false" fill @pick="$emit('pick', $event)">
       <template #actions>
-        <q-chip dense :color="rejected ? 'red-1' : null" :text-color="rejected ? 'red-9' : null" class="files-loading__rejected" :title="rejectedTitle">
+        <q-chip dense class="files-loading__rejected" :class="{ 'text-negative': rejected }" :title="rejectedTitle">
           {{ compactNumber(rejected) }} rejected · {{ rejectedShare }}
         </q-chip>
       </template>
@@ -85,6 +85,6 @@ export default {
 
 .files-loading__rejected {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--rapo-dash-note);
 }
 </style>

@@ -17,7 +17,7 @@
         <q-markup-table v-else dense flat bordered separator="horizontal">
           <thead>
             <tr>
-              <th title="The control name the KPI is configured for (RACS_KPI_CONFIG.PROCESSNAME)" class="text-left">Process name</th>
+              <th title="The control name the KPI is configured for (RACS_KPI_CONFIG.PROCESSNAME)" class="text-left">Control</th>
               <th title="The KPI type" class="text-left">KPI</th>
               <th title="Whether the KPI has its own KPI and alarm statements or uses the type's defaults" class="text-left">Statements</th>
               <th title="The runs RACS_KPI_PKG stored a value of this KPI for (RACS_KPI_RUNHISTORY_ALL), and the latest" class="text-left">Stored</th>
@@ -43,7 +43,7 @@
               <td class="text-right">
                 <q-btn flat dense no-caps size="sm" color="primary" label="Assign to control" :disable="busy" @click="startAssign(kpi)">
                   <q-menu v-model="assignOpen[keyOf(kpi)]" anchor="bottom right" self="top right">
-                    <div class="q-pa-sm row items-center no-wrap q-gutter-x-sm" style="width: 420px">
+                    <div class="q-pa-sm row items-center no-wrap q-gutter-x-sm" style="width: 420px; max-width: 95vw">
                       <q-select
                         v-model="assignTarget"
                         :options="controlOptions"

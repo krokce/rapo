@@ -935,7 +935,7 @@
                   <filter-chips :filters="[]" :sort="logSortChip" class="inline q-ml-sm" style="vertical-align: middle" />
                 </run-summary>
                 <!-- The Results table, without its filters, side B for ANL and REP and Edit control, plus a column per KPI
-                     stored for the runs; Type and Processname (the same on every row) are dropped when the width is
+                     stored for the runs; Type and Control (the same on every row) are dropped when the width is
                      needed. -->
                 <div ref="logTable" class="column no-wrap" :style="{ maxHeight: logTableHeight + 'px' }">
                   <run-table
@@ -1262,7 +1262,7 @@ export default {
       const id = Number(this.$route.query.process_id);
       return Number.isInteger(id) && id > 0 ? id : null;
     },
-    // The control's name as saved: its runs are found by it, whatever the form calls it now.
+    // Whether the Run log is in its default order (latest period first), which pages by period.
     logSortsByPeriod() {
       return this.logSort.key === LOG_DEFAULT_SORT.key && this.logSort.dir === LOG_DEFAULT_SORT.dir;
     },
@@ -1284,6 +1284,7 @@ export default {
         ? "The latest periods (the days of Run from and Run to) with all their runs; older periods load as you scroll down"
         : "Every period (the days of Run from and Run to) the control has runs for";
     },
+    // The control's name as saved: its runs are found by it, whatever the form calls it now.
     savedControlName() {
       const saved = this.controlCatalogueById(this.control.control_id);
       return saved ? saved.control_name : this.control.control_name;
@@ -1360,7 +1361,6 @@ export default {
       const row = this.control.control_id && this.controlCatalogueById(this.control.control_id);
       return row ? { ...row, label: versionLabel(row) } : null;
     },
-    // Whether the form differs from the saved control, so Apply has something to write.
     // The KPIs tab's notice that the statements now read the tables of the new name, while they differ from the loaded.
     kpiRenameShown() {
       return this.kpiRenames.length > 0 && this.kpiTableName !== this.kpiRenameFrom;
@@ -1372,6 +1372,7 @@ export default {
       const labels = { kpi_sql_statement: "KPI", alarm_sql_statement: "alarm" };
       return this.kpiRenames.map((item) => `${item.kpi_type} (${labels[item.field]})`).join(", ");
     },
+    // Whether the form differs from the saved control, so Apply has something to write.
     dirty() {
       if (!this.ready) {
         return false;
@@ -2660,7 +2661,6 @@ export default {
           need_prerun_hook: "N",
           with_deletion: "N",
           with_drop: "N",
-          days_back: 1,
           days_retention: 90,
           parallelism: 1,
           instance_limit: 1,

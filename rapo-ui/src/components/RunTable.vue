@@ -46,7 +46,7 @@
               <q-icon v-if="sort.key === 'process_id'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th v-if="show.name" :title="filterable ? 'The control the run belongs to: its name opens its Run log on the run, the magnifier filters by it (again: clears the filter)' : 'The control the run belongs to: its name opens the control'" class="col-name text-left sortable" @click="toggleSort(sort, 'control_name')" v-keyboard :aria-sort="ariaSort(sort, 'control_name')">
-              Processname
+              Control
               <q-icon v-if="sort.key === 'control_name'" :name="sortIcon(sort)" size="12px" />
             </th>
             <th
@@ -399,14 +399,14 @@ import { ariaSort, sortIcon, sortRows, toggleSort } from "../utils/sort";
 // A virtual scroll: the parent sizes it, and the table scrolls inside with its header kept in view. A run superseded by a
 // later Done run of its period is folded under that run (when listed) and faded; optional KPI columns (Run log).
 
-// The fixed widths of the columns (px), as the style sets them; the Processname column takes the rest, else the Status
+// The fixed widths of the columns (px), as the style sets them; the Control column takes the rest, else the Status
 // column (`status`; beside a name it is `namedStatus`). Compact: one Period column and narrower numbers.
 const WIDTHS = { type: 86, start: 162, runtime: 66, ver: 40, pid: 96, date: 87, fetched: 92, discr: 84, level: 80, kpi: 56, kpis: 210, status: 96, namedStatus: 104, menu: 50 };
 // Compact widths are the content's (7-digit counts, "100.00%", a Done chip with its warning) plus the cell padding.
 const COMPACT_WIDTHS = { ...WIDTHS, start: 156, ver: 38, pid: 90, period: 132, fetched: 84, discr: 70, level: 66, kpi: 54, kpis: 166, status: 96, menu: 40 };
 // The values in the KPIs column: 4 in the full layout, 3 in the compact ones (their codes in the titles).
 const SUMMARY_SHOWN = { full: 4, compact: 3 };
-// The least width of the Processname column before it is cut (ellipsis).
+// The least width of the Control column before it is cut (ellipsis).
 const NAME_MIN = 100;
 // The bubble of a period's number of runs: darker the more (the last for any more).
 const VERSION_COLORS = ["blue-grey-2", "indigo-2", "indigo-3", "indigo-5", "indigo-7", "indigo-9"];
@@ -552,7 +552,7 @@ export default {
         null,
       ];
     },
-    // The Processname column fits the longest name (bold 13px, plus the search button and padding).
+    // The Control column fits the longest name (bold 13px, plus the search button and padding).
     nameColumnWidth() {
       return this.columns.name ? Math.min(textWidth(this.runs.map((row) => row.control_name), "bold 13px Roboto, sans-serif") + 40, 400) : 0;
     },
@@ -648,7 +648,7 @@ export default {
       const scroll = this.scrollElement;
       if (scroll && scroll.clientHeight && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 450) this.$emit("load-more");
     },
-    // The least width of the table in a layout without the Processname column: every fixed column and Status.
+    // The least width of the table in a layout without the Control column: every fixed column and Status.
     minWidth(level) {
       const w = level.compact ? COMPACT_WIDTHS : WIDTHS;
       const sides = this.showB ? 2 : 1;
@@ -913,7 +913,7 @@ a:visited {
   color: var(--rapo-on-strong);
 }
 
-/* Fixed columns, so rows swapped in while scrolling don't resize them. With Processname (Results) it takes the
+/* Fixed columns, so rows swapped in while scrolling don't resize them. With Control (Results) it takes the
    rest, but at least the width of the longest name (nameColumnWidth), else the table scrolls sideways; the Start
    column's trigger icon (18px) is taken from it, as min-width leaves it out. Without it the Status column takes the
    rest. */

@@ -44,10 +44,10 @@
             :key="level.name"
             dense
             clickable
-            :outline="!selectedLevels.includes(level.name)"
-            :color="level.color"
-            text-color="white"
+            :class="{ 'chip-selected': selectedLevels.includes(level.name) }"
+            :aria-pressed="String(selectedLevels.includes(level.name))"
             @click="toggleLevel(level.name)">
+            <q-avatar :color="level.color" text-color="white" size="18px" font-size="10px">{{ level.name[0] }}</q-avatar>
             {{ level.name }} <span class="q-ml-xs">({{ levelCounts[level.name] || 0 }})</span>
           </q-chip>
           <q-input v-model="search" dense outlined clearable debounce="300" placeholder="Search log" class="col-3">

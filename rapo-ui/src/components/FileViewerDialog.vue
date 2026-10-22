@@ -1,5 +1,5 @@
 <template>
-  <q-dialog v-model="visible" @show="shown" @hide="close">
+  <q-dialog v-model="visible" :maximized="$q.screen.lt.sm" @show="shown" @hide="close">
     <q-card class="column no-wrap file-viewer-card">
       <!-- The file and its facts as the file log has them, then what is shown: the file as text or ASN.1, and the
            records it loaded (below it, or alone). -->
@@ -884,6 +884,8 @@ export default {
 .header-facts {
   flex: 0 1 auto;
   min-width: 0;
+  /* Facts that do not fit are cut, never pushed over the buttons at the end of the row. */
+  overflow: hidden;
 }
 .viewer-link {
   color: var(--rapo-teal);

@@ -1,6 +1,6 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
-    <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-md">
+    <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-md">
       <div>Scheduler</div>
       <div class="col justify-end">
         <scheduler-status-bar
@@ -84,7 +84,9 @@
                   </td>
                   <td><date-time-text :value="job.queued" /></td>
                   <td><date-time-text :value="job.started" /></td>
-                  <td class="text-center text-weight-bold text-blue-grey-7 number-cell">{{ job.process_id }}</td>
+                  <td class="text-center text-weight-bold text-blue-grey-7 number-cell">
+                    <span v-if="job.process_id" class="cursor-pointer number-link" v-keyboard:button :title="`Copy process ID ${job.process_id}`" @click="copyProcessId(job.process_id)">{{ job.process_id }}</span>
+                  </td>
                   <!-- The run the job performs now: a chain source or a cascade child runs in the job of another control. -->
                   <td class="control-cell">
                     <router-link v-if="controlIds.has(job.control_name)" :to="editLink(job.control_name)" class="text-weight-bold" :class="'text-' + controlTypeTextColor(job.control_type)">{{ job.control_name }}</router-link>
@@ -247,7 +249,7 @@
           <div class="q-mx-lg q-mt-md q-gutter-y-sm fill-column">
             <!-- The last 24 whole hours: counts of all their events (each filters), older missed fires never caught up. -->
             <div class="row items-center no-wrap q-px-sm">
-              <q-chip v-if="olderMissed.length" clickable outline color="amber-9" class="q-ml-none" @click="missedDialog = true">
+              <q-chip v-if="olderMissed.length" clickable class="q-ml-none" @click="missedDialog = true">
                 <q-avatar icon="fas fa-exclamation-triangle" color="amber-9" text-color="white" />
                 <span class="text-weight-bold q-mr-xs">Older missed</span>({{ olderMissed.length }}{{ olderMissed.length >= 500 ? "+" : "" }})
                 <q-tooltip anchor="top middle" self="bottom middle" :offset="[0, 8]">Fires missed before the last 24 hours and never run for their moment: click to see and run them</q-tooltip>
@@ -318,7 +320,7 @@
                     <date-time-text :value="event.scheduled_time" />
                   </td>
                   <td class="text-center text-weight-bold text-blue-grey-7 number-cell" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
-                    {{ event.process_id }}
+                    <span v-if="event.process_id" class="cursor-pointer number-link" v-keyboard:button :title="`Copy process ID ${event.process_id}`" @click="copyProcessId(event.process_id)">{{ event.process_id }}</span>
                   </td>
                   <td class="text-weight-bold" :class="{ 'new-day-separator': newDay(filteredEvents, index, 'event_time') }">
                     <router-link
@@ -440,7 +442,7 @@ import LoadErrorNotice from "./LoadErrorNotice.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { TRIGGER_TYPES, controlType, controlTypeTextColor, runStatus, schedulerEventType } from "../constants";
-import { cancelRun } from "../runActions";
+import { cancelRun, copyAndNotify } from "../runActions";
 import { liveRefetch } from "../socket";
 import { toDateString, toDateTimeString, toMillis } from "../utils/format";
 import { clockLabel, windowPosition } from "../utils/clock";
@@ -613,6 +615,9 @@ export default {
     },
   },
   methods: {
+    copyProcessId(processId) {
+      copyAndNotify(String(processId), `Process ID ${processId}`, "Failed to copy the process ID.");
+    },
     ...mapActions(["updateSchedulerStatus", "updateControlCatalogue"]),
     // The editor of a control the page names (via, for), on its Scheduler tab.
     editLink(controlName) {

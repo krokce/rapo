@@ -3,16 +3,16 @@
     <q-card class="column no-wrap relative-position" style="width: 1400px; max-width: 95vw; height: 85vh" @dragenter="dragEnter" @dragover="dragOverPage" @dragleave="dragLeave" @drop="dropFiles">
       <q-card-section class="row items-center q-py-sm q-gutter-sm">
         <div class="text-h6">{{ title }}</div>
-        <q-btn-toggle
-          v-model="kind"
+        <q-chip
+          v-for="option in kindOptions"
+          :key="option.value"
           dense
-          no-caps
-          unelevated
-          toggle-color="primary"
-          color="grey-3"
-          text-color="grey-9"
-          :options="kindOptions"
-          @update:model-value="load" />
+          clickable
+          :class="{ 'chip-selected': kind === option.value }"
+          :aria-pressed="String(kind === option.value)"
+          @click="pickKind(option.value)">
+          {{ option.label }}
+        </q-chip>
         <q-space />
         <q-btn v-if="canUpload" outline dense no-caps class="q-px-sm icon-button" color="primary" icon="fas fa-upload" label="Upload files" @click="openUpload([])">
           <q-tooltip>Upload files into the first input directory (or drop them on this window)</q-tooltip>
@@ -231,6 +231,12 @@ export default {
       this.dragging = false;
       this.visible = true;
       this.load();
+    },
+    pickKind(kind) {
+      if (kind !== this.kind) {
+        this.kind = kind;
+        this.load();
+      }
     },
     // Only the latest request is kept: a slow listing of another kind must not replace the one picked after it.
     async load() {

@@ -865,6 +865,7 @@ export default {
   min-width: 200px;
 }
 .log-text {
+  font-family: var(--rapo-font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;

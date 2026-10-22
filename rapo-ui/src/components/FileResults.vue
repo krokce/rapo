@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-md'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div>File processing</div>
         <div><day-navigator :day="day" :today="today" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">
@@ -214,11 +214,9 @@
                   :key="issue.key"
                   clickable
                   size="sm"
-                  :color="issue.color"
-                  text-color="white"
-                  :icon="issue.icon"
                   :title="issue.title"
                   @click="toggleListFilter('issues', issue.key)">
+                  <q-avatar :icon="issue.icon" :color="issue.color" text-color="white" />
                   {{ issue.label }}
                 </q-chip>
               </div>

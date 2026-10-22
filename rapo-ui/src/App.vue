@@ -137,7 +137,8 @@
 
     <q-page-container>
       <q-page padding>
-        <div class="q-ma-lg">
+        <!-- The page's own padding is enough on a narrow screen. -->
+        <div :class="{ 'q-ma-lg': $q.screen.gt.sm }">
           <q-banner v-if="expiryBanner" dense rounded class="q-mb-md bg-orange-1 text-orange-10">
             <template #avatar>
               <q-icon name="fas fa-hourglass-half" size="16px" />

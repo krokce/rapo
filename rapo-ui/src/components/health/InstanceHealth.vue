@@ -9,17 +9,18 @@
     </div>
     <template v-else>
       <div class="row items-center text-grey-7 health-facts q-mb-sm">
-        <q-btn-toggle
-          v-model="hours"
-          :options="spanOptions"
-          dense
-          no-caps
-          unelevated
-          size="xs"
-          toggle-color="teal"
-          color="grey-3"
-          text-color="grey-8"
-          class="health-spans q-mr-sm" />
+        <div class="health-spans q-mr-sm">
+          <q-chip
+            v-for="option in spanOptions"
+            :key="option.value"
+            dense
+            clickable
+            :class="{ 'chip-selected': hours === option.value }"
+            :aria-pressed="String(hours === option.value)"
+            @click="hours = option.value">
+            {{ option.label }}
+          </q-chip>
+        </div>
         <span>
           Sampled every {{ state.intervals[group] }} s<template v-if="state.hours > 1">, a point per {{ stepText }}</template><template v-if="since">; history since {{ since }}</template>
         </span>
@@ -228,9 +229,7 @@ export default {
 .health-facts
   font-size: 12px
 
-.health-spans .q-btn
-  padding: 0 6px
-  min-height: 20px
+.health-spans .q-chip
   font-size: 11px
 
 .health-section-title

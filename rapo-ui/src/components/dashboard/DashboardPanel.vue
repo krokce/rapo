@@ -151,13 +151,13 @@ export default {
 }
 
 .dashboard-panel__title {
-  font-size: 14px;
+  font-size: var(--rapo-dash-title);
   font-weight: 500;
   color: var(--rapo-header-text);
 }
 
 .dashboard-panel__facts {
-  font-size: 12px;
+  font-size: var(--rapo-dash-note);
   color: var(--rapo-muted);
   gap: 8px;
 }
@@ -179,7 +179,7 @@ export default {
 
 .dashboard-panel__note {
   min-height: 64px;
-  font-size: 13px;
+  font-size: var(--rapo-dash-text);
   color: var(--rapo-muted);
 }
 </style>

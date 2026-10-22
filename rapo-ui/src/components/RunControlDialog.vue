@@ -4,7 +4,7 @@
   </span>
 
   <q-dialog v-model="visible">
-    <q-card class="column my-card" style="width: 400px">
+    <q-card class="column" style="width: 400px; max-width: 95vw">
       <q-card-section class="col bg-blue-grey-2">
         <div class="row no-wrap items-center">
           <div v-if="control_name" class="text-h6 ellipsis">{{ control_name }}</div>

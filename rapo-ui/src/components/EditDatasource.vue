@@ -1119,12 +1119,6 @@ export default {
   max-width: 100%;
   flex: 0 1 auto;
 }
-.field-200 {
-  width: 200px;
-}
-.field-240 {
-  width: 240px;
-}
 .field-320 {
   width: 320px;
 }

@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div>Control results</div>
         <div><day-navigator :day="day" :today="serverToday" :calendar="loadCalendar" :legend="{ count: 'runs', errors: 'errors' }" @go="goToDay" /></div>
         <div v-if="refreshing && hasDay">

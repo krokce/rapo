@@ -125,7 +125,7 @@ export default {
 <style scoped>
 .scheduler-strip__head {
   gap: 4px 12px;
-  font-size: 12px;
+  font-size: var(--rapo-dash-note);
 }
 
 .scheduler-strip__fact {

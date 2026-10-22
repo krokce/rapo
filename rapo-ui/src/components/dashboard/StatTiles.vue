@@ -357,7 +357,7 @@ export default {
 
 /* A state as the value (the scheduler's): smaller than a count. */
 .stat-tile__value--text {
-  font-size: 18px;
+  font-size: var(--rapo-dash-state);
   line-height: 1.6;
 }
 
@@ -397,7 +397,7 @@ export default {
 }
 
 .stat-tile__ring-text {
-  font-size: 10px;
+  font-size: var(--rapo-dash-micro);
   font-weight: 600;
   fill: var(--rapo-header-text);
   text-anchor: middle;

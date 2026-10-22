@@ -160,7 +160,7 @@ export default {
 
 .heat-strip__head {
   color: var(--rapo-label);
-  font-size: 11px;
+  font-size: var(--rapo-dash-tick);
   line-height: 14px;
 }
 
@@ -198,7 +198,7 @@ export default {
   border-radius: 2px;
   box-sizing: border-box;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--rapo-dash-tick);
   font-weight: 600;
   line-height: var(--cell);
   text-align: center;
@@ -224,7 +224,7 @@ export default {
 }
 
 .heat-strip__cell--text {
-  font-size: 10px;
+  font-size: var(--rapo-dash-micro);
   letter-spacing: -0.2px;
 }
 

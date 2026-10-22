@@ -1,7 +1,7 @@
 <template>
   <q-page class="column no-wrap" :style-fn="fillViewportToBottom">
     <div class="row items-end" :class="activeFilters.length || sortChip ? 'q-mb-sm' : 'q-mb-lg'">
-      <h2 class="row items-center no-wrap text-no-wrap q-gutter-lg q-mb-none">
+      <h2 class="row items-center text-no-wrap q-gutter-lg q-mb-none">
         <div v-if="!loaded">KPI types</div>
         <div v-else>{{ countTitle }}</div>
       </h2>
@@ -11,7 +11,7 @@
     <div class="row items-center q-mb-md">
       <q-btn
         v-if="$can('kpis', 'edit')"
-        class="col-2 q-mb-md q-pa-sm"
+        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
         size="lg"
         color="primary"
         icon="fas fa-plus-circle"
@@ -22,7 +22,7 @@
 
       <q-select
         v-model="filter.unit"
-        class="col-2 q-mb-md q-pa-sm"
+        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
         clearable
         outlined
         options-dense
@@ -34,7 +34,7 @@
 
       <q-select
         v-model="filter.used"
-        class="col-2 q-mb-md q-pa-sm"
+        class="col-12 col-sm-6 col-md-2 q-mb-md q-pa-sm"
         clearable
         outlined
         options-dense

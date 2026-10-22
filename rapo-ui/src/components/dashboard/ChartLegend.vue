@@ -40,7 +40,7 @@ export default {
 <style scoped>
 .chart-legend {
   gap: 2px 10px;
-  font-size: 12px;
+  font-size: var(--rapo-dash-note);
   color: var(--rapo-strong);
   margin-bottom: 4px;
 }

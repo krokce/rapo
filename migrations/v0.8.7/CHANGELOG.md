@@ -78,3 +78,20 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
 1. **Datasource editor: Save on leaving.** Leaving the datasource editor with unsaved changes now offers Keep editing,
    Discard or Save, as the control editor does (it offered only Discard). A renamed datasource is saved with Save,
    whose dialog says what else to rename.
+1. **One chip style.** The attribute chips of Controls (group, scheduler inactive, hooks, engine, SQL, email, case,
+   iterations, chain, systems, schema drift, datasource missing) and its header chips (orphaned tables and KPIs,
+   temporary tables, schema check failed), the attribute chips of a KPI type's Controls tab, the issue chips of Files
+   and Datasources, the run log's level filters and Scheduler's *Older missed* are grey chips with a colored icon, like
+   every type and status chip (they were colored chips, some hard to read). The run log's levels, the incoming files
+   list's Matching/All/Clean-up, Instance health's time span and the KPI calculation's This run/Last runs are chips
+   ringed when picked (they were button groups).
+1. **Dashboard type.** Every panel takes its font sizes from one scale (`--rapo-dash-*` beside `.dash-value`,
+   `.dash-label`, `.dash-text`, `.dash-note`).
+1. **Narrower windows.** Page titles wrap their facts and chips onto a second row instead of overflowing; the
+   *New control* / *New KPI type* buttons and the filters of Controls and KPI types take a full or half row on narrow
+   windows; the page margin is not doubled on small screens; the file viewer opens full screen on a phone and cuts its
+   header facts before the buttons; a control's KPI rows wrap; the Run dialog and the orphaned KPI menu fit the
+   screen.
+1. **Consistency.** The column of the control's name is called *Control* in Results, the Run log and the orphaned KPIs
+   (it was *Processname*/*Process name*); a process ID on the Scheduler's Running and History tabs copies on click, as
+   in Results; the log text of a file in the file log is in the monospace font.

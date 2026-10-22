@@ -205,7 +205,7 @@ export const RUN_SORT_LABELS = {
   start_date: "Start",
   duration_minutes: "Runtime",
   process_id: "PID",
-  control_name: "Processname",
+  control_name: "Control",
   date_from: "Run from",
   date_to: "Run to",
   fetched_number_a: "Fetched A",

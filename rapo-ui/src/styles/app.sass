@@ -180,27 +180,37 @@ code, pre, kbd, samp
   font-style: italic
 
 // The type of the Dashboard's charts, the same in every panel: a counter, the label of a metric, the text of a row and a
-// note under a value.
+// note under a value. The sizes are also tokens, for what a panel styles itself (a panel title, axis ticks, the words
+// in a heat cell); a panel never sets a size of its own.
+:root
+  --rapo-dash-value: 24px
+  --rapo-dash-state: 18px
+  --rapo-dash-title: 14px
+  --rapo-dash-text: 13px
+  --rapo-dash-note: 12px
+  --rapo-dash-tick: 11px
+  --rapo-dash-micro: 10px
+
 .dash-value
-  font-size: 24px
+  font-size: var(--rapo-dash-value)
   font-weight: 500
   line-height: 1.15
   color: var(--rapo-header-text)
   font-variant-numeric: tabular-nums
 
 .dash-label
-  font-size: 12px
+  font-size: var(--rapo-dash-note)
   font-weight: 600
   letter-spacing: 0.05em
   text-transform: uppercase
   color: var(--rapo-strong)
 
 .dash-text
-  font-size: 13px
+  font-size: var(--rapo-dash-text)
   color: var(--rapo-strong)
 
 .dash-note
-  font-size: 12px
+  font-size: var(--rapo-dash-note)
   color: var(--rapo-muted)
 
 // A chip whose value filters a list or picks what a page shows (Files, a file log, the analysis pages).

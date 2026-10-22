@@ -26,6 +26,9 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - Keyboard: clickable rows, marks, folds and editor icons are reachable by Tab and Enter; focus rings in the ASN.1 tree and file viewer; disabled-button reasons show on hover.
 - The browser tab names the page.
 - KPI type editor: Save/Apply/Cancel bar, Ctrl+S, unsaved-changes guard; the datasource editor offers Save when leaving with changes.
+- One chip style: attribute, issue and level chips are grey chips with a colored icon; choices are ringed chips instead of button groups.
+- Narrower windows: titles, filters and the file viewer wrap or fit; Dashboard panels share one type scale.
+- *Control* instead of *Processname*; Scheduler process IDs copy on click.
 
 ## v0.8.6 — 2026-10-14
 
