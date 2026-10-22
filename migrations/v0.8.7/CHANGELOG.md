@@ -3,7 +3,7 @@
 ## Annotation
 New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recreated `rapo_config` triggers
 (`migrations/v0.8.7/upgrade.sql`); new option `[API] token_cache_seconds`. The upgrade steps are in the [migration instructions](README.md).
-Besides per-user API tokens, the release reworks the UI after a full review: editor safeguards (no silent overwrites,
+Besides per-user API tokens (with a self-service reset from the user menu), the release reworks the UI after a full review: editor safeguards (no silent overwrites,
 unsaved-changes guards in every editor, confirmed type changes), dark theme, contrast and keyboard access, one chip and
 color language, compact page chrome with filter menus, and clearer Discrepancy analysis results.
 
@@ -33,35 +33,49 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
 1. **Who did it.** Changes made with a user token are recorded under its email (`rapo_config.created_by/updated_by`,
    the versions' *Changed by*), and a manual or catch-up run notes who asked for it (`requested_by`: the Run log's
    trigger icon, Scheduler History). The master token keeps the server's OS user.
-1. **Copy a run's process ID.** In Results and in the editor's Run log, a click on a run's process ID (PID column)
-   copies it to the clipboard and says so; the number underlines on hover like the other clickable numbers. A click
-   on the PID of the selected Run log row keeps it selected.
-1. **File log: File ID column.** The file log (`/files-log`, the datasource editor's File log tab) shows each file's
-   ID after its status; a click copies it to the clipboard, like a run's process ID.
-1. **Files and file log rows like Results.** Rows are as tall as in Results, the lane and status chips have Results'
-   size, and the datasource names on Files are written at the size of Results' control names.
-   Files shows a grey `0` in an empty count (a status, Duplicates, Read, Written, Rejected), as Incoming did; Runtime,
-   Last success and Trend stay empty without files. A count other than zero is bold in its column icon's color (Success
-   green, Started blue, Waiting amber, Error orange, Incoming blue-grey, Duplicates purple, ...).
 1. **Control editor: no silent overwrites.** A stored rule, case or iteration configuration that cannot be read is
    reported when the control opens and Save/Apply are refused, so the defaults the form falls back to never replace
    it. The schedule is checked on Save: a Weekly or Monthly schedule without days, a Cascade without its trigger
    control, an empty Complex hour/minute/second or an invalid time is refused on the Scheduler tab (a Weekly schedule
    without days was saved as Daily). Changing datasource B clears its output columns, as datasource A did. A new run
    iteration takes the next free ID (IDs no longer repeat after a removed row).
-1. **Example menus by keyboard.** The examples of the schedule fields and the *Add KPI* menu now apply the item picked
-   with Enter (the menu closed without doing anything).
-1. **File log: hidden selections are left alone.** Files selected and then hidden by the status, duplicate, hour or
-   search filters stay selected but are no longer recycled, reloaded, deleted or downloaded; the selection bar and the
-   confirmation say how many are left alone. The Runtime column is `h:mm:ss`, as on Files.
+1. **New control checklist.** A control not saved yet shows under the tabs what Save still needs (name, datasource(s),
+   date columns of a reconciliation, period), each ticked when done and opening its tab on a click.
+1. **Changing a control's type asks first.** When the change clears something set (datasources, filters, output
+   columns, rules or criteria, email, case definition), a confirmation names it; after the change, *Undo* in the
+   notification puts the form back as it was.
+1. **KPI type editor like the others.** The KPI type editor has the sticky Save / Apply / Cancel bar of the control
+   and datasource editors, an *Unsaved changes* marker, Ctrl+S for Apply, and asks before leaving with unsaved changes
+   (it discarded them without asking); Save without changes writes nothing. Apply of a new or renamed type moves to its
+   own address.
+1. **Datasource editor: Save on leaving.** Leaving the datasource editor with unsaved changes now offers Keep editing,
+   Discard or Save, as the control editor does (it offered only Discard). A renamed datasource is saved with Save,
+   whose dialog says what else to rename.
+1. **Datasource editor: Undo per change.** *Unsaved changes* opens the control editor's dialog: each row has Undo (a
+   table link is put back whole), and *Discard all changes* and *Apply* are there too.
+1. **Filter menus.** Controls, KPI types and Datasources filter like Results and Scheduler: the row of filter fields is
+   gone; a filter button (funnel icon) beside the title opens their selects (type, group, system, scheduler status, attributes;
+   unit, usage; lanes, issues), with a badge counting the active filters. Text is searched with the header search; the
+   filter chips under the title show and clear every filter as before.
+1. **Compact page chrome.** Page titles are 34px (were 60px), so tables start about 100px higher; buttons are written
+   as labelled (no capitals); *New control*, *New KPI type*, *New datasource* and *New token* are normal buttons beside
+   the title; the control editor's tab bar is blue-grey like the other pages' (it took the control type's color) and
+   all editor tabs sit left; *File processing* is titled *Files*, like its menu entry.
+1. **Even page headers and run tables.** The filter chips start at the same distance under the title on every list
+   page (they nearly touched the day selector on Results, Files and the file log), and the day selector is centred on
+   the title (it sat 5px low). In Results and the Run log a thick line now frames only an expanded period (its latest
+   run and its earlier runs); the Run log's line above every new day is gone, so other rows have the thin lines. The
+   Run log's selected row is a paler yellow.
+1. **Control editor: Main tab in boxes.** General (name, alias, group, version, description), Execution (type, engine,
+   parallelism, instance limit, timeout) and Hooks and results, with a short hint under each field instead of hover
+   tooltips; required fields are marked `*`; the control name is upper-cased also when pasted. A link to another tab
+   of the control already open (`?tab=`) now switches to it.
+1. **Quieter destructive actions.** The control editor shows *Recreate schema* only while the result tables differ
+   from the configuration (the Controls row menu always has it); *Lock all lanes* on Files is a flat button; *Run* is
+   flat-colored.
 1. **Failed loads say so.** KPI types, the Scheduler, the Run log dialog, the KPI type and datasource editors, the
    file log, the incoming files list and the ASN.1 grammars show the error with a *Retry* instead of loading forever
    or reading as empty.
-1. **Smaller fixes.** The Run dialog shows a picked range as `from - to` and stays open when a run is refused; New and
-   Delete KPI type are hidden from tokens without KPIs: Edit; a `?tab=` link to a tab the token may not see opens Main;
-   the Scheduler page reloads the control catalogue only when controls change (not each time a fire passes); the
-   Dashboard notices a new hour and day by the browser's local clock (it used UTC); the incoming files list keeps the
-   kind picked last when an older listing answers late.
 1. **Dark theme and contrast.** The Group by table, the share bars, the run trend chart, the code editors' focus ring
    and active line, the empty/error notices and the run log's level colors follow the theme (some stayed light-theme
    colors in dark mode); the version bubbles of the Run log and Results keep readable numbers in dark mode. Comparison
@@ -76,15 +90,13 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
    whether they are on; the schedule fields' example buttons are named *Examples*. The reason a Stop scheduler or Save
    token button is disabled now shows on hover. The schedule column and the version line of Controls are no longer
    extra Tab stops.
-1. **Page titles.** The browser tab names the page (`Results · RAPO - <instance>`), so tabs and history tell pages
-   apart.
-1. **KPI type editor like the others.** The KPI type editor has the sticky Save / Apply / Cancel bar of the control
-   and datasource editors, an *Unsaved changes* marker, Ctrl+S for Apply, and asks before leaving with unsaved changes
-   (it discarded them without asking); Save without changes writes nothing. Apply of a new or renamed type moves to its
-   own address.
-1. **Datasource editor: Save on leaving.** Leaving the datasource editor with unsaved changes now offers Keep editing,
-   Discard or Save, as the control editor does (it offered only Discard). A renamed datasource is saved with Save,
-   whose dialog says what else to rename.
+1. **Keyboard: hour heatmaps, the ASN.1 tree, split bars.** An hour heatmap (Results, Files, the file log, Scheduler)
+   is one Tab stop: arrows move between its cells, Home/End to a row's ends, Enter or Space picks the hour (every cell
+   was a Tab stop). The ASN.1 tree is announced as a tree (levels, open, selected); Home/End and PageUp/PageDown jump,
+   Enter opens a node, and the arrows reach the *more*/*earlier* rows, which Enter loads. The bars between the file
+   viewer's panes and between the ASN.1 tree and its bytes move with the arrow keys (5%) and with touch.
+1. **Example menus by keyboard.** The examples of the schedule fields and the *Add KPI* menu now apply the item picked
+   with Enter (the menu closed without doing anything).
 1. **One chip style.** The attribute chips of Controls (group, scheduler inactive, hooks, engine, SQL, email, case,
    iterations, chain, systems, schema drift, datasource missing) and its header chips (orphaned tables and KPIs,
    temporary tables, schema check failed), the attribute chips of a KPI type's Controls tab, the issue chips of Files
@@ -92,6 +104,13 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
    every type and status chip (they were colored chips, some hard to read). The run log's levels, the incoming files
    list's Matching/All/Clean-up, Instance health's time span and the KPI calculation's This run/Last runs are chips
    ringed when picked (they were button groups).
+1. **One meaning per color.** Canceled runs and scheduler events are brown (purple means duplicate); the Files issue
+   *Errors* is deep orange like the ERROR status and *Silent* amber; the Dashboard calls datasources without files in
+   the span *Idle* (Files' *Silent* is the issue of missing files a week later); recycled, reloaded and deleted files
+   have the same distinct greys on the Files page and the Dashboard; the Dashboard's datasource colors avoid status
+   hues; *Slowest controls* bars are one neutral color; correlation strengths are shades of teal (were red/orange).
+1. **Value badges.** The over-represented bins of Discrepancy analysis and the keys of the counterpart dialog are
+   square tinted badges that follow the dark theme.
 1. **Dashboard type.** Every panel takes its font sizes from one scale (`--rapo-dash-*` beside `.dash-value`,
    `.dash-label`, `.dash-text`, `.dash-note`).
 1. **Narrower windows.** Page titles wrap their facts and chips onto a second row instead of overflowing; the
@@ -99,61 +118,42 @@ color language, compact page chrome with filter menus, and clearer Discrepancy a
    windows; the page margin is not doubled on small screens; the file viewer opens full screen on a phone and cuts its
    header facts before the buttons; a control's KPI rows wrap; the Run dialog and the orphaned KPI menu fit the
    screen.
-1. **Consistency.** The column of the control's name is called *Control* in Results, the Run log and the orphaned KPIs
-   (it was *Processname*/*Process name*); a process ID on the Scheduler's Running and History tabs copies on click, as
-   in Results; the log text of a file in the file log is in the monospace font.
+1. **Down to 1024 px.** KPI types and the Scheduler's Upcoming and Running tables cut long text with an ellipsis and
+   scroll sideways when too narrow, instead of writing columns over each other.
 1. **Discrepancy analysis tells thin evidence apart.** With too few discrepancies for any finding (a pattern needs at
    least 10 in one bin), the summary says so instead of "No column sets these discrepancies apart", and the
    *Explained* bars are grey whenever no finding backs them (they were red at e.g. 88% under a summary denying any
    cause). The report carries `meta.min_support`.
-1. **Compact page chrome.** Page titles are 34px (were 60px), so tables start about 100px higher; buttons are written
-   as labelled (no capitals); *New control*, *New KPI type*, *New datasource* and *New token* are normal buttons beside
-   the title; the control editor's tab bar is blue-grey like the other pages' (it took the control type's color) and
-   all editor tabs sit left; *File processing* is titled *Files*, like its menu entry.
-1. **Quieter destructive actions.** The control editor shows *Recreate schema* only while the result tables differ
-   from the configuration (the Controls row menu always has it); *Lock all lanes* on Files is a flat button; *Run* is
-   flat-colored.
-1. **One meaning per color.** Canceled runs and scheduler events are brown (purple means duplicate); the Files issue
-   *Errors* is deep orange like the ERROR status and *Silent* amber; the Dashboard calls datasources without files in
-   the span *Idle* (Files' *Silent* is the issue of missing files a week later); recycled, reloaded and deleted files
-   have the same distinct greys on the Files page and the Dashboard; the Dashboard's datasource colors avoid status
-   hues; *Slowest controls* bars are one neutral color; correlation strengths are shades of teal (were red/orange).
-1. **Control editor: Main tab in boxes.** General (name, alias, group, version, description), Execution (type, engine,
-   parallelism, instance limit, timeout) and Hooks and results, with a short hint under each field instead of hover
-   tooltips; required fields are marked `*`; the control name is upper-cased also when pasted. A link to another tab
-   of the control already open (`?tab=`) now switches to it.
-1. **Data analysis:** the columns not profiled are listed one per line in a grid (were one long paragraph). The
-   Dashboard's *As of* time is darker.
-1. **Filter menus.** Controls, KPI types and Datasources filter like Results and Scheduler: the row of filter fields is
-   gone; a filter button (funnel icon) beside the title opens their selects (type, group, system, scheduler status, attributes;
-   unit, usage; lanes, issues), with a badge counting the active filters. Text is searched with the header search; the
-   filter chips under the title show and clear every filter as before.
-1. **Even page headers and run tables.** The filter chips start at the same distance under the title on every list
-   page (they nearly touched the day selector on Results, Files and the file log), and the day selector is centred on
-   the title (it sat 5px low). In Results and the Run log a thick line now frames only an expanded period (its latest
-   run and its earlier runs); the Run log's line above every new day is gone, so other rows have the thin lines. The
-   Run log's selected row is a paler yellow.
-1. **New control checklist.** A control not saved yet shows under the tabs what Save still needs (name, datasource(s),
-   date columns of a reconciliation, period), each ticked when done and opening its tab on a click.
-1. **Changing a control's type asks first.** When the change clears something set (datasources, filters, output
-   columns, rules or criteria, email, case definition), a confirmation names it; after the change, *Undo* in the
-   notification puts the form back as it was.
-1. **Files: lane chips filter, a lock button locks.** A lane chip shows only its lane's datasources on a click; its
-   small lock button opens the lock or unlock of the lane (then the confirmation as before), so a filter click never
-   starts a lock.
 1. **Discrepancy analysis: Stop at any stage.** *Stop* is offered also before the quick look (nothing is kept); a job
    that ended without a result says how: stopped (grey), timed out (amber) or failed (red), each with *Start again*.
    The job carries `end` (`stopped`, `timeout`, `error`).
-1. **Value badges.** The over-represented bins of Discrepancy analysis and the keys of the counterpart dialog are
-   square tinted badges that follow the dark theme.
-1. **Down to 1024 px.** KPI types and the Scheduler's Upcoming and Running tables cut long text with an ellipsis and
-   scroll sideways when too narrow, instead of writing columns over each other.
-1. **Keyboard: hour heatmaps, the ASN.1 tree, split bars.** An hour heatmap (Results, Files, the file log, Scheduler)
-   is one Tab stop: arrows move between its cells, Home/End to a row's ends, Enter or Space picks the hour (every cell
-   was a Tab stop). The ASN.1 tree is announced as a tree (levels, open, selected); Home/End and PageUp/PageDown jump,
-   Enter opens a node, and the arrows reach the *more*/*earlier* rows, which Enter loads. The bars between the file
-   viewer's panes and between the ASN.1 tree and its bytes move with the arrow keys (5%) and with touch.
-1. **Datasource editor: Undo per change.** *Unsaved changes* opens the control editor's dialog: each row has Undo (a
-   table link is put back whole), and *Discard all changes* and *Apply* are there too.
+1. **Data analysis:** the columns not profiled are listed one per line in a grid (were one long paragraph). The
+   Dashboard's *As of* time is darker.
+1. **Files: lane chips filter, a lock button locks.** A lane chip shows only its lane's datasources on a click; its
+   small lock button opens the lock or unlock of the lane (then the confirmation as before), so a filter click never
+   starts a lock.
+1. **Files and file log rows like Results.** Rows are as tall as in Results, the lane and status chips have Results'
+   size, and the datasource names on Files are written at the size of Results' control names.
+   Files shows a grey `0` in an empty count (a status, Duplicates, Read, Written, Rejected), as Incoming did; Runtime,
+   Last success and Trend stay empty without files. A count other than zero is bold in its column icon's color (Success
+   green, Started blue, Waiting amber, Error orange, Incoming blue-grey, Duplicates purple, ...).
+1. **File log: File ID column.** The file log (`/files-log`, the datasource editor's File log tab) shows each file's
+   ID after its status; a click copies it to the clipboard, like a run's process ID.
+1. **File log: hidden selections are left alone.** Files selected and then hidden by the status, duplicate, hour or
+   search filters stay selected but are no longer recycled, reloaded, deleted or downloaded; the selection bar and the
+   confirmation say how many are left alone. The Runtime column is `h:mm:ss`, as on Files.
+1. **Copy a run's process ID.** In Results and in the editor's Run log, a click on a run's process ID (PID column)
+   copies it to the clipboard and says so; the number underlines on hover like the other clickable numbers. A click
+   on the PID of the selected Run log row keeps it selected.
+1. **Consistency.** The column of the control's name is called *Control* in Results, the Run log and the orphaned KPIs
+   (it was *Processname*/*Process name*); a process ID on the Scheduler's Running and History tabs copies on click, as
+   in Results; the log text of a file in the file log is in the monospace font.
+1. **Page titles.** The browser tab names the page (`Results · RAPO - <instance>`), so tabs and history tell pages
+   apart.
 1. **Faster lists.** KPI types counts each type's controls once per load, and Controls reads each control's iterations
    once per catalogue, instead of again for every row on every refresh.
+1. **Smaller fixes.** The Run dialog shows a picked range as `from - to` and stays open when a run is refused; New and
+   Delete KPI type are hidden from tokens without KPIs: Edit; a `?tab=` link to a tab the token may not see opens Main;
+   the Scheduler page reloads the control catalogue only when controls change (not each time a fire passes); the
+   Dashboard notices a new hour and day by the browser's local clock (it used UTC); the incoming files list keeps the
+   kind picked last when an older listing answers late.

@@ -6,41 +6,29 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
-## v0.8.7 — unreleased
+## v0.8.7 — 2026-10-22
 
 New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreated `rapo_config` triggers
 (`migrations/v0.8.7/upgrade.sql`); new option `[API] token_cache_seconds`.
 
 - **API tokens**: the master token manages per-user tokens (*Master token* menu → *API tokens*): user, expiry, area × level scopes with descriptions, Free SQL; shown once, stored hashed; 403 beyond the scopes.
-- The UI hides what a token may not use (read-only editors and grammars, expiry banner, user menu); revoked tokens are signed out, a database failure never signs out.
+- The UI hides what a token may not use (read-only editors and grammars, expiry banner); revoked tokens are signed out, a database failure never signs out. Changes and manual runs are attributed to the token's user (`updated_by`, versions, `requested_by`).
 - User menu: access per area, expiry and Free SQL at a glance; *Reset my token* gives a user token a new secret with the same scopes and expiry.
 - Without Free SQL, Data analysis filters are plain filters of the dataset's columns (no subquery, comment or q-quoted literal).
-- Changes and manual runs are attributed to the token's user (`updated_by`, versions, `requested_by`).
-- Results and the Run log: a click on a run's process ID copies it to the clipboard.
-- File log: a File ID column; a click copies the ID.
-- Files and the file log: rows, chips and datasource names sized like Results; Files shows 0 for empty counts and other counts bold in their status color.
-- Control editor: an unreadable stored configuration blocks Save; the schedule is checked on Save (Weekly without days was saved as Daily); changing datasource B clears its output columns.
-- File log: files hidden by the filters are no longer acted on; Runtime as `h:mm:ss`.
-- Failed loads show the error with Retry (KPI types, Scheduler, Run log, KPI type and datasource editors, file log, grammars).
-- Keyboard Enter works in the schedule and KPI example menus; smaller fixes to the Run dialog, KPI type permissions and Scheduler refetching.
-- Dark theme and contrast: remaining light-only colors follow the theme; CMP names readable on white; heat-strip counts pick their text color by contrast.
-- Keyboard: clickable rows, marks, folds and editor icons are reachable by Tab and Enter; focus rings in the ASN.1 tree and file viewer; disabled-button reasons show on hover.
-- The browser tab names the page.
-- KPI type editor: Save/Apply/Cancel bar, Ctrl+S, unsaved-changes guard; the datasource editor offers Save when leaving with changes.
-- One chip style: attribute, issue and level chips are grey chips with a colored icon; choices are ringed chips instead of button groups.
-- Narrower windows: titles, filters and the file viewer wrap or fit; Dashboard panels share one type scale.
-- *Control* instead of *Processname*; Scheduler process IDs copy on click.
-- Discrepancy analysis: thin evidence (under 10 discrepancies per bin) is said so, and unbacked scores are grey.
-- Compact page titles, unshouted buttons, *New …* beside the title, one tab-bar color; Files is titled *Files*.
-- Control editor Main tab in three boxes with field hints; Recreate schema only on drift; quieter Lock all lanes.
-- Colors keep one meaning: canceled brown, file errors deep orange, Dashboard *Idle* datasources, neutral rankings.
+- Control editor: an unreadable stored configuration blocks Save; the schedule is checked on Save (Weekly without days was saved as Daily); changing datasource B clears its output columns; a New control checklist; a type change that clears fields asks first and can be undone.
+- KPI type editor: Save/Apply/Cancel bar, Ctrl+S, unsaved-changes guard; datasource editor: Save when leaving, Undo per unsaved change, Discard all.
 - Filter menus (funnel button) replace the filter-field rows of Controls, KPI types and Datasources.
-- New control checklist; a type change that clears fields asks first and can be undone.
-- Files: lane chips filter, a separate lock button locks; Discrepancy analysis can be stopped at any stage, with grey/amber/red end banners.
-- No overlapping table columns down to 1024 px.
-- Even gap under page titles, day selector centred on the title; run tables frame only an expanded period with a thick line.
-- Keyboard: hour heatmaps are one Tab stop with arrow keys; the ASN.1 tree has tree roles and Home/End/Page keys; split bars move by keys and touch.
-- Datasource editor: Undo per unsaved change, Discard all.
+- Compact page titles, unshouted buttons, *New …* beside the title, one tab-bar color, an even gap under titles, the day selector centred on them; Files is titled *Files*.
+- Control editor Main tab in three boxes with field hints; Recreate schema only on drift; quieter Lock all lanes.
+- Failed loads show the error with Retry (KPI types, Scheduler, Run log, KPI type and datasource editors, file log, grammars).
+- Dark theme and contrast: remaining light-only colors follow the theme; CMP names readable on white; heat-strip counts pick their text color by contrast.
+- Keyboard: clickable rows, marks, folds, editor icons and example menus work by Tab and Enter; hour heatmaps are one Tab stop with arrow keys; the ASN.1 tree has tree roles and Home/End/Page keys; split bars move by keys and touch; disabled-button reasons show on hover.
+- One chip style (grey chips with a colored icon, ringed chips instead of button groups) and one meaning per color: canceled brown, file errors deep orange, Dashboard *Idle* datasources, neutral rankings.
+- Narrower windows: titles, filters and the file viewer wrap or fit, no overlapping table columns down to 1024 px; Dashboard panels share one type scale.
+- Discrepancy analysis: thin evidence (under 10 discrepancies per bin) is said so, unbacked scores are grey; it can be stopped at any stage, with grey/amber/red end banners.
+- Files: lane chips filter, a separate lock button locks; rows, chips and names sized like Results, 0 for empty counts, other counts bold in their status color. File log: a File ID column, hidden files are no longer acted on, Runtime as `h:mm:ss`.
+- Results and the Run log: a click on a process ID copies it (also on the Scheduler); a thick line frames only an expanded period; *Control* instead of *Processname*.
+- The browser tab names the page; smaller fixes to the Run dialog, KPI type permissions and Scheduler refetching.
 
 ## v0.8.6 — 2026-10-14
 
