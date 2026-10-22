@@ -62,7 +62,7 @@
           :items="sortedFiles"
           :virtual-scroll-item-size="33"
           :virtual-scroll-sticky-size-start="28"
-          :table-colspan="8">
+          :table-colspan="columns.length + 1">
           <template #before>
             <thead>
               <tr class="bg-blue-grey-2">
@@ -107,7 +107,14 @@
           <template #after>
             <tbody v-if="!sortedFiles.length">
               <tr>
-                <td colspan="8" class="text-center text-grey-7 q-pa-lg">{{ loading ? "Reading the directories..." : "No files" }}</td>
+                <td :colspan="columns.length + 1" class="text-center text-grey-7 q-pa-lg">
+                  <div v-if="loadError && !loading" class="state-notice state-notice--error">
+                    <q-icon name="fas fa-exclamation-triangle" />
+                    <div>The files could not be listed: {{ loadError }}</div>
+                    <q-btn flat dense no-caps color="primary" label="Retry" @click="load" />
+                  </div>
+                  <template v-else>{{ loading ? "Reading the directories..." : "No files" }}</template>
+                </td>
               </tr>
             </tbody>
           </template>
@@ -160,6 +167,7 @@ export default {
     return {
       visible: false,
       loading: false,
+      loadError: null,
       datasource: null,
       kind: "match",
       overrides: {},
@@ -224,16 +232,28 @@ export default {
       this.visible = true;
       this.load();
     },
+    // Only the latest request is kept: a slow listing of another kind must not replace the one picked after it.
     async load() {
+      const request = (this.request = (this.request || 0) + 1);
       this.loading = true;
+      this.loadError = null;
       try {
-        this.result = await api("get-ds-files", {
+        const result = await api("get-ds-files", {
           params: { id: this.datasource.id, kind: this.kind, ...this.overrides },
         });
+        if (request === this.request) {
+          this.result = result;
+        }
       } catch (error) {
-        notifyError("The files could not be listed.", error);
+        if (request === this.request) {
+          this.result = emptyResult();
+          this.loadError = error.message;
+          notifyError("The files could not be listed.", error);
+        }
       } finally {
-        this.loading = false;
+        if (request === this.request) {
+          this.loading = false;
+        }
       }
     },
     openUpload(files) {

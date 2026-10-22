@@ -225,7 +225,12 @@
                 </tr>
               </template>
               <template #after>
-                <tbody v-if="!loaded">
+                <tbody v-if="!loaded && loadError">
+                  <tr>
+                    <td colspan="8"><load-error-notice :message="`The scheduler could not be loaded: ${loadError}`" @retry="refreshAll" /></td>
+                  </tr>
+                </tbody>
+                <tbody v-else-if="!loaded">
                   <skeleton-rows :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text']" />
                 </tbody>
                 <tbody v-else-if="!filteredUpcoming.length">
@@ -356,7 +361,12 @@
                 </tr>
               </template>
               <template #after>
-                <tbody v-if="!loaded">
+                <tbody v-if="!loaded && loadError">
+                  <tr>
+                    <td colspan="12"><load-error-notice :message="`The scheduler could not be loaded: ${loadError}`" @retry="refreshAll" /></td>
+                  </tr>
+                </tbody>
+                <tbody v-else-if="!loaded">
                   <skeleton-rows :rows="6" :columns="['QChip', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'QChip', 'QChip', 'text', null]" />
                 </tbody>
                 <tbody v-else-if="!filteredEvents.length">
@@ -426,6 +436,7 @@ import DateTimeText from "./DateTimeText.vue";
 import FilterChips from "./FilterChips.vue";
 import HourHeatmap from "./HourHeatmap.vue";
 import SchedulerStatusBar from "./SchedulerStatusBar.vue";
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { TRIGGER_TYPES, controlType, controlTypeColor, runStatus, schedulerEventType } from "../constants";
@@ -448,12 +459,14 @@ export default {
     DateTimeText,
     FilterChips,
     HourHeatmap,
+    LoadErrorNotice,
     SchedulerStatusBar,
     SkeletonRows,
   },
   data() {
     return {
       loaded: false,
+      loadError: null,
       tab: "upcoming",
       upcoming: [],
       // The filters of each tab; `hour` is the start (ms) of the hour picked in its heatmap, so it stays the same hour
@@ -710,9 +723,13 @@ export default {
       const status = await this.updateSchedulerStatus();
       this.clockOffset = toMillis(status.server_time) - Date.now();
     },
-    // With the catalogue, which the links of the controls a fire runs via are looked up in.
-    async refreshUpcoming() {
-      const [upcoming] = await Promise.all([api("scheduler-upcoming", { params: { hours: 24 } }), this.updateControlCatalogue().catch(() => null)]);
+    // With `withCatalogue` also the catalogue, which the links of the controls a fire runs via are looked up in: on a
+    // full refresh and a change of the controls, never when only a fire passed (once a minute with frequent fires).
+    async refreshUpcoming(withCatalogue = false) {
+      const [upcoming] = await Promise.all([
+        api("scheduler-upcoming", { params: { hours: 24 } }),
+        withCatalogue ? this.updateControlCatalogue().catch(() => null) : null,
+      ]);
       this.upcoming = upcoming;
     },
     async refreshEvents() {
@@ -725,13 +742,15 @@ export default {
     },
     async refreshAll() {
       try {
-        await Promise.all([this.refreshStatus(), this.refreshUpcoming(), this.refreshEvents()]);
+        await Promise.all([this.refreshStatus(), this.refreshUpcoming(true), this.refreshEvents()]);
         this.loaded = true;
+        this.loadError = null;
         if (this.showMissed) {
           this.showMissed = false;
           this.missedDialog = this.olderMissed.length > 0;
         }
       } catch (error) {
+        this.loadError = error.message;
         notifyError("Failed to load scheduler.", error);
       }
     },
@@ -770,7 +789,7 @@ export default {
     this.stopLiveUpdates = [
       liveRefetch("scheduler:changed", () => Promise.all([this.refreshStatus(), this.refreshEvents()]).catch(onError), { interval: 2000 }),
       liveRefetch("runs:changed", () => Promise.all([this.refreshStatus(), this.refreshEvents()]).catch(onError)),
-      liveRefetch("controls:changed", () => this.refreshUpcoming().catch(onError)),
+      liveRefetch("controls:changed", () => this.refreshUpcoming(true).catch(onError)),
     ];
     // Keeps "In" current and drops fires that passed from the upcoming list.
     // A new hour moves both windows: refetched, so Upcoming gains its last hour and History drops its first.

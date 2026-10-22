@@ -22,8 +22,8 @@
           <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="menu in examples.mday" :key="menu.menuText">
-                  <q-item-section @click="scheduleObject.mday = menu.exampleText">
+                <q-item clickable v-close-popup v-for="menu in examples.mday" :key="menu.menuText" @click="scheduleObject.mday = menu.exampleText">
+                  <q-item-section>
                     {{ menu.menuText }}
                   </q-item-section>
                 </q-item>
@@ -39,8 +39,8 @@
           <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="menu in examples.wday" :key="menu.menuText">
-                  <q-item-section @click="scheduleObject.wday = menu.exampleText">
+                <q-item clickable v-close-popup v-for="menu in examples.wday" :key="menu.menuText" @click="scheduleObject.wday = menu.exampleText">
+                  <q-item-section>
                     {{ menu.menuText }}
                   </q-item-section>
                 </q-item>
@@ -165,8 +165,8 @@
           <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="menu in examples.hour" :key="menu.menuText">
-                  <q-item-section @click="scheduleObject.hour = menu.exampleText">
+                <q-item clickable v-close-popup v-for="menu in examples.hour" :key="menu.menuText" @click="scheduleObject.hour = menu.exampleText">
+                  <q-item-section>
                     {{ menu.menuText }}
                   </q-item-section>
                 </q-item>
@@ -188,8 +188,8 @@
           <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="menu in examples.min" :key="menu.menuText">
-                  <q-item-section @click="scheduleObject.min = menu.exampleText">
+                <q-item clickable v-close-popup v-for="menu in examples.min" :key="menu.menuText" @click="scheduleObject.min = menu.exampleText">
+                  <q-item-section>
                     {{ menu.menuText }}
                   </q-item-section>
                 </q-item>
@@ -211,8 +211,8 @@
           <q-btn aria-label="Add row" round dense flat icon="fas fa-plus">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="menu in examples.sec" :key="menu.menuText">
-                  <q-item-section @click="scheduleObject.sec = menu.exampleText">
+                <q-item clickable v-close-popup v-for="menu in examples.sec" :key="menu.menuText" @click="scheduleObject.sec = menu.exampleText">
+                  <q-item-section>
                     {{ menu.menuText }}
                   </q-item-section>
                 </q-item>
@@ -380,6 +380,28 @@ export default {
     initSchedule() {
       this.scheduleType = scheduleType(this.scheduleObject);
       this.scheduleTimepicker = scheduleTime(this.scheduleObject);
+    },
+    // What keeps the schedule from being saved as picked, else null: the field rules above, which Save does not run
+    // (a Weekly schedule without days would be stored as Daily).
+    problem() {
+      const schedule = this.scheduleObject;
+      const blank = (value) => String(value ?? "").length === 0;
+      if (this.scheduleType === "W" && !(schedule.wday && schedule.wday.length)) {
+        return "Please select at least one day of the week.";
+      }
+      if (this.scheduleType === "M" && !(schedule.mday && schedule.mday.length)) {
+        return "Please select at least one day of the month.";
+      }
+      if (this.scheduleType === "C" && !(schedule.trigger_id > 0)) {
+        return "Please select the control that triggers this one.";
+      }
+      if (this.scheduleType === "X" && [schedule.hour, schedule.min, schedule.sec].some(blank)) {
+        return "Please enter the hour, minute and second of the schedule.";
+      }
+      if (!["X", "C"].includes(this.scheduleType) && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/.test(this.scheduleTimepicker)) {
+        return "Please enter a valid time (HH:mm:ss).";
+      }
+      return null;
     },
   },
   watch: {

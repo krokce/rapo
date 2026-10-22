@@ -529,7 +529,7 @@ export default {
     // The Datasource column fits the longest name of the day, whatever the filters, so it doesn't change width while
     // filtering; the issue chips wrap under the name.
     nameColumnWidth() {
-      const names = this.hasDay ? datasourceRows(this.fileDay, this.datasources, () => true, () => true, true).map((row) => row.sourcename) : [];
+      const names = this.allRows.map((row) => row.sourcename);
       const width = textWidth(names, "bold 13px Roboto, sans-serif");
       return Math.max(width + 32, 200);
     },

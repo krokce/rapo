@@ -18,6 +18,10 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreate
 - Results and the Run log: a click on a run's process ID copies it to the clipboard.
 - File log: a File ID column; a click copies the ID.
 - Files and the file log: rows, chips and datasource names sized like Results; Files shows 0 for empty counts and other counts bold in their status color.
+- Control editor: an unreadable stored configuration blocks Save; the schedule is checked on Save (Weekly without days was saved as Daily); changing datasource B clears its output columns.
+- File log: files hidden by the filters are no longer acted on; Runtime as `h:mm:ss`.
+- Failed loads show the error with Retry (KPI types, Scheduler, Run log, KPI type and datasource editors, file log, grammars).
+- Keyboard Enter works in the schedule and KPI example menus; smaller fixes to the Run dialog, KPI type permissions and Scheduler refetching.
 
 ## v0.8.6 — 2026-10-14
 

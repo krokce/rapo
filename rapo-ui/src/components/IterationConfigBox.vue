@@ -43,9 +43,9 @@
             flat
             round
             icon="fas fa-plus"
-            @click="addIterationConfig(index + 2)" />
+            @click="addIterationConfig()" />
         </div>
-        <q-btn v-if="iterationConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add run iteration" @click="addIterationConfig(1)" />
+        <q-btn v-if="iterationConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add run iteration" @click="addIterationConfig()" />
       </q-card-section>
     </q-card>
   </div>
@@ -70,7 +70,9 @@ export default {
     },
   },
   methods: {
-    addIterationConfig(id) {
+    addIterationConfig() {
+      // Next free id, so ids stay unique after rows are removed.
+      const id = Math.max(0, ...this.iterationConfigObject.map((item) => Number(item.iteration_id) || 0)) + 1;
       this.iterationConfigObject.push({
         iteration_id: id,
         iteration_description: "Iteration #" + id,

@@ -61,9 +61,13 @@
 
     <div v-if="truncated" class="text-orange-9 q-mb-sm">Only the latest {{ formatNumber(files.length) }} files of the day are listed.</div>
 
-    <!-- The actions, while files are selected: each counts the selected files it would change. -->
+    <!-- The actions, while files are selected: each counts the shown selected files it would change; files hidden by
+         the filters are kept selected but never acted on. -->
     <div v-if="selectable && selected.size" class="row items-center q-gutter-sm q-mb-sm selection-bar">
       <span class="text-weight-medium">{{ formatNumber(selected.size) }} selected</span>
+      <span v-if="hiddenSelected" class="text-orange-10">
+        ({{ formatNumber(hiddenSelected) }} hidden by the filters, left alone)
+      </span>
       <q-btn flat dense no-caps color="primary" label="Clear" @click="selected = new Set()" />
       <q-space />
       <q-btn
@@ -182,7 +186,7 @@
               <small class="text-grey-7 q-px-sm">{{ toTimeString(file.startloaddate) }}</small>
             </div>
           </td>
-          <td class="text-right number-cell">{{ file.runtime != null ? `${file.runtime} s` : "" }}</td>
+          <td class="text-right number-cell">{{ file.runtime != null ? formatDuration(file.runtime) : "" }}</td>
           <td class="text-right number-cell">{{ formatNumber(file.recordsread || 0) }}</td>
           <td class="text-right number-cell">{{ formatNumber(file.recordswrite || 0) }}</td>
           <td class="text-right number-cell" :class="{ 'text-red-6 text-weight-bold': file.recordsreject > 0 }">{{ formatNumber(file.recordsreject || 0) }}</td>
@@ -224,6 +228,7 @@
                   </q-menu>
                 </a>
               </template>
+              <load-error-notice v-else-if="loadError && !loading && !files.length" :message="`The file log could not be loaded: ${loadError}`" @retry="load(requestedDay)" />
               <template v-else>{{ loading ? "Loading..." : files.length ? "No file matches the filters" : "No files loaded on this day" }}</template>
             </td>
           </tr>
@@ -273,6 +278,7 @@
 import { mapGetters } from "vuex";
 import DayNavigator from "./DayNavigator.vue";
 import HourHeatmap from "./HourHeatmap.vue";
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import FilterChips from "./FilterChips.vue";
 import FileUploadDialog from "./FileUploadDialog.vue";
 import FileViewerDialog from "./FileViewerDialog.vue";
@@ -283,7 +289,7 @@ import { copyAndNotify } from "../runActions";
 import { downloadFiles } from "../utils/datasources";
 import { FILE_SEARCH_LIMIT, datasourceMatchesSearch, fileMatchesSearch, hourRange, loadHour, parseSearch, statusHeatmapRows } from "../utils/files";
 import { listFilter, searchFilter, valueFilter } from "../utils/filters";
-import { compactNumber, dayLabel, escapeHtml, formatBytes, formatNumber, toDateString, toDateTimeString, toTimeString } from "../utils/format";
+import { compactNumber, dayLabel, escapeHtml, formatBytes, formatDuration, formatNumber, toDateString, toDateTimeString, toTimeString } from "../utils/format";
 import { ariaSort, sortChip, sortIcon, sortRows, toggleSort } from "../utils/sort";
 import { clockLabel, clockOffset, dayPosition } from "../utils/clock";
 import persistFilters from "../mixins/persistFilters";
@@ -317,7 +323,7 @@ const DEFAULT_SORT = { key: null, dir: "asc" };
 export default {
   name: "FileLogTable",
   mixins: [persistFilters("file_log", ["search", "statuses", "duplicate", "sort"])],
-  components: { DayNavigator, HourHeatmap, FilterChips, FileUploadDialog, FileViewerDialog },
+  components: { DayNavigator, HourHeatmap, FilterChips, FileUploadDialog, FileViewerDialog, LoadErrorNotice },
   props: {
     datasourceId: { type: Number, required: true },
     // YYYY-MM-DD to start with; null for the database's today.
@@ -339,6 +345,8 @@ export default {
   data() {
     return {
       loading: false,
+      loadError: null,
+      requestedDay: null,
       day: null,
       today: null,
       // The database's clock minus the browser's, and the browser's time moved on every minute: the Now marker.
@@ -457,6 +465,13 @@ export default {
       }
       const valueOf = key === "status" ? (file) => fileStatus(file.filestatus).label : (file) => file[key];
       return sortRows(this.shownFiles, valueOf, this.sort.dir);
+    },
+    // The selected files the filters show: the only ones an action or download takes.
+    shownSelected() {
+      return this.shownFiles.filter((file) => this.selected.has(file.id));
+    },
+    hiddenSelected() {
+      return this.selected.size - this.shownSelected.length;
     },
     allShownSelected() {
       if (!this.selected.size) {
@@ -584,12 +599,14 @@ export default {
       this.hour = null;
     },
     formatBytes,
+    formatDuration,
     formatNumber,
     toDateString,
     toDateTimeString,
     toTimeString,
     async load(day, quiet = false) {
       this.loading = !quiet;
+      this.requestedDay = day;
       try {
         const result = await api("get-ds-file-log", { params: { id: this.datasourceId, date: day }, loadingBar: false });
         // An hour picked on one day means nothing on another; one of the initial filters is for the first day loaded.
@@ -609,7 +626,9 @@ export default {
         this.$emit("day", result.date === result.today ? null : result.date);
         this.$emit("loaded", this.files);
         this.scrollToHighlight();
+        this.loadError = null;
       } catch (error) {
+        this.loadError = error.message;
         notifyError("The file log could not be loaded.", error);
       } finally {
         this.loading = false;
@@ -659,22 +678,14 @@ export default {
     },
     // The selected files of an action's `from` statuses and, with `needsFile`, an archived file; none already in `status`.
     eligibleFor({ from, needsFile }, status) {
-      const files = [];
-      this.selected.forEach((id) => {
-        const file = this.filesById.get(id);
-        if (!file || (status && file.filestatus === status)) {
-          return;
-        }
-        if ((!from || from.includes(file.filestatus)) && !(needsFile && file.outfiledeleted)) {
-          files.push(file);
-        }
-      });
-      return files;
+      return this.shownSelected.filter(
+        (file) => !(status && file.filestatus === status) && (!from || from.includes(file.filestatus)) && !(needsFile && file.outfiledeleted)
+      );
     },
     confirmAction(status) {
       const action = FILE_ACTIONS[status];
       const files = this.eligible(status);
-      const skipped = this.selected.size - files.length;
+      const skipped = this.shownSelected.length - files.length;
       const tables = this.tables.length ? this.tables.map(escapeHtml).join(", ") : "the table named like the datasource (no tables are linked)";
       const parts = [
         `${escapeHtml(action.text)}`,
@@ -684,6 +695,7 @@ export default {
               action.from ? `not ${action.from.join(" or ")}, or their archived file is deleted` : `already ${status}`
             }.`
           : "",
+        this.hiddenSelected ? `<br><br>${this.hiddenSelected} selected files hidden by the filters are left alone.` : "",
         action.warning ? `<br><br><b class="text-negative">${escapeHtml(action.warning)}</b>` : "",
       ];
       this.$q

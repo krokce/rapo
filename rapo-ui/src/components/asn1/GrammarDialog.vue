@@ -88,7 +88,8 @@
             <tbody v-else-if="!shownGrammars.length">
               <tr>
                 <td colspan="7" class="text-center text-grey-7 q-pa-lg">
-                  {{ grammars.length ? "No grammar matches the search" : "No grammar yet: Add grammar to paste or upload one." }}
+                  <load-error-notice v-if="loadError && !grammars.length" :message="`The grammars could not be read: ${loadError}`" @retry="load" />
+                  <template v-else>{{ grammars.length ? "No grammar matches the search" : "No grammar yet: Add grammar to paste or upload one." }}</template>
                 </td>
               </tr>
             </tbody>
@@ -129,6 +130,7 @@ import { api, notifyError } from "../../api";
 import { mapState } from "vuex";
 import { downloadBlob, escapeHtml, formatBytes, formatNumber, toDateTimeString } from "../../utils/format";
 import { grammarIcon, usedByDatasources, usedByText } from "../../utils/asn1";
+import LoadErrorNotice from "../LoadErrorNotice.vue";
 import SkeletonRows from "../SkeletonRows.vue";
 import GrammarEditDialog from "./GrammarEditDialog.vue";
 
@@ -139,13 +141,14 @@ import GrammarEditDialog from "./GrammarEditDialog.vue";
 // renamed.
 export default {
   name: "GrammarDialog",
-  components: { GrammarEditDialog, SkeletonRows },
+  components: { GrammarEditDialog, LoadErrorNotice, SkeletonRows },
   emits: ["changed"],
   data() {
     return {
       visible: false,
       maximized: false,
       loading: false,
+      loadError: null,
       grammars: [],
       search: "",
       menuTarget: null,
@@ -188,7 +191,9 @@ export default {
       this.loading = true;
       try {
         this.grammars = (await api("get-asn1-grammars", { loadingBar: false })).grammars;
+        this.loadError = null;
       } catch (error) {
+        this.loadError = error.message;
         notifyError("The grammars were not read.", error);
       } finally {
         this.loading = false;

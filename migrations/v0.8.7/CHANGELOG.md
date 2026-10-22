@@ -36,3 +36,22 @@ New table `rapo_api_token`, column `rapo_scheduler_event.requested_by` and recre
    Files shows a grey `0` in an empty count (a status, Duplicates, Read, Written, Rejected), as Incoming did; Runtime,
    Last success and Trend stay empty without files. A count other than zero is bold in its column icon's color (Success
    green, Started blue, Waiting amber, Error orange, Incoming blue-grey, Duplicates purple, ...).
+1. **Control editor: no silent overwrites.** A stored rule, case or iteration configuration that cannot be read is
+   reported when the control opens and Save/Apply are refused, so the defaults the form falls back to never replace
+   it. The schedule is checked on Save: a Weekly or Monthly schedule without days, a Cascade without its trigger
+   control, an empty Complex hour/minute/second or an invalid time is refused on the Scheduler tab (a Weekly schedule
+   without days was saved as Daily). Changing datasource B clears its output columns, as datasource A did. A new run
+   iteration takes the next free ID (IDs no longer repeat after a removed row).
+1. **Example menus by keyboard.** The examples of the schedule fields and the *Add KPI* menu now apply the item picked
+   with Enter (the menu closed without doing anything).
+1. **File log: hidden selections are left alone.** Files selected and then hidden by the status, duplicate, hour or
+   search filters stay selected but are no longer recycled, reloaded, deleted or downloaded; the selection bar and the
+   confirmation say how many are left alone. The Runtime column is `h:mm:ss`, as on Files.
+1. **Failed loads say so.** KPI types, the Scheduler, the Run log dialog, the KPI type and datasource editors, the
+   file log, the incoming files list and the ASN.1 grammars show the error with a *Retry* instead of loading forever
+   or reading as empty.
+1. **Smaller fixes.** The Run dialog shows a picked range as `from - to` and stays open when a run is refused; New and
+   Delete KPI type are hidden from tokens without KPIs: Edit; a `?tab=` link to a tab the token may not see opens Main;
+   the Scheduler page reloads the control catalogue only when controls change (not each time a fire passes); the
+   Dashboard notices a new hour and day by the browser's local clock (it used UTC); the incoming files list keeps the
+   kind picked last when an older listing answers late.

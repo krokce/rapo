@@ -475,9 +475,12 @@ export default {
     sectionLabel(id) {
       return DASHBOARD_SECTIONS.find((section) => section.id === id).label;
     },
-    // The hour of the browser, which tells when the server's hour or day may have turned.
+    // The local hour of the browser (YYYY-MM-DDTHH), which tells when the server's hour or day may have turned (a UTC
+    // stamp turned the day at UTC midnight).
     stamp() {
-      return new Date().toISOString().slice(0, 13);
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, "0");
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}`;
     },
     // Everything: the present first, the span beside it.
     loadAll() {

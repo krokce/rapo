@@ -28,7 +28,7 @@
       <q-card-section class="column items-center">
         <div class="q-pa-md">
           Run for <span v-if="!range">date</span> <span v-else>range</span>:
-          <p>{{ selectDate }}</p>
+          <p>{{ dateText }}</p>
 
           <div class="row items-start">
             <q-date v-model="selectDate" :range="range" today-btn mask="YYYY-MM-DD" color="teal" flat />
@@ -67,7 +67,7 @@
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn v-close-popup="-1" flat color="primary" label="Run" icon="fas fa-play" @click="runControl" />
+        <q-btn flat color="primary" label="Run" icon="fas fa-play" @click="runControl" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -100,6 +100,14 @@ export default {
     };
   },
   computed: {
+    // The picked day or range as text (q-date gives a {from, to} object for a range, a string for one day).
+    dateText() {
+      const value = this.selectDate;
+      if (!value || typeof value === "string") {
+        return value || "";
+      }
+      return value.from === value.to ? value.from : `${value.from} - ${value.to}`;
+    },
     ...mapState(["controlCatalogue"]),
     chain() {
       return chainOf(this.run_control_name, this.controlCatalogue);
@@ -181,9 +189,10 @@ export default {
       if (!(await startRun(params))) {
         return;
       }
+      // Closed only once started, so a refused run keeps what was picked.
+      this.visible = false;
       if (this.hook) {
         this.hook();
-        this.visible = false;
       } else {
         this.$router.push({ name: "results" });
       }

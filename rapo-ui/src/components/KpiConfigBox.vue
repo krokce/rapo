@@ -100,8 +100,8 @@
             :disable="unusedTypes.length == 0">
             <q-menu>
               <q-list dense class="text-no-wrap">
-                <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type">
-                  <q-item-section @click="addKpi(type.kpi_type)">
+                <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type" @click="addKpi(type.kpi_type)">
+                  <q-item-section>
                     <q-item-label>
                     <q-chip size="12px" class="q-ml-none menu-code">
                       <q-avatar :icon="kpiIcon" :color="kpiUnitColor(type.kpi_value_unit)" text-color="white" />
@@ -135,8 +135,8 @@
         <q-btn v-if="kpiConfigObject.length == 0" size="md" color="primary" icon="fas fa-plus" label="Add KPI" :disable="unusedTypes.length == 0">
           <q-menu>
             <q-list dense class="text-no-wrap">
-              <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type">
-                <q-item-section @click="addKpi(type.kpi_type)">
+              <q-item clickable v-close-popup v-for="type in unusedTypes" :key="type.kpi_type" @click="addKpi(type.kpi_type)">
+                <q-item-section>
                   <q-item-label>
                     <q-chip size="12px" class="q-ml-none menu-code">
                       <q-avatar :icon="kpiIcon" :color="kpiUnitColor(type.kpi_value_unit)" text-color="white" />

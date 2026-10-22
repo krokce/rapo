@@ -10,6 +10,7 @@
 
     <div class="row items-center q-mb-md">
       <q-btn
+        v-if="$can('kpis', 'edit')"
         class="col-2 q-mb-md q-pa-sm"
         size="lg"
         color="primary"
@@ -119,7 +120,12 @@
         </tr>
       </template>
       <template #after>
-        <tbody v-if="!loaded">
+        <tbody v-if="!loaded && loadError">
+          <tr>
+            <td colspan="8"><load-error-notice :message="`KPI types could not be loaded: ${loadError}`" @retry="initialLoad" /></td>
+          </tr>
+        </tbody>
+        <tbody v-else-if="!loaded">
           <skeleton-rows :rows="8" :columns="['QChip', 'text', 'QChip', 'text', 'text', 'text', 'text', null]" />
         </tbody>
         <tbody v-else-if="!sortedKpiTypes.length">
@@ -134,15 +140,17 @@
         <q-item clickable v-close-popup :to="{ name: 'edit-kpi-type', params: { kpiCode: menuRow.kpi_type } }">
           <q-item-section> Edit KPI type </q-item-section>
         </q-item>
-        <q-separator />
-        <!-- racs_kpi_config references the code, so a used type cannot be deleted. -->
-        <q-item v-if="usageOf(menuRow.kpi_type).length" dense disable>
-          <q-item-section> Delete KPI type </q-item-section>
-          <q-tooltip anchor="top middle" self="bottom middle"> Used by {{ usageOf(menuRow.kpi_type).length }} control(s) </q-tooltip>
-        </q-item>
-        <q-item v-else dense clickable v-close-popup @click="confirmDeleteKpiType(menuRow.kpi_type)">
-          <q-item-section> Delete KPI type </q-item-section>
-        </q-item>
+        <template v-if="$can('kpis', 'edit')">
+          <q-separator />
+          <!-- racs_kpi_config references the code, so a used type cannot be deleted. -->
+          <q-item v-if="usageOf(menuRow.kpi_type).length" dense disable>
+            <q-item-section> Delete KPI type </q-item-section>
+            <q-tooltip anchor="top middle" self="bottom middle"> Used by {{ usageOf(menuRow.kpi_type).length }} control(s) </q-tooltip>
+          </q-item>
+          <q-item v-else dense clickable v-close-popup @click="confirmDeleteKpiType(menuRow.kpi_type)">
+            <q-item-section> Delete KPI type </q-item-section>
+          </q-item>
+        </template>
       </q-list>
     </q-menu>
   </q-page>
@@ -151,6 +159,7 @@
 <script>
 import { mapActions, mapGetters, mapState } from "vuex";
 import FilterChips from "./FilterChips.vue";
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import SkeletonRows from "./SkeletonRows.vue";
 import { api, notifyError } from "../api";
 import { KPI_ICON, kpiUnitColor } from "../constants";
@@ -168,6 +177,7 @@ export default {
   mixins: [persistFilters("kpi_types", ["filter", "sort"])],
   components: {
     FilterChips,
+    LoadErrorNotice,
     SkeletonRows,
   },
   data() {
@@ -175,6 +185,7 @@ export default {
       kpiIcon: KPI_ICON,
       // Until the first load, the table shows skeleton rows: the usage counts are never cached.
       loaded: false,
+      loadError: null,
       // One row per (KPI type, control) of racs_kpi_config, which is what makes a type undeletable.
       usage: [],
       filter: {
@@ -221,6 +232,17 @@ export default {
       this.$q
         .dialog({ title: kpi_type, message: `Do you really want to delete KPI type ${kpi_type}?`, cancel: true, persistent: true, ok: { label: "Delete", color: "negative" } })
         .onOk(() => this.deleteKpiType(kpi_type));
+    },
+    // Nothing watches racs_kpi_* for live updates, so the page refreshes itself after every write.
+    async initialLoad() {
+      this.loadError = null;
+      try {
+        await this.load();
+        this.loaded = true;
+      } catch (error) {
+        this.loadError = error.message;
+        notifyError("Failed to load KPI types.", error);
+      }
     },
     async deleteKpiType(kpi_type) {
       try {
@@ -290,14 +312,8 @@ export default {
       return this.filteredKpiTypes.length;
     },
   },
-  async mounted() {
-    // Nothing watches racs_kpi_* for live updates, so the page refreshes itself after every write.
-    try {
-      await this.load();
-      this.loaded = true;
-    } catch (error) {
-      notifyError("Failed to load KPI types.", error);
-    }
+  mounted() {
+    return this.initialLoad();
   },
 };
 </script>

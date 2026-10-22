@@ -837,7 +837,7 @@
                     ]"
                     label="Scheduler status" />
 
-                  <schedule-edit-box class="col" v-model="scheduleObject">
+                  <schedule-edit-box ref="scheduleBox" class="col" v-model="scheduleObject">
                     <div class="row no-wrap items-start q-gutter-x-sm">
                       <q-icon name="fas fa-comment-alt" color="grey-6" size="14px" />
                       <schedule-description
@@ -1215,6 +1215,8 @@ export default {
       logTableHeight: 600,
       versionChanges: [],
       saving: false,
+      // Set when a stored JSON column of the loaded row could not be read: the form then holds defaults, so Save is refused.
+      configError: null,
       // The saved state as JSON (buildControlPayload / kpiConfigObject), compared with the form for dirty.
       // null control: never saved (a clone); null KPIs: not loaded yet, not compared.
       savedControlJson: null,
@@ -1308,9 +1310,9 @@ export default {
         "sql",
         ...(type !== "REP" && type !== "REC" ? ["case"] : []),
         "scheduler",
-        ...(this.kpiAvailable ? ["kpi"] : []),
+        ...(this.kpiAvailable && this.$can("kpis") ? ["kpi"] : []),
         ...(this.emailEnabled ? ["email"] : []),
-        ...(this.control.control_id ? ["log"] : []),
+        ...(this.control.control_id && this.$can("runs") ? ["log"] : []),
       ];
     },
     // The schedule being edited as it would be saved, described live under the fields.
@@ -1914,6 +1916,7 @@ export default {
       }
     },
     initializeControl() {
+      this.configError = null;
       try {
         if (this.control.control_type === "ANL" || this.control.control_type === "REP") {
           if (this.control["output_table"]) {
@@ -1979,7 +1982,13 @@ export default {
 
         this.withDeletionDrop = this.control.with_drop === "Y" ? "drop" : this.control.with_deletion === "Y" ? "deletion" : "N";
       } catch (err) {
-        console.log(err);
+        this.configError = err.message;
+        this.$q.notify({
+          type: "negative",
+          timeout: 0,
+          actions: [{ icon: "fas fa-times", color: "white", round: true }],
+          message: `The stored configuration of this control could not be read (${err.message}). Saving is disabled so that it is not overwritten.`,
+        });
       }
     },
     // A past version takes the saved row's ID and stamps and leaves its audit columns, so that the form holds only
@@ -2256,6 +2265,10 @@ export default {
     // Checks the form, and on a problem notifies and jumps to the tab where it is. Returns whether it may be saved.
     validate() {
       var errorTab = null;
+      if (this.configError) {
+        this.$q.notify({ type: "negative", message: `The stored configuration could not be read (${this.configError}), so it cannot be saved.` });
+        return false;
+      }
       if (!this.control.control_name) {
         this.$q.notify({
           type: "negative",
@@ -2311,6 +2324,13 @@ export default {
           type: "negative",
           message: "Please enter a period back and number of periods.",
         });
+        errorTab = "scheduler";
+      }
+
+      // The box exists once the Scheduler tab was opened (keep-alive); before that the schedule is the saved one.
+      const scheduleProblem = !errorTab && this.$refs.scheduleBox ? this.$refs.scheduleBox.problem() : null;
+      if (scheduleProblem) {
+        this.$q.notify({ type: "negative", message: scheduleProblem });
         errorTab = "scheduler";
       }
 
@@ -2828,6 +2848,7 @@ export default {
       if (newDatasource && newDatasource !== oldDatasource) {
         this.getDatasourceColumns(newDatasource).then((data) => {
           this.datasourceBColumns = data;
+          this.control.output_table_b_columns = null;
         });
 
         this.getDatasourceColumns(newDatasource, "date").then((data) => {

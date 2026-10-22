@@ -5,7 +5,8 @@
         <q-skeleton type="QChip" width="90px" height="50px" class="q-mr-md" />
         <q-skeleton type="text" width="420px" height="60px" />
       </h2>
-      <editor-skeleton :rows="3" />
+      <load-error-notice v-if="loadError" :message="`The datasource could not be loaded: ${loadError}`" @retry="reloadAfterError" />
+      <editor-skeleton v-else :rows="3" />
     </div>
     <div v-else>
       <!-- The chip shows the lane as saved, not the one being picked. -->
@@ -484,6 +485,7 @@ import DatasourceTablesBox from "./DatasourceTablesBox.vue";
 import DiffTable from "./DiffTable.vue";
 import DirectoryListBox from "./DirectoryListBox.vue";
 import EditorSkeleton from "./EditorSkeleton.vue";
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import FileListDialog from "./FileListDialog.vue";
 import FileUploadDialog from "./FileUploadDialog.vue";
 import FileLogTable from "./FileLogTable.vue";
@@ -516,11 +518,12 @@ const YES_NO_NUMBER_OPTIONS = [
 // saved datasource, which is also the lock of a save: a datasource changed meanwhile, by anyone, is not overwritten.
 export default {
   name: "EditDatasource",
-  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
+  components: { ArchiveTreeBox, DatasourceTablesBox, DiffTable, DirectoryListBox, EditorSkeleton, FileListDialog, LoadErrorNotice, FileLogTable, FileUploadDialog, MaskCheckDialog, ViewerSettingsBox },
   props: ["id"],
   data() {
     return {
       ready: false,
+      loadError: null,
       tab: "main",
       datasource: emptyDatasource(),
       // The datasource as saved (get-ds-config or save-ds-config), null for a new one.
@@ -703,18 +706,26 @@ export default {
     window.removeEventListener("beforeunload", this.onBeforeUnload);
     clearTimeout(this.maskTimer);
   },
-  async mounted() {
-    try {
-      await this.load();
-      this.openRouteTab();
-      // The issues of Need attention follow the background scan, like the list's badges.
-      this.stopLiveUpdates = liveRefetch("datasources:changed", this.refreshStatus, { filter: (payload) => payload.kind === "status" });
-      this.refreshStatus();
-    } catch (error) {
-      notifyError("Failed to load the datasource.", error);
-    }
+  mounted() {
+    return this.initialLoad();
   },
   methods: {
+    async initialLoad() {
+      try {
+        await this.load();
+        this.openRouteTab();
+        // The issues of Need attention follow the background scan, like the list's badges.
+        this.stopLiveUpdates = liveRefetch("datasources:changed", this.refreshStatus, { filter: (payload) => payload.kind === "status" });
+        this.refreshStatus();
+      } catch (error) {
+        this.loadError = error.message;
+        notifyError("Failed to load the datasource.", error);
+      }
+    },
+    reloadAfterError() {
+      this.loadError = null;
+      return this.initialLoad();
+    },
     ...mapActions(["updateDatasourceCatalogue", "updateDatasourceStatus"]),
     lane: datasourceLane,
     async load() {

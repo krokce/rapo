@@ -13,7 +13,8 @@
       <q-separator />
 
       <q-card-section v-if="!run" class="col flex flex-center">
-        <q-spinner color="teal" size="3em" />
+        <load-error-notice v-if="loadError" :message="`The run log could not be loaded: ${loadError}`" @retry="load" />
+        <q-spinner v-else color="teal" size="3em" />
       </q-card-section>
 
       <template v-else>
@@ -87,6 +88,7 @@
 </template>
 
 <script>
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import { copyAndNotify } from "../runActions";
 import { api, notifyError } from "../api";
 import { ACTIVE_RUN_STATUSES, runStatus } from "../constants";
@@ -125,12 +127,14 @@ function parseLog(text) {
 // Shows a control run: its rapo_log row and the log file written by its process.
 // Open with this.$refs.<ref>.open(run), where run has at least process_id and control_name.
 export default {
+  components: { LoadErrorNotice },
   data() {
     return {
       visible: false,
       processId: null,
       controlName: "",
       run: null,
+      loadError: null,
       log: null,
       records: [],
       levels: LEVELS,
@@ -209,6 +213,7 @@ export default {
       this.processId = run.process_id;
       this.controlName = run.control_name;
       this.run = null;
+      this.loadError = null;
       this.log = null;
       this.records = [];
       this.search = "";
@@ -219,6 +224,7 @@ export default {
       });
     },
     async load() {
+      this.loadError = null;
       try {
         const data = await api("get-control-run-log", { params: { process_id: this.processId }, loadingBar: !this.run });
         const followTail = !this.run || this.active;
@@ -230,6 +236,7 @@ export default {
           this.$nextTick(() => this.$refs.scroll && this.$refs.scroll.scrollTo(this.filteredRecords.length - 1));
         }
       } catch (error) {
+        this.loadError = error.message;
         notifyError("Failed to load the run log.", error);
       }
     },

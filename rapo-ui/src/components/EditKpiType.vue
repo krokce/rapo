@@ -5,7 +5,8 @@
         <q-skeleton type="QChip" width="90px" height="50px" class="q-mr-md" />
         <q-skeleton type="text" width="300px" height="60px" />
       </h2>
-      <editor-skeleton :rows="2" />
+      <load-error-notice v-if="loadError" :message="`The KPI type could not be loaded: ${loadError}`" @retry="reloadAfterError" />
+      <editor-skeleton v-else :rows="2" />
     </div>
     <div v-else>
       <!-- The chip is colored by the unit as saved, not by the one being typed. -->
@@ -229,6 +230,7 @@ import { mapActions, mapState } from "vuex";
 import CodeBox from "./CodeBox.vue";
 import { examplesFor } from "../utils/codeExamples";
 import EditorSkeleton from "./EditorSkeleton.vue";
+import LoadErrorNotice from "./LoadErrorNotice.vue";
 import ScheduleSummary from "./ScheduleSummary.vue";
 import { api, notifyError } from "../api";
 import { controlType, KPI_ICON, kpiUnitColor } from "../constants";
@@ -275,7 +277,7 @@ function emptyKpiType() {
 // One row of racs_kpi_type. The code is the primary key, so an edit that changes it is a rename: the controls
 // that use the type are moved over by the server, which is what the confirmation before saving is about.
 export default {
-  components: { CodeBox, EditorSkeleton, ScheduleSummary },
+  components: { CodeBox, EditorSkeleton, LoadErrorNotice, ScheduleSummary },
   // The statements of a token that may not edit KPI types are read only.
   provide() {
     return { editorReadonly: () => !this.$can("kpis", "edit") };
@@ -287,6 +289,7 @@ export default {
       tab: "main",
       // A new type is ready at once; an existing one once it has loaded, so the form never shows empty first.
       ready: this.kpiCode === "new",
+      loadError: null,
       kpiType: emptyKpiType(),
       previousKpiType: null,
       kpiIcon: KPI_ICON,
@@ -332,6 +335,40 @@ export default {
     },
   },
   methods: {
+    async initialLoad() {
+      try {
+        // Forced, because this page is where the catalogue is edited and the store caches it for the session.
+        // The control catalogue feeds the Controls tab and names the control a cascade follows.
+        const controls = this.$can("controls");
+        if (controls) {
+          this.loadNextFires();
+        }
+        const [types, , usage] = await Promise.all([
+          this.updateKpiTypes({ force: true }),
+          controls ? this.updateControlCatalogue() : null,
+          api("get-kpi-type-usage", { loadingBar: false }),
+        ]);
+        this.usage = usage;
+        if (this.kpiCode === "new") {
+          return;
+        }
+        const data = types.find((item) => item.kpi_type === this.kpiCode);
+        if (!data) {
+          this.$q.notify({ type: "negative", message: "There is no KPI type " + this.kpiCode + "." });
+          this.$router.push({ name: "kpi-types" });
+          return;
+        }
+        this.loadKpiType(data);
+        this.ready = true;
+      } catch (error) {
+        this.loadError = error.message;
+        notifyError("Failed to load the KPI type.", error);
+      }
+    },
+    reloadAfterError() {
+      this.loadError = null;
+      return this.initialLoad();
+    },
     ...mapActions(["updateKpiTypes", "updateControlCatalogue"]),
     controlType,
     kpiUnitColor,
@@ -459,34 +496,8 @@ export default {
       }
     },
   },
-  async mounted() {
-    try {
-      // Forced, because this page is where the catalogue is edited and the store caches it for the session.
-      // The control catalogue feeds the Controls tab and names the control a cascade follows.
-      const controls = this.$can("controls");
-      if (controls) {
-        this.loadNextFires();
-      }
-      const [types, , usage] = await Promise.all([
-        this.updateKpiTypes({ force: true }),
-        controls ? this.updateControlCatalogue() : null,
-        api("get-kpi-type-usage", { loadingBar: false }),
-      ]);
-      this.usage = usage;
-      if (this.kpiCode === "new") {
-        return;
-      }
-      const data = types.find((item) => item.kpi_type === this.kpiCode);
-      if (!data) {
-        this.$q.notify({ type: "negative", message: "There is no KPI type " + this.kpiCode + "." });
-        this.$router.push({ name: "kpi-types" });
-        return;
-      }
-      this.loadKpiType(data);
-      this.ready = true;
-    } catch (error) {
-      notifyError("Failed to load the KPI type.", error);
-    }
+  mounted() {
+    return this.initialLoad();
   },
 };
 </script>
