@@ -6,6 +6,13 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
+## v0.8.8 — unreleased
+
+No schema change.
+
+- Preparation, Prerequisite and Completion SQL, email *Evaluate SQL* and ANL case definitions run exactly as written (only `{variables}` filled in); the SQL formatter no longer lower-cases q-quoted literals holding a quote (`q'[... 'ABC' ...]'`) or the literals after one ending in a backslash, and created views keep their own text. Re-run controls whose scripts hold such literals.
+- The run log shows each of these statements as it runs.
+
 ## v0.8.7 — 2026-10-22
 
 New table `rapo_api_token`, column `rapo_scheduler_event.requested_by`, recreated `rapo_config` triggers

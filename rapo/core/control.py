@@ -1010,7 +1010,8 @@ class Control:
     def _prerequisite(self):
         statement = self.parser.parse_prerequisite_statement()
         if statement:
-            logger.info(f'{self} Checking control prerequisite statement...')
+            logger.info(f'{self} Checking control prerequisite statement:\n'
+                        f'{statement}')
             try:
                 prerequisite_value = db.execute(statement, as_scalar=True)
                 self._save_prerequisite_value(prerequisite_value)
@@ -1038,7 +1039,8 @@ class Control:
                 return self._escape()
         statement = self.parser.parse_preparation_statement()
         if statement:
-            logger.info(f'{self} Running control preparation SQL scripts...')
+            logger.info(f'{self} Running control preparation SQL scripts:\n'
+                        f'{statement}')
             try:
                 result = db.execute(statement)
                 rowcount = result.rowcount
@@ -1188,7 +1190,8 @@ class Control:
     def _complete(self):
         statement = self.parser.parse_completion_statement()
         if statement:
-            logger.info(f'{self} Running control completion SQL scripts...')
+            logger.info(f'{self} Running control completion SQL scripts:\n'
+                        f'{statement}')
             try:
                 result = db.execute(statement)
                 rowcount = result.rowcount
@@ -2160,11 +2163,11 @@ class Parser:
         return self._parse_statement('completion_sql')
 
     def _parse_statement(self, statement_name):
-        custom_statement = self.control.config[statement_name]
+        # Run exactly as written: the formatter re-cased q-quoted literals
+        # and strings ending in a backslash, and reformatted created views.
+        custom_statement = (self.control.config[statement_name] or '').strip()
         if custom_statement:
-            custom_statement = custom_statement.format(**self.c.variables)
-            final_statement = db.formatter(custom_statement)
-            return final_statement
+            return custom_statement.format(**self.c.variables)
 
     def parse_case_config(self):
         """Get case mapping taken from the configuration table.
@@ -2210,8 +2213,7 @@ class Parser:
         logger.debug(f'{self.c} Parsing case definition...')
         string = self.control.config['case_definition']
         if string:
-            custom_config = self.control.config['case_definition']
-            final_config = db.formatter(custom_config)
+            final_config = self.control.config['case_definition']
             logger.debug(f'{self.c} Case definition parsed')
             return final_config
         else:
@@ -2621,7 +2623,6 @@ class Parser:
                     final_statement += custom_statement[last:start] + new
                     last = end
                 final_statement += custom_statement[last:]
-                final_statement = db.formatter(final_statement)
                 column = sa.literal_column(final_statement).label(field_name)
                 columns.append(column)
             logger.debug(f'{self.c} Result columns parsed')

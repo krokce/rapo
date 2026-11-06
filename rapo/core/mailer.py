@@ -176,7 +176,7 @@ def evaluate(control, email_config):
         return None, 'Evaluate SQL is empty'
     try:
         statement = statement.format(**control.variables)
-        statement = db.formatter(statement)
+        logger.info(f'{control} Email: running Evaluate SQL:\n{statement}')
         value = db.execute(statement, as_scalar=True)
     except Exception as error:
         logger.error()
