@@ -27,12 +27,13 @@ for reconciliation controls, results sent per email, and a KPI catalogue editor.
 [migrations/v0.8.3](migrations/v0.8.3/CHANGELOG.md),
 [migrations/v0.8.4](migrations/v0.8.4/CHANGELOG.md),
 [migrations/v0.8.5](migrations/v0.8.5/CHANGELOG.md),
-[migrations/v0.8.6](migrations/v0.8.6/CHANGELOG.md) and
-[migrations/v0.8.7](migrations/v0.8.7/CHANGELOG.md), and summarized in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+[migrations/v0.8.6](migrations/v0.8.6/CHANGELOG.md),
+[migrations/v0.8.7](migrations/v0.8.7/CHANGELOG.md) and
+[migrations/v0.8.8](migrations/v0.8.8/CHANGELOG.md), and summarized in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 Both upstream projects are MIT-licensed, and so is this one. [NOTICE](NOTICE) records what comes from where.
 
-Releases of the fork carry a local version segment - `0.8.7+fork` - because the original project keeps its own
+Releases of the fork carry a local version segment - `0.8.8+fork` - because the original project keeps its own
 numbering and is at v0.6.15; the two version lines say nothing about each other.
 
 ## Prologue

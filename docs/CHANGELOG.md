@@ -6,7 +6,7 @@ The full notes and upgrade steps of each release are in `migrations/<version>/` 
 
 ---
 
-## v0.8.8 — unreleased
+## v0.8.8 — 2026-11-06
 
 No schema change.
 
